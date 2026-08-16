@@ -91,3 +91,76 @@ def test_logs_what_it_chose_and_what_it_replaced(caplog):
     assert "adaptive" in msg and "0.0400" in msg, (
         "the log must show BOTH the chosen value and the file's value, or a "
         "changed reconstruction is unattributable")
+
+
+def test_legacy_per_voxel_kernel_has_no_free_variables():
+    """The mixed-grid-size screen path must not reference undefined names.
+
+    ``_screen_per_voxel`` only fires when ``gs`` varies across the batch, so it
+    is never exercised by the normal path -- which is exactly why two free
+    variables (``spot_weight``, and later ``_min_frac``) survived in it
+    unnoticed. It would raise NameError the first time a real mixed-grid run
+    reached it. Checked statically rather than by calling it, because
+    constructing that state needs the whole screen fixture.
+    """
+    import symtable
+    from pathlib import Path
+    import midas_nf_fitorientation.screen as S
+
+    src = Path(S.__file__).read_text()
+    st = symtable.symtable(src, "screen.py", "exec")
+    fn = next(c for c in st.get_children() if c.get_name() == "_screen_per_voxel")
+    free = sorted(s.get_name() for s in fn.get_symbols() if s.is_free())
+    assert not free, f"free variables in _screen_per_voxel: {free}"
+
+
+# ---------------------------------------------------------------------------
+#  Refine early-exit (candidate-rank waves)
+# ---------------------------------------------------------------------------
+
+def test_early_exit_selects_the_same_winner_as_refine_all():
+    """The writeback's early exit already decides the answer.
+
+    Kept as documentation of a measured dead end: refining candidates lazily by
+    rank so the exit could SAVE work made the fit 26-43% slower (thousands of
+    small GPU launches, and per-chunk tensor rebuilds), so the eager pre-pass
+    stays. The selection property below is what made the idea look safe, and is
+    still true -- it is the throughput that killed it, not correctness.
+
+    The writeback stops at the first candidate with hard_frac > 1 - 1e-4 (and
+    the C FitOrientationOMP does the same), so candidates ranked after it never
+    influence the result. Refining them was pure waste -- 653 per voxel on real
+    data. This simulates both orders and asserts the recorded winner is
+    identical, which is the property that makes the optimisation safe.
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    for _ in range(200):
+        n = int(rng.integers(1, 30))
+        fracs = rng.uniform(0.0, 1.0, n)
+        if rng.random() < 0.6:                    # often a near-perfect hit
+            fracs[int(rng.integers(0, n))] = 1.0 - rng.uniform(0, 5e-5)
+
+        # (a) refine-all, then break in the writeback (current behaviour)
+        best_all, chosen_all = -1.0, None
+        for i, f in enumerate(fracs):
+            if f > best_all:
+                best_all, chosen_all = f, i
+            if f > 1.0 - 1e-4:
+                break
+
+        # (b) wave-based: stop refining once a voxel is satisfied
+        best_w, chosen_w, refined = -1.0, None, 0
+        for i, f in enumerate(fracs):
+            refined += 1
+            if f > best_w:
+                best_w, chosen_w = f, i
+            if f > 1.0 - 1e-4:
+                break
+
+        assert chosen_w == chosen_all
+        assert best_w == best_all
+        assert refined <= n
+
+

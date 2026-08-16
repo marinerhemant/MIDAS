@@ -565,8 +565,12 @@ def fit_orientation_run(
                         fn_, val, yp, zp = forward_batched_grains(
                             model, eul_batch, pos_active,
                         )
+                        # valid already encodes the detector bounds, so the
+                        # recomputation inside hard_fraction is a measured
+                        # no-op here (0 spots dropped on real data).
                         frac = obs.hard_fraction(
-                            fn_, yp, zp, val, refl_weight=refl_w)
+                            fn_, yp, zp, val, refl_weight=refl_w,
+                            bounds_already_applied=True)
                     return 1.0 - frac
                 return _neg_hard_frac
 

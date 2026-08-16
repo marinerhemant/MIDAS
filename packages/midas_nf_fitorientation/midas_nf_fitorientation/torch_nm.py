@@ -273,11 +273,14 @@ def batched_nelder_mead(
         # without ``.clone()`` the four candidate fracs alias the same
         # piece of memory and the where-branch logic below sees stale
         # values. The clone is a noop on the eager path.
+        # Evaluate the reflection first: it ALONE decides which branch each
+        # simplex takes, and the branches are mutually exclusive, so every
+        # simplex needs at most ONE of {x_e, x_co, x_ci}. Evaluating all four
+        # meant ~2x more objective work than the algorithm asks for -- and the
+        # objective is the expensive part (a full forward projection of every
+        # predicted spot for every problem in the batch).
         f_r = fn(x_r, active_idx).clone()
-        f_e = fn(x_e, active_idx).clone()
-        f_co = fn(x_co, active_idx).clone()
-        f_ci = fn(x_ci, active_idx).clone()
-        n_evals += 4
+        n_evals += 1
 
         f_best = f_vals[:, 0]
         f_second_worst = f_vals[:, -2] if n >= 1 else f_vals[:, 0]
@@ -288,6 +291,25 @@ def batched_nelder_mead(
         in_middle = (f_r >= f_best) & (f_r < f_second_worst)
         outside = (f_r >= f_second_worst) & (f_r < f_worst)
         # else: inside (f_r >= f_worst)
+        _is_inside = ~(better_than_best | in_middle | outside)
+
+        # The one extra point this simplex actually needs. ``in_middle``
+        # accepts the reflection outright and needs none, so it is compacted
+        # out of the call entirely.
+        x_second = torch.where(
+            better_than_best.unsqueeze(-1), x_e,
+            torch.where(outside.unsqueeze(-1), x_co, x_ci),
+        )
+        f_second = torch.full_like(f_r, float("inf"))
+        _need_second = better_than_best | outside | _is_inside
+        if bool(_need_second.any()):
+            _sel = torch.nonzero(_need_second, as_tuple=False).squeeze(-1)
+            f_second[_sel] = fn(x_second[_sel], active_idx[_sel]).clone()
+            n_evals += 1
+        # Each of these is only ever READ under its own branch mask, where
+        # f_second holds exactly that branch's value; elsewhere it is +inf,
+        # which the ``&`` in each use_* test discards anyway.
+        f_e = f_co = f_ci = f_second
 
         # Pick the new "worst" vertex per simplex.
         new_x = x_worst.clone()
@@ -311,7 +333,7 @@ def batched_nelder_mead(
         new_f = torch.where(use_co, f_co, new_f)
 
         # Branch 4: inside — try inside contraction.
-        is_inside = ~(better_than_best | in_middle | outside)
+        is_inside = _is_inside
         use_ci = is_inside & (f_ci < f_worst)
         new_x = torch.where(use_ci.unsqueeze(-1), x_ci, new_x)
         new_f = torch.where(use_ci, f_ci, new_f)
@@ -351,11 +373,19 @@ def batched_nelder_mead(
             # Re-evaluate the n vertices we changed (vertex 0 is intact).
             # ``.clone()`` is required for CUDA Graphs aliasing safety;
             # see the per-iter candidate-eval block above.
-            shrunk_f = torch.stack(
-                [fn(simplex[:, k], active_idx).clone()
-                 for k in range(1, n + 1)],
-                dim=1,
-            )                                             # (B_active, n)
+            # Only the shrinking simplices changed, so only they need
+            # re-evaluating. With a large batch at least one simplex shrinks
+            # almost every iteration, so the full-batch version paid n extra
+            # objective calls per iteration for a subset that is typically
+            # about half the batch.
+            _sh = torch.nonzero(need_shrink, as_tuple=False).squeeze(-1)
+            shrunk_f = torch.full(
+                (simplex.shape[0], n), float("inf"),
+                device=f_vals.device, dtype=f_vals.dtype,
+            )
+            for k in range(1, n + 1):
+                shrunk_f[_sh, k - 1] = fn(
+                    simplex[_sh, k], active_idx[_sh]).clone()
             n_evals += n
             mask_f = need_shrink.unsqueeze(1)            # (B_active, 1)
             f_vals[:, 1:] = torch.where(

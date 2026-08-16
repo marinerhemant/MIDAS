@@ -322,6 +322,7 @@ class ObsVolume:
         z_pixel: torch.Tensor,
         valid: torch.Tensor,
         refl_weight: "torch.Tensor | None" = None,
+        bounds_already_applied: bool = False,
     ) -> torch.Tensor:
         """Discrete (non-differentiable) ``CalcFracOverlap`` for screening.
 
@@ -381,11 +382,23 @@ class ObsVolume:
         z_idx = z_pixel.long().clamp(0, W - 1)
 
         # Out-of-bounds spots count as miss.
-        in_bounds = (
-            (frame_nr >= 0) & (frame_nr < F_)
-            & (y_pixel >= 0).all(dim=0) & (y_pixel < H).all(dim=0)
-            & (z_pixel >= 0).all(dim=0) & (z_pixel < W).all(dim=0)
-        )
+        #
+        # ``bounds_already_applied`` skips this when the caller's ``valid``
+        # ALREADY encodes it. project_to_detector folds exactly these six
+        # comparisons into ``valid`` (midas_diffract/forward.py, layer_bounds_ok
+        # -> layer_valid -> prod over layers), so on the fit path recomputing
+        # them changes nothing: measured on real data, valid * in_bounds ==
+        # valid exactly, with zero spots dropped. It is still the default for
+        # any other caller, since this is a public method and a caller passing
+        # a looser ``valid`` genuinely needs the check.
+        if bounds_already_applied:
+            in_bounds = None
+        else:
+            in_bounds = (
+                (frame_nr >= 0) & (frame_nr < F_)
+                & (y_pixel >= 0).all(dim=0) & (y_pixel < H).all(dim=0)
+                & (z_pixel >= 0).all(dim=0) & (z_pixel < W).all(dim=0)
+            )
 
         # Per-distance hit lookup → product across D.
         # f_idx is (..., M); broadcast to (D, ..., M) for the lookup.
@@ -423,7 +436,8 @@ class ObsVolume:
         # Match C ``CalcFracOverlap`` (SharedFuncsFit.c:565-649) exactly:
         # the denominator is ``TotalPixels`` — only spots that survive
         # ALL the bounds checks at ALL distances contribute to it.
-        weight = valid * in_bounds.to(valid.dtype)
+        weight = (valid if in_bounds is None
+                  else valid * in_bounds.to(valid.dtype))
         if refl_weight is not None:
             # (M,) broadcasts against the trailing reflection axis of (..., M)
             weight = weight * refl_weight.to(

@@ -422,26 +422,36 @@ def resolve_min_frac_accept(p, *, p_lit: float, n_spots: float) -> float:
         "file was %.4f", thr, k, p_lit, n_spots, float(p.min_frac_accept))
     return float(thr)
 
-@torch.no_grad()
+
+#: Bits set in each possible uint8 value; a 256-entry table turns popcount into
+#: a gather, instead of a Python loop over a sampled slice.
+_POPCOUNT8 = None
+
+
 def _measure_lit_fraction(obs) -> float:
     """Fraction of detector pixels lit, straight off the ObsVolume bitmap."""
     import torch as _t
+    global _POPCOUNT8
     if getattr(obs, "packed", None) is not None:
         pk = obs.packed
-        bits = _t.tensor(0)
-        # popcount via uint8 view; cheap enough once per run.
         u8 = pk.view(_t.uint8) if pk.dtype != _t.uint8 else pk
-        total = u8.numel() * 8
-        ones = int(_t.sum(_t.tensor(
-            [int(x).bit_count() for x in u8[:: max(1, u8.numel() // 200_000)].tolist()])))
-        n = len(u8[:: max(1, u8.numel() // 200_000)])
-        return ones / max(1, n * 8)
+        if _POPCOUNT8 is None:
+            _POPCOUNT8 = _t.tensor([bin(i).count("1") for i in range(256)],
+                                   dtype=_t.int16)
+        tbl = _POPCOUNT8.to(u8.device)
+        # Sample rather than scan 1.9 GB; the lit fraction is uniform enough
+        # that ~2e5 bytes fixes it to far better than the threshold needs.
+        step = max(1, u8.numel() // 200_000)
+        sample = u8[::step]
+        ones = int(tbl[sample.long()].sum())
+        return ones / max(1, sample.numel() * 8)
     d = getattr(obs, "dense", None)
     if d is None:
         return float("nan")
     return float((d > 0).to(_t.float32).mean())
 
 
+@torch.no_grad()
 def screen(
     grid: GridTable,
     orientations: OrientationData,
@@ -607,6 +617,7 @@ def screen(
             spot_to_orient=spot_to_orient, n_orient=n_orient,
             obs=obs, p=p, device=device, dtype=dtype,
             counts=counts, winners=winners,
+            min_frac=_min_frac, spot_weight=spot_weight,
         )
 
     # ---- voxel chunking ------------------------------------------------
@@ -815,6 +826,28 @@ def screen(
 _SCREEN_LIVE_TENSORS = 16
 
 
+
+def _available_ram_bytes(default: int = 8 << 30) -> int:
+    """Available host RAM, or ``MIDAS_NF_SCREEN_MEM_GIB`` if set."""
+    env = os.environ.get("MIDAS_NF_SCREEN_MEM_GIB")
+    if env:
+        try:
+            return int(float(env) * (1 << 30))
+        except ValueError:
+            pass
+    try:                                   # Linux
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    try:
+        return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+    except (ValueError, OSError, AttributeError):
+        return default
+
+
 def _auto_chunks(
     T: int, V: int, *, device, dtype, k_pixels: int = 1, safety: float = 0.40,
 ) -> tuple[int, int]:
@@ -836,7 +869,13 @@ def _auto_chunks(
     if dev.type == "cuda":
         free, _total = torch.cuda.mem_get_info(dev)
     else:
-        free = 8 << 30
+        # Real available RAM, not a hardcoded 8 GiB. The fixed value made
+        # max_pairs // T evaluate to 0 -> voxel_chunk 1 for every production
+        # size (T is 2.4e7 for fcc, 1.3e8 for dhcp), so every voxel repeated
+        # all the voxel-INDEPENDENT work and scatter_add_ ran on an outer
+        # dimension of 1, i.e. serially. Measured 1.44x end-to-end, bit
+        # identical, from letting the chunk grow.
+        free = _available_ram_bytes()
     max_pairs = max(1, int((free * safety) // max(per_pair, 1)))
 
     env_v = os.environ.get("MIDAS_NF_SCREEN_VOXEL_CHUNK")
@@ -929,6 +968,8 @@ def _screen_per_voxel(
     obs: ObsVolume, p: FitParams,
     device: torch.device, dtype: torch.dtype,
     counts: np.ndarray, winners: List[Winner],
+    min_frac: float,
+    spot_weight: Optional[torch.Tensor] = None,
 ) -> ScreenResult:
     """Legacy per-voxel screen kernel; used only when ``gs`` varies
     across the batch.  See the docstring of :func:`screen` for the
@@ -1016,7 +1057,7 @@ def _screen_per_voxel(
         total_per_orient.scatter_add_(0, spot_to_orient, total_per_spot)
         frac = hits_per_orient / total_per_orient.clamp(min=1.0)
 
-        keep = frac >= _min_frac
+        keep = frac >= min_frac
         keep_idx = torch.nonzero(keep, as_tuple=False).squeeze(-1)
         if keep_idx.numel() > 0:
             keep_frac = frac[keep_idx].cpu().numpy()
