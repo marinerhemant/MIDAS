@@ -26,6 +26,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+import logging
 import os
 
 import numpy as np
@@ -381,7 +382,66 @@ def spot_weights_from_f2(
     return torch.from_numpy(w)
 
 
+LOGGER = logging.getLogger(__name__)
+
+
+def resolve_min_frac_accept(p, *, p_lit: float, n_spots: float) -> float:
+    """MinFracAccept for this run, adapted to how much of the detector is lit.
+
+    A random orientation already matches ``p_lit`` of its predicted spots by
+    chance, so an absolute MinFracAccept is only as selective as the reduction
+    is quiet. Measured on one sample: a 7.5-sigma reduction lights 0.81% of
+    pixels and 0.04 sits 4.9x above chance, but a 3.5-sigma reduction of the
+    SAME data lights 2.51% and 0.04 is only 1.6x chance -- so the screen keeps
+    a huge number of orientations that fit nothing, and the refine then runs
+    Nelder-Mead on every one of them.
+
+    The adaptive form is the chance rate plus a binomial-sigma margin::
+
+        p_lit + k * sqrt(p_lit * (1 - p_lit) / n_spots)
+
+    k = 3.5 reproduces the historical 0.04 at the conditions it was tuned for
+    (0.81% lit, 98.2 spots/orientation -> 0.0397), so switching it on does not
+    move a well-behaved reduction; it only tightens the sensitive ones that
+    needed it.
+
+    Returns ``p.min_frac_accept`` unchanged when MinFracAcceptSigma <= 0.
+    """
+    k = float(getattr(p, "min_frac_accept_sigma", 0.0) or 0.0)
+    if k <= 0:
+        return float(p.min_frac_accept)
+    if not (0.0 < p_lit < 1.0) or n_spots <= 0:
+        LOGGER.warning(
+            "MinFracAcceptSigma ignored: p_lit=%.4g n_spots=%.4g out of range; "
+            "using MinFracAccept %.4g", p_lit, n_spots, p.min_frac_accept)
+        return float(p.min_frac_accept)
+    thr = p_lit + k * math.sqrt(p_lit * (1.0 - p_lit) / n_spots)
+    LOGGER.info(
+        "MinFracAccept %.4f (adaptive: %.2f sigma above a chance rate of "
+        "%.4f, with %.1f spots/orientation); the fixed value in the parameter "
+        "file was %.4f", thr, k, p_lit, n_spots, float(p.min_frac_accept))
+    return float(thr)
+
 @torch.no_grad()
+def _measure_lit_fraction(obs) -> float:
+    """Fraction of detector pixels lit, straight off the ObsVolume bitmap."""
+    import torch as _t
+    if getattr(obs, "packed", None) is not None:
+        pk = obs.packed
+        bits = _t.tensor(0)
+        # popcount via uint8 view; cheap enough once per run.
+        u8 = pk.view(_t.uint8) if pk.dtype != _t.uint8 else pk
+        total = u8.numel() * 8
+        ones = int(_t.sum(_t.tensor(
+            [int(x).bit_count() for x in u8[:: max(1, u8.numel() // 200_000)].tolist()])))
+        n = len(u8[:: max(1, u8.numel() // 200_000)])
+        return ones / max(1, n * 8)
+    d = getattr(obs, "dense", None)
+    if d is None:
+        return float("nan")
+    return float((d > 0).to(_t.float32).mean())
+
+
 def screen(
     grid: GridTable,
     orientations: OrientationData,
@@ -430,6 +490,23 @@ def screen(
     -------
     :class:`ScreenResult`
     """
+    # Adaptive MinFracAccept, if requested. Computed ONCE per screen call from
+    # the measured lit fraction and the mean predicted spots per orientation --
+    # both properties of this run, not of the parameter file.
+    _min_frac = float(p.min_frac_accept)
+    if float(getattr(p, "min_frac_accept_sigma", 0.0) or 0.0) > 0:
+        # Only pay for the measurement when the adaptive path is on, and never
+        # let a probe failure take down a fit that would otherwise have run.
+        try:
+            _ns = getattr(orientations, "n_spots", None)
+            _n_spots = float(np.asarray(
+                _ns.cpu() if hasattr(_ns, "cpu") else _ns).mean())
+            _min_frac = resolve_min_frac_accept(
+                p, p_lit=_measure_lit_fraction(obs), n_spots=_n_spots)
+        except Exception as exc:                       # noqa: BLE001
+            LOGGER.warning("adaptive MinFracAccept unavailable (%s); using the "
+                           "parameter file value %.4g", exc, p.min_frac_accept)
+
     device = obs.device
 
     # spot_weight arrives from numpy on the CPU; everything it multiplies lives
@@ -707,7 +784,7 @@ def screen(
         frac = hits_per_orient.to(dtype) / total_per_orient.to(dtype).clamp(min=1.0)
 
         # ---- collect winners across all (voxel, orient) pairs ----
-        keep = frac >= p.min_frac_accept
+        keep = frac >= _min_frac
         keep_pairs = torch.nonzero(keep, as_tuple=False)          # (W, 2)
         if keep_pairs.numel() > 0:
             keep_frac_t = frac[keep_pairs[:, 0], keep_pairs[:, 1]]
@@ -939,7 +1016,7 @@ def _screen_per_voxel(
         total_per_orient.scatter_add_(0, spot_to_orient, total_per_spot)
         frac = hits_per_orient / total_per_orient.clamp(min=1.0)
 
-        keep = frac >= p.min_frac_accept
+        keep = frac >= _min_frac
         keep_idx = torch.nonzero(keep, as_tuple=False).squeeze(-1)
         if keep_idx.numel() > 0:
             keep_frac = frac[keep_idx].cpu().numpy()

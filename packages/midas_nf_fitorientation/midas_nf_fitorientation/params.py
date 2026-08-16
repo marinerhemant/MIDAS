@@ -146,6 +146,24 @@ class FitParams:
 
     # screen
     min_frac_accept: float = 0.6
+    #: When > 0, MinFracAccept is recomputed per run as the point at which an
+    #: orientation stops being explicable by chance:
+    #:
+    #:     p_lit + MinFracAcceptSigma * sqrt(p_lit * (1 - p_lit) / n_spots)
+    #:
+    #: where ``p_lit`` is the measured fraction of lit detector pixels and
+    #: ``n_spots`` the predicted spots per orientation. A random orientation
+    #: already matches ``p_lit`` of its spots by luck, so an ABSOLUTE
+    #: MinFracAccept means something completely different depending on how
+    #: sensitive the reduction was.
+    #:
+    #: 3.5 is not arbitrary: it reproduces the historical 0.04 on the
+    #: conditions that constant was tuned for (p_lit 0.81%, 98.2 spots/orient
+    #: -> 0.0397). On a 3.5-sigma reduction of the same sample p_lit rises to
+    #: 2.51% and the same rule gives 0.080 -- twice as selective -- because
+    #: 0.04 there is only 1.6x chance and the screen admits an enormous number
+    #: of spurious candidates, which is what made the refine run for hours.
+    min_frac_accept_sigma: float = 0.0
     min_confidence: float = 0.0
 
     # fit
@@ -357,6 +375,8 @@ def parse_paramfile(path: str | Path) -> FitParams:
                 # ---------- screen / fit ----------
                 elif key == "MinFracAccept":
                     p.min_frac_accept = float(args[0])
+                elif key == "MinFracAcceptSigma":
+                    p.min_frac_accept_sigma = float(args[0])
                 elif key == "MinConfidence":
                     p.min_confidence = float(args[0])
                 elif key == "SaveNSolutions":
