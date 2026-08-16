@@ -47,6 +47,7 @@ from ._sinogen import (
     SPOTS_ARRAY_COLS,
     SinogenOutputs,
     write_clean_variant,
+    write_occupancy,
 )
 from ._geom import ScanGrid
 
@@ -385,6 +386,11 @@ def generate_sinograms_indexing(
         fn = f"sinos_{label}_{nG}_{nH}_{nS}.bin"
         (out_dir / fn).write_bytes(arr.astype(np.float64, copy=False).tobytes())
         sino_paths[label] = str(out_dir / fn)
+
+    # Per-grain occupancy — always written (see write_occupancy).
+    sino_paths["occupancy"] = write_occupancy(
+        out_dir, raw_sino, nr_hkls_per_grain,
+    )
 
     # Concentration-filtered variant (off unless conc_threshold > 0).
     if conc_threshold and conc_threshold > 0:

@@ -228,6 +228,11 @@ def _build_parser() -> argparse.ArgumentParser:
                           "calibrated working value")
     run.add_argument("--sino-conc-min-band", type=float, default=4.0,
                      help="(pf) floor on the concentration acceptance band, um")
+    run.add_argument("--out-of-field-occupancy", type=float, default=0.65,
+                     help="(pf) warn when a grain's sino rows light up more "
+                          "than this fraction of the scan line, i.e. it fills "
+                          "the scanned field and its shape is unrecoverable. "
+                          "Diagnostic only; 0 disables")
     run.add_argument("--cull-min-size", type=int, default=0)
 
     # Fusion (PF)
@@ -698,6 +703,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         sino_scan_tol_um=args.sino_scan_tol,
         sino_conc_threshold=args.sino_conc_threshold,
         sino_conc_min_band_um=args.sino_conc_min_band,
+        out_of_field_occupancy=args.out_of_field_occupancy,
         cull_min_size=args.cull_min_size,
     )
     fusion = FusionConfig(

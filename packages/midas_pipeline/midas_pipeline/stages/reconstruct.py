@@ -55,6 +55,36 @@ def _read_sinograms(layer_dir: Path, variant: str) -> tuple[np.ndarray, np.ndarr
     return sinos, omegas, nr_hkls
 
 
+def _out_of_field_grains(layer_dir: Path, cutoff: float) -> list[int]:
+    """Grains whose sinogram rows light up most of the scan line.
+
+    Read from ``sinoOccupancy_*.bin`` (written by find_grains). These
+    grains are comparable to or larger than the scanned field, so their
+    *shapes* are not recoverable from these sinograms — but they are
+    still real grains and must stay in the grain-ID competition.
+    Excluding them was measured to be much worse (see
+    :func:`..find_grains._sinogen.sinogram_occupancy`), so this is a
+    warning, not a filter.
+    """
+    if cutoff <= 0:
+        return []
+    files = sorted((layer_dir / "Output").glob("sinoOccupancy_*.bin"))
+    if not files:
+        return []
+    occ = np.fromfile(files[0], dtype=np.float64)
+    flagged = [int(g) for g in np.flatnonzero(np.isfinite(occ) & (occ > cutoff))]
+    if flagged:
+        LOG.warning(
+            "reconstruct(PF): grains %s have sinogram occupancy > %.2f "
+            "(%s) — they fill or exceed the scanned field, so their "
+            "reconstructed SHAPES are not trustworthy. Their grain-ID "
+            "assignment is left untouched on purpose.",
+            flagged, cutoff,
+            ", ".join(f"g{g}={occ[g]:.2f}" for g in flagged),
+        )
+    return flagged
+
+
 def run(ctx: StageContext) -> StageResult:
     if ctx.is_ff:
         return stub_run("reconstruct", ctx)
@@ -87,6 +117,9 @@ def run(ctx: StageContext) -> StageResult:
 
     LOG.info("reconstruct(PF): method=%s sino_type=%s n_scans=%d",
              method, cfg.recon.sino_type, cfg.scan.n_scans)
+    out_of_field = _out_of_field_grains(
+        layer_dir, getattr(cfg.recon, "out_of_field_occupancy", 0.0),
+    )
 
     n_scans = int(cfg.scan.n_scans)
 
@@ -165,7 +198,9 @@ def run(ctx: StageContext) -> StageResult:
         full_recon_max_project_grid_tif=str(max_proj_path),
         outputs={p: "" for p in per_grain_paths},
         metrics={"n_grains": int(all_recons.shape[0]),
-                 "method": method, "sino_type": cfg.recon.sino_type},
+                 "method": method, "sino_type": cfg.recon.sino_type,
+                 "out_of_field_grains": out_of_field,
+                 "n_out_of_field": len(out_of_field)},
     )
 
 

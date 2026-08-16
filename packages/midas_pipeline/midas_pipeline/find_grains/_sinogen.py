@@ -229,6 +229,77 @@ def apply_concentration_filter(
     return clean, dropped
 
 
+# ---------------------------------------------------------------------------
+# Occupancy — how much of the scan line each grain lights up.
+# ---------------------------------------------------------------------------
+
+
+def sinogram_occupancy(
+    raw_sino: np.ndarray,
+    nr_hkls_per_grain: np.ndarray,
+    *,
+    rel_threshold: float = 0.05,
+) -> np.ndarray:
+    """Median fraction of scan positions a grain's rows actually light up.
+
+    A grain that fits inside the scanned field is crossed by the beam
+    over a chord, so each row is populated over part of the scan line
+    and dark elsewhere. A grain comparable to or larger than the field
+    is crossed almost everywhere, so its rows approach full occupancy.
+
+    Returns ``(n_grains,)`` in ``[0, 1]``, ``NaN`` for grains with no
+    populated rows. Cells above ``rel_threshold`` times the row maximum
+    count as lit.
+
+    This is a **diagnostic, not a filter**. Two things follow from the
+    number and neither is "drop it":
+
+    - Occupancy is what the concentration filter is blind to. The
+      concentration band adapts to the grain's *own* width, so a grain
+      that fills the field gets a wide band and scores as perfectly
+      concentrated. Measured on 20-ID ``pf_nf709`` set A: the two
+      out-of-field grains have occupancy 0.84 / 0.78 against ≤ 0.51 for
+      the other eight, yet their concentration is 0.94 / 0.93 median
+      with nothing below 0.68. No concentration threshold reaches them.
+    - Excluding high-occupancy grains from the reconstruction's
+      grain-ID competition makes the map **much worse**, not better.
+      Preregistered test on the same data: excluding them took
+      agreement with the point-by-point map from 47.8 % to 11.0 %,
+      because the largest grain is most of the material and its voxels
+      then go to whichever small grain wins by default. Fallback-only
+      (29.8 %) and volume-weighted (31.2 %) rules also lost. Use this to
+      flag which grain *shapes* are untrustworthy, and leave the
+      assignment alone.
+    """
+    raw_sino = np.asarray(raw_sino, dtype=np.float64)
+    n_g, n_h, n_s = raw_sino.shape
+    occ = np.full(n_g, np.nan, dtype=np.float64)
+    for g in range(n_g):
+        n = int(nr_hkls_per_grain[g])
+        if n <= 0:
+            continue
+        rows = np.clip(raw_sino[g, :n, :], 0.0, None)
+        peak = rows.max(axis=1)
+        ok = peak > 0
+        if not ok.any():
+            continue
+        lit = rows[ok] > (rel_threshold * peak[ok][:, None])
+        occ[g] = float(np.median(lit.sum(axis=1) / n_s))
+    return occ
+
+
+def write_occupancy(
+    out_dir: Path, raw_sino: np.ndarray, nr_hkls_per_grain: np.ndarray,
+    *, rel_threshold: float = 0.05,
+) -> str:
+    """Emit ``sinoOccupancy_<nG>.bin``; return its path."""
+    occ = sinogram_occupancy(raw_sino, nr_hkls_per_grain,
+                             rel_threshold=rel_threshold)
+    fn = out_dir / f"sinoOccupancy_{raw_sino.shape[0]}.bin"
+    fn.write_bytes(occ.astype(np.float64, copy=False).tobytes())
+    return str(fn)
+
+
 def write_clean_variant(
     out_dir: Path,
     raw_sino: np.ndarray,
@@ -538,6 +609,12 @@ def generate_sinograms_tolerance(
         fn = f"sinos_softsum_{nG}_{nH}_{nS}.bin"
         (out_dir / fn).write_bytes(softsum_sino.astype(np.float64, copy=False).tobytes())
         sino_paths["softsum"] = str(out_dir / fn)
+
+    # Per-grain occupancy — always written; it is a diagnostic, costs
+    # nothing, and is the only signal that flags out-of-field grains.
+    sino_paths["occupancy"] = write_occupancy(
+        out_dir, raw_sino, nr_hkls_per_grain,
+    )
 
     # Concentration-filtered variant (off unless conc_threshold > 0).
     if conc_threshold and conc_threshold > 0:

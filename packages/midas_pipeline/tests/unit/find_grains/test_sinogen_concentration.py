@@ -162,3 +162,60 @@ def test_threshold_zero_emits_nothing(tmp_path):
     assert "clean" not in out.sino_paths
     assert not list(tmp_path.glob("sinos_clean_*.bin"))
     assert not list(tmp_path.glob("sinoConc_*.bin"))
+
+
+# ---------------------------------------------------------------------------
+# Occupancy — the signal the concentration filter is blind to.
+# ---------------------------------------------------------------------------
+
+
+def wide_grain(n_hkl=40, width=90.0):
+    """A grain far wider than the scanned field: every row is fully lit."""
+    omegas = np.linspace(-180.0, 180.0, n_hkl, endpoint=False)
+    w = np.radians(omegas)
+    track = 3.0 * np.sin(w) - 2.0 * np.cos(w)
+    sino = np.zeros((1, n_hkl, N_SCANS), dtype=np.float64)
+    for h in range(n_hkl):
+        d = S_VALS - track[h]
+        sino[0, h, :] = 1000.0 * np.exp(-0.5 * (d / (width / 2.355)) ** 2)
+    return sino, omegas.reshape(1, n_hkl), np.array([n_hkl], dtype=np.int32)
+
+
+def test_occupancy_separates_contained_from_field_filling():
+    from midas_pipeline.find_grains import sinogram_occupancy
+    small, om_s, nr_s = synth_grain(stripe_rows=())          # 5 um blob
+    big, om_b, nr_b = wide_grain()                           # 90 um blob
+    o_small = sinogram_occupancy(small, nr_s)[0]
+    o_big = sinogram_occupancy(big, nr_b)[0]
+    assert o_small < 0.3
+    assert o_big > 0.9
+    assert o_big > o_small
+
+
+def test_concentration_is_blind_to_a_field_filling_grain():
+    """The band adapts to the grain's own width, so it scores as clean.
+
+    This is the whole reason occupancy exists as a separate diagnostic.
+    """
+    from midas_pipeline.find_grains import sinogram_occupancy
+    big, om, nr = wide_grain()
+    conc = sinogram_concentration(big, om, nr, scan_positions=S_VALS)
+    assert np.nanmin(conc) > 0.35          # no threshold would catch it
+    assert sinogram_occupancy(big, nr)[0] > 0.9   # occupancy does
+
+
+def test_write_occupancy_roundtrips(tmp_path):
+    from midas_pipeline.find_grains import write_occupancy
+    sino, om, nr = synth_grain(stripe_rows=())
+    path = write_occupancy(tmp_path, sino, nr)
+    assert path.endswith("sinoOccupancy_1.bin")
+    occ = np.fromfile(path, dtype=np.float64)
+    assert occ.shape == (1,)
+    assert 0.0 < occ[0] < 1.0
+
+
+def test_occupancy_nan_for_empty_grain():
+    from midas_pipeline.find_grains import sinogram_occupancy
+    sino, om, nr = synth_grain(stripe_rows=())
+    sino[:] = 0.0
+    assert np.isnan(sinogram_occupancy(sino, nr)[0])

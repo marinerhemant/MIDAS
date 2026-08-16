@@ -263,6 +263,12 @@ class ReconConfig:
     # 0.35 is the calibrated working value (20-ID pf_nf709 set A).
     sino_conc_threshold: float = 0.0
     sino_conc_min_band_um: float = 4.0    # floor on the acceptance band
+    # Warn when a grain's sinogram rows light up more than this fraction of
+    # the scan line: it fills or exceeds the scanned field, so its shape is
+    # not recoverable. Diagnostic only — the grain stays in the grain-ID
+    # competition, because excluding it was measured to be far worse.
+    # 0.0 disables the check.
+    out_of_field_occupancy: float = 0.65
     cull_min_size: int = 0                # drop CCs smaller than this many voxels
 
 

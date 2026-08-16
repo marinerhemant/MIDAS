@@ -76,7 +76,9 @@ from ._sinogen import (
     apply_variant_torch,
     generate_sinograms_tolerance,
     sinogram_concentration,
+    sinogram_occupancy,
     write_clean_variant,
+    write_occupancy,
 )
 from ._sinogen_indexing import generate_sinograms_indexing
 from ._spot_association import SpotData, SpotList, process_spots
@@ -106,7 +108,7 @@ __all__ = [
     "apply_variant_torch", "generate_sinograms_tolerance",
     "generate_sinograms_indexing",
     "sinogram_concentration", "apply_concentration_filter",
-    "write_clean_variant",
+    "sinogram_occupancy", "write_clean_variant", "write_occupancy",
     # spot assoc
     "SpotData", "SpotList", "process_spots",
     # voxel keys
