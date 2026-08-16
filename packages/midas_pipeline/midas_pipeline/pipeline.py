@@ -193,6 +193,21 @@ def _report_unknown_param_keys(params_file) -> None:
         LOG.debug("parameter-file key check skipped: %s", exc)
 
 
+def _refresh_progress(store, ctx, scan_mode: str, stage_list) -> None:
+    """Rewrite progress.txt. Must never raise -- it is reporting, not work."""
+    try:
+        from .provenance import write_progress
+        write_progress(
+            ctx.layer_dir,
+            layer_nr=ctx.layer_nr,
+            scan_mode=scan_mode,
+            stage_names=[n for n, _ in stage_list],
+            stages=store.all_stages(),
+        )
+    except Exception as exc:                       # pragma: no cover
+        LOG.debug("progress file update skipped: %s", exc)
+
+
 @dataclass
 class Pipeline:
     """Top-level orchestrator.
@@ -406,8 +421,29 @@ class Pipeline:
             if self.config.resume == "from" and idx <= resume_after_idx:
                 continue
 
-            with stage_timer(name) as timing:
-                result = fn(ctx)
+            # Mark the stage live BEFORE running it, and refresh progress.txt.
+            # Without this the ledger only ever showed finished stages, so
+            # during the one stage that dominates a long run (peakfit is ~83%
+            # of an FF beta run) there was nothing to look at but the log.
+            # status="running" is deliberately NOT "complete", so a killed run
+            # re-runs this stage on resume (is_complete requires "complete").
+            stage_t0 = time.time()
+            store.record(name, status="running", started_at=stage_t0)
+            _refresh_progress(store, ctx, scan_mode, stage_list)
+
+            try:
+                with stage_timer(name) as timing:
+                    result = fn(ctx)
+            except BaseException:
+                # Reuse stage_t0 rather than time.time(): the failed record's
+                # started_at is what says how long the stage ran BEFORE it
+                # died, which is the first thing anyone asks after a
+                # multi-hour stage falls over. Stamping it at failure time
+                # would report every failure as instantaneous.
+                store.record(name, status="failed", started_at=stage_t0,
+                             duration_s=time.time() - stage_t0)
+                _refresh_progress(store, ctx, scan_mode, stage_list)
+                raise
             # stage_timer fills timing["finished_at"] + timing["duration_s"] on exit.
             if result.started_at == 0.0:
                 result.started_at = timing["started_at"]
@@ -427,6 +463,7 @@ class Pipeline:
                 metrics=result.metrics,
             )
             _attach(layer_result, name, result)
+            _refresh_progress(store, ctx, scan_mode, stage_list)
 
         return layer_result
 

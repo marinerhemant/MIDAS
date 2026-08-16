@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -183,3 +184,102 @@ def _decode(v: Any) -> Any:
     if isinstance(v, bytes):
         return v.decode()
     return v
+
+
+# ---------------------------------------------------------------------------
+# Human-readable progress file
+# ---------------------------------------------------------------------------
+
+PROGRESS_FILENAME = "progress.txt"
+
+
+def write_progress(run_dir: str | Path, *,
+                   layer_nr: int,
+                   scan_mode: str,
+                   stage_names: List[str],
+                   stages: Dict[str, Dict[str, Any]],
+                   pid: Optional[int] = None) -> None:
+    """Refresh ``progress.txt`` -- what a user actually cats over ssh.
+
+    ``midas_state.h5`` already holds this, but it needs h5py to read, which is
+    friction when the question is just "is it still going, and where is it?".
+    A long FF run spends most of its wall time inside ONE stage (peakfit is
+    ~83% of a beta run), so knowing which stage is live and how long it has
+    been live is the difference between waiting and debugging.
+
+    Written atomically (tmp + replace) so a concurrent ``cat`` never sees a
+    half-written file.
+    """
+    now = time.time()
+    lines = [
+        f"MIDAS pipeline progress -- LayerNr_{layer_nr}",
+        f"  scan mode   {scan_mode}",
+        f"  stages      {len(stage_names)}",
+        f"  pid         {pid if pid is not None else os.getpid()}",
+        f"  updated     {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now))}",
+        "",
+    ]
+    done = sum(1 for n in stage_names
+               if (stages.get(n) or {}).get("status") == "complete")
+    running = [n for n in stage_names
+               if (stages.get(n) or {}).get("status") == "running"]
+    failed = [n for n in stage_names
+              if (stages.get(n) or {}).get("status") == "failed"]
+    head = f"  {done}/{len(stage_names)} stages complete"
+    if running:
+        rec = stages.get(running[0]) or {}
+        el = now - float(rec.get("started_at", now))
+        head += f"   |   RUNNING: {running[0]} ({_hms(el)})"
+    # A failure has to be in the header, not only in the per-stage list. This
+    # file exists to be read after a run stops, and "3/12 stages complete" with
+    # nothing else is indistinguishable from a run that is still going.
+    if failed:
+        head += f"   |   *** FAILED: {', '.join(failed)} ***"
+    lines += [head, ""]
+
+    for i, name in enumerate(stage_names, 1):
+        rec = stages.get(name) or {}
+        st = rec.get("status") or "pending"
+        if st == "running":
+            el = now - float(rec.get("started_at", now))
+            lines.append(f"  [{i:2d}/{len(stage_names)}] {name:<22} RUNNING   "
+                         f"{_hms(el)}  <-- in progress")
+        elif st == "complete":
+            lines.append(f"  [{i:2d}/{len(stage_names)}] {name:<22} complete  "
+                         f"{_hms(float(rec.get('duration_s', 0.0)))}")
+        elif st == "skipped":
+            lines.append(f"  [{i:2d}/{len(stage_names)}] {name:<22} skipped")
+        elif st == "failed":
+            # Without its own branch this fell through to "pending", so a stage
+            # that died read as one that had not started yet -- in the file a
+            # user cats precisely to find out what went wrong.
+            el = now - float(rec.get("started_at", now))
+            lines.append(f"  [{i:2d}/{len(stage_names)}] {name:<22} FAILED    "
+                         f"{_hms(el)}  <-- see the log")
+        else:
+            lines.append(f"  [{i:2d}/{len(stage_names)}] {name:<22} pending")
+
+    outs = [(n, (stages.get(n) or {}).get("outputs") or {}) for n in stage_names]
+    outs = [(n, o) for n, o in outs if o]
+    if outs:
+        lines += ["", "  outputs so far:"]
+        for n, o in outs:
+            for k, v in list(o.items())[:4]:
+                lines.append(f"    {n}: {k} = {v}")
+
+    p = Path(run_dir) / PROGRESS_FILENAME
+    tmp = p.with_suffix(".txt.tmp")
+    try:
+        tmp.write_text("\n".join(lines) + "\n")
+        tmp.replace(p)
+    except OSError:                      # progress reporting must never fail a run
+        pass
+
+
+def _hms(sec: float) -> str:
+    sec = max(0.0, float(sec))
+    if sec < 60:
+        return f"{sec:6.1f}s"
+    if sec < 3600:
+        return f"{sec/60:6.1f}m"
+    return f"{sec/3600:6.2f}h"

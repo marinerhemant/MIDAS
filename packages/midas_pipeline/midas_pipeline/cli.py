@@ -887,10 +887,22 @@ def _cmd_status(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(report, indent=2, default=str))
     else:
+        import time as _t
+        now = _t.time()
         for layer_name, stages in report.items():
             print(f"\n{layer_name}:")
             for sname, rec in stages.items():
-                print(f"  {sname:<22} {rec.get('status'):<10} {rec.get('duration_s'):.2f}s")
+                st = rec.get("status") or "?"
+                if st == "running":
+                    # Elapsed, not duration: duration_s is meaningless until the
+                    # stage finishes, and "how long has it been in there" is the
+                    # whole question on a multi-hour run.
+                    el = now - float(rec.get("started_at") or now)
+                    print(f"  {sname:<22} {'RUNNING':<10} {el:.1f}s elapsed"
+                          f"  <-- in progress")
+                else:
+                    print(f"  {sname:<22} {st:<10} "
+                          f"{float(rec.get('duration_s') or 0.0):.2f}s")
     return 0
 
 
