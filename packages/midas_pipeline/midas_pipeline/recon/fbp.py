@@ -155,7 +155,25 @@ def fbp_recon(
     recon_dim = 1 << int(ceil(log2(n_scans))) if n_scans > 1 else 1
     if extra_pad == 1:
         recon_dim *= 2
-    crop_start = recon_dim // 2 - n_scans // 2
+    # Crop at midas_tomo's front pad, which is where detector column 0
+    # lands: the C pads by ``pad_size / 2`` with integer division
+    # (midas_tomo/c_src/tomo_utils.c), i.e. ``(recon_dim - n_scans) // 2``.
+    #
+    # The old form ``recon_dim // 2 - n_scans // 2`` is NOT the same
+    # expression: ``a//2 - b//2 != (a-b)//2`` whenever b is odd, which is
+    # every realistic pf scan. Measured with point phantoms forward-
+    # projected through s = x sin(w) + y cos(w), it put every feature
+    # -1.00 um low in BOTH axes for all 17 odd n_scans tested.
+    #
+    # Do NOT "simplify" this to round((recon_dim-1)/2 - (n_scans-1)/2):
+    # for odd n_scans that expression is always an exact half-integer, so
+    # banker's rounding decides it, and it silently reproduces the -1 um
+    # bug for n_scans = 33, 37, 45, 49, 53, 65, 97, 101, 129 while
+    # passing at 31, 35, 47, 51 ... The test sweeps both families.
+    #
+    # Known limitation: for EVEN n_scans the true crop is a half-integer,
+    # leaving an irreducible -0.5 um offset no integer crop can remove.
+    crop_start = (recon_dim - n_scans) // 2
     crop_end = crop_start + n_scans
     return full[crop_start:crop_end, crop_start:crop_end]
 
