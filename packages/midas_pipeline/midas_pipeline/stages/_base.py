@@ -17,7 +17,7 @@ import shlex
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, Optional, Sequence
 
 from .._logging import LOG
 from ..config import PipelineConfig
@@ -34,6 +34,9 @@ class StageContext:
     log_dir: Path
     detectors: List[DetectorConfig] = field(default_factory=list)
     merged_paramstest: Optional[Path] = None
+    # Intra-stage progress sink; set by the Pipeline. Stages may leave it None
+    # (library callers construct a StageContext directly).
+    progress: Optional[Any] = None
 
     @property
     def scan_mode(self) -> str:
@@ -116,8 +119,15 @@ def run_subprocess(cmd: Sequence[str], *,
                    stdout_path: str | Path,
                    stderr_path: str | Path,
                    env: Optional[dict] = None,
-                   timeout: Optional[int] = None) -> int:
-    """Run a subprocess and tee stdout/stderr to per-stage log files."""
+                   timeout: Optional[int] = None,
+                   line_cb=None) -> int:
+    """Run a subprocess and tee stdout/stderr to per-stage log files.
+
+    ``line_cb`` (optional) receives each stdout line as it arrives, so a
+    long-running c-omp binary can report intra-stage progress live. Without
+    it stdout is redirected straight to the file (the original path), which
+    stays the cheapest option for the many short subprocesses.
+    """
     cmd_list = [str(c) for c in cmd]
     log_cmd = " ".join(shlex.quote(c) for c in cmd_list)
     LOG.debug("$ %s   (cwd=%s)", log_cmd, cwd)
@@ -125,14 +135,37 @@ def run_subprocess(cmd: Sequence[str], *,
     Path(stdout_path).parent.mkdir(parents=True, exist_ok=True)
     Path(stderr_path).parent.mkdir(parents=True, exist_ok=True)
 
-    with open(stdout_path, "w") as out, open(stderr_path, "w") as err:
-        proc = subprocess.run(
-            cmd_list, cwd=str(cwd),
-            stdout=out, stderr=err,
-            env={**os.environ, **(env or {})},
-            timeout=timeout,
-            check=False,
-        )
+    if line_cb is None:
+        with open(stdout_path, "w") as out, open(stderr_path, "w") as err:
+            proc = subprocess.run(
+                cmd_list, cwd=str(cwd),
+                stdout=out, stderr=err,
+                env={**os.environ, **(env or {})},
+                timeout=timeout,
+                check=False,
+            )
+    else:
+        # Stream stdout so progress lines arrive while the stage runs, while
+        # still writing the same log file byte-for-byte.
+        with open(stdout_path, "w") as out, open(stderr_path, "w") as err:
+            popen = subprocess.Popen(
+                cmd_list, cwd=str(cwd),
+                stdout=subprocess.PIPE, stderr=err,
+                env={**os.environ, **(env or {})},
+                text=True, bufsize=1,
+            )
+            try:
+                for line in popen.stdout:            # type: ignore[union-attr]
+                    out.write(line)
+                    try:
+                        line_cb(line)
+                    except Exception:
+                        pass                          # never fail a run
+            finally:
+                if popen.stdout is not None:
+                    popen.stdout.close()
+                popen.wait(timeout=timeout)
+        proc = subprocess.CompletedProcess(cmd_list, popen.returncode)
 
     if proc.returncode != 0:
         LOG.error("subprocess failed (rc=%d): %s", proc.returncode, log_cmd)
@@ -159,3 +192,34 @@ def env_for_index_refine(config: PipelineConfig) -> dict:
 def hash_inputs(paths: Iterable[Path]) -> dict[str, str]:
     from ..provenance import file_sha256
     return {str(p): file_sha256(p) for p in paths}
+
+
+def run_checked_streamed(cmd: Sequence[str], *, cwd: str | Path,
+                         out_fp, err_fp, line_cb=None) -> None:
+    """``subprocess.run(check=True)`` that can stream stdout line by line.
+
+    The c-omp indexer and refiner print intra-stage progress on stdout. With
+    stdout redirected straight to a file the pipeline cannot see those lines
+    until the process exits, which is exactly when they stop being useful.
+    ``line_cb=None`` keeps the original redirect (cheaper, no pump thread).
+    """
+    cmd_list = [str(c) for c in cmd]
+    if line_cb is None:
+        subprocess.run(cmd_list, cwd=str(cwd), check=True,
+                       stdout=out_fp, stderr=err_fp)
+        return
+    popen = subprocess.Popen(cmd_list, cwd=str(cwd), stdout=subprocess.PIPE,
+                             stderr=err_fp, text=True, bufsize=1)
+    try:
+        for line in popen.stdout:                 # type: ignore[union-attr]
+            out_fp.write(line)
+            try:
+                line_cb(line)
+            except Exception:
+                pass                              # reporting never fails a run
+    finally:
+        if popen.stdout is not None:
+            popen.stdout.close()
+        rc = popen.wait()
+    if rc != 0:
+        raise subprocess.CalledProcessError(rc, cmd_list)

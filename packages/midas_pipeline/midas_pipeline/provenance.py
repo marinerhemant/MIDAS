@@ -198,7 +198,8 @@ def write_progress(run_dir: str | Path, *,
                    scan_mode: str,
                    stage_names: List[str],
                    stages: Dict[str, Dict[str, Any]],
-                   pid: Optional[int] = None) -> None:
+                   pid: Optional[int] = None,
+                   sub: Optional[Dict[str, Any]] = None) -> None:
     """Refresh ``progress.txt`` -- what a user actually cats over ssh.
 
     ``midas_state.h5`` already holds this, but it needs h5py to read, which is
@@ -230,6 +231,9 @@ def write_progress(run_dir: str | Path, *,
         rec = stages.get(running[0]) or {}
         el = now - float(rec.get("started_at", now))
         head += f"   |   RUNNING: {running[0]} ({_hms(el)})"
+        if sub and sub.get("stage") == running[0]:
+            from .progress import format_sub
+            head += format_sub(sub)
     # A failure has to be in the header, not only in the per-stage list. This
     # file exists to be read after a run stops, and "3/12 stages complete" with
     # nothing else is indistinguishable from a run that is still going.
@@ -242,8 +246,12 @@ def write_progress(run_dir: str | Path, *,
         st = rec.get("status") or "pending"
         if st == "running":
             el = now - float(rec.get("started_at", now))
+            extra = ""
+            if sub and sub.get("stage") == name:
+                from .progress import format_sub
+                extra = format_sub(sub)
             lines.append(f"  [{i:2d}/{len(stage_names)}] {name:<22} RUNNING   "
-                         f"{_hms(el)}  <-- in progress")
+                         f"{_hms(el)}  <-- in progress{extra}")
         elif st == "complete":
             lines.append(f"  [{i:2d}/{len(stage_names)}] {name:<22} complete  "
                          f"{_hms(float(rec.get('duration_s', 0.0)))}")

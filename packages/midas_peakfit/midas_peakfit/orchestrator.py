@@ -67,6 +67,7 @@ def run(
     interleave_blocks: bool = False,
     compute_uncertainty: bool = False,
     compute_moments: bool = False,
+    progress_cb=None,
 ) -> dict:
     """Run the full pipeline for ``[block_nr, n_blocks)`` slice of ``data_file``.
 
@@ -301,13 +302,23 @@ def run(
             n_filtered_per_frame[f_local] = len(seeded_list)
             pool.add_frame(f_local, omega, seeded_list)
         completed += 1
-        if completed % 100 == 0 or completed == n_frames_total:
+        # Every 10 frames, not 100: on a slow dataset 100 frames can be
+        # minutes of silence, and this counter is what a caller uses to tell
+        # a slow run from a hung one.
+        if completed % 10 == 0 or completed == n_frames_total:
             elapsed = time.time() - cpu_t0
             rate = completed / max(elapsed, 1e-3)
-            print(
-                f"  CPU stage progress: {completed}/{n_frames_total} frames, "
-                f"{rate:.1f} f/s, elapsed {elapsed:.1f}s"
-            )
+            if progress_cb is not None:
+                # Reporting must never be able to kill a peak search.
+                try:
+                    progress_cb(completed, n_frames_total, "frames", rate)
+                except Exception:
+                    pass
+            if completed % 100 == 0 or completed == n_frames_total:
+                print(
+                    f"  CPU stage progress: {completed}/{n_frames_total} frames, "
+                    f"{rate:.1f} f/s, elapsed {elapsed:.1f}s"
+                )
 
     if producer == "process":
         # Multi-process producer. Each worker opens the Zarr archive ONCE

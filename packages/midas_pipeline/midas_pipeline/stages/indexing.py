@@ -48,7 +48,7 @@ import numpy as np
 
 from .._logging import LOG
 from ..results import IndexResult, StageResult
-from ._base import StageContext
+from ._base import run_checked_streamed, StageContext
 from ._stub import stub_run
 
 
@@ -210,9 +210,9 @@ def _run_ff(ctx: StageContext) -> StageResult:
     log_dir.mkdir(parents=True, exist_ok=True)
     with (log_dir / "indexing_out.csv").open("w") as out_fp, \
          (log_dir / "indexing_err.csv").open("w") as err_fp:
-        subprocess.run(
-            cmd, cwd=str(layer_dir), check=True,
-            stdout=out_fp, stderr=err_fp,
+        run_checked_streamed(
+            cmd, cwd=layer_dir, out_fp=out_fp, err_fp=err_fp,
+            line_cb=(ctx.progress.feed_line if ctx.progress else None),
         )
 
     finished = time.time()

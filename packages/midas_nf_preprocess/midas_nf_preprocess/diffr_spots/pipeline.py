@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence, Union
 
+import logging
+
 import torch
 
 from ..device import resolve_device, resolve_dtype
@@ -89,7 +91,10 @@ class DiffrSpotsResult:
         return torch.cat(out_blocks, dim=0)
 
 
-def predict_spots(
+LOGGER = logging.getLogger(__name__)
+
+
+def _predict_spots_chunk(
     quaternions: torch.Tensor,
     hkls: torch.Tensor,
     thetas_deg: torch.Tensor,
@@ -214,6 +219,86 @@ def predict_spots(
     )
 
 
+
+def _auto_batch_orientations(n_or: int, n_hkl: int, device, dtype) -> int:
+    """Orientations per chunk that keep the intermediates inside a memory budget.
+
+    predict_spots materialises several (N, M, 2) tensors -- omegas, etas, yls,
+    zls, valid and the Bragg-solver temporaries. At 486,755 orientations x 610
+    reflections that is 4.75 GB EACH in float64, which is what made a DHCP phase
+    fail outright on a 47 GB card:
+
+        torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.21 GiB
+
+    Chunking costs nothing (the results are concatenated) and removes the
+    failure mode entirely, so the size of the phase no longer decides whether
+    the stage runs.
+    """
+    per_or = max(1, n_hkl * 2)
+    itemsize = torch.tensor([], dtype=dtype).element_size()
+    n_live = 10                      # concurrent (N, M, 2) tensors, incl. temps
+    budget = 2 << 30                 # 2 GiB on CPU
+    if torch.device(device).type == "cuda":
+        try:
+            free, _total = torch.cuda.mem_get_info(device)
+            budget = int(free * 0.25)
+        except Exception:            # noqa: BLE001
+            budget = 4 << 30
+    batch = max(1, budget // (per_or * itemsize * n_live))
+    return min(n_or, batch)
+
+
+def predict_spots(
+    quaternions: torch.Tensor,
+    hkls: torch.Tensor,
+    thetas_deg: torch.Tensor,
+    *,
+    distance,
+    omega_ranges=None,
+    box_sizes=None,
+    exclude_pole_angle: float = 0.0,
+    wedge_deg: float = 0.0,
+    batch_size: Optional[int] = None,
+) -> "DiffrSpotsResult":
+    """Predict spots for every orientation, batching to bound peak memory.
+
+    Identical output to computing all orientations at once -- the orientation
+    axis is independent, so chunking and concatenating is exact, not an
+    approximation. ``batch_size=None`` sizes the chunk from free device memory;
+    pass an integer to pin it.
+    """
+    n_or = int(quaternions.shape[0])
+    if batch_size is None:
+        batch_size = _auto_batch_orientations(
+            n_or, int(hkls.shape[0]), quaternions.device, quaternions.dtype)
+    if batch_size >= n_or:
+        return _predict_spots_chunk(
+            quaternions, hkls, thetas_deg, distance=distance,
+            omega_ranges=omega_ranges, box_sizes=box_sizes,
+            exclude_pole_angle=exclude_pole_angle, wedge_deg=wedge_deg)
+
+    n_chunks = -(-n_or // batch_size)
+    LOGGER.info("diffraction spots: %d orientations in %d chunk(s) of %d "
+                "(bounding peak memory)", n_or, n_chunks, batch_size)
+    parts = []
+    for ci in range(n_chunks):
+        lo, hi = ci * batch_size, min((ci + 1) * batch_size, n_or)
+        parts.append(_predict_spots_chunk(
+            quaternions[lo:hi], hkls, thetas_deg, distance=distance,
+            omega_ranges=omega_ranges, box_sizes=box_sizes,
+            exclude_pole_angle=exclude_pole_angle, wedge_deg=wedge_deg))
+        if (ci + 1) % 5 == 0 or ci == n_chunks - 1:
+            LOGGER.info("  diffraction spots: chunk %d/%d", ci + 1, n_chunks)
+    return DiffrSpotsResult(
+        omegas=torch.cat([q.omegas for q in parts], dim=0),
+        etas=torch.cat([q.etas for q in parts], dim=0),
+        yls=torch.cat([q.yls for q in parts], dim=0),
+        zls=torch.cat([q.zls for q in parts], dim=0),
+        valid=torch.cat([q.valid for q in parts], dim=0),
+        orient_mats=torch.cat([q.orient_mats for q in parts], dim=0),
+    )
+
+
 # -----------------------------------------------------------------------------
 # High-level pipeline class
 # -----------------------------------------------------------------------------
@@ -280,7 +365,7 @@ class DiffrSpotsPipeline:
             self.quaternions,
             self.hkls,
             self.thetas_deg,
-            self.params.primary_distance,
+            distance=self.params.primary_distance,
             omega_ranges=self.params.omega_ranges,
             box_sizes=self.params.box_sizes,
             exclude_pole_angle=self.params.exclude_pole_angle,

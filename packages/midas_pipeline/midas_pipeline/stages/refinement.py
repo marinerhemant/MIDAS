@@ -28,7 +28,7 @@ from midas_fit_grain.losses import MULTIDET_LOSS, PANEL_DEPENDENT_LOSSES
 
 from .._logging import LOG
 from ..results import RefineResult, StageResult
-from ._base import StageContext
+from ._base import run_checked_streamed, StageContext
 from ._stub import stub_run
 
 # midas_fit_grain's driver emits this marker when a refined grain position
@@ -207,9 +207,9 @@ def _run_ff(ctx: StageContext) -> StageResult:
         LOG.info("refinement(FF): %s", " ".join(cmd))
         with (log_dir / "refinement_out.csv").open("w") as out_fp, \
              (log_dir / "refinement_err.csv").open("w") as err_fp:
-            subprocess.run(
-                cmd, cwd=str(layer_dir), check=True,
-                stdout=out_fp, stderr=err_fp,
+            run_checked_streamed(
+                cmd, cwd=layer_dir, out_fp=out_fp, err_fp=err_fp,
+                line_cb=(ctx.progress.feed_line if ctx.progress else None),
             )
         _surface_unrefined_positions(log_dir)
 

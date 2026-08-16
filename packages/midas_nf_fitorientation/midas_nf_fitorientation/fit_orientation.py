@@ -19,6 +19,7 @@ The fit kernel is shared with :mod:`.fit_parameters` and
 """
 from __future__ import annotations
 
+import logging
 import math
 import os
 import time
@@ -27,6 +28,8 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
+
+LOGGER = logging.getLogger(__name__)
 
 from .fit_kernel import LBFGSConfig, run_lbfgs
 from .hard_polish import polish_hard_frac
@@ -197,6 +200,36 @@ def should_use_triton(
 # ---------------------------------------------------------------------------
 #  Main driver
 # ---------------------------------------------------------------------------
+
+
+def _make_progress_logger(label: str, total: int, *, every_frac: float = 0.05,
+                          min_seconds: float = 30.0):
+    """Emit a progress line at most every ``every_frac`` of the work.
+
+    NF fits run for tens of minutes to hours with no output at all, which makes
+    a slow run indistinguishable from a hung one -- the only way to tell used to
+    be attaching py-spy to the live process. Throttled on BOTH fraction and wall
+    time so a fast run stays quiet and a slow one still reports.
+    """
+    import time as _time
+    state = {"next": 0.0, "t0": _time.time(), "last": 0.0}
+
+    def _cb(done, tot=None):
+        tot = int(tot or total or 1)
+        frac = done / max(tot, 1)
+        now = _time.time()
+        if frac < state["next"] and (now - state["last"]) < min_seconds:
+            return
+        if done <= 0:
+            return
+        state["next"] = frac + every_frac
+        state["last"] = now
+        el = now - state["t0"]
+        eta = el * (1.0 - frac) / max(frac, 1e-9)
+        LOGGER.info("%s: %d/%d (%.0f%%)  %.0fs elapsed, ~%.0fs left",
+                    label, done, tot, 100 * frac, el, eta)
+    return _cb
+
 
 def fit_orientation_run(
     paramfile: str,
@@ -369,12 +402,18 @@ def fit_orientation_run(
         print(f"ConfidenceMetric={p.confidence_metric}: weighting "
               f"{int((spot_w > 0).sum())}/{spot_w.numel()} predicted spots")
     t_screen = time.perf_counter()
+    LOGGER.info("screen: %d voxels x %d orientations",
+                len(voxel_indices), int(orientations.n_orientations)
+                if hasattr(orientations, "n_orientations") else -1)
     screen_result = screen(
         grid, orientations, obs, p,
         spot_weight=spot_w,
         voxel_indices=voxel_indices, dtype=dtype,
+        progress=_make_progress_logger("screen", len(voxel_indices)),
     )
     screen_secs = time.perf_counter() - t_screen
+    LOGGER.info("screen: %d candidate (voxel, orientation) pairs in %.1f s",
+                len(screen_result.winners), screen_secs)
     if verbose:
         print(f"Screen: {len(screen_result.winners)} winners "
               f"in {screen_secs:.2f} s")
@@ -533,6 +572,10 @@ def fit_orientation_run(
 
             # Chunk to bound peak GPU memory.
             n_chunks = max(1, -(-B_total // nm_batch_size))
+            LOGGER.info("refine: %d problem(s) in %d chunk(s) of %d, "
+                        "max %d iterations each",
+                        B_total, n_chunks, nm_batch_size, nm_max_iter)
+            _refine_prog = _make_progress_logger("refine", B_total)
             xs_out = torch.empty_like(seeds_t)
             f_out = torch.empty(B_total, device=torch_device, dtype=dtype)
             for ck in range(n_chunks):
@@ -548,6 +591,7 @@ def fit_orientation_run(
                 )
                 xs_out[lo:hi] = res.x
                 f_out[lo:hi] = res.fun
+                _refine_prog(hi)
 
             # Cache per (voxel, winner-pos).  We pull the whole batch
             # back to host memory once (single sync) instead of doing

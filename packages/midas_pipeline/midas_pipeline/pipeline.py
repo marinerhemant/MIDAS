@@ -203,6 +203,7 @@ def _refresh_progress(store, ctx, scan_mode: str, stage_list) -> None:
             scan_mode=scan_mode,
             stage_names=[n for n, _ in stage_list],
             stages=store.all_stages(),
+            sub=ctx.progress.snapshot() if ctx.progress else None,
         )
     except Exception as exc:                       # pragma: no cover
         LOG.debug("progress file update skipped: %s", exc)
@@ -346,6 +347,14 @@ class Pipeline:
         scan_mode = self.config.scan.scan_mode
         stage_list = stage_order_for(scan_mode)
 
+        # Intra-stage progress sink. A worker thread (peakfit callback) or the
+        # subprocess stdout pump (indexing/refinement) pushes counts in here;
+        # StageProgress throttles, so progress.txt is rewritten every couple of
+        # seconds, not once per frame.
+        from .progress import StageProgress
+        ctx.progress = StageProgress(
+            on_change=lambda: _refresh_progress(store, ctx, scan_mode, stage_list))
+
         LOG.info("=" * 60)
         LOG.info("Layer %d — scan_mode=%s, %d stages",
                  layer_nr, scan_mode, len(stage_list))
@@ -429,6 +438,8 @@ class Pipeline:
             # re-runs this stage on resume (is_complete requires "complete").
             stage_t0 = time.time()
             store.record(name, status="running", started_at=stage_t0)
+            if ctx.progress is not None:
+                ctx.progress.reset(name)
             _refresh_progress(store, ctx, scan_mode, stage_list)
 
             try:

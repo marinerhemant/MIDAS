@@ -71,6 +71,9 @@ def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
         result_folder_cli=str(layer_dir),
         fit_peaks_cli=1,
         device=cfg.device, dtype=cfg.dtype,
+        # peakfit is the long pole of an FF run (88.5 % of a 2652-grain gamma
+        # reconstruction); this is what makes that visible while it runs.
+        progress_cb=(ctx.progress.update if ctx.progress else None),
     )
     LOG.info("peakfit(FF): wrote %s", target)
     return _result(started, [target], 1, 0)
