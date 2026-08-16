@@ -29,6 +29,10 @@ def _ff_pipeline(tmp_path: Path) -> Pipeline:
     cfg = PipelineConfig(
         result_dir=str(tmp_path / "run"),
         params_file=str(params),
+        # synthetic stub inputs: bypass the pre-run existence check, and do
+        # not attempt a real zip conversion (there is no raw data here).
+        skip_preflight=True,
+        convert_files=False,
         scan=ScanGeometry.ff(),
         device="cpu",                    # avoid CUDA assumptions in CI
         dtype="float64",
@@ -43,6 +47,8 @@ def _pf_pipeline(tmp_path: Path, n_scans: int = 5) -> Pipeline:
     cfg = PipelineConfig(
         result_dir=str(tmp_path / "run"),
         params_file=str(params),
+        # synthetic stub inputs: bypass the pre-run existence check
+        skip_preflight=True,
         scan=ScanGeometry.pf_uniform(n_scans=n_scans, scan_step_um=2.0, beam_size_um=4.0),
         device="cpu",
         dtype="float64",

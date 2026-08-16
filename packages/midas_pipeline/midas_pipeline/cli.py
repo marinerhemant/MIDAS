@@ -60,6 +60,7 @@ from .config import (
     sniff_scan_mode_from_paramfile,
 )
 from .pipeline import Pipeline, all_stage_names
+from .preflight import PreflightError
 from .provenance import ProvenanceStore
 
 
@@ -993,7 +994,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     handler = _DISPATCH[args.cmd]
-    return handler(args)
+    try:
+        return handler(args)
+    except PreflightError as e:
+        # A user error, not a crash: print it plainly and exit non-zero so a
+        # `nohup ... | tee` run is visibly a failure rather than a silent no-op.
+        LOG.error("%s", e)
+        return 2
 
 
 if __name__ == "__main__":  # pragma: no cover

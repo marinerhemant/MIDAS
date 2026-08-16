@@ -139,6 +139,11 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
         LOG.info("zip_convert(FF): no zip in %s and --convert-files off; skip.",
                  layer_dir)
         return stub_run("zip_convert", ctx)
+    # A failed conversion is a HARD error in FF, mirroring the PF P0-2 fix
+    # above. It used to return a "failed" StageResult, after which every
+    # downstream stage skipped with "no zarr/zip available at None" and the
+    # run still printed "done. layers processed: 1" and exited 0 -- which
+    # under nohup is indistinguishable from success.
     if not _generate_zip(
         param_file=cfg.params_file,
         scan_dir=layer_dir,
@@ -147,10 +152,19 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
         preproc_thresh=cfg.preproc_thresh,
         num_files_per_scan=cfg.num_files_per_scan,
     ):
-        return _ff_result(started, [], present=0, built=0, failed=1)
+        raise RuntimeError(
+            f"zip_convert(FF): failed to build the .MIDAS.zip for {layer_dir}. "
+            f"See {layer_dir / 'midas_log' / 'ZipErr.txt'} for the converter's "
+            f"own error. Refusing to continue -- every later stage would skip "
+            f"and the run would exit 0 having produced nothing."
+        )
     new_zips = list(layer_dir.glob("*.MIDAS.zip"))
-    return _ff_result(started, new_zips,
-                      present=0, built=len(new_zips), failed=0 if new_zips else 1)
+    if not new_zips:
+        raise RuntimeError(
+            f"zip_convert(FF): converter reported success but no *.MIDAS.zip "
+            f"was written in {layer_dir}. Refusing to continue."
+        )
+    return _ff_result(started, new_zips, present=0, built=len(new_zips), failed=0)
 
 
 # ---------------------------------------------------------------------------
@@ -194,14 +208,30 @@ def _generate_zip(
             res = subprocess.run(cmd, cwd=str(scan_dir),
                                  stdout=f_out, stderr=f_err, check=False)
         if res.returncode != 0:
-            LOG.warning("zip_convert: ffGenerateZipRefactor exit=%d for %s",
-                        res.returncode, scan_dir)
+            LOG.error("zip_convert: midas_zipper.ff_zip exit=%d for %s",
+                      res.returncode, scan_dir)
+            for line in _tail(log_dir / "ZipErr.txt"):
+                LOG.error("    ZipErr: %s", line)
             return False
         return True
     except Exception as e:
-        LOG.warning("zip_convert: ffGenerateZipRefactor crashed for %s: %s",
-                    scan_dir, e)
+        LOG.error("zip_convert: midas_zipper.ff_zip crashed for %s: %s",
+                  scan_dir, e)
         return False
+
+
+def _tail(path: Path, n: int = 8) -> list[str]:
+    """Last n non-blank lines of the converter's stderr, for the error message.
+
+    Without this the only signal was 'exit=1' and the user had to know to go
+    looking in midas_log/ZipErr.txt.
+    """
+    try:
+        lines = [ln.rstrip() for ln in path.read_text(errors="replace").splitlines()
+                 if ln.strip()]
+        return lines[-n:]
+    except OSError:
+        return []
 
 
 def _ff_result(started: float, zips, *, present: int, built: int, failed: int):

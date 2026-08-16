@@ -24,6 +24,8 @@ def _pf_cfg(tmp_path: Path, **kw) -> PipelineConfig:
     return PipelineConfig(
         result_dir=str(tmp_path / "run"),
         params_file=str(params),
+        # synthetic stub inputs: bypass the pre-run existence check
+        skip_preflight=True,
         scan=ScanGeometry.pf_uniform(n_scans=5, scan_step_um=2.0, beam_size_um=4.0),
         device="cpu", dtype="float64",
         layer_selection=LayerSelection(start=1, end=1),

@@ -259,6 +259,12 @@ class Pipeline:
         self.config.n_cpus = n_cpus
         self.config.machine.n_nodes = n_nodes
         _report_unknown_param_keys(self.config.params_file)
+        # Fail loudly on missing inputs BEFORE any stage runs. Without this a
+        # mistyped --params (or a wrong RawFolder) made zip_convert exit 1,
+        # every later stage skip, and the run still report success and exit 0.
+        if not getattr(self.config, "skip_preflight", False):
+            from .preflight import preflight
+            preflight(self.config, list(self.config.layer_selection.layers()))
         results: List[LayerResult] = []
         for layer_nr in self.config.layer_selection.layers():
             results.append(self._run_layer(layer_nr))

@@ -598,6 +598,11 @@ class PipelineConfig:
     # Validation
     skip_validation: bool = False
     strict_validation: bool = False
+    # Skip the pre-run input-existence check (preflight). For synthetic
+    # orchestration tests that drive the stage machinery with stub inputs;
+    # NOT for real runs -- preflight is what stops a mistyped --params or a
+    # wrong RawFolder from silently producing an empty result directory.
+    skip_preflight: bool = False
 
     # Misc
     log_level: str = "INFO"
