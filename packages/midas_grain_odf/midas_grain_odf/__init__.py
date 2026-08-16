@@ -1,6 +1,6 @@
 """midas-grain-odf: differentiable per-grain ODF inversion from FF-HEDM."""
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from midas_grain_odf.odf import (
     GrainODF,
