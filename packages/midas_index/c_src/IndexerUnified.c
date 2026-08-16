@@ -221,6 +221,21 @@ double ABCABG[6];
 double RingHKL[MAX_N_RINGS][3];
 RealType RingTtheta[MAX_N_RINGS]; /* used by FF Friedel-pair generation */
 
+/* Ring numbers index these fixed-size tables directly, so every store through
+ * one MUST be range-checked. hkls.csv legitimately contains rings far beyond
+ * anything the detector can see: the generator's reach is MaxRingRad (aliased
+ * to RhoD), so an over-large value produces hundreds of them.
+ *
+ * An unchecked store here was a live defect. On 20-ID Varex data, RhoD =
+ * 2000000 um against a 2880 px detector generated 745 rings; writing
+ * RingHKL[745] ran 5880 bytes past the end of the array, through RingTtheta
+ * and into `pixelsize`, `BeamSize`, `numScans` and the `data` / `ndata` bin
+ * pointers declared after it. Every seed then matched nothing and the run
+ * exited 0: 0 of 4569 seeds indexed, no error, no crash. */
+static inline int RingInRange(int rnr) {
+  return rnr >= 0 && rnr < MAX_N_RINGS;
+}
+
 double pixelsize;
 double BeamSize = 0.0;
 int numScans = 1;
@@ -2043,6 +2058,16 @@ static int ReadParams(char FileName[], struct TParams *Params) {
         return 1;
       }
       sscanf(line, "%s %d", dummy, &(Params->RingNumbers[NoRingNumbers]));
+      if (!RingInRange(Params->RingNumbers[NoRingNumbers])) {
+        /* Fatal, unlike an out-of-range row in hkls.csv: this ring was asked
+         * for, and it indexes RingRadii / etamargins / RingHKL directly. */
+        fprintf(stderr,
+                "Error: RingNumbers %d is outside [0, %d). Ring numbers index "
+                "fixed-size tables; a value this large cannot be used.\n",
+                Params->RingNumbers[NoRingNumbers], MAX_N_RINGS);
+        fclose(fp);
+        return 1;
+      }
       NoRingNumbers++;
       continue;
     }
@@ -2416,8 +2441,12 @@ static int ReadParams(char FileName[], struct TParams *Params) {
   fclose(fp);
   int i;
   for (i = 0; i < MAX_N_RINGS; i++) Params->RingRadii[i] = 0;
-  for (i = 0; i < Params->NrOfRings; i++)
+  for (i = 0; i < Params->NrOfRings; i++) {
+    /* Validated at parse time; re-checked because this scatter is what turns
+     * a bad ring number into a wild store. */
+    if (!RingInRange(Params->RingNumbers[i])) continue;
     Params->RingRadii[Params->RingNumbers[i]] = Params->RingRadiiUser[i];
+  }
   return 0;
 }
 
@@ -2623,6 +2652,7 @@ int main(int argc, char *argv[]) {
   }
   int Rnr;
   int hi, ki, li;
+  int nRingsOutOfRange = 0, maxRingNrSeen = 0;
   double hc, kc, lc, RRd, Ds, tht, tth;
   while (fgets(aline, 1000, hklf) != NULL) {
     /* Accept FF 11-col (numeric ringRad) format. */
@@ -2634,6 +2664,14 @@ int main(int argc, char *argv[]) {
         continue;
       }
       tth = 2.0 * tht;
+    }
+    if (!RingInRange(Rnr)) {
+      /* Out of table range. Such a ring can never be requested either, since
+       * RingNumbers is validated against the same bound at parse time, so
+       * dropping the whole row is correct and not merely defensive. */
+      nRingsOutOfRange++;
+      if (Rnr > maxRingNrSeen) maxRingNrSeen = Rnr;
+      continue;
     }
     RingHKL[Rnr][0] = hc;
     RingHKL[Rnr][1] = kc;
@@ -2667,6 +2705,21 @@ int main(int argc, char *argv[]) {
     }
   }
   fclose(hklf);
+  if (nRingsOutOfRange > 0) {
+    /* Not fatal: these rings are unusable by definition and are now dropped
+     * safely. Say so anyway, because a large count means MaxRingRad / RhoD is
+     * far bigger than the detector, which also leaves the distortion model
+     * badly normalised even though indexing will now succeed. */
+    fprintf(stderr,
+            "Warning: hkls.csv contains %d reflection(s) on rings outside "
+            "[0, %d) (highest ring seen: %d); they were ignored. This means "
+            "MaxRingRad/RhoD reaches well past the detector. Indexing is "
+            "unaffected, but check RhoD: it is the beam-centre-to-corner "
+            "distance in microns, and an oversized value also weakens the "
+            "distortion model.\n",
+            nRingsOutOfRange, MAX_N_RINGS, maxRingNrSeen);
+    fflush(stderr);
+  }
   printf("No of hkls: %d\n", n_hkls);
   BuildHklRowView(); /* row-pointer view for the shared forward model */
 
@@ -2919,6 +2972,19 @@ int main(int argc, char *argv[]) {
   for (int vi = 0; vi < nLocal; vi++) VoxelAccum_init(&accs[vi]);
 
   int thisRowNr;
+  /* Intra-stage progress. This loop is the long pole of a large FF run and
+   * used to print nothing between its banner and "Finished", so a caller had
+   * no way to tell a slow run from a hung one. The counter is incremented
+   * atomically and reported by whichever thread crosses the interval; the
+   * line format is parsed by midas-pipeline, so keep it stable. fflush is
+   * required: stdout is a pipe here, so without it the whole thing arrives
+   * at exit and defeats the purpose. */
+  long long nDoneVox = 0;
+  const long long voxReportEvery =
+      (long long)((endVoxel - startVoxel) / 200) > 0
+          ? (long long)((endVoxel - startVoxel) / 200)
+          : 1;
+  double vox_t0 = omp_get_wtime();
 #pragma omp parallel num_threads(numProcs) private(thisRowNr)
   {
     /* Thread-local IndexerScratch. Heap-allocated OrMat per plan risk note. */
@@ -2947,6 +3013,23 @@ int main(int argc, char *argv[]) {
      * legacy.) */
 #pragma omp for schedule(dynamic)
     for (thisRowNr = startVoxel; thisRowNr < endVoxel; thisRowNr++) {
+      /* Counted on ENTRY, not on completion: the FF branch below can
+       * `continue` past the end of the body, so a bottom-of-loop counter
+       * would never reach 100%. Overstates by at most numProcs voxels in
+       * flight (64 of ~36000 here), which is immaterial for a progress bar. */
+      {
+        long long doneNow;
+#pragma omp atomic capture
+        doneNow = ++nDoneVox;
+        if (doneNow % voxReportEvery == 0 ||
+            doneNow == (long long)(endVoxel - startVoxel)) {
+          double el = omp_get_wtime() - vox_t0;
+          printf("  progress: %lld/%d voxels, %.1f vox/s, elapsed %.1fs\n",
+                 doneNow, endVoxel - startVoxel,
+                 (double)doneNow / (el > 1e-9 ? el : 1e-9), el);
+          fflush(stdout);
+        }
+      }
       VoxelAccumulator *acc = &accs[thisRowNr - startVoxel];
       if (isPF) {
         double xThis = grid[thisRowNr * 2 + 0];
