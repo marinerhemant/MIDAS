@@ -56,8 +56,11 @@ dependencies = [
     "midas-parsl-configs>=0.1.0",
     "midas-ff-pipeline>=0.4.3",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-nf-pipeline>=0.6.1",
-    "midas-pipeline>=0.8.2",       # >=0.7.0 FF refinement precision default + unrefined-position guard;
-                                   # >=0.8.0 fit-grain/process-grains floors; >=0.8.2 the zipper floor
+    "midas-pipeline>=0.12.0",      # >=0.7.0 FF refinement precision default + unrefined-position guard;
+                                   # >=0.8.0 fit-grain/process-grains floors; >=0.8.2 the zipper floor;
+                                   # >=0.12.0 preflight: a run whose inputs are missing exits 2 instead
+                                   # of skipping every stage and exiting 0. Floored, not merely
+                                   # preferred, because the old behaviour is silent data loss.
 ]
 
 [project.optional-dependencies]
@@ -73,7 +76,9 @@ ff = [
     # --scan-mode ff` -- the command the FF handbook tells users to run -- is
     # simply not installed, because midas-ff-pipeline does not depend on it.
     # >=0.8.0 carries the fit-grain/process-grains floors from 3d9bb427.
-    "midas-pipeline>=0.8.2",
+    # >=0.12.0 is the preflight release: below it, a mistyped --params or a
+    # wrong RawFolder skipped every FF stage and still exited 0.
+    "midas-pipeline>=0.12.0",
     "midas-ff-pipeline>=0.4.3",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.4.2",
@@ -90,7 +95,8 @@ pf = [
     # stress transitively; we list the orchestrator at the top.
     "midas-stress>=0.8.1",
     "midas-params>=0.7.0",
-    "midas-pipeline[fast]>=0.7.0",         # >=0.7.0: as above; fast = numba>=0.65
+    "midas-pipeline[fast]>=0.12.0",        # >=0.7.0: as above; fast = numba>=0.65;
+                                           # >=0.12.0 preflight (see base deps)
     "midas-calibrate>=0.2.7",
     "midas-integrate>=0.4.2",
 ]
@@ -139,6 +145,37 @@ all = [
     "midas-plotting>=0.3.0",
 ]
 dev = ["pytest>=7"]
+
+# Everything a user could reasonably want, in one name.
+#
+# This exists to fix a NAME, not a missing package. The docs and several of us
+# have been telling people to install `midas-suite[full]`, which did not exist
+# -- and pip treats an unknown extra as a WARNING, not an error, so those users
+# silently got the base dependency set. Measured in a clean venv: 72 packages
+# instead of 89. An extra that does not exist fails open, which is the worst
+# way for this to be wrong.
+#
+# What `full` does NOT do is add anything over `all`. It is tempting to say
+# `all` is misleadingly named because it lists only the ten leaf packages and
+# names no bundle -- true as written, but NOT true of what gets installed,
+# because those leaves depend on the modality stacks. Measured, dry-run in an
+# empty venv:
+#
+#     base    72 packages
+#     [all]   89 packages  (+17)
+#     [full]  89 packages  (+17)      [full] - [all] = nothing
+#
+# The union form is still the right definition: it is explicit about intent,
+# and it cannot drift if a bundle later gains a package that is not reachable
+# from any leaf. But do not "simplify" it to an alias for `all` on the theory
+# that they differ today -- and do not claim in a release note that it installs
+# more than `all`, because it does not.
+#
+# Self-referential extras need setuptools>=68 (required on line 2). `dev` is
+# deliberately excluded -- it is test tooling, not a capability.
+full = [
+    "midas-suite[all,ff,nf,pf,calib,calib-v2,pdf,defect,dfxm,pink,plots,xaf,grain-odf,pf-odf,ultrafast]",
+]
 
 [project.urls]
 Homepage = "https://github.com/marinerhemant/MIDAS"
