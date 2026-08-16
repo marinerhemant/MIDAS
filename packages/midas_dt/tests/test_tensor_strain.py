@@ -239,7 +239,10 @@ def test_survives_an_amplitude_and_background_mismatch():
     assert np.allclose(res.sigma_px, 1.7, atol=0.15), (
         f"width ran away under a scale mismatch: {res.sigma_px}")
     err = np.abs(np.median(res.strain, axis=0) - truth.as_vector()) * 1e6
-    assert err.max() < 40.0, (
+    assert np.allclose(res.amplitude, 1.0 / 83.0, rtol=0.1), (
+        f"the closed-form init should land on the true scale, got "
+        f"{res.amplitude}")
+    assert err.max() < 10.0, (
         f"strain not recovered through the mismatch (worst {err.max():.1f} ue)")
 
 
