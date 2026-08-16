@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dt"
-version = "0.4.3"
+version = "0.4.4"
 description = "Diffraction / X-ray computed tomography (XRD-CT): scan model, sinogram assembly with error propagation, reconstruction and per-voxel peak fitting."
 readme = "README.md"
 license = "BSD-3-Clause"
