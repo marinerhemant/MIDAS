@@ -66,6 +66,23 @@ def test_result_matches_the_pre_optimisation_values():
     If a future change to the loop moves these, it has changed the optimiser's
     answer -- which for this code is a scientific result, not an
     implementation detail.
+
+    Compared by KIND, not by bits. The goldens are of two sorts and only one of
+    them carries information:
+
+    * the two entries of order 1 and 170 are genuine local minima of the
+      shifted Rosenbrock. A change in which branch a simplex takes moves these,
+      so they are pinned to a tight relative tolerance.
+    * the rest are convergence residuals ~1e-12, i.e. "reached zero". Their
+      digits are the accumulated rounding of the path taken there, not a
+      result. Asserting them bit-exactly asserts something untrue: the goldens
+      were captured on macOS/arm64 and CI is Linux/x86-64, where a different
+      BLAS and vectorisation give 1.3580115637905315e-12 against the recorded
+      1.3580121932013689e-12 -- a 5e-7 relative difference on a number whose
+      meaningful content is "< 1e-9". That mismatch failed the 0.9.1 release
+      while the optimiser was behaving identically.
+
+    So: minima pinned, residuals required to have converged.
     """
     g = torch.Generator().manual_seed(64)
     shift = torch.randn(64, 3, generator=g, dtype=torch.float64)
@@ -73,9 +90,17 @@ def test_result_matches_the_pre_optimisation_values():
     bd = torch.stack([x0 - 3.0, x0 + 3.0], dim=-1)
     res = batched_nelder_mead(
         _rosenbrock_batch(shift), x0.clone(), bd.clone(), max_iter=200)
-    golden = [8.095249818836124e-13, 170.12072462155822, 1.9093557834387316, 1.3580121932013689e-12, 1.0389418259387467e-12, 1.3143181828195085e-12]
-    for got, want in zip(res.fun[:6].tolist(), golden):
-        assert got == want, f"optimiser result moved: {got!r} != {want!r}"
+    golden = [8.095249818836124e-13, 170.12072462155822, 1.9093557834387316,
+              1.3580121932013689e-12, 1.0389418259387467e-12,
+              1.3143181828195085e-12]
+    CONVERGED = 1e-9
+    for i, (got, want) in enumerate(zip(res.fun[:6].tolist(), golden)):
+        if want < CONVERGED:
+            assert got < CONVERGED, (
+                f"entry {i} failed to converge: {got!r} (golden {want!r})")
+        else:
+            assert got == pytest.approx(want, rel=1e-9), (
+                f"optimiser result moved at entry {i}: {got!r} != {want!r}")
 
 
 def test_objective_is_invariant_to_batch_composition():
