@@ -40,7 +40,7 @@ dependencies = [
     "midas-calibrate>=0.2.7",
     "midas-calibrate-v2>=0.5.3",
     "midas-index>=0.7.5",
-    "midas-transforms>=0.8.2",
+    "midas-transforms>=0.8.6",
     "midas-propagate>=0.1.1",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
     "midas-uq>=0.1.1",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
     "midas-process-grains>=0.7.0", # >=0.6.1 GrainRadius from the right SpotID space (5.5x low);
@@ -50,13 +50,13 @@ dependencies = [
     "midas-tomo>=0.1.0",           # gridrec CT engine; installs Python-only when FFTW/OpenMP are absent
     "midas-dt>=0.1.0",             # XRD-CT: sinogram assembly + both branch orders (fit→recon, recon→fit)
     "midas-nf-preprocess>=0.6.0",
-    "midas-nf-fitorientation>=0.8.0",
+    "midas-nf-fitorientation>=0.9.2",
     "midas-zipper>=0.1.5",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep)
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
     "midas-ff-pipeline>=0.4.3",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-nf-pipeline>=0.6.1",
-    "midas-pipeline>=0.12.0",      # >=0.7.0 FF refinement precision default + unrefined-position guard;
+    "midas-pipeline>=0.14.2",      # >=0.7.0 FF refinement precision default + unrefined-position guard;
                                    # >=0.8.0 fit-grain/process-grains floors; >=0.8.2 the zipper floor;
                                    # >=0.12.0 preflight: a run whose inputs are missing exits 2 instead
                                    # of skipping every stage and exiting 0. Floored, not merely
@@ -78,7 +78,7 @@ ff = [
     # >=0.8.0 carries the fit-grain/process-grains floors from 3d9bb427.
     # >=0.12.0 is the preflight release: below it, a mistyped --params or a
     # wrong RawFolder skipped every FF stage and still exited 0.
-    "midas-pipeline>=0.12.0",
+    "midas-pipeline>=0.14.2",
     "midas-ff-pipeline>=0.4.3",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.2.7",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.4.2",
@@ -95,7 +95,7 @@ pf = [
     # stress transitively; we list the orchestrator at the top.
     "midas-stress>=0.8.1",
     "midas-params>=0.9.0",
-    "midas-pipeline[fast]>=0.12.0",        # >=0.7.0: as above; fast = numba>=0.65;
+    "midas-pipeline[fast]>=0.14.2",        # >=0.7.0: as above; fast = numba>=0.65;
                                            # >=0.12.0 preflight (see base deps)
     "midas-calibrate>=0.2.7",
     "midas-integrate>=0.4.2",

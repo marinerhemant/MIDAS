@@ -45,7 +45,7 @@ dependencies = [
     # >=0.8.0: as above, plus the refine (not just the search) is
     # structure-factor weighted. Below 0.6.0 a weighted ConfidenceMetric writes
     # UNWEIGHTED confidence to the .mic -- silently wrong numbers, not an error.
-    "midas-nf-fitorientation>=0.8.0",
+    "midas-nf-fitorientation>=0.9.2",
 ]
 
 [project.optional-dependencies]
