@@ -106,8 +106,15 @@ def fit_orientation_main(argv: List[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     common, rest = _parse_common(argv)
     _print_version()
-    if common.help or len(rest) < 4:
+    if common.help:
+        # An explicit --help is a REQUEST: stdout, exit 0. Sharing this
+        # branch with the too-few-arguments case below made `--help`
+        # return 1, so every script and smoke test that runs it saw a
+        # failure.
         print(fit_orientation_main.__doc__)
+        return 0
+    if len(rest) < 4:
+        print(fit_orientation_main.__doc__, file=sys.stderr)
         return 1
     paramfile, block_nr, n_blocks, n_cpus = rest[:4]
     cfg = LBFGSConfig(
@@ -146,8 +153,11 @@ def fit_parameters_main(argv: List[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     common, rest = _parse_common(argv)
     _print_version()
-    if common.help or len(rest) < 2:
+    if common.help:
         print(fit_parameters_main.__doc__)
+        return 0
+    if len(rest) < 2:
+        print(fit_parameters_main.__doc__, file=sys.stderr)
         return 1
     paramfile, row_nr = rest[0], int(rest[1])
     n_cpus = int(rest[2]) if len(rest) >= 3 else 1
@@ -181,8 +191,11 @@ def fit_multipoint_main(argv: List[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     common, rest = _parse_common(argv)
     _print_version()
-    if common.help or len(rest) < 1:
+    if common.help:
         print(fit_multipoint_main.__doc__)
+        return 0
+    if len(rest) < 1:
+        print(fit_multipoint_main.__doc__, file=sys.stderr)
         return 1
     paramfile = rest[0]
     n_cpus = int(rest[1]) if len(rest) >= 2 else 1

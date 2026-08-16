@@ -58,3 +58,48 @@ def test_no_bare_percent_in_any_help_string():
     assert not bad, (
         "bare '%' in help text (double it to '%%'): " + ", ".join(bad)
     )
+
+
+def test_every_midas_console_script_renders_help_on_stdout():
+    """`--help` must exit 0 and print to STDOUT, for every MIDAS command.
+
+    Two distinct bugs motivated this, and neither was caught by building a
+    parser in a test:
+
+    * an unescaped ``%`` made argparse raise while FORMATTING the help, so
+      ``midas-pipeline run --help`` traced back instead of printing (live in
+      0.12.0-0.14.0);
+    * ``midas-transforms --help`` fell through to the unknown-subcommand
+      branch, printing to stderr and returning 2, so ``--help > file`` wrote
+      nothing; three ``midas-nf-fit-*`` commands shared one branch between
+      "help requested" and "too few arguments" and returned 1 for both.
+
+    Help is a request, not an error: stdout, exit 0. A usage error stays on
+    stderr with a non-zero exit, which is asserted separately.
+    """
+    import re
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[4]
+    pkgs = root / "packages"
+    if not pkgs.is_dir():
+        pytest.skip("not running from a source checkout")
+
+    names = set()
+    for pj in sorted(pkgs.glob("midas_*/pyproject.toml")):
+        blk = re.search(r"\[project\.scripts\](.*?)(\n\[|\Z)", pj.read_text(), re.S)
+        if blk:
+            names |= set(re.findall(r'^\s*"?([A-Za-z0-9_.-]+)"?\s*=',
+                                    blk.group(1), re.M))
+    installed = sorted(n for n in names if shutil.which(n))
+    if not installed:
+        pytest.skip("no MIDAS console scripts on PATH")
+
+    broken = []
+    for n in installed:
+        p = subprocess.run([n, "--help"], capture_output=True, text=True, timeout=300)
+        if p.returncode != 0 or not p.stdout.strip():
+            broken.append(f"{n}: exit={p.returncode} stdout={len(p.stdout)}B")
+    assert not broken, "commands whose --help is broken:\n  " + "\n  ".join(broken)

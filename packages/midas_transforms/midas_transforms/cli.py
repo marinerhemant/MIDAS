@@ -163,6 +163,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     if argv[0] in ("--version", "-V"):
         parser.parse_args(argv)
         return 0
+    # An explicit --help is a REQUEST, not a usage error: it belongs on stdout
+    # with exit 0. Without this it fell through to the unknown-stage branch
+    # below, which prints to stderr and returns 2 -- so `midas-transforms
+    # --help > x` wrote an empty file and any script checking the exit status
+    # saw a failure. The no-argv and unknown-stage cases below are genuine
+    # usage errors and correctly stay on stderr with 2.
+    if argv[0] in ("-h", "--help"):
+        parser.print_help(sys.stdout)
+        return 0
     stage, rest = argv[0], argv[1:]
     if stage == "merge-peaks":
         return merge_main(rest)
