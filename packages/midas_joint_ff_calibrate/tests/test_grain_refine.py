@@ -308,3 +308,111 @@ def test_omega_origin_read_from_omegastart_alias(tmp_path):
     # NrFilesPerSweep counts FILES (1 here); the frame count comes from the
     # omega scan, not from that key.
     assert keys["NrFilesPerSweep"] == 1441
+
+
+# ─── --fix parsing (CLI) ─────────────────────────────────────────────────────
+def test_fix_parses_scalars_and_vectors():
+    """`--fix` pins a parameter to an externally known value. A single row
+    broadcasts to every grain, so a measured lattice is six numbers, not six
+    per grain."""
+    from midas_joint_ff_calibrate.cli import _parse_fix
+
+    got = _parse_fix(["tx=0.048",
+                      "grain_lattice=4.1569,4.1569,4.1569,90,90,90"])
+    assert got["tx"] == 0.048
+    assert got["grain_lattice"] == [4.1569, 4.1569, 4.1569, 90.0, 90.0, 90.0]
+
+
+def test_fix_accepts_negatives_and_whitespace():
+    from midas_joint_ff_calibrate.cli import _parse_fix
+    got = _parse_fix([" ty = -0.38 ", "grain_pos=0, 0, 0"])
+    assert got["ty"] == -0.38
+    assert got["grain_pos"] == [0.0, 0.0, 0.0]
+
+
+def test_fix_rejects_malformed_input():
+    """A silently-ignored pin would be worse than no pin at all: the run would
+    look like it honoured a known value when it did not."""
+    import pytest as _pt
+    from midas_joint_ff_calibrate.cli import _parse_fix
+
+    for bad in (["tx"], ["=0.5"], ["tx="], ["tx=abc"], ["tx=1,,x"]):
+        with _pt.raises(SystemExit):
+            _parse_fix(bad)
+
+
+def test_fix_empty_is_no_op():
+    from midas_joint_ff_calibrate.cli import _parse_fix
+    assert _parse_fix(None) == {} and _parse_fix([]) == {}
+
+
+def test_fix_reaches_the_refiner_with_the_parsed_values(monkeypatch, tmp_path):
+    """The CLI's --fix must arrive at refine_geometry_from_grains as fix_values.
+
+    _parse_fix is well covered on its own, but parsing correctly and handing the
+    result to a function that does not accept it are different failures, and the
+    second one only shows up the first time someone actually runs grain-tx. That
+    is the same shape as the mixed-grid NameError: a wiring error on a path no
+    test walked end to end.
+
+    Signature-checked rather than just recorded -- binding the captured kwargs
+    against the real function is what catches a rename or a dropped parameter.
+    """
+    import inspect
+    from midas_joint_ff_calibrate import cli as jcli
+    from midas_joint_ff_calibrate import grain_refine as gr
+
+    seen = {}
+
+    class _Res:
+        # Mirrors every attribute the CLI reads off the result; a partial stub
+        # fails as an AttributeError in the test rather than telling you
+        # anything about the code under test.
+        n_grains = 1; n_spots_matched = 1; rc = 0
+        cost_init = 1.0; cost_final = 0.5; refined = {}
+        paramstest_out = None
+
+    real_sig = inspect.signature(gr.refine_geometry_from_grains)
+
+    def _fake(**kw):
+        seen.update(kw)
+        real_sig.bind(**kw)          # raises if the CLI passes a kwarg it lacks
+        return _Res()
+
+    monkeypatch.setattr(gr, "refine_geometry_from_grains", _fake)
+
+    rc = jcli.main([
+        "grain-tx", "--paramstest", str(tmp_path / "p.txt"),
+        "--layer-dir", str(tmp_path),
+        "--fix", "tx=0.048",
+        "--fix", "grain_lattice=4.1569,4.1569,4.1569,90,90,90",
+    ])
+    assert rc == 0
+    assert seen["fix_values"] == {
+        "tx": 0.048,
+        "grain_lattice": [4.1569, 4.1569, 4.1569, 90.0, 90.0, 90.0],
+    }
+
+
+def test_no_fix_passes_none_not_an_empty_dict(tmp_path, monkeypatch):
+    """Absent --fix must not look like 'pin nothing, explicitly'."""
+    import inspect
+    from midas_joint_ff_calibrate import cli as jcli
+    from midas_joint_ff_calibrate import grain_refine as gr
+
+    seen = {}
+
+    class _Res:
+        n_grains = 1; n_spots_matched = 1; rc = 0
+        cost_init = 1.0; cost_final = 0.5; refined = {}
+        paramstest_out = None
+
+    real_sig = inspect.signature(gr.refine_geometry_from_grains)
+
+    def _fake(**kw):
+        seen.update(kw); real_sig.bind(**kw); return _Res()
+
+    monkeypatch.setattr(gr, "refine_geometry_from_grains", _fake)
+    jcli.main(["grain-tx", "--paramstest", str(tmp_path / "p.txt"),
+               "--layer-dir", str(tmp_path)])
+    assert seen["fix_values"] is None

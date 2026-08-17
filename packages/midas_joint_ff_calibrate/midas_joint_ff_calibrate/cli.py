@@ -26,17 +26,55 @@ def _midas_make_parser(*a, **kw):
 
 
 
+def _parse_fix(items) -> dict:
+    """Turn ``--fix KEY=V`` / ``--fix KEY=V1,V2,...`` into ``fix_values``.
+
+    Pinning is not the same as freezing. Freezing keeps whatever the parameter
+    file happened to say; pinning replaces it with a value you know from
+    somewhere else — a lattice measured on a standard, grain positions a
+    focused beam already defines — and holds it there while the rest refines.
+
+    A single row broadcasts to every grain, so a LaB6 lattice is six numbers
+    rather than six per grain.
+    """
+    out: dict = {}
+    for item in items or []:
+        if "=" not in item:
+            raise SystemExit(
+                f"--fix wants KEY=VALUE, got {item!r}. "
+                "Examples: --fix tx=0.048  "
+                "--fix grain_lattice=4.1569,4.1569,4.1569,90,90,90")
+        key, raw = item.split("=", 1)
+        key, raw = key.strip(), raw.strip()
+        if not key or not raw:
+            raise SystemExit(f"--fix {item!r} is missing a key or a value.")
+        try:
+            vals = [float(x) for x in raw.split(",") if x.strip() != ""]
+        except ValueError:
+            raise SystemExit(
+                f"--fix {key}: {raw!r} is not a number or comma-separated "
+                "list of numbers.")
+        if not vals:
+            raise SystemExit(f"--fix {key}: no value given.")
+        out[key] = vals[0] if len(vals) == 1 else vals
+    return out
+
+
 def _grain_tx(args) -> int:
     from midas_joint_ff_calibrate.grain_refine import refine_geometry_from_grains
 
     refine = tuple(s.strip() for s in args.refine.split(",") if s.strip())
+    fix_values = _parse_fix(getattr(args, "fix", None))
     res = refine_geometry_from_grains(
         paramstest=args.paramstest, layer_dir=args.layer_dir,
         refine_params=refine, kind=args.kind, max_grains=args.max_grains,
         max_iter=args.max_iter, two_theta_max_deg=args.two_theta_max,
         refine_grain_strain=not args.no_strain, with_powder=args.with_powder,
         out_paramstest=args.out, device=args.device,
+        fix_values=fix_values or None,
     )
+    for k, v in (fix_values or {}).items():
+        print(f"  pinned {k} = {v}")
     print(f"\n  grains={res.n_grains}  matched spots={res.n_spots_matched}  rc={res.rc}")
     print(f"  cost: {res.cost_init:.4e} → {res.cost_final:.4e}")
     for k, v in res.refined.items():
@@ -58,6 +96,15 @@ def main(argv=None) -> int:
                     help="pipeline layer dir (Grains.csv + SpotMatrix.csv + hkls.csv)")
     gx.add_argument("--refine", default="tx,Wedge",
                     help="comma-separated geometry blocks to refine (default tx,Wedge)")
+    gx.add_argument("--fix", action="append", metavar="KEY=VALUE",
+                    help="pin a parameter to a value you KNOW, and hold it "
+                         "there while the rest refines. Repeatable. Distinct "
+                         "from simply leaving it out of --refine, which keeps "
+                         "whatever the parameter file said. A single row "
+                         "broadcasts to every grain, e.g. a measured LaB6 "
+                         "lattice: --fix "
+                         "grain_lattice=4.1569,4.1569,4.1569,90,90,90 ; or "
+                         "focused-beam grain positions: --fix grain_pos=0,0,0")
     gx.add_argument("--kind", default="angular", choices=("angular", "internal_angle"),
                     help="η-sensitive loss; 'pixel' is disabled (blind to tx)")
     gx.add_argument("--max-grains", type=int, default=50)
