@@ -126,6 +126,11 @@ ultrafast = ["midas-2d>=0.3.1"]         # midas-2d: 2D / ultrafast forward model
 grain-odf = ["midas-grain-odf>=0.1.0"]  # per-grain ODF
 pf-odf = ["midas-pf-odf>=0.1.0"]        # pf-HEDM per-voxel orientation/strain/ODF
 pink = ["midas-pink>=0.1.0"]            # pink-beam HEDM
+# DCT + topotomography forward/inverse. An EXTRA only, deliberately not in
+# midas_suite.SUBPACKAGES: that tuple is the core install and CI's smoke test
+# fails when a listed sub-package is not importable, which is wrong for a
+# modality package nobody is required to have.
+dct-tt = ["midas-dct-tt>=0.1.0"]        # DCT + topotomography forward/inverse
 # Standard MIDAS plots (NF/FF/Laue): IPF maps + legends, grain maps, pole
 # figures, strain/size distributions, Laue texture vs chance level. Pulls
 # matplotlib transitively, so it supersedes the bare matplotlib this extra
@@ -143,6 +148,7 @@ all = [
     "midas-pf-odf>=0.1.0",
     "midas-pink>=0.1.0",
     "midas-plotting>=0.3.0",
+    "midas-dct-tt>=0.1.0",
 ]
 dev = ["pytest>=7"]
 
@@ -174,7 +180,7 @@ dev = ["pytest>=7"]
 # Self-referential extras need setuptools>=68 (required on line 2). `dev` is
 # deliberately excluded -- it is test tooling, not a capability.
 full = [
-    "midas-suite[all,ff,nf,pf,calib,calib-v2,pdf,defect,dfxm,pink,plots,xaf,grain-odf,pf-odf,ultrafast]",
+    "midas-suite[all,ff,nf,pf,calib,calib-v2,pdf,defect,dfxm,dct-tt,pink,plots,xaf,grain-odf,pf-odf,ultrafast]",
 ]
 
 [project.urls]

@@ -110,3 +110,14 @@ texput.log
 # has no business in git.
 packages/midas_dt/notebooks/dt_output/
 packages/midas_dt/notebooks/calibration_output/
+
+# midas_dct_tt: internal working documents. The package itself is public from
+# 0.1.0, but these two are thread state, not code, and publishing them would
+# disclose more than the release intends:
+#   * the superseded CHECKPOINT names the paper directory, the target journal
+#     and the draft version, plus local paths;
+#   * RELEASE_CHECKLIST's step 7 is internal deliberation -- a prior-art caution
+#     naming another group and an explicit note that what looks new may not be.
+# Neither is needed to build, install or use the package.
+packages/midas_dct_tt/CHECKPOINT.md.superseded-*
+packages/midas_dct_tt/RELEASE_CHECKLIST.md

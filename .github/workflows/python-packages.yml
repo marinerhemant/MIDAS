@@ -195,7 +195,14 @@ jobs:
         run: |
           TAG="${GITHUB_REF##*/}"
           echo "Tag: $TAG"
-          if [[ "$TAG" == midas-stress-v* ]]; then
+          # midas-dct-tt is FIRST on purpose. `midas-dct-v*` would also glob-match
+          # `midas-dct-tt-v0.1.0`, so if a midas-dct-* package is ever added it must
+          # not be able to shadow this branch by being inserted above it. Same prefix
+          # collision already handled below for midas-integrate-v2 / midas-calibrate-v2.
+          if [[ "$TAG" == midas-dct-tt-v* ]]; then
+            echo "package=midas_dct_tt" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-dct-tt" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-stress-v* ]]; then
             echo "package=midas_stress" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-stress" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-params-v* ]]; then

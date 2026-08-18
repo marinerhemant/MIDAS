@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-dct-tt"
+version = "0.1.0"
+description = "Differentiable forward + inverse for diffraction contrast tomography (DCT) and topotomography (TT): grain-shape topographs, laminographic sampling, and joint (shape, deformation) recovery, on top of midas-dfxm / midas-diffract."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.20",
+    "torch>=2.0",
+    # Sibling MIDAS packages -- reused per implementation_plan.md Section 3.
+    # Do NOT re-port their primitives; extend or thin-wrap.
+    "midas-dfxm>=0.3.1",       # Ph 0: rotation_matrix/GoniometerSetting, DeformationField;
+                             # Ph 1: resolution (na=0), ObjectiveOptics (M=1 + explicit
+                             # k_out -- the arbitrary-G optical axis, added in 0.3.0
+                             # for this package; >=0.3 is load-bearing, not cosmetic)
+    "midas-stress>=0.8.1",   # Ph 0: axis-angle/orientation math (via midas-dfxm)
+    "midas-diffract>=0.7",   # Ph 1: Bragg geometry, detector model, voxel rasterisation
+    # 0.7.2 floor is REQUIRED: goniometer.reciprocal_basis calls
+    # Lattice.reciprocal_cartesian_vectors, added in 0.7.2 (commit 1ac5258d).
+    # Resolving 0.6.x is an AttributeError.
+    "midas-hkls>=0.7.2",     # Ph 1: structure factors, hkl enumeration, Lp
+    # 0.1.1 floor is REQUIRED, not cosmetic: recon.py passes lr_schedule= to
+    # fit(), a keyword 0.1.0 does not accept. Resolving 0.1.0 is a TypeError.
+    "midas-invert>=0.1.1",   # Ph 3: shared fit / UQ / Fisher-design primitives
+    "midas-distortion>=0.2", # Ph 1: detector distortion (single source of truth)
+]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.5"]
+dev = ["pytest>=7.0", "matplotlib>=3.5"]
+
+[tool.setuptools]
+packages = ["midas_dct_tt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: synthetic-data correctness tests (fast, every PR)",
+    "autograd: gradient correctness tests (gradcheck or finite-diff)",
+    "device: CPU/CUDA/MPS portability tests (skipped if device unavailable)",
+    "contract: locks an API surface we reuse from a sibling package",
+    "slow: heavy optimisation/integration tests (run with -m slow)",
+]
