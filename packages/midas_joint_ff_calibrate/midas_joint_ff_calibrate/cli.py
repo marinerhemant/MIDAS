@@ -79,8 +79,15 @@ def _grain_tx(args) -> int:
     print(f"  cost: {res.cost_init:.4e} → {res.cost_final:.4e}")
     for k, v in res.refined.items():
         print(f"  {k}: {v:+.6f}")
+    for msg in getattr(res, "conditioning", []):
+        print(f"  NOTE: {msg}")
+    for nm in getattr(res, "at_bounds", []):
+        print(f"  *** {nm} finished ON a bound — not a measurement, do not use it ***")
     if res.paramstest_out:
         print(f"  wrote corrected paramstest → {res.paramstest_out}")
+    if getattr(res, "at_bounds", []):
+        print("  Re-run with fewer free parameters, or more grains.")
+        return 1
     return 0
 
 

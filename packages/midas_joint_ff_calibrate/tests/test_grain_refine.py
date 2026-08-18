@@ -416,3 +416,63 @@ def test_no_fix_passes_none_not_an_empty_dict(tmp_path, monkeypatch):
     jcli.main(["grain-tx", "--paramstest", str(tmp_path / "p.txt"),
                "--layer-dir", str(tmp_path)])
     assert seen["fix_values"] is None
+
+
+# ─── bound and conditioning diagnostics ──────────────────────────────────────
+class _P:
+    def __init__(self, bounds): self.bounds = bounds
+
+
+class _Spec:
+    def __init__(self, params): self.parameters = params
+
+
+def test_value_on_a_bound_is_reported():
+    """A parameter pressed against its limit is the optimiser saying it wanted
+    to keep going. It has read as a result three times on real data."""
+    from midas_joint_ff_calibrate.grain_refine import _bounds_warnings
+    spec = _Spec({"iso_R4": _P((-0.05, 0.05)), "tx": _P((-5.0, 5.0))})
+    msgs = _bounds_warnings(spec, {"iso_R4": 0.05, "tx": -0.0786},
+                            ("iso_R4", "tx"))
+    assert len(msgs) == 1 and msgs[0].startswith("iso_R4")
+    assert "upper bound" in msgs[0]
+
+
+def test_lower_bound_is_reported_too():
+    from midas_joint_ff_calibrate.grain_refine import _bounds_warnings
+    spec = _Spec({"Wedge": _P((-5.0, 5.0))})
+    msgs = _bounds_warnings(spec, {"Wedge": -5.0}, ("Wedge",))
+    assert len(msgs) == 1 and "lower bound" in msgs[0]
+
+
+def test_interior_values_are_silent():
+    """No false alarms: a genuine value well inside its range must not warn."""
+    from midas_joint_ff_calibrate.grain_refine import _bounds_warnings
+    spec = _Spec({"tx": _P((-5.0, 5.0)), "Wedge": _P((-5.0, 5.0))})
+    assert _bounds_warnings(spec, {"tx": -0.0786, "Wedge": -0.0072},
+                            ("tx", "Wedge")) == []
+
+
+def test_unbounded_or_absent_params_are_skipped():
+    from midas_joint_ff_calibrate.grain_refine import _bounds_warnings
+    spec = _Spec({"tx": _P(None)})
+    assert _bounds_warnings(spec, {"tx": 1.0}, ("tx", "missing")) == []
+
+
+def test_too_few_grains_for_tx_is_flagged():
+    from midas_joint_ff_calibrate.grain_refine import _conditioning_warnings
+    msgs = _conditioning_warnings(("tx", "Wedge"), n_grains=2)
+    assert any("omega-coupling" in m for m in msgs)
+
+
+def test_distortion_from_a_handful_of_grains_is_flagged():
+    """The case that prompted this: 15 harmonics asked of 6 grains."""
+    from midas_joint_ff_calibrate.grain_refine import _conditioning_warnings
+    msgs = _conditioning_warnings(("tx", "iso_R2", "iso_R4", "iso_R6"), n_grains=6)
+    assert any("detector-wide field" in m for m in msgs)
+    assert any("powder calibrant" in m for m in msgs)
+
+
+def test_well_conditioned_run_is_silent():
+    from midas_joint_ff_calibrate.grain_refine import _conditioning_warnings
+    assert _conditioning_warnings(("tx", "Wedge"), n_grains=100) == []

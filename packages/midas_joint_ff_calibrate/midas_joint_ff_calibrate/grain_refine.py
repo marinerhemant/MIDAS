@@ -97,6 +97,18 @@ class GrainGeomRefineResult:
     n_spots_matched: int
     paramstest_out: Optional[Path] = None
     unpacked: Dict[str, torch.Tensor] = field(default_factory=dict)
+    #: Refined names that finished ON a bound. A bound is not a measurement:
+    #: it means the fit ran out of room, which on this objective has always
+    #: meant the parameter was not constrained by the data.
+    at_bounds: List[str] = field(default_factory=list)
+    #: Conditioning complaints raised before the fit (too few grains for what
+    #: was asked). Advisory; the fit still runs.
+    conditioning: List[str] = field(default_factory=list)
+
+    @property
+    def trustworthy(self) -> bool:
+        """False when anything hit a bound. Cheap gate for scripted callers."""
+        return not self.at_bounds
 
 
 # ────────────────────────────────────────────────────────── paramstest parsing
@@ -294,6 +306,106 @@ def _per_grain_internal_angle(model, observations, matches, eulers, positions,
     return out
 
 
+#: tx is separated from each grain's own orientation only by the omega-coupling
+#: across differently-oriented grains, so it needs several of them.
+_MIN_GRAINS_TX = 5
+#: The distortion is a detector-wide field. A handful of grains samples a few
+#: azimuths, which cannot pin fifteen harmonics; the powder calibrant, with
+#: thousands of ring points at every azimuth, is where these belong.
+_MIN_GRAINS_DISTORTION = 50
+
+
+def _conditioning_warnings(refine_params: Sequence[str], n_grains: int) -> List[str]:
+    """Complain before spending the time, when the ask outruns the data."""
+    out: List[str] = []
+    thawed = set(refine_params)
+    if "tx" in thawed and n_grains < _MIN_GRAINS_TX:
+        out.append(
+            f"refining tx from {n_grains} grain(s): tx is distinguished from a "
+            "grain's own orientation only by omega-coupling ACROSS grains, so "
+            f"fewer than {_MIN_GRAINS_TX} makes it poorly determined.")
+    d = sorted(thawed & _DISTORTION)
+    if d and n_grains < _MIN_GRAINS_DISTORTION:
+        out.append(
+            f"refining {len(d)} distortion coefficient(s) from {n_grains} "
+            "grain(s). The distortion is a detector-wide field and these "
+            "grains sample only a few azimuths; expect them to run to their "
+            "bounds and absorb error. Fit distortion on the powder calibrant "
+            "(midas-calibrate-v2 --mode ff) instead.")
+    if len(thawed) > max(1, n_grains):
+        out.append(
+            f"{len(thawed)} free parameters against {n_grains} grain(s) is "
+            "under-determined.")
+    return out
+
+
+def _bounds_warnings(spec, unpacked, refine_params: Sequence[str],
+                     tol_frac: float = 1e-3) -> List[str]:
+    """Name any refined parameter that finished sitting on a bound.
+
+    This has bitten three times on real data -- Wedge at +5.0 from a misread
+    omega key, iso_R4 and iso_R6 at +0.05 from six grains -- and each time the
+    run reported rc=0 and looked like a result. A value pressed against its
+    limit is the optimiser saying it wanted to keep going, which means the data
+    was not holding it.
+    """
+    out: List[str] = []
+    for nm in refine_params:
+        par = spec.parameters.get(nm)
+        b = getattr(par, "bounds", None) if par is not None else None
+        if not b or nm not in unpacked:
+            continue
+        lo, hi = float(b[0]), float(b[1])
+        span = hi - lo
+        if span <= 0:
+            continue
+        try:
+            v = float(unpacked[nm])
+        except (TypeError, ValueError):
+            continue
+        tol = tol_frac * span
+        if abs(v - lo) <= tol or abs(v - hi) <= tol:
+            edge = "lower" if abs(v - lo) <= tol else "upper"
+            out.append(
+                f"{nm} = {v:g} is ON its {edge} bound ({lo:g}, {hi:g}). That is "
+                "not a measurement: the fit ran out of room, which means this "
+                "parameter is not constrained by the data. Do not use it.")
+    return out
+
+
+def _p_coeffs_from_named_torch(named: Dict[str, torch.Tensor]) -> torch.Tensor:
+    """Assemble the v1 ``p0..p14`` vector from v2-named coefficients, keeping
+    the autograd graph intact.
+
+    ``midas_distortion.v2_coeffs_from_named`` cannot be used on the refinement
+    path: it fills a numpy array with ``float(v)``, which detaches every tensor
+    it is given. A thawed distortion coefficient then receives **zero
+    gradient**, so the optimiser leaves it at its initial value while the
+    result still reports it as refined — refined in name only. Observed on real
+    ruby data: ``--refine ...,iso_R2,iso_R4,...`` moved Lsd/BC_y/tilts and left
+    all fifteen harmonics exactly where they started.
+
+    Index tables come from ``midas_distortion`` so the ordering has one source
+    of truth; only the assembly is re-done here, in torch.
+    """
+    from midas_distortion.core import _NAME_TO_V2IDX, _PERM_V2_TO_V1
+    from midas_distortion import P_COEF_NAMES
+
+    ref = next((v for v in named.values() if torch.is_tensor(v)), None)
+    dtype = ref.dtype if ref is not None else torch.float64
+    device = ref.device if ref is not None else None
+    zero = torch.zeros((), dtype=dtype, device=device)
+
+    v2: List[torch.Tensor] = [zero] * len(P_COEF_NAMES)
+    for nm, val in named.items():
+        idx = _NAME_TO_V2IDX.get(nm)
+        if idx is None or val is None:
+            continue
+        v2[idx] = val if torch.is_tensor(val) else torch.as_tensor(
+            val, dtype=dtype, device=device)
+    return torch.stack([v2[_PERM_V2_TO_V1[i]].reshape(()) for i in range(15)])
+
+
 def make_residual(
     model: HEDMForwardModel,
     observations,
@@ -342,14 +454,11 @@ def make_residual(
         (the spline), which would have biased any tilt or beam-centre fit.
         """
         from midas_transforms.fit_setup.transform import apply_tilt_distortion
-        from midas_distortion import v2_coeffs_from_named, v2_to_v1_coeffs
         hor, ver = raw_yz[g]
         if any(nm in unpacked for nm in _v2_names):
             named = {nm: unpacked[nm] if nm in unpacked else fixed_v2[nm]
                      for nm in _v2_names}
-            p_arr = v2_to_v1_coeffs(v2_coeffs_from_named(named))
-            if not torch.is_tensor(p_arr):
-                p_arr = torch.as_tensor(p_arr, dtype=torch.float64)
+            p_arr = _p_coeffs_from_named_torch(named)
         else:
             p_arr = fixed_geo["p_coeffs"]
         return apply_tilt_distortion(
@@ -623,6 +732,10 @@ def refine_geometry_from_grains(
         spec.parameters[nm].refined = False
         LOG.info("pinned %s to a supplied known value", nm)
 
+    conditioning = _conditioning_warnings(refine_params, len(grain_eulers))
+    for msg in conditioning:
+        LOG.warning("%s", msg)
+
     observed_from_raw = bool(
         (set(refine_params) & (_NEEDS_RAW | _DISTORTION)))
     if observed_from_raw:
@@ -668,6 +781,10 @@ def refine_geometry_from_grains(
     n_matched = sum(int(m.mask.sum()) for m in matches)
 
     refined = {nm: float(unpacked[nm]) for nm in refine_params}
+    bound_msgs = _bounds_warnings(spec, unpacked, refine_params)
+    for msg in bound_msgs:
+        LOG.warning("%s", msg)
+    at_bounds = [m.split(" =", 1)[0] for m in bound_msgs]
     out_path = None
     if out_paramstest is not None:
         # Edit the ORIGINAL param text in place — replace/append only the
@@ -691,6 +808,7 @@ def refine_geometry_from_grains(
         refined=refined, cost_init=cost_init, cost_final=float(cost), rc=str(rc),
         n_grains=len(observations), n_spots_matched=n_matched,
         paramstest_out=out_path, unpacked=unpacked,
+        at_bounds=at_bounds, conditioning=conditioning,
     )
 
 
