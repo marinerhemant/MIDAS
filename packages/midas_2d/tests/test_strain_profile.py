@@ -95,7 +95,7 @@ def test_recover_depth_strain_profile():
     obs = depth_resolved_intensity(coords, elements, q, u_z=u_true)
 
     z_ctrl = torch.linspace(float(z.min()), float(z.max()), 6, dtype=DT)
-    out = recover_depth_strain(obs, coords, elements, q, z_ctrl, steps=1200, lr=0.01)
+    out = recover_depth_strain(obs, coords, elements, q, z_ctrl, steps=700, lr=0.01)  # corr>0.9 reached earlier
 
     # the recovered per-atom displacement should correlate strongly with truth
     # (up to a rigid z-shift, which does not change |A|^2 -> remove the mean)

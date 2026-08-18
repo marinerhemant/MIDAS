@@ -70,10 +70,10 @@ def test_find_rods_recovers_3_synthetic_rods(synthetic_rod_cube):
     s = synthetic_rod_cube
     rods = find_rods(
         s["qx"], s["qy"], s["qz"], s["intensity"],
-        n_cores=200, core_min_separation=0.02,
+        n_cores=120, core_min_separation=0.02,   # 120/3000 still recovers all 3 rods (det.); 200/5000 was 2.5x slower
         pair_min_dist=0.1, pair_max_dist=2.0,
         r_tube=0.03, L_min=0.3, N_min_inliers=20,
-        max_voxels_for_scoring=5000,
+        max_voxels_for_scoring=3000,
     )
     assert len(rods) >= 3, f"only found {len(rods)} rods"
 
@@ -261,10 +261,10 @@ def test_iterative_residual_finds_two_rods(synthetic_rod_cube):
         s["qx"], s["qy"], s["qz"], s["intensity"],
         n_iter=3,
         suppress_perp=0.06, suppress_along_pad=0.5, suppress_floor=0.05,
-        n_cores=200, core_min_separation=0.02,
+        n_cores=120, core_min_separation=0.02,   # 120/3000 still yields 3 distinct rounds (det.); 80 drops to 1
         pair_min_dist=0.1, pair_max_dist=2.0,
         r_tube=0.03, L_min=0.3, N_min_inliers=20,
-        max_voxels_for_scoring=5000,
+        max_voxels_for_scoring=3000,
     )
     assert len(rounds) >= 2, f"only got {len(rounds)} iterations"
     # Each iteration's top rod should have a different direction

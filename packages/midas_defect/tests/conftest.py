@@ -30,6 +30,32 @@ import torch
 
 
 # ---------------------------------------------------------------------------
+# fast Monte-Carlo Mackenzie reference (test speedup)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session", autouse=True)
+def _fast_mackenzie_mc():
+    """Reduce the cached MC sample count of ``mackenzie_pdf`` for the test session.
+
+    ``mackenzie_pdf`` builds its histogram at ``n_mc_samples=200_000`` for production
+    accuracy, and every distribution/regression test uses that default -- so the
+    ~one-shot ~57 s-per-phase Monte-Carlo dominates the suite (FCC + BCC + HCP ~ 170 s).
+    The tests only assert shape / normalisation / phase-equality, which a coarser MC
+    satisfies. Patching the keyword default (one function object, shared by all imports)
+    means every call site shares the cheaper cache, so each phase is computed once at
+    the reduced count. Restored after the session.
+    """
+    from midas_defect.distributions import mackenzie as _mk
+    kd = _mk.mackenzie_pdf.__kwdefaults__
+    orig = kd.get("n_mc_samples")
+    kd["n_mc_samples"] = 50_000
+    try:
+        yield
+    finally:
+        kd["n_mc_samples"] = orig
+
+
+# ---------------------------------------------------------------------------
 # device / dtype parametrization
 # ---------------------------------------------------------------------------
 

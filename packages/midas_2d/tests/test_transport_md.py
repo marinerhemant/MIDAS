@@ -59,7 +59,7 @@ def test_recover_electron_phonon_coupling():
 
     out = fit_electron_phonon_coupling(obs, t, q_perp=2.0, k_spring=30.0,
                                        C_e=1.0, C_l=3.0, init_g=0.8,
-                                       steps=1200, lr=0.05)
+                                       steps=600, lr=0.05)   # g_err 0.006 by 400 steps (det.); 1200 was overkill
     assert abs(out["g"] - g_true) / g_true < 0.15
 
 
@@ -143,5 +143,5 @@ def test_learn_potential_from_diffraction_movie():
 
     out = recover_potential_from_movie(obs, coords, elements, _q([0., 0., 2.]),
                                        amp0=0.04, dt=dt, n_steps=n, init_k=3.0,
-                                       steps=250, lr=0.1)
+                                       steps=150, lr=0.1)  # 15% tol, converges early (det.)
     assert abs(out["k_perp"] - k_true) / k_true < 0.15
