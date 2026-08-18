@@ -44,7 +44,7 @@ carry the ``2*pi`` convention (``|G| = 2*pi/d``), matching ``midas_dfxm``.
 See ``implementation_plan.md``. Not released -- this package is private until
 ``RELEASE_CHECKLIST.md`` is worked through.
 """
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .conventions import (
     DCT_OMEGA_SIGN_AERO,

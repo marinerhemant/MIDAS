@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dct-tt"
-version = "0.1.0"
+version = "0.1.1"
 description = "Differentiable forward + inverse for diffraction contrast tomography (DCT) and topotomography (TT): grain-shape topographs, laminographic sampling, and joint (shape, deformation) recovery, on top of midas-dfxm / midas-diffract."
 readme = "README.md"
 license = "BSD-3-Clause"
