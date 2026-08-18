@@ -119,5 +119,8 @@ packages/midas_dt/notebooks/calibration_output/
 #   * RELEASE_CHECKLIST's step 7 is internal deliberation -- a prior-art caution
 #     naming another group and an explicit note that what looks new may not be.
 # Neither is needed to build, install or use the package.
-packages/midas_dct_tt/CHECKPOINT.md.superseded-*
+# Live AND superseded: thread state, never part of the package.
+# NB gitignore has no trailing comments -- a `#` on the pattern line
+# becomes part of the pattern and silently matches nothing.
+packages/midas_dct_tt/CHECKPOINT.md*
 packages/midas_dct_tt/RELEASE_CHECKLIST.md
