@@ -208,6 +208,36 @@ def test_aniso_weight_is_differentiable():
     assert float(Q.grad.abs().max()) > 0
 
 
+
+def _moments(F, *, model, grain, als, hkls, res, psi, det, supersample=1):
+    """Raw image moments per reflection and psi: ``(m0 (R,S), m1 (R,S,2))``.
+
+    Inlined rather than imported from ``dev/paper/runs/_afit.py``: ``dev/`` is
+    private by policy and is not in the distribution, so the import worked only
+    on the one machine that has it and raised ModuleNotFoundError everywhere
+    else -- including CI, where it failed the 0.1.0 release. Mass and first
+    moment are linear in the image, bounded and division-free, which is why this
+    is the quantity the test compares.
+    """
+    import torch as _torch
+    from midas_dct_tt import local_Q, topograph_stack
+    n = grain.n_voxels
+    m0s, m1s = [], []
+    for G0, al, hkl, r in zip([grain.field.reference_G(h) for h in hkls],
+                              als, hkls, res):
+        Q = local_Q(F, G0, model=model).expand(n, 3)
+        stack = topograph_stack(grain, al, psi, detector=det, hkl=hkl,
+                                resolution=r, supersample=supersample,
+                                Q_sample=Q)
+        nu, nv = stack.shape[-2:]
+        iu = _torch.arange(nu, dtype=stack.dtype).view(1, nu, 1)
+        iv = _torch.arange(nv, dtype=stack.dtype).view(1, 1, nv)
+        m0s.append(stack.sum(dim=(1, 2)))
+        m1s.append(_torch.stack([(stack * iu).sum(dim=(1, 2)),
+                                 (stack * iv).sum(dim=(1, 2))], dim=-1))
+    return _torch.stack(m0s), _torch.stack(m1s)
+
+
 def test_anisotropy_is_what_makes_intensity_carry_psi_information():
     """The load-bearing test.
 
@@ -217,16 +247,8 @@ def test_anisotropy_is_what_makes_intensity_carry_psi_information():
     offset sweeps between the tight and loose axes, giving a 180-deg-period
     oscillation whose amplitude carries the transverse strain.
     """
-    import pathlib
-    import sys
-    # Absolute, anchored on this file. A relative "dev/paper/runs" silently
-    # depends on pytest being invoked from the package root, so the test passed
-    # from there and failed from anywhere else -- a working-directory-dependent
-    # failure, which is worse than an outright one.
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]
-                           / "dev" / "paper" / "runs"))
-    from _afit import moments
-    from midas_dct_tt import PlaneDetector, psi_scan, tt_alignment, tt_resolution
+    from midas_dct_tt import (PlaneDetector, psi_scan, tt_alignment,
+                              tt_resolution)
     from midas_dct_tt.acceptance import tt_resolution_aniso
 
     g, _, _ = _aniso_setup()
@@ -241,7 +263,7 @@ def test_anisotropy_is_what_makes_intensity_carry_psi_information():
     E = E / torch.linalg.matrix_norm(E)
 
     def spread(res):
-        o0, _ = moments(I3 + 1e-3 * E, model="exact", supersample=3, grain=g,
+        o0, _ = _moments(I3 + 1e-3 * E, model="exact", supersample=3, grain=g,
                         als=als, hkls=SET, res=res, psi=psi, det=det)
         return float(((o0.max(dim=1).values - o0.min(dim=1).values)
                       / o0.mean(dim=1).abs()).max()), o0
