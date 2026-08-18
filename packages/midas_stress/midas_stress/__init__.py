@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import importlib
 
-__version__ = "0.8.1"
+__version__ = "0.9.0"
 
 # public name -> submodule it lives in. Loaded lazily on first access, so
 # importing the package pulls in nothing heavy (and no torch).
