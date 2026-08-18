@@ -133,19 +133,23 @@ def rodrigues_to_crystal_to_sample(rod):
 
     Why not :func:`midas_stress.orientation.rodrigues_to_orient_mat`
     ---------------------------------------------------------------
-    Because it disagrees, and not by a convention. That function returns a valid
-    rotation (``det = 1``, orthogonal to 1e-16) about the **correct axis** but at
-    the **wrong angle**, inflated by ``1/cos^2(theta/2)``: exact at zero,
-    +0.2 deg at 5 deg, 60 -> 80 deg, and 90 -> 180 deg. No choice of sign,
-    transpose or active/passive alters a rotation's angle while preserving its
-    axis, so this cannot be reconciled by adaptation. Substituting it here moves
-    the 74-scan tilt residual from 0.043 deg to 26.5 deg -- indistinguishable
-    from assigning the scans to random grains. See
-    ``dev/real_data/convention_bridge.py``, which tests all four sign/transpose
-    combinations.
+    **Below midas-stress 0.9.0** that function disagreed, and not by a
+    convention. It returned a valid rotation (``det = 1``, orthogonal to 1e-16)
+    about the **correct axis** but at the **wrong angle**, inflated by
+    ``1/cos^2(theta/2)``: exact at zero, +0.2 deg at 5 deg, 60 -> 80 deg, and
+    90 -> 180 deg. No choice of sign, transpose or active/passive alters a
+    rotation's angle while preserving its axis, so it could not be reconciled by
+    adaptation. Substituting it here moved the 74-scan tilt residual from
+    0.043 deg to 26.5 deg -- indistinguishable from assigning the scans to
+    random grains. See ``dev/real_data/convention_bridge.py``, which tests all
+    four sign/transpose combinations.
 
-    This is a defect report against ``midas-stress``, not a licence to keep a
-    private copy: once it is fixed, delegate here and delete this function.
+    **Fixed in midas-stress 0.9.0**, which builds the rotation vector as
+    ``n * theta`` and now agrees with this function to 2.7e-15 over random
+    Rodrigues vectors. This implementation is kept because midas-dct-tt does not
+    otherwise import midas-stress and floors it only transitively; delegating
+    would add a hard floor for three lines of arithmetic. Delete it if that
+    floor is ever wanted for another reason.
     """
     r = np.asarray(rod, dtype=float).reshape(3)
     K = np.array([[0.0, -r[2], r[1]], [r[2], 0.0, -r[0]], [-r[1], r[0], 0.0]])
