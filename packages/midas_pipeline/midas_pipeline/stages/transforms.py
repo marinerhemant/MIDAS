@@ -277,6 +277,21 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
         LOG.info("transforms(FF): no zarr/zip; skip.")
         return stub_run("transforms", ctx)
 
+    # Resume guard, matching peakfit(FF)/hkl(FF) and _run_pf above.
+    #
+    # Without this, FF transforms re-runs unconditionally on every resume. That
+    # is not merely wasted work: transforms rewrites InputAll.csv and
+    # InputAllExtraInfoFittingAll.csv, which invalidates binning and therefore
+    # indexing, so a resume aimed at a LATER stage silently forces a full
+    # re-index. Measured on a 20-ID alumina layer (24900 seeds, 471k spots):
+    # ~90 minutes of re-indexing per retry, twice, while the only stage that
+    # actually needed to re-run was refinement.
+    target = layer_dir / "InputAllExtraInfoFittingAll.csv"
+    input_all = layer_dir / "InputAll.csv"
+    if target.exists() and input_all.exists():
+        LOG.info("transforms(FF): %s already exists; skip.", target)
+        return _result(started, [target], 1, 0)
+
     pipe = Pipeline.from_zarr(
         zip_path,
         result_folder=layer_dir,
