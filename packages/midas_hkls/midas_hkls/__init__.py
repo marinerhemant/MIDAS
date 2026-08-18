@@ -26,6 +26,15 @@ from .form_factors import (
 from .hkl_gen import Reflection, generate_hkls, reflections_to_dataframe
 from .lattice import Lattice
 from .nf_hkls import emit_nf_hkls_csv, write_nf_hkls_csv
+from .point_group import (
+    LAUE_TO_PROPER_GROUP,
+    laue_class,
+    plane_normal,
+    plane_normals,
+    point_group_rotations,
+    proper_group_symbol,
+    proper_rotations_from_space_group,
+)
 from .space_group import SpaceGroup, list_space_groups
 from .symops import SymOp
 
@@ -41,6 +50,7 @@ __all__ = [
     "Atom",
     "B_to_U",
     "Crystal",
+    "LAUE_TO_PROPER_GROUP",
     "Lattice",
     "Reflection",
     "SpaceGroup",
@@ -52,7 +62,13 @@ __all__ = [
     "form_factor",
     "form_factor_batch",
     "generate_hkls",
+    "laue_class",
     "list_space_groups",
+    "plane_normal",
+    "plane_normals",
+    "point_group_rotations",
+    "proper_group_symbol",
+    "proper_rotations_from_space_group",
     "reflections_to_dataframe",
     "write_nf_hkls_csv",
 ]

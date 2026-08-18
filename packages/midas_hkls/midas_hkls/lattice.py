@@ -40,6 +40,46 @@ class Lattice:
     def reciprocal_metric_tensor(self) -> np.ndarray:
         return np.linalg.inv(self.metric_tensor())
 
+    def cartesian_vectors(self) -> np.ndarray:
+        """Direct lattice vectors as ROWS, embedded in a Cartesian frame.
+
+        Convention: **a1 along x, a2 in the xy plane with positive y, a3 with
+        positive z** — the standard crystallographic embedding.
+
+        The metric tensors above are enough for scalar quantities (d-spacings,
+        angles), because those are basis-independent. Anything with a *direction*
+        needs this: a symmetry operation from a space group is an integer matrix
+        in the LATTICE basis, and an integer matrix is not a rotation (the
+        hexagonal 6-fold has entries in {0, ±1} and is emphatically not
+        orthogonal). Conjugating through this embedding, ``R_cart = M R M^-1``
+        with ``M`` the columns of the direct vectors, is what turns it into one.
+        """
+        al, be, ga = radians(self.alpha), radians(self.beta), radians(self.gamma)
+        v1 = np.array([self.a, 0.0, 0.0])
+        v2 = np.array([self.b * cos(ga), self.b * sin(ga), 0.0])
+        cx = self.c * cos(be)
+        cy = self.c * (cos(al) - cos(be) * cos(ga)) / sin(ga)
+        cz2 = self.c * self.c - cx * cx - cy * cy
+        if cz2 <= 0:
+            raise ValueError(
+                f"degenerate cell: a={self.a} b={self.b} c={self.c} "
+                f"alpha={self.alpha} beta={self.beta} gamma={self.gamma} "
+                "do not close a positive-volume parallelepiped")
+        return np.array([v1, v2, [cx, cy, sqrt(cz2)]])
+
+    def reciprocal_cartesian_vectors(self) -> np.ndarray:
+        """Reciprocal lattice vectors as ROWS, in the same Cartesian frame.
+
+        The 2π convention is dropped: these are the crystallographic
+        ``b_i = (a_j x a_k) / V`` reciprocal vectors, so ``|b_i| = 1/d`` for the
+        corresponding plane. Callers that only want a *direction* (a plane
+        normal) normalise anyway, so the convention cancels there.
+        """
+        d = self.cartesian_vectors()
+        vol = float(np.dot(d[0], np.cross(d[1], d[2])))
+        return np.array([np.cross(d[1], d[2]), np.cross(d[2], d[0]),
+                         np.cross(d[0], d[1])]) / vol
+
     def reciprocal(self) -> "Lattice":
         Gstar = self.reciprocal_metric_tensor()
         a_star = sqrt(Gstar[0, 0])
