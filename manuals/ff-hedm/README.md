@@ -146,6 +146,15 @@ proceed. Everything not blocked by it should still be finished first.
 10. **Check what the pipeline actually skipped.** `midas-ff-pipeline` no-ops stages that
    don't apply; a silent no-op and a silent failure look identical in the log tail. Read
    the per-stage provenance in `<result>/LayerNr_N/midas_state.h5`.
+10b. **Indexing and refinement are BOTH c-omp — there is no GPU backend for either
+   stage, in FF or PF.** Pass `--indexer-backend c-omp --refine-backend c-omp` on
+   every run. The two stages have *different* defaults: the indexer already picks
+   c-omp, but the **refiner defaults to python + torch + CUDA**, so a run whose log
+   says `indexing(FF, c-omp)` can still be silently half on the GPU path. It then
+   dies with a bare `CalledProcessError` and **no child traceback** (the wrapper
+   swallows the subprocess's stderr), and because `transforms` re-runs on resume,
+   every retry costs a full re-index — measured at ~90 min a time on a 24 900-seed
+   layer, twice (§7).
 
 The first ten rules are about distrusting the *data*. These four are about distrusting
 your own run, and they are the ones a context-free session skips:
@@ -205,6 +214,8 @@ your own run, and they are the ones a context-free session skips:
 | params zipped by `midas-zipper` < 0.1.5 | `BgSubtract`, `BgNSectors` and `MinPeakSNR` are **silently dropped** from the zarr — the peak search runs with settings you did not set | §0, §6c |
 | `midas-fit-grain` checked against 0.5.7 and no further | labels are correct, positions are still the **unrefined indexer seeds** (0.6.0) and `c_recipe` is missing (0.7.0) | §0, §8a |
 | version floors read from this document instead of from the tree | **eight** declarations rose for silent-wrong-answer reasons in the nine days after this file was written, across five packages | §0 |
+| `--refine-backend` left unset | the **refiner** defaults to python+torch+CUDA while the indexer defaults to c-omp — the run is silently half on the GPU path, dies with a bare `CalledProcessError` and no child traceback, and each retry costs a full re-index | rule 10b, §7 |
+| `--only` given a **comma-separated** list | `--only` is *repeatable*, not comma-separated. `--only a,b` is read as one stage named `"a,b"`, matches nothing, and the run reports **success with zero stages executed** in ~1 s. The orchestrator validates that `--only` omits required *upstream* stages, but does **not** validate that a stage name exists | §7 |
 
 ---
 

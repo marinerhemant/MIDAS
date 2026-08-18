@@ -10,12 +10,43 @@
 ## 7. STEP 6 — Run the pipeline
 
 ```bash
-midas-ff-pipeline run \
+midas-pipeline run --scan-mode ff \
     --params Parameters.txt \
     --result results/ \
     --layers 1-1 \
-    --device cuda
+    --indexer-backend c-omp \
+    --refine-backend c-omp
 ```
+
+### Both backends are c-omp. There is no GPU path for indexing or refinement.
+
+**Pass `--indexer-backend c-omp --refine-backend c-omp` on every run, FF and PF
+alike.** The two stages have **different defaults** and only one of them is right:
+
+| stage | with no flag | log line |
+|---|---|---|
+| indexing | already c-omp | `indexing(FF, c-omp): …/midas_index/bin/midas_indexer` |
+| **refinement** | **python + torch + CUDA** | `refinement(FF): python -m midas_fit_grain … --device cuda` |
+
+So a run that *looks* like it is on the c-omp fast path — because the indexing
+line says so — is silently half on the GPU path. The c-omp binaries
+(`midas_index/bin/midas_indexer`, `midas_fit_grain/bin/midas_fitgrain`) have no
+GPU path at all, so CUDA contention, OOM and driver mismatch cannot occur there.
+
+**The failure is silent and expensive.** Measured on a 20-ID alumina FF layer
+(24 900 seeds, 471 k spots): refinement died after ~12 s with a bare
+`subprocess.CalledProcessError … non-zero exit status 1` and **no child
+traceback** — `run_checked_streamed` swallows the subprocess's stderr, so the
+log says nothing about the real cause. It was first misdiagnosed as GPU
+contention and "fixed" with `CUDA_VISIBLE_DEVICES=0`; it failed again
+identically. Because `transforms` re-runs on resume and invalidates everything
+downstream, **each retry cost a ~90-minute re-index** — two of them.
+
+**Check both lines in the log say `c-omp`.** If the refinement line reads
+`python -m midas_fit_grain`, the flag is missing: kill the run rather than let it
+proceed. A bare `CalledProcessError` from `midas_fit_grain` with no underlying
+error is the signature — suspect the backend before the GPU, the data or the
+geometry.
 
 13 stages, each with a provenance entry in `<result>/LayerNr_N/midas_state.h5`:
 

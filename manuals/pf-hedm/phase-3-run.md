@@ -43,9 +43,20 @@ core, the `GrainsFile` line did not reach the binary (phase 2.4).
 
 ## 3.4 Refinement — c-omp, and the two files it needs
 
-**Use `--refine-backend c-omp` for speed** (a full layer refines in ~a minute or two vs a
-GIL-bound multi-day python refine). The pipeline now handles the two things the C refiner
-needs in PF mode automatically (shipped in `midas_pipeline.stages.refinement`):
+**`--refine-backend c-omp` is not optional, and it is not only about speed.** Indexing and
+refinement both run c-omp; **there is no GPU backend for either stage, in PF or FF.** The
+two stages have *different defaults*: the indexer already picks c-omp, but with no flag the
+**refiner falls back to python + torch + CUDA**, so a run whose log says
+`indexing(PF, c-omp)` can still be silently half on the GPU path. Measured on an FF layer
+(24 900 seeds, 471 k spots) it then died after ~12 s with a bare
+`subprocess.CalledProcessError … non-zero exit status 1` and **no child traceback** — the
+wrapper swallows the subprocess's stderr — and because `transforms` re-runs on resume, each
+retry cost a ~90-minute re-index. **Check the log: both the indexing and the refinement
+line must say `c-omp`.**
+
+On speed, separately: a full layer refines in ~a minute or two on c-omp vs a GIL-bound
+multi-day python refine. The pipeline handles the two things the C refiner needs in PF mode
+automatically (shipped in `midas_pipeline.stages.refinement`):
 
 1. It **synthesises the 5-column `SpotsToIndex.csv`** from `IndexBest_all.bin`
    (`midas_fit_grain.scan_seed.write_pf_seed_file`) — the C refiner picks each voxel's seed
