@@ -57,13 +57,35 @@ direct = [
 indexing = [
     "midas-hkls>=0.6.0",
 ]
+# Texture / ODF: midas_dt.gsh, midas_dt.texture_kernel, midas_dt.odf_uniaxial.
+# These are imported LAZILY by __init__ (PEP 562) because their floors sit above
+# the core ones and every reconstruction path works without them.
+#
+# The floors are for correctness, not features:
+#   * scipy>=1.15 -- gsh uses scipy.special.sph_harm_y. The predecessor
+#     `sph_harm` takes its arguments in the OPPOSITE order (azimuth before
+#     polar). Silently swapping them gives a transposed pole figure that is still
+#     smooth, still symmetric, and wrong, so this floor must exclude the older
+#     function rather than shim around it.
+#   * numpy>=2.0 -- np.trapezoid, used for the Haar-measure quadrature in
+#     texture_kernel and the Hermans-parameter quadrature in odf_uniaxial.
+#   * midas-hkls>=0.7.3 -- point_group.proper_rotations_from_space_group, i.e.
+#     symmetry for anything but cubic. 0.7.3 is the release that adds it; below
+#     that, SymGSH.families raises ImportError rather than guessing.
+texture = [
+    "midas-hkls>=0.7.3",
+    "scipy>=1.15",
+    "numpy>=2.0",
+]
 # Everything optional. midas-peakfit and midas-stress were listed here until
 # 2026-08-14 and are NOT imported anywhere in this package -- peakfit.py names
 # midas_peakfit in its docstring as the design it mirrors, but fits with
 # scipy.optimize directly. Dropped rather than carried as dead weight.
 full = [
     "midas-invert>=0.1.1",
-    "midas-hkls>=0.6.0",
+    "midas-hkls>=0.7.3",
+    "scipy>=1.15",
+    "numpy>=2.0",
 ]
 
 [project.scripts]

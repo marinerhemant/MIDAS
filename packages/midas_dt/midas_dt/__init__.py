@@ -40,6 +40,20 @@ from .absorption import (
     mu_from_transmission,
     uniform_mu,
 )
+from .azimuthal import (
+    RingExtraction,
+    area_and_centroid,
+    azimuthal_rebin,
+    background_from_ring_free,
+    radial_half_correlation,
+    count_maxima,
+    extract_ring,
+    mad_filter,
+    ring_free_mask,
+    ring_windows,
+    snr_per_eta,
+    strain_from_centroid,
+)
 from .direct import DirectResult, laplace_sigma, run_direct
 from .tensor_strain import (
     COMPONENT_NAMES,
@@ -86,6 +100,37 @@ __all__ = [
     "__version__",
     "ADDITIVE_FIT_OUTPUTS",
     "ALPHA_U3O8",
+    # per-azimuth ring extraction (area -> texture, centroid -> strain)
+    "RingExtraction",
+    "area_and_centroid",
+    "azimuthal_rebin",
+    "background_from_ring_free",
+    "radial_half_correlation",
+    "count_maxima",
+    "extract_ring",
+    "mad_filter",
+    "ring_free_mask",
+    "ring_windows",
+    "snr_per_eta",
+    "strain_from_centroid",
+    # texture / ODF -- requires midas-dt[texture], imported lazily (see below)
+    "CubicGSH",
+    "LadderResult",
+    "SymGSH",
+    "UniaxialODFModel",
+    "cubic_rotations",
+    "explained_by_polynomial",
+    "fibre_cos_theta",
+    "fit_uniaxial_ladder",
+    "hermans_parameter",
+    "hkl_family",
+    "invariant_basis",
+    "kappa_for_halfwidth",
+    "kernel_to_gsh",
+    "legendre_even",
+    "radial_coeffs",
+    "sample_kernel",
+    "uniaxial_design",
     "BranchResult",
     "CEO2",
     "DirectResult",
@@ -158,3 +203,52 @@ __all__ = [
     "reconstruct",
     "unsnake",
 ]
+
+
+# ------------------------------------------------------------------ texture
+# The ODF / texture modules are imported LAZILY, on first attribute access.
+#
+# They need floors above this package's core ones -- `scipy.special.sph_harm_y`
+# arrived in scipy 1.15 and `numpy.trapezoid` in numpy 2.0 -- and symmetry for
+# anything but cubic comes from the optional `midas-hkls`. Importing them eagerly
+# would make `import midas_dt` fail on an environment that is perfectly capable of
+# running every reconstruction path, which is the overwhelmingly common case.
+#
+# Install with: pip install midas-dt[texture]
+_TEXTURE_MODULES = {
+    "gsh": ("CubicGSH", "SymGSH", "cubic_rotations", "hkl_family",
+            "invariant_basis", "sph_harm_vec", "wigner_D"),
+    "texture_kernel": ("halfwidth_deg", "kappa_for_halfwidth", "kernel_profile",
+                       "kernel_to_gsh", "radial_coeffs", "sample_kernel",
+                       "sample_kernel_angles"),
+    "odf_uniaxial": ("LadderResult", "UniaxialODFModel",
+                     "explained_by_polynomial", "fibre_cos_theta",
+                     "fit_uniaxial_ladder", "hermans_parameter",
+                     "legendre_even", "normalisation_c_l", "uniaxial_design"),
+}
+_TEXTURE_OWNER = {name: mod for mod, names in _TEXTURE_MODULES.items()
+                  for name in names}
+
+
+def __getattr__(name: str):
+    """PEP 562 lazy access to the texture symbols."""
+    mod_name = _TEXTURE_OWNER.get(name)
+    if mod_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+    try:
+        mod = importlib.import_module(f".{mod_name}", __name__)
+    except ImportError as exc:
+        raise ImportError(
+            f"midas_dt.{name} needs the texture extra: "
+            f"pip install 'midas-dt[texture]'  (scipy>=1.15 for sph_harm_y, "
+            f"numpy>=2.0 for trapezoid, midas-hkls for non-cubic symmetry). "
+            f"Underlying error: {exc}"
+        ) from exc
+    value = getattr(mod, name)
+    globals()[name] = value          # cache, so this runs once per symbol
+    return value
+
+
+def __dir__():                       # pragma: no cover - interactive convenience
+    return sorted(__all__)
