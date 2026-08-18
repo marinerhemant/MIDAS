@@ -13,4 +13,4 @@ import os
 # time (before either runtime initializes) so callers don't hit a hard crash.
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"

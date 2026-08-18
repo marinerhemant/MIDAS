@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-defect"
-version = "0.1.4"
+version = "0.1.5"
 description = "Differentiable, phase-agnostic diffuse-scattering defect metrology on top of standard FF-HEDM: intensity-budget closure, per-grain dislocation density, fault-rod and selection-rule tests."
 readme = "README.md"
 license = "BSD-3-Clause"
