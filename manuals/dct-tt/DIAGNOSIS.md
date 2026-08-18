@@ -193,12 +193,13 @@ trustworthy.
 
 **Test.** Convert a known rotation and check the **absolute angle**: `θ = 2·atan(|r|)`.
 
-**Discriminating outcome.** `midas_stress.rodrigues_to_orient_mat` gives 60°→**80°**,
-90°→**180°** — right axis, wrong angle, inflated by `1/cos²(θ/2)`. Small angles look fine
-(5°→5.010°), which is why it survives casual checks.
+**Discriminating outcome.** **Below midas-stress 0.9.0**, `rodrigues_to_orient_mat` gave
+60°→**80°**, 90°→**180°** — right axis, wrong angle, inflated by `1/cos²(θ/2)`. Small angles
+look fine (5°→5.010°), which is why it survived casual checks. Fixed in 0.9.0.
 
-**Lever.** `midas_dct_tt.rodrigues_to_crystal_to_sample`. Substituting the defective converter
-moves the 74-scan tilt residual from 0.043° to 26.5°.
+**Lever.** Check the installed version first; substituting the old converter moved a 74-scan
+tilt residual from 0.043° to 26.5°. Then check the separate **convention** question — read
+deposits with `midas_dct_tt.rodrigues_to_crystal_to_sample`.
 
 ---
 

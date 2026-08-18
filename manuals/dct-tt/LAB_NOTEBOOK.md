@@ -95,18 +95,26 @@ accounts as provisional even when the numbers they explain are solid.**
 * **Absolute strain has not been demonstrated on real data** by the TT pipeline; only `c/a` is
   identifiable from goniometer tilts.
 
-## §5 DEFECTS IN DEPENDENCIES — found here, live at time of writing
+## §5 DEFECTS IN DEPENDENCIES — found here
 
-* **`midas_stress.rodrigues_to_orient_mat` returns the wrong rotation angle.** It gives a
-  proper rotation (det 1, orthogonal to 1e-16) about the **exactly correct axis**, but with the
-  angle inflated by `1/cos²(θ/2)`: 5°→5.010°, 30°→32.154°, 60°→**80°**, 90°→**180°**. Both
-  numpy and torch backends, identically. Cause: the quaternion vector part is built as
-  `rod/cos(θ/2)` where it should be `n·sin(θ/2)`.
-  Its own tests miss it because they check the identity (where the bug vanishes), structural
-  properties the bug preserves, and numpy-vs-torch parity (both wrong the same way). There is
-  no inverse function, so no round-trip masks it.
-  **Use `midas_dct_tt.rodrigues_to_crystal_to_sample`.** Substituting the defective one moves
-  the 74-scan tilt residual from 0.043° to **26.5°** — indistinguishable from random grains.
+* **`midas_stress.rodrigues_to_orient_mat` returned the wrong rotation angle, below
+  midas-stress 0.9.0.** It gave a proper rotation (det 1, orthogonal to 1e-16) about the
+  **exactly correct axis**, but with the angle inflated by `1/cos²(θ/2)`: 5°→5.010°,
+  30°→32.154°, 60°→**80°**, 90°→**180°**. Both numpy and torch backends, identically. Cause:
+  the quaternion vector part was built as `rod/cos(θ/2)` where it should be `n·sin(θ/2)`.
+  Its own tests missed it because they checked the identity (where the bug vanishes),
+  structural properties the bug preserves, and numpy-vs-torch parity (both wrong the same
+  way). There was no inverse function, so no round-trip masked it.
+  **Fixed in midas-stress 0.9.0**, which now agrees with
+  `midas_dct_tt.rodrigues_to_crystal_to_sample` to 2.7e-15.
+  Two things survive the fix. First, **check your installed version** — substituting the old
+  converter moved the 74-scan tilt residual from 0.043° to **26.5°**, indistinguishable from
+  assigning scans to random grains, and it is silent at small angles (5°→5.010°). Second, the
+  **convention** question is separate from the defect: grain maps written by the common Python
+  microstructure toolchain store the negated Rodrigues convention, so keep using
+  `midas_dct_tt.rodrigues_to_crystal_to_sample` to read them.
+  *Lesson worth more than the bug: a test suite can check determinant, orthogonality and
+  backend parity and still never assert the quantity the function exists to produce.*
 
 * **Threshold counts at a saturation point are rounding censuses.** Counting `γ ≥ 90°` exactly
   counts how many dot products round to *bit-exact* zero (`acos(0.0)` is exactly 90;

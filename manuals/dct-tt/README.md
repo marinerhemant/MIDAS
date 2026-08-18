@@ -137,7 +137,7 @@ everything not blocked by it first.
 | Frames stored **X-flipped** (a flip flag in the frame header) | Reconstructs a mirrored grain; looks perfect | phase-0 |
 | **Double-subtracting the dark** when frames are already corrected | Suppressed weak spots; reads as a detection limit | phase-0 |
 | DCT **erodes grain boundaries** | A reconstruction came out ~30 % larger than a reference grain map, and growing the *reference* by 2 voxels improved agreement. Do not "correct" the wrong one | phase-3 |
-| `midas_stress.rodrigues_to_orient_mat` returns the right **axis** at the wrong **angle** (60°→80°, 90°→180°) | Any Rodrigues-stored grain map read through it is wrong at large misorientation. Use `midas_dct_tt.rodrigues_to_crystal_to_sample` | phase-0, `LAB_NOTEBOOK` |
+| **Below midas-stress 0.9.0**, `rodrigues_to_orient_mat` returned the right **axis** at the wrong **angle** (60°→80°, 90°→180°) | Any Rodrigues-stored grain map read through the old version is wrong at large misorientation, silently. Check the version; read deposits with `midas_dct_tt.rodrigues_to_crystal_to_sample`, which also handles the negated convention | phase-0, `LAB_NOTEBOOK` |
 
 ## 0. Verify the install
 

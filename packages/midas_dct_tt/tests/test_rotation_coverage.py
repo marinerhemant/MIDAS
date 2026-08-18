@@ -114,3 +114,34 @@ def test_moment_is_symmetric_and_trace_one():
     M = sensitivity_moment(_pair(37.0))
     assert np.allclose(M, M.T)
     assert np.trace(M) == pytest.approx(1.0)
+
+
+def test_single_plane_multi_scan_schemes_do_not_break_the_roll_null():
+    """The claim made in Sec. 5: no combination of scans on ONE lattice plane
+    recovers the component about G.
+
+    Joining a scan to its antipodal partner (-h-k-l), to a higher diffraction
+    order (2h 2k 2l), or to any repeat of itself leaves the sensitivity moment
+    identical, because ``g g^T`` is invariant under ``g -> -g`` and a higher
+    order shares the direction. Only a genuinely different plane normal helps.
+    """
+    g = np.array([0.0, -2.0, 2.0])
+    g = g / np.linalg.norm(g)
+    single = sensitivity_moment([g])
+
+    for label, extra in (("antipode", -g),
+                         ("second order", 2.0 * g),
+                         ("antipodal second order", -2.0 * g),
+                         ("a repeat", g)):
+        M = sensitivity_moment([g, extra])
+        assert np.allclose(M, single), label
+        # the null stays exactly along G
+        assert np.allclose(M @ g, 0.0, atol=1e-15), label
+        assert rotation_conditioning([g, extra])[1] == 0.0, label
+
+    # ...while a different plane normal does break it, per eq. (cond)
+    for deg, expect in ((60.0, (1 - np.cos(np.radians(60.0))) / 2),
+                        (90.0, 0.5)):
+        _, ratio = rotation_conditioning(_pair(deg))
+        assert ratio == pytest.approx(expect)
+        assert ratio > 0.0

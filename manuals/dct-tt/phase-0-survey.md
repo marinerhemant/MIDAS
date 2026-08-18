@@ -71,10 +71,10 @@ Useful as a format reference and, carefully, as ground truth. Two cautions:
   reference grain, and *growing the reference* by 2 voxels improved the agreement. If you
   "correct" the reconstruction toward the reference you will be correcting the wrong one.
 * **Rodrigues vectors carry a convention.** Grain maps written by the common Python
-  microstructure toolchain use the negated convention, and
-  `midas_stress.rodrigues_to_orient_mat` will not read them — it is also independently
-  defective (right axis, wrong angle: 60°→80°, 90°→180°). Use
-  `midas_dct_tt.rodrigues_to_crystal_to_sample`, which documents both issues.
+  microstructure toolchain use the negated convention, so read them with
+  `midas_dct_tt.rodrigues_to_crystal_to_sample`. Separately, **below midas-stress 0.9.0**
+  `rodrigues_to_orient_mat` was defective (right axis, wrong angle: 60°→80°, 90°→180°) — check
+  your installed version, because the error is invisible at small misorientation.
 
 ## 0.6 Exit criteria
 

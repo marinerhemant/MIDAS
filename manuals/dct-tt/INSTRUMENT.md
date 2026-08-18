@@ -67,9 +67,9 @@ Useful as a format reference and, carefully, as ground truth:
   reconstruction toward the reference.
 * **Rodrigues vectors carry a convention.** Maps written by the common Python microstructure
   toolchain use the negated convention. Read them with
-  `midas_dct_tt.rodrigues_to_crystal_to_sample`, which also documents why
-  `midas_stress.rodrigues_to_orient_mat` must not be used (right axis, wrong angle — 60°→80°,
-  90°→180°).
+  `midas_dct_tt.rodrigues_to_crystal_to_sample`. Note also that **below midas-stress 0.9.0**
+  `rodrigues_to_orient_mat` returned the right axis at the wrong angle (60°→80°, 90°→180°);
+  fixed in 0.9.0, but check what you have installed.
 * A reference map from a **different specimen** is a format reference only, never ground truth.
 
 ## §7 Open-data archives
