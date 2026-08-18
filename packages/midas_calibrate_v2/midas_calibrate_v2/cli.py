@@ -82,8 +82,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         "paramsfile is the TEMPLATE: its thresholds, ring numbers, omega scan "
         "and lattice are carried over; geometry, distortion and RhoD are "
         "replaced.")
-    ff.add_argument("--calibrant", default="CeO2",
-                    help="CeO2 (default), LaB6, Si, Al2O3")
+    ff.add_argument("--calibrant", action="append", default=None,
+                    help="CeO2 (default), LaB6, Si, Al2O3. Repeatable for a "
+                         "mixed-calibrant exposure, e.g. --calibrant CeO2 "
+                         "--calibrant LaB6; every phase enters the ring table "
+                         "and the residual is reported per phase. Seeding uses "
+                         "the FIRST one, so list the stronger, smoother powder "
+                         "first.")
+    ff.add_argument("--min-ring-separation", type=float, default=0.0,
+                    metavar="PX",
+                    help="drop any ring whose nearest neighbour in radius is "
+                         "closer than this (px). Two interleaved calibrant ring "
+                         "sets always collide somewhere, and a blended ring's "
+                         "centroid is dragged by its neighbour. 12 is a "
+                         "reasonable start; 0 (default) disables.")
+    ff.add_argument("--blend-cross-phase-only", action="store_true",
+                    help="restrict --min-ring-separation to collisions between "
+                         "DIFFERENT calibrants, leaving same-phase doublets to "
+                         "the doublet co-fitter")
     ff.add_argument("--image-group", default="exchange/data",
                     help="HDF5 dataset holding the calibrant frames")
     ff.add_argument("--dark-group", default=None,
@@ -138,6 +154,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     fs.add_argument("--set", action="append", metavar="KEY=VALUE",
                     help="override any default, repeatable")
     args = p.parse_args(argv)
+    # argparse 'append' cannot express "default unless given", so normalise
+    # here: no --calibrant means the historical single CeO2.
+    if not args.calibrant:
+        args.calibrant = ["CeO2"]
 
     from midas_calibrate.params import CalibrationParams as V1Params
     from .compat.to_v1 import write_v1_paramstest
@@ -221,6 +241,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         res = calibrate_ff_from_files(
             args.image, template, args.output,
             raw_folder=args.raw_folder, calibrant=args.calibrant,
+            min_ring_separation_px=args.min_ring_separation,
+            blend_exclude_cross_phase_only=args.blend_cross_phase_only,
             wavelength_A=args.wavelength,
             data_group=args.image_group, dark_group=args.dark_group,
             reduce=args.reduce,

@@ -71,6 +71,7 @@ def autocalibrate(
     build_residual_corr: bool = True,
     residual_corr_outlier_pct: float = 90.0,
     residual_corr_path: Optional[str] = None,
+    honest_strain: bool = True,
 ) -> CalibrationResult:
     """Run alternating E↔M with the v2 spec.
 
@@ -82,8 +83,16 @@ def autocalibrate(
     image, dark : numpy arrays.
     spec : optional v2 CalibrationSpec
         Overrides the v1-derived spec.  Use this to enable extra refinable
-        parameters (pxY, pxZ, panels) or attach priors.
+        parameters (pxY, pxZ, panels) or attach priors.  Its
+        ``rings_to_exclude`` / ``max_ring_number`` are now honoured by the
+        E-step (they used to be read only by the pseudo-Voigt pipelines).
     panel_layout : optional :class:`PanelLayout` for multi-panel detectors.
+    honest_strain : bool
+        Re-extract the peaks at the post-LM geometry before scoring each
+        iteration, so the reported strain -- and the best-iterate choice --
+        reflect fit quality rather than the M-step objective.  Costs one extra
+        E-step per iteration.  Set False to restore the old (optimistic)
+        in-loop number; the results are not comparable across the two modes.
     """
     v1_params.validate()
     # Resolve RhoD to µm (RhoD enters only as ρ = R_um / RhoD). Auto-detect
@@ -119,7 +128,9 @@ def autocalibrate(
 
     for it in range(n_iter):
         # E-step (v1, proven).  Uses current v1_params geometry.
-        fits = run_estep_v1(v1_params, image, dark=dark, dtype=dtype, device=device)
+        fits = run_estep_v1(v1_params, image, dark=dark, spec=spec,
+                             dtype=dtype, device=device,
+                             verbose=verbose and it == 0)
         # Multi-panel detectors: tag each fitted point with its panel so the
         # M-step can refine per-panel rigid-body shifts.  The E-step has no
         # panel awareness, so we assign indices here from the panel mask.
@@ -155,10 +166,38 @@ def autocalibrate(
                 except Exception:
                     setattr(v1_params, name, scalar)
 
-        # Compute mean strain at the converged unpacked dict, plus robust
-        # summaries (median + 5%-trimmed mean) for ACZ-comparable reporting.
+        # Strain at the converged unpacked dict, plus robust summaries
+        # (median + 5%-trimmed mean) for ACZ-comparable reporting.
+        #
+        # ``residual_fn`` holds the peaks extracted BEFORE this LM ran, so
+        # evaluating it at ``unpacked`` measures how far the forward model
+        # moved away from the old peak positions -- it is the M-step objective,
+        # not fit quality, and it is systematically optimistic.  Selecting the
+        # "best" iterate on it picks a geometry the E-step does not reproduce:
+        # on a real two-phase 1-ID frame it read 41 ue where re-extracting at
+        # the same geometry gave 418 ue.  So re-run the E-step at the post-LM
+        # geometry (v1_params was just pushed to it) and score there.
+        # ``multi.py`` has always done this at MAP; do it every iteration so
+        # the iterate SELECTION is honest too.
+        fits_scored = fits
+        if honest_strain:
+            fits_scored = run_estep_v1(v1_params, image, dark=dark, spec=spec,
+                                        dtype=dtype, device=device)
+            if panel_layout is not None and fits_scored.panel_idx is None:
+                from ..forward.panels import panel_idx_for_points
+                fits_scored.panel_idx = panel_idx_for_points(
+                    panel_layout, fits_scored.Y_pix, fits_scored.Z_pix)
+
+        def _score(fd, unp):
+            return pseudo_strain_residual(
+                fd.Y_pix, fd.Z_pix, fd.ring_two_theta_deg, unp,
+                rho_d=fd.rho_d, weights=fd.weights,
+                panel_layout=panel_layout, panel_idx=fd.panel_idx,
+                ring_idx=fd.ring_idx,
+            )
+
         with torch.no_grad():
-            r_final = residual_fn(unpacked)
+            r_final = _score(fits_scored, unpacked)
             abs_r = r_final.abs()
             mean_strain_uE = float(abs_r.mean()) * 1e6
             median_strain_uE = float(abs_r.median()) * 1e6
@@ -170,7 +209,7 @@ def autocalibrate(
                 trim_strain_uE = mean_strain_uE
 
         rec = IterRecord(
-            iteration=it, n_fitted=int(fits.Y_pix.numel()),
+            iteration=it, n_fitted=int(fits_scored.Y_pix.numel()),
             cost=cost, rc=rc, mean_strain_uE=mean_strain_uE,
             Lsd=float(unpacked["Lsd"]),
             BC_y=float(unpacked["BC_y"]), BC_z=float(unpacked["BC_z"]),
@@ -178,11 +217,11 @@ def autocalibrate(
             median_strain_uE=median_strain_uE, trim_strain_uE=trim_strain_uE,
         )
         history.append(rec)
-        fits_final = fits
+        fits_final = fits_scored
         if mean_strain_uE < best_strain:
             best_strain = mean_strain_uE
             best_unpacked = {k: v.detach().clone() for k, v in unpacked.items()}
-            best_fits = fits
+            best_fits = fits_scored
         if verbose:
             print(f"[v2 iter {it}] n_fits={rec.n_fitted:4d}  rc={rc}  "
                   f"strain={mean_strain_uE:8.1f}μϵ "
@@ -270,6 +309,7 @@ def autocalibrate(
                                   flush=True)
                     # Honest post-residual strain at MAP.
                     fits_post = run_estep_v1(v1_params, image, dark=dark,
+                                              spec=spec,
                                               dtype=dtype, device=device)
                     if panel_layout is not None and fits_post.panel_idx is None:
                         from ..forward.panels import panel_idx_for_points

@@ -51,6 +51,21 @@ class CalibrationParams:
     LatticeConstant: Tuple[float, float, float, float, float, float] = (0, 0, 0, 90, 90, 90)
     MaxRingRad: float = 0.0      # px
     MinRingRad: float = 0.0      # px
+    # Multi-phase calibrant (e.g. a CeO2 + LaB6 mixture).  Each entry is
+    # ``{"name": str, "sg": int, "lattice": (a, b, c, alpha, beta, gamma)}``.
+    # Leave empty for a single calibrant, in which case SpaceGroup /
+    # LatticeConstant above are used and behaviour is unchanged.  Parameter
+    # files declare extra phases with repeated ``Phase`` lines:
+    #     Phase LaB6 221 4.15689 4.15689 4.15689 90 90 90
+    Phases: List[Dict] = field(default_factory=list)
+    # Drop any ring whose nearest neighbour in radius is closer than this
+    # (px).  0 disables.  Mixed-calibrant exposures interleave two ring sets,
+    # so a few pairs always collide; excluding them is cheaper than modelling
+    # them.  See rings.drop_blended_rings.
+    MinRingSeparation: float = 0.0
+    # Restrict that exclusion to collisions between DIFFERENT calibrants,
+    # leaving same-phase doublets to the doublet co-fitter.
+    BlendExcludeCrossPhaseOnly: bool = False
 
     # ----------------------------------------------- E-step binning
     Width: float = 800.0           # μm; ring half-width
@@ -146,6 +161,21 @@ class CalibrationParams:
                 params.MaxRingRad = float(val.split()[0])
             elif key == "MinRingRad":
                 params.MinRingRad = float(val.split()[0])
+            elif key == "MinRingSeparation":
+                params.MinRingSeparation = float(val.split()[0])
+            elif key == "BlendExcludeCrossPhaseOnly":
+                params.BlendExcludeCrossPhaseOnly = bool(int(val.split()[0]))
+            elif key == "Phase":
+                # Phase <name> <sg> a b c alpha beta gamma
+                f = val.split()
+                if len(f) < 8:
+                    raise ValueError(
+                        f"Phase line needs '<name> <sg> a b c alpha beta gamma'; "
+                        f"got {val!r}")
+                params.Phases.append({
+                    "name": f[0], "sg": int(f[1]),
+                    "lattice": tuple(float(x) for x in f[2:8]),
+                })
             elif key == "Width":
                 params.Width = float(val.split()[0])
             elif key == "EtaBinSize":

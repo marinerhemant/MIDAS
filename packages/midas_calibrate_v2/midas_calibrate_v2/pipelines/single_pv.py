@@ -291,10 +291,41 @@ def autocalibrate_pv(
             # model.  Doublet results REPLACE the corresponding singleton
             # fits in the BatchedFits.
             if doublet_separation_px > 0:
+                from ..forward.doublets import cluster_rings
+                clusters = cluster_rings(
+                    rt.r_ideal_px, min_separation_px=doublet_separation_px)
                 partner, pairs = doublet_index_map(
                     rt.r_ideal_px, min_separation_px=doublet_separation_px,
                 )
                 pair_indices = [(g.i, g.j) for g in pairs]
+                # Rings in a >=3-member blend cannot be co-fitted by the 2-peak
+                # model.  Chaining them into overlapping pairs fits the interior
+                # ring twice at two different centres, so drop their fits
+                # instead and say so.
+                n_ary = set(clusters.n_ary_ring_indices)
+                if n_ary:
+                    keep_n = torch.tensor(
+                        [int(r) not in n_ary for r in bf.ring_idx.tolist()],
+                        dtype=torch.bool)
+                    n_dropped = int((~keep_n).sum())
+                    if not bool(keep_n.any()):
+                        raise RuntimeError(
+                            f"doublet_separation_px={doublet_separation_px:g} "
+                            f"groups every ring into blends of >=3 "
+                            f"({len(clusters.n_ary)} cluster(s) covering rings "
+                            f"{sorted(n_ary)}), so no fits are left. That "
+                            f"separation is far larger than the ring spacing "
+                            f"here — lower it, or exclude the blends up front "
+                            f"with CalibrationParams.MinRingSeparation.")
+                    bf = BatchedFits(**{
+                        f: getattr(bf, f)[keep_n]
+                        for f in ("R_fit", "eta_deg", "ring_idx", "sigma",
+                                  "gamma", "area", "snr", "rms", "rc")})
+                    if verbose:
+                        print(f"  [pv iter {it}] dropped {n_dropped} fits from "
+                              f"{len(clusters.n_ary)} blends of >=3 rings "
+                              f"(rings {sorted(n_ary)}) — the 2-peak co-fitter "
+                              f"cannot model them", flush=True)
                 if pair_indices:
                     df = fit_doublet_pairs(
                         cake_t, R_centers, eta_centers, rt_R_ideal,

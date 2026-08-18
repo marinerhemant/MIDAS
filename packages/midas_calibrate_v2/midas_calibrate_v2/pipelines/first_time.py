@@ -728,6 +728,7 @@ def first_time_calibrate(
             unpacked=res.unpacked,
             history=res.history,
             fits=res.fits_final,
+            spec=getattr(res, "spec", None),
             panel_layout=panel_layout,
             strain_threshold_uE=strain_threshold_uE,
         )

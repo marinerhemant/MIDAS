@@ -13,6 +13,51 @@ Fully differentiable detector calibration for MIDAS.
 - **NN-augmented residual** — small conv NN ΔR(y, z) augmenter, two-stage training, smoothness-regularised so it doesn't absorb harmonics.
 - **Joint forward cake** — predict the (R, η) cake intensity directly from `(θ_geom, θ_shape)` and fit raw cake values.  Sidesteps v1's centroid + Newton inversion break.
 - **Downstream HEDM coupling** — sensitivity diagnostic + auxiliary loss that uses per-grain strain noise to validate calibration.
+- **Multi-calibrant exposures** — CeO2 *and* LaB6 (or any mix) on one frame. The ring table carries both phases, blended rings are excluded automatically, and the residual is reported **per phase** so the calibrants can be checked against each other.
+- **Identifiability gates** — refusing to let you refine what the data cannot determine: azimuthal coverage vs the distortion harmonics, RhoD scaling vs the radial terms, and a per-parameter σ audit that flags coefficients consistent with zero or sitting on a bound.
+
+## Two calibrants on one exposure
+
+```python
+from midas_calibrate_v2 import calibrate
+
+res = calibrate(
+    image, wavelength=0.153443, pxY=200.0,
+    calibrant=["CeO2", "LaB6"],      # seeding uses the FIRST one
+    min_ring_separation_px=12.0,     # drop rings that collide in radius
+)
+print(res.calibrants)                # ['CeO2', 'LaB6']
+print(res.sigma["Lsd"])              # 1σ, not just a point estimate
+print(res.unconstrained)             # refined but |value| < 1σ — freeze these
+print(res.at_bounds)                 # refined but pinned on a bound
+for d in res.diagnostics:
+    print(d.severity, d.name, d.message)
+```
+
+or from the CLI:
+
+```bash
+midas-calibrate-v2 ps.txt --mode ff --image cal.h5 \
+    --calibrant CeO2 --calibrant LaB6 --min-ring-separation 12
+```
+
+**What a second calibrant does and does not buy.** It adds rows to the
+Jacobian, not a new direction: expect ~√N tighter σ and a genuine cross-check
+between the two powders, but *no* new wavelength identifiability (both phases
+enter only through their d-spacings, so λ↔Lsd stays degenerate — use
+`lsd_offsets_um` for that) and *no* help with azimuthal harmonics (both
+powders illuminate the same arc of the detector).
+
+**Different sample positions** ("two capillaries") are modelled by passing the
+frame twice with one calibrant each and `mode="same_detector"`, which shares
+the tilts and leaves `Lsd`/`BC` per phase:
+
+```python
+ms = build_multi_spec([v1_ceo2, v1_lab6], mode="same_detector")
+```
+
+Note this offset is exactly degenerate with that phase's lattice constant on a
+single frame. See `notebooks/25_two_calibrants_one_exposure.ipynb`.
 
 ## Installation
 

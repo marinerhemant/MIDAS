@@ -19,7 +19,7 @@ This module provides two diagnostics:
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -136,6 +136,60 @@ def per_cell_summary(
     return "\n".join(lines)
 
 
+def per_phase_summary(
+    abs_residuals_uE: torch.Tensor,
+    phase_idx: torch.Tensor,
+    phase_names: Sequence[str] = (),
+    *,
+    disagree_factor: float = 1.5,
+) -> str:
+    """Residual broken down by calibrant, for mixed-phase exposures.
+
+    This is the reason to shoot two calibrants at once.  A geometry fitted on
+    one powder can be systematically wrong for the other while looking fine on
+    its own rings, and a pooled mean hides it completely: on a real CeO2+LaB6
+    1-ID frame the CeO2-only fit scored 49 µε on CeO2 and 77 µε on LaB6.  The
+    gap between phases is a systematic-error estimate that no single-calibrant
+    calibration can produce.
+    """
+    n = abs_residuals_uE.numel()
+    if n == 0:
+        return "  per-phase summary: (empty)"
+    r = abs_residuals_uE.detach().cpu().numpy().astype(np.float64)
+    pid = phase_idx.detach().cpu().numpy().astype(np.int64)
+    names = list(phase_names)
+
+    def _name(i: int) -> str:
+        return names[i] if 0 <= i < len(names) else f"phase{i}"
+
+    present = sorted(set(int(p) for p in pid))
+    if len(present) < 2:
+        only = _name(present[0]) if present else "?"
+        return (f"  per-phase: single calibrant ({only}) — no cross-phase "
+                f"check available")
+
+    lines = ["  per-phase |r| (μϵ):"]
+    stats = {}
+    for p in present:
+        v = r[pid == p]
+        stats[p] = (float(np.mean(v)), float(np.median(v)), int(v.size))
+        lines.append(f"    {_name(p):<10} n={v.size:5d}  mean={stats[p][0]:8.2f}  "
+                      f"median={stats[p][1]:8.2f}")
+    means = {p: s[0] for p, s in stats.items()}
+    worst_p = max(means, key=means.get)
+    best_p = min(means, key=means.get)
+    ratio = means[worst_p] / max(means[best_p], 1e-9)
+    if ratio > disagree_factor:
+        lines.append(
+            f"    ⚠ {_name(worst_p)} residual is {ratio:.2f}× {_name(best_p)}'s "
+            f"— the calibrants disagree, so the true uncertainty is larger "
+            f"than the fit's formal error. Check the assumed lattice constants "
+            f"and per-phase sample position before trusting either.")
+    else:
+        lines.append(f"    ✓ calibrants agree to within {ratio:.2f}×")
+    return "\n".join(lines)
+
+
 def strain_summary(
     residuals_uE: torch.Tensor,
     ring_idx: Optional[torch.Tensor] = None,
@@ -143,13 +197,18 @@ def strain_summary(
     panel_idx: Optional[torch.Tensor] = None,
     *,
     label: str = "|r|",
+    phase_idx: Optional[torch.Tensor] = None,
+    phase_names: Sequence[str] = (),
 ) -> str:
-    """One-call combined summary: distribution + per-cell breakdown."""
+    """One-call combined summary: distribution + per-phase + per-cell breakdown."""
     abs_r = residuals_uE.abs() if (residuals_uE < 0).any() else residuals_uE
     parts = [distribution_report(abs_r, label=label)]
+    if phase_idx is not None:
+        parts.append(per_phase_summary(abs_r, phase_idx, phase_names))
     if ring_idx is not None and eta_deg is not None:
         parts.append(per_cell_summary(abs_r, ring_idx, eta_deg, panel_idx))
     return "\n".join(parts)
 
 
-__all__ = ["distribution_report", "per_cell_summary", "strain_summary"]
+__all__ = ["distribution_report", "per_cell_summary", "per_phase_summary",
+           "strain_summary"]

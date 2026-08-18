@@ -34,16 +34,44 @@ from ..parameters.spec import CalibrationSpec, MultiImageSpec
 from ._common import FittedDataset, run_estep_v1
 
 
+#: Parameters that describe the DETECTOR rather than the exposure.  Sharing
+#: exactly these is the "same detector, different sample" model — see
+#: :func:`build_multi_spec` under ``mode="same_detector"``.
+_DETECTOR_NAMES = ["pxY", "pxZ", "RhoD", "tx", "ty", "tz"]
+_PANEL_NAMES = ["panel_delta_yz", "panel_delta_theta",
+                "panel_delta_lsd", "panel_delta_p2"]
+
+MULTI_MODES = ("independent", "same_detector")
+
+
 def build_multi_spec(
     v1_per_image: List[V1Params],
     *,
     shared_names: Optional[List[str]] = None,
     link_lsd: bool = False,
+    mode: str = "independent",
 ) -> MultiImageSpec:
     """Construct a MultiImageSpec from per-image v1 params.
 
-    Default shared block: pxY, pxZ, RhoD, all v2 distortion params, panel_*.
-    Per-image: Lsd, BC_y, BC_z, ty, tz, Wavelength, Parallax, tx.
+    ``mode="independent"`` (default, unchanged): shared block is pxY, pxZ,
+    RhoD, all v2 distortion params, panel_*.  Per-image: Lsd, BC_y, BC_z, ty,
+    tz, Wavelength, Parallax, tx.  Appropriate when the images really are
+    different setups.
+
+    ``mode="same_detector"``: additionally shares the **tilts** (tx, ty, tz).
+    Use this whenever the images come from ONE detector that did not move --
+    several phases on a single exposure, or repeated exposures of the same
+    setup.  What stays per-image is then exactly ``Lsd``, ``BC_y``, ``BC_z``,
+    i.e. that exposure's SAMPLE POSITION: a sample displaced along the beam
+    changes its Lsd, and one displaced transversely moves the apparent beam
+    centre by ``d/px`` pixels.  Passing the same frame twice with one
+    calibrant each therefore fits the two powders' relative position.
+
+    Leaving the tilts per-image when the detector did not move is not merely
+    wasteful, it is wrong, and it biases what is left: on a real CeO2+LaB6
+    1-ID frame, independently-refined tilts absorbed the difference between
+    the two calibrants and reported a spurious 1.43 mm relative sample offset
+    where sharing the tilts gives 72 +/- 34 um.
 
     ``link_lsd=True`` additionally shares ``Lsd`` and ``Wavelength``.  Use it
     with ``lsd_offsets_um`` on :func:`autocalibrate_multi`, which turns the
@@ -52,12 +80,18 @@ def build_multi_spec(
     this — and not merely using several distances — is what makes the
     wavelength identifiable.
     """
+    if mode not in MULTI_MODES:
+        raise ValueError(f"mode must be one of {MULTI_MODES}; got {mode!r}")
     if shared_names is None:
         from ..forward.distortion import P_COEF_NAMES
         shared_names = (["pxY", "pxZ", "RhoD"]
                         + list(P_COEF_NAMES)
-                        + ["panel_delta_yz", "panel_delta_theta",
-                           "panel_delta_lsd", "panel_delta_p2"])
+                        + list(_PANEL_NAMES))
+        if mode == "same_detector":
+            shared_names += ["tx", "ty", "tz"]
+    elif mode == "same_detector":
+        shared_names = list(shared_names) + [
+            n for n in ("tx", "ty", "tz") if n not in shared_names]
     if link_lsd:
         shared_names = list(shared_names) + ["Lsd", "Wavelength"]
 
@@ -240,17 +274,30 @@ def autocalibrate_multi(
     for it in range(n_iter):
         # E-step per image at current geometry.
         fits_per_image: List[FittedDataset] = []
-        for v1, img, drk in zip(v1_per_image, images, darks):
+        for i_img, (v1, img, drk) in enumerate(zip(v1_per_image, images, darks)):
             fd = run_estep_v1(v1, img, dark=drk, dtype=dtype, device=device)
-            if link_lsd and fd.ring_d_spacing_A is None and fd.rt is not None:
-                # Refining a SHARED Wavelength needs the autograd chain to run
-                # through lambda, which pseudo_strain_residual only does when
-                # per-point d-spacings are supplied (otherwise it uses the
-                # pre-computed constant 2theta and d(residual)/d(lambda) = 0).
-                # run_estep_v1 leaves this field empty, so fill it here.
+            if fd.ring_d_spacing_A is None and fd.rt is not None:
+                # Refining Wavelength needs the autograd chain to run through
+                # lambda, which pseudo_strain_residual only does when per-point
+                # d-spacings are supplied (otherwise it uses the pre-computed
+                # constant 2theta and d(residual)/d(lambda) is exactly 0).
                 d_ring = torch.as_tensor(fd.rt.d_spacing, dtype=dtype,
                                          device=device)
                 fd.ring_d_spacing_A = d_ring[fd.ring_idx]
+            # A refined Wavelength with no d-spacings is a SILENT no-op: the
+            # parameter is packed, gets an all-zero Jacobian column, and comes
+            # back at its initial value with no warning.  Refuse instead.
+            if fd.ring_d_spacing_A is None:
+                wl_shared = multi_spec.shared.get("Wavelength")
+                wl_local = multi_spec.per_image[i_img].get("Wavelength")
+                if (wl_shared is not None and wl_shared.refined) or \
+                        (wl_local is not None and wl_local.refined):
+                    raise RuntimeError(
+                        "Wavelength is marked refined but the E-step produced no "
+                        "per-fit d-spacings, so d(residual)/d(lambda) is "
+                        "identically zero and the refinement would silently do "
+                        "nothing. Ensure the fitted dataset carries "
+                        "ring_d_spacing_A (run_estep_v1 populates it).")
             fits_per_image.append(fd)
 
         x_full, info = pack_multi(multi_spec, dtype=dtype, device=device)
@@ -481,4 +528,5 @@ def autocalibrate_multi(
     )
 
 
-__all__ = ["build_multi_spec", "MultiResult", "autocalibrate_multi"]
+__all__ = ["build_multi_spec", "MultiResult", "autocalibrate_multi",
+           "MULTI_MODES"]

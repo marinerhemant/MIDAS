@@ -129,48 +129,69 @@ def rho_d_for(BC_y: float, BC_z: float, n_y: int, n_z: int, px: float) -> float:
     return px * math.hypot(max(BC_y, n_y - 1 - BC_y), max(BC_z, n_z - 1 - BC_z))
 
 
+#: Overlay colour per calibrant, in the order the phases were given.
+_PHASE_COLORS = ("red", "cyan", "yellow", "lime", "magenta")
+
+
 def write_ring_overlay(image, result, wavelength_A, calibrant, out_png, *,
                        max_frac_of_frame: float = 0.75) -> int:
-    """Predicted rings at the refined geometry, over the measured frame."""
+    """Predicted rings at the refined geometry, over the measured frame.
+
+    ``calibrant`` may be one name/dict or a list of them; each phase is drawn
+    in its own colour so a mixed-calibrant exposure can be checked by eye.
+
+    Reflection conditions come from :func:`midas_hkls.generate_hkls`, which
+    applies the real space-group symmetry.  This used to hard-code the
+    all-odd/all-even FCC condition, which is right for CeO2 (Fm-3m) and wrong
+    for LaB6 (Pm-3m, where every hkl is allowed) and for Al2O3 (R-3c) — the
+    overlay silently drew the wrong ring set for anything but ceria.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from ..seed.calibrant import CALIBRANTS
+    from midas_hkls import Lattice, SpaceGroup, generate_hkls
+    from ..seed.calibrant import resolve_calibrants
 
-    a = float(CALIBRANTS[calibrant]["a"])
-    seen, radii = set(), []
-    for h in range(9):
-        for k in range(9):
-            for l in range(9):
-                if h == k == l == 0 or not (h % 2 == k % 2 == l % 2):
-                    continue
-                s = h * h + k * k + l * l
-                if s in seen:
-                    continue
-                seen.add(s)
-                arg = wavelength_A / (2.0 * a / math.sqrt(s))
-                if abs(arg) >= 1.0:
-                    continue
-                r = result.Lsd * math.tan(2.0 * math.asin(arg)) / result.pxY
-                if 50 < r < max_frac_of_frame * image.shape[0]:
-                    radii.append(r)
+    r_max = max_frac_of_frame * image.shape[0]
+    two_theta_max = math.degrees(math.atan(r_max * result.pxY / result.Lsd))
+
+    per_phase = []
+    for spec in resolve_calibrants(calibrant):
+        refs = generate_hkls(
+            SpaceGroup.from_number(int(spec["sg"])),
+            Lattice(a=spec["a"], b=spec["b"], c=spec["c"],
+                    alpha=spec["alpha"], beta=spec["beta"], gamma=spec["gamma"]),
+            wavelength_A=wavelength_A, two_theta_max_deg=two_theta_max)
+        radii = sorted({
+            round(result.Lsd * math.tan(math.radians(r.two_theta_deg))
+                  / result.pxY, 4)
+            for r in refs})
+        per_phase.append((spec["name"],
+                          [r for r in radii if 50 < r < r_max]))
 
     vmax = np.percentile(image[image > 0], 99.5) if (image > 0).any() else 1.0
     fig, ax = plt.subplots(figsize=(11, 11))
     ax.imshow(image, cmap="gray", vmin=0, vmax=vmax, origin="lower")
     th = np.linspace(0, 2 * np.pi, 720)
-    for r in radii:
-        ax.plot(result.BC_y + r * np.cos(th), result.BC_z + r * np.sin(th),
-                lw=0.7, color="red", alpha=0.85)
-    ax.plot([result.BC_y], [result.BC_z], "+", color="cyan", ms=14, mew=2)
-    ax.set_title(f"{calibrant}: predicted rings at the refined geometry "
-                 f"(Lsd={result.Lsd:.0f} um)", fontsize=10)
+    n_total = 0
+    for i, (name, radii) in enumerate(per_phase):
+        color = _PHASE_COLORS[i % len(_PHASE_COLORS)]
+        for j, r in enumerate(radii):
+            ax.plot(result.BC_y + r * np.cos(th), result.BC_z + r * np.sin(th),
+                    lw=0.7, color=color, alpha=0.85,
+                    label=f"{name} ({len(radii)} rings)" if j == 0 else None)
+        n_total += len(radii)
+    ax.plot([result.BC_y], [result.BC_z], "+", color="deepskyblue", ms=14, mew=2)
+    if len(per_phase) > 1:
+        ax.legend(loc="upper right", fontsize=8, framealpha=0.6)
+    ax.set_title(f"{' + '.join(n for n, _ in per_phase)}: predicted rings at "
+                 f"the refined geometry (Lsd={result.Lsd:.0f} um)", fontsize=10)
     ax.set_xlabel("Y (px)")
     ax.set_ylabel("Z (px)")
     fig.tight_layout()
     fig.savefig(str(out_png), dpi=130)
     plt.close(fig)
-    return len(radii)
+    return n_total
 
 
 #: Keys a template must supply that nothing can guess — they describe the
@@ -380,7 +401,9 @@ def calibrate_ff_from_files(
     out_paramstest: Union[str, Path],
     *,
     raw_folder: Optional[str] = None,
-    calibrant: str = "CeO2",
+    calibrant: Union[str, Sequence[str]] = "CeO2",
+    min_ring_separation_px: float = 0.0,
+    blend_exclude_cross_phase_only: bool = False,
     wavelength_A: Optional[float] = None,
     px_um: Optional[float] = None,
     n_pixels_y: Optional[int] = None,
@@ -438,6 +461,8 @@ def calibrate_ff_from_files(
 
     res = calibrate(
         image, wavelength=wavelength_A, pxY=px_um, calibrant=calibrant,
+        min_ring_separation_px=min_ring_separation_px,
+        blend_exclude_cross_phase_only=blend_exclude_cross_phase_only,
         im_trans=tuple(im_trans), initial_Lsd=initial_Lsd_um,
         output_dir=str(out_paramstest.parent),
         n_iter=n_iter, lm_max_iter=lm_max_iter,
@@ -470,7 +495,9 @@ def calibrate_ff_from_files(
                    else res.in_loop_strain_uE)
     png = None
     if overlay:
-        png = out_paramstest.parent / f"ring_overlay_{calibrant}.png"
+        tag = ("_".join(calibrant) if isinstance(calibrant, (list, tuple))
+               else str(calibrant))
+        png = out_paramstest.parent / f"ring_overlay_{tag}.png"
         n = write_ring_overlay(image, res, wavelength_A, calibrant, png)
         if verbose:
             print(f"[ff-calib] overlay -> {png} ({n} rings). Look at it: a "

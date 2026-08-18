@@ -25,6 +25,7 @@ from typing import List, Tuple
 # bottom is findable.
 sys.path.insert(0, str(Path(__file__).parent))
 from _nb24_source import NB_24        # noqa: E402
+from _nb25_source import NB_25        # noqa: E402
 
 HERE = Path(__file__).parent
 
@@ -3174,6 +3175,7 @@ NOTEBOOKS = {
     "22_multi_distance_bayesian":       NB_22,
     "23_joint_multidetector_hydra":     NB_23,
     "24_wavelength_from_known_travel":  NB_24,
+    "25_two_calibrants_one_exposure":   NB_25,
 }
 
 

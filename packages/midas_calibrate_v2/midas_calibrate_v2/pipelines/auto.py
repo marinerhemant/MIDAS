@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Tuple, Union, Dict, List
+from typing import Optional, Sequence, Tuple, Union, Dict, List
 
 import numpy as np
 import torch
@@ -36,7 +36,8 @@ import torch
 # make_seed() always resolve a calibrant (named or custom dict) to the
 # exact same lattice — see midas_calibrate_v2.seed.calibrant for why the
 # two used to be independent registries that could (and did) drift apart.
-from ..seed.calibrant import CALIBRANTS, resolve_calibrant
+from ..seed.calibrant import (CALIBRANTS, resolve_calibrant, resolve_calibrants,
+                              phases_from_calibrants)
 
 
 def _generate_sim_radii_px(*, lattice_a: float, lattice_b: float, lattice_c: float,
@@ -95,6 +96,19 @@ class AutoCalibrationResult:
     # Quality + provenance
     post_residual_strain_uE: Optional[float] = None
     in_loop_strain_uE: Optional[float] = None
+    # Per-parameter 1σ from the Gauss-Newton covariance at MAP, keyed by v2
+    # parameter name.  Empty when the Jacobian is singular.  A refined
+    # parameter whose |value| is well under its σ is not measured by the data,
+    # however confident the point estimate looks.
+    sigma: Dict[str, float] = field(default_factory=dict)
+    # Refined parameters that are consistent with zero (|value| < n·σ) or are
+    # sitting on a bound.  These are the ones to freeze and re-run.
+    unconstrained: List[str] = field(default_factory=list)
+    at_bounds: List[str] = field(default_factory=list)
+    # Calibrant name(s) actually used.
+    calibrants: List[str] = field(default_factory=list)
+    # Diagnostic gate results (azimuth coverage, RhoD scaling, ...).
+    diagnostics: List = field(default_factory=list)
     residual_corr_map: Optional[torch.Tensor] = None     # [NrPixelsZ, NrPixelsY] px
     residual_corr_bin_path: Optional[str] = None
     seed_seconds: float = 0.0
@@ -182,7 +196,9 @@ def calibrate(
     pxZ: Optional[float] = None,
     dark: Optional[np.ndarray] = None,
     im_trans: tuple = (),
-    calibrant: Union[str, Dict] = "CeO2",
+    calibrant: Union[str, Dict, Sequence[Union[str, Dict]]] = "CeO2",
+    min_ring_separation_px: float = 0.0,
+    blend_exclude_cross_phase_only: bool = False,
     output_dir: Optional[Union[str, Path]] = None,
     initial_Lsd: float = 1_000_000.0,
     BC_guess: Optional[Tuple[float, float]] = None,
@@ -221,6 +237,19 @@ def calibrate(
     * ``dark`` — optional dark-frame array; subtracted from ``image``.
     * ``calibrant`` — name (``"CeO2"``, ``"LaB6"``, ``"Si"``, ``"Al2O3"``)
       or a dict with ``a``, optionally ``c``, ``alpha``, ``gamma``, ``sg``.
+      **A list of either** calibrates against a mixed-calibrant exposure
+      (e.g. ``["CeO2", "LaB6"]``): the ring table then carries both phases,
+      and the result reports the residual per phase so the two can be checked
+      against each other.  Seeding still uses the FIRST entry, so list the
+      stronger, smoother powder first.
+    * ``min_ring_separation_px`` — drop any ring whose nearest neighbour in
+      radius is closer than this.  Two interleaved ring sets always produce a
+      few collisions, and a blended ring's centroid is dragged by its
+      neighbour.  Excluding them is cheaper than modelling them; on a 1-ID
+      CeO2+LaB6 frame a 12 px cut costs 6 of 40 rings.  0 disables.
+    * ``blend_exclude_cross_phase_only`` — restrict that exclusion to
+      collisions between DIFFERENT calibrants, leaving same-phase doublets to
+      the doublet co-fitter.
     * ``panel_layout`` — optional :class:`PanelLayout` for tiled-module
       detectors (Pilatus, Eiger).  Build it once with
       ``PanelLayout.regular(n_y, n_z, sy, sz, gap_y, gap_z)`` and pass it in;
@@ -309,11 +338,17 @@ def calibrate(
     # the crystal system implied by 'sg' and returns the full (a,b,c,alpha,
     # beta,gamma) lattice — the same one make_seed() uses internally, so the
     # seed and the fit never disagree on what the calibrant's lattice is.
-    cal = resolve_calibrant(calibrant)
+    # A list means a mixed-calibrant exposure.  Every phase goes into the ring
+    # table; the FIRST is also the one the seeder works from, since the seeder
+    # matches an arc pattern against a single ring table.
+    cal_specs = resolve_calibrants(calibrant)
+    cal = cal_specs[0]
     a, b, c = cal["a"], cal["b"], cal["c"]
     alpha, beta, gamma = cal["alpha"], cal["beta"], cal["gamma"]
     sg = cal["sg"]
     cal_name = cal["name"]
+    cal_names = [s["name"] for s in cal_specs]
+    seed_calibrant = calibrant[0] if isinstance(calibrant, (list, tuple)) else calibrant
 
     # 1. Background.  Detect bad-pixel / detector-gap sentinels from the RAW
     # image *before* clipping, so they can be masked out of seeding
@@ -350,7 +385,10 @@ def calibrate(
     # Generate simulated ring radii for the nominal geometry — needed by the
     # automatic seeder and the seed_from_image fallback.
     if verbose:
-        print(f"[calibrate] STAGE 1: seeding from {cal_name} rings...", flush=True)
+        extra = (f" (of {len(cal_specs)} phases: {', '.join(cal_names)})"
+                 if len(cal_specs) > 1 else "")
+        print(f"[calibrate] STAGE 1: seeding from {cal_name} rings{extra}...",
+              flush=True)
     sim_radii = _generate_sim_radii_px(
         lattice_a=a, lattice_b=b, lattice_c=c, alpha=alpha, beta=beta, gamma=gamma,
         wavelength=wavelength, px=pxY, sg=sg,
@@ -394,7 +432,7 @@ def calibrate(
         try:
             from ..seed.auto_seed import make_seed
             ms = make_seed(img, wavelength_A=wavelength, px_um=pxY,
-                           calibrant=calibrant, use_diplib=False)
+                           calibrant=seed_calibrant, use_diplib=False)
             if ms.Lsd_um and ms.Lsd_um > 0:
                 seed = SimpleNamespace(bc_y=ms.BC_y, bc_z=ms.BC_z, Lsd=ms.Lsd_um,
                                        n_arcs=0, n_rings=int(ms.n_measured))
@@ -452,6 +490,12 @@ def calibrate(
                 **{f"p{i}": refine_distortion for i in range(15)}},
         Device=device, Dtype="fp64" if dtype == torch.float64 else "fp32",
     )
+    # Multi-calibrant: every phase enters the ring table (Phases wins over the
+    # scalar SpaceGroup/LatticeConstant above, which stay set to phase 0 so
+    # single-phase consumers of v1 keep working).
+    v1.Phases = phases_from_calibrants(calibrant)
+    v1.MinRingSeparation = float(min_ring_separation_px)
+    v1.BlendExcludeCrossPhaseOnly = bool(blend_exclude_cross_phase_only)
 
     bin_path = None
     if output_dir is not None:
@@ -534,11 +578,94 @@ def calibrate(
     refine_time = time.time() - t1
     u = cr.unpacked
 
+    # 3b. Per-parameter 1σ and the "is this actually measured?" audit.
+    #
+    # A point estimate says nothing about whether the data constrained it.
+    # Refining the radial distortion on a narrow-azimuth frame returns
+    # confident-looking coefficients whose σ is larger than the value — and
+    # silently railed several of them.  Compute the Gauss-Newton covariance at
+    # MAP and flag every refined parameter that is consistent with zero or is
+    # sitting on a bound, so the caller can freeze it and re-run.
+    sigma: Dict[str, float] = {}
+    unconstrained: List[str] = []
+    at_bounds: List[str] = []
+    diag_results: List = []
+    try:
+        from ..inference.laplace import laplace_at_map
+        from ..loss.pseudo_strain import pseudo_strain_residual
+        fd = cr.fits_final
+        if fd is not None:
+            def _nll(unp):
+                r = pseudo_strain_residual(
+                    fd.Y_pix, fd.Z_pix, fd.ring_two_theta_deg, unp,
+                    rho_d=fd.rho_d, weights=fd.weights,
+                    panel_layout=panel_layout, panel_idx=fd.panel_idx,
+                    ring_idx=fd.ring_idx)
+                n_par = max(sum(1 for p in cr.spec.parameters.values() if p.refined), 1)
+                dof = max(int(r.numel()) - n_par, 1)
+                s2 = float((r * r).sum().detach()) / dof
+                return 0.5 * (r * r).sum() / max(s2, 1e-30)
+            lap = laplace_at_map(cr.spec, _nll, u)
+            off = 0
+            for nm, sz in zip(lap.refined_names, lap.refined_sizes):
+                if sz == 1:
+                    sigma[nm] = float(lap.sigma_per_dim[off])
+                off += sz
+            for nm, sg_ in sigma.items():
+                val = float(torch.as_tensor(u[nm]).reshape(-1)[0])
+                if sg_ > 0 and abs(val) < sg_:
+                    unconstrained.append(nm)
+                bnds = cr.spec.parameters[nm].bounds
+                if bnds:
+                    span = abs(bnds[1] - bnds[0])
+                    if span > 0 and min(abs(val - bnds[0]),
+                                        abs(val - bnds[1])) < 1e-4 * span:
+                        at_bounds.append(nm)
+            from .diagnostics import run_all_gates
+            diag_results = run_all_gates(
+                v1_init=v1, unpacked=u, history=cr.history, fits=fd,
+                spec=cr.spec, panel_layout=panel_layout)
+    except Exception as e:                    # diagnostics must never fail a run
+        if verbose:
+            print(f"[calibrate]   (uncertainty/diagnostics skipped: {e})",
+                  flush=True)
+
+    if verbose:
+        if unconstrained:
+            print(f"[calibrate] ⚠ refined but NOT determined by the data "
+                  f"(|value| < 1σ): {', '.join(unconstrained)} — freeze these "
+                  f"and re-run", flush=True)
+        if at_bounds:
+            print(f"[calibrate] ⚠ refined and sitting ON a bound: "
+                  f"{', '.join(at_bounds)} — the bound, not the data, is "
+                  f"setting these", flush=True)
+        for d in diag_results:
+            icon = {"ok": "✓", "warn": "⚠", "fail": "✗"}.get(d.severity, "?")
+            print(f"[calibrate] {icon} [{d.name}] {d.message}", flush=True)
+        if cr.fits_final is not None and cr.fits_final.phase_idx is not None \
+                and len(cr.fits_final.phase_names) > 1:
+            from ..loss.diagnostics import per_phase_summary
+            from ..loss.pseudo_strain import pseudo_strain_residual as _psr
+            with torch.no_grad():
+                _r = _psr(cr.fits_final.Y_pix, cr.fits_final.Z_pix,
+                          cr.fits_final.ring_two_theta_deg, u,
+                          rho_d=cr.fits_final.rho_d, weights=None,
+                          panel_layout=panel_layout,
+                          panel_idx=cr.fits_final.panel_idx).abs() * 1e6
+            print(per_phase_summary(_r, cr.fits_final.phase_idx,
+                                    cr.fits_final.phase_names), flush=True)
+
     # 4. Persist summary JSON.
     if output_dir is not None:
         import json
         summary = {
             "calibrant": cal_name,
+            "calibrants": cal_names,
+            "sigma": sigma,
+            "unconstrained": unconstrained,
+            "at_bounds": at_bounds,
+            "diagnostics": [{"name": d.name, "severity": d.severity,
+                              "message": d.message} for d in diag_results],
             "wavelength_A": wavelength,
             "pxY_um": pxY, "pxZ_um": pxZ,
             "NrPixelsY": NY, "NrPixelsZ": NZ,
@@ -581,6 +708,8 @@ def calibrate(
                             if cr.history else None),
         residual_corr_map=cr.residual_corr_map,
         residual_corr_bin_path=bin_path,
+        sigma=sigma, unconstrained=unconstrained, at_bounds=at_bounds,
+        calibrants=cal_names, diagnostics=diag_results,
         seed_seconds=seed_time, refine_seconds=refine_time,
         seed_BC_y=seed.bc_y, seed_BC_z=seed.bc_z, seed_Lsd=seed.Lsd,
         iter_history=[{"iter": h.iteration, "strain_uE": h.mean_strain_uE,
