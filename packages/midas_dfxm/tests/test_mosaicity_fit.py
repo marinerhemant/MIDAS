@@ -85,3 +85,26 @@ def test_two_component_resolves_subgrains():
     ori = out["orientation"].numpy()  # (P,2,2)
     recovered_sep = np.abs(ori[:, 0, 0] - ori[:, 1, 0])
     assert np.median(recovered_sep) == pytest.approx(sep, abs=0.2)  # resolves the two components
+
+
+@pytest.mark.unit
+def test_offcenter_peak_not_driven_offgrid():
+    """Regression: a peak far from the scan centre must be located there, not driven off the
+    grid. The old init (fixed fat width + unbounded centre) put a clean Gaussian at (0.20,0.20)
+    at (0.265,0.530) -- phi off the +/-0.4 grid entirely -- and inflated the mosaic width."""
+    n = 17
+    ax = torch.linspace(-0.4, 0.4, n, dtype=DT)
+    CH, PH = torch.meshgrid(ax, ax, indexing="ij")
+    chi = CH.reshape(-1); phi = PH.reshape(-1)
+    res = np.diag([0.02 ** 2, 0.02 ** 2])
+    for (c0, p0, w) in [(0.20, 0.20, 0.08), (0.35, 0.35, 0.06), (-0.30, 0.10, 0.07)]:
+        d = torch.exp(-0.5 * (((chi - c0) / w) ** 2 + ((phi - p0) / w) ** 2))[None, :].repeat(2, 1)
+        out = fit_orientation_mosaicity(d, chi, phi, res, steps=400)
+        o = out["orientation"][0, 0]
+        assert abs(float(o[0]) - c0) < 0.02 and abs(float(o[1]) - p0) < 0.02, \
+            f"peak ({c0},{p0}) recovered at ({float(o[0]):.3f},{float(o[1]):.3f}) -- driven off-grid"
+        assert float(ax.min()) <= float(o[0]) <= float(ax.max())
+        assert float(ax.min()) <= float(o[1]) <= float(ax.max())
+        # width must not balloon (intrinsic ~ w after deconvolution, not ~0.5 deg)
+        fwhm = 2.3548 * float(torch.sqrt(torch.diagonal(out["mosaic_cov"][0, 0]).clamp_min(0)).mean())
+        assert fwhm < 0.3, f"mosaic FWHM {fwhm:.2f} deg inflated (center was mislocated)"

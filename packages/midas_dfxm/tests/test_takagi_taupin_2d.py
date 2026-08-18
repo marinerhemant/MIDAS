@@ -72,9 +72,15 @@ def test_2d_conserves_energy_plane_wave():
 
 def test_2d_differentiable():
     """Gradient of a reflectivity functional w.r.t. a deformation amplitude, through the dense
-    linear solve, matches finite difference (the adjoint is exact)."""
+    linear solve, matches finite difference (the adjoint is exact).
+
+    The adjoint is exact independent of sample thickness, so the depth grid is kept thin
+    (t = 0.3*LAM -> nz~41, a 756-unknown dense complex solve). The dense cost is ~O((2*nx*nz)^3)
+    factorised four times (forward + adjoint + two central-difference solves); the old
+    t = 1.5*LAM gave nz~204 / a 3690-unknown system and ran for minutes for no added coverage.
+    """
     nx, dx = 9, 3.0
-    t = 1.5 * LAM
+    t = 0.3 * LAM
     nz = bragg_2d_nz_for_unit_shift(t, TB, dx)
     Xg = torch.arange(nx, dtype=torch.float64) - nx // 2
     Zg = (torch.arange(nz + 1, dtype=torch.float64) + 0.5) * (t / nz)

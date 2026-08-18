@@ -345,3 +345,21 @@ def test_device_portable(device):
     fit = fit_rocking_curve(data, th, n_components=1, sigma=2.0, steps=400)
     assert fit["center"].device.type == device
     assert abs(float(fit["center"][0, 0]) - 10.40) < 5e-3
+
+
+def test_low_signal_center_stays_bounded():
+    """Regression: the main peak centre was unbounded, so on noisy / no-peak pixels the LM step
+    drove it to ~1e8. It must now stay within the scanned range (+ a small margin), and real
+    peaks must still be recovered."""
+    th = scan(n=61, rng=0.8, center=0.0)                 # +/- 0.4
+    gen = torch.Generator().manual_seed(3)
+    P = 200
+    data = 0.02 * torch.rand(P, len(th), generator=gen, dtype=DTYPE)   # low-level noise, no peak
+    data[:20] = data[:20] + gauss(th, 0.10, 0.05, 1.0)                 # 20 pixels carry a real peak
+    out = fit_rocking_curve(data, th, steps=120, polish=120)
+    c = out["center"][:, 0]
+    assert torch.isfinite(c).all(), "non-finite centres"
+    margin = 0.1 * float(th.max() - th.min())
+    assert float(c.abs().max()) <= float(th.max()) + margin + 1e-6, \
+        f"centre diverged: max|c| = {float(c.abs().max()):.2e}"
+    assert float((c[:20] - 0.10).abs().median()) < 0.02, "real peaks not recovered"

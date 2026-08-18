@@ -101,22 +101,38 @@ def fit_orientation_mosaicity(
     R = torch.as_tensor(res_cov, device=device, dtype=dtype)          # (2,2)
     chi = chi.to(device, dtype); phi = phi.to(device, dtype)
 
-    # init main component at the per-pixel argmax mode; moment as reference
-    am = D.argmax(-1)
-    c0 = chi[am].clone(); p0 = phi[am].clone()
+    # Moment-based init (centre AND width). The old init -- centre at the argmax, width fixed
+    # at a fat sigma ~0.2 -- drove the fitted centre OFF the scan grid for peaks away from the
+    # centre: a too-wide model lowers MSE by sliding its centre out past the grid edge, where
+    # the tail is unpenalised, landing in a bad local minimum. Centring at the COM and starting
+    # the width at the measured (resolution-deconvolved) second moment removes that incentive;
+    # the per-step clamp below keeps the centre inside the scanned range (the orientation is not
+    # determinable outside it).
+    wpix = D.clamp_min(0); ws = wpix.sum(-1, keepdim=True) + 1e-30
+    mc = (wpix * chi).sum(-1, keepdim=True) / ws                      # (P,1) COM
+    mp = (wpix * phi).sum(-1, keepdim=True) / ws
+    vc = (wpix * (chi - mc) ** 2).sum(-1) / ws.squeeze(-1)            # (P,) second moment
+    vp = (wpix * (phi - mp) ** 2).sum(-1) / ws.squeeze(-1)
+    chi_lo, chi_hi = chi.min(), chi.max()
+    phi_lo, phi_hi = phi.min(), phi.max()
+    step = (chi_hi - chi_lo) / max(M ** 0.5, 1.0)
+    floor2 = (0.5 * step) ** 2                                        # don't init narrower than half a step
+    s0c = torch.clamp(vc - R[0, 0], min=floor2).sqrt()               # intrinsic width init (deconvolved)
+    s0p = torch.clamp(vp - R[1, 1], min=floor2).sqrt()
+    inv_softplus = lambda y: torch.log(torch.expm1(y.clamp_min(1e-6)))
 
     # parameters (batched over pixels, components)
-    cmain = c0.clone().requires_grad_(True)
-    pmain = p0.clone().requires_grad_(True)
+    cmain = mc.squeeze(-1).clone().requires_grad_(True)
+    pmain = mp.squeeze(-1).clone().requires_grad_(True)
     off_c = torch.zeros(P, K, device=device, dtype=dtype, requires_grad=True)  # secondary offsets
     off_p = torch.zeros(P, K, device=device, dtype=dtype, requires_grad=True)
     amp = torch.zeros(P, K, device=device, dtype=dtype, requires_grad=True)
     amp.data[:, 0] = 2.0                                              # main dominant
     if K > 1:
         amp.data[:, 1:] = -1.5
-    l11 = torch.full((P, K), -1.5, device=device, dtype=dtype, requires_grad=True)
+    l11 = inv_softplus(s0c)[:, None].repeat(1, K).clone().requires_grad_(True)
     l21 = torch.zeros(P, K, device=device, dtype=dtype, requires_grad=True)
-    l22 = torch.full((P, K), -1.5, device=device, dtype=dtype, requires_grad=True)
+    l22 = inv_softplus(s0p)[:, None].repeat(1, K).clone().requires_grad_(True)
     bg = torch.full((P,), -2.0, device=device, dtype=dtype, requires_grad=True)
     params = [cmain, pmain, off_c, off_p, amp, l11, l21, l22, bg]
     opt = torch.optim.Adam(params, lr=lr)
@@ -155,6 +171,8 @@ def fit_orientation_mosaicity(
                 return c
             loss = loss + lambda_smooth * (curv(cf) + curv(pf))
         loss.backward(); opt.step()
+        with torch.no_grad():                    # keep the main centre inside the scanned range
+            cmain.clamp_(chi_lo, chi_hi); pmain.clamp_(phi_lo, phi_hi)
 
     with torch.no_grad():
         cc, pp = component_centers()
@@ -303,6 +321,12 @@ def fit_rocking_curve(
     theta = theta.to(device, dtype)
     rng = float(theta.max() - theta.min())
     step = rng / max(M - 1, 1)
+    # The main peak centre is otherwise unbounded: on a low-signal / flat-likelihood pixel the
+    # LM step can drive it to ~1e8 (an orientation is not determinable outside the scan anyway).
+    # Project it back into the scanned range (+ a small margin for peaks straddling the edge)
+    # after every step -- a bound constraint that leaves the analytic Jacobian unchanged.
+    c_lo = float(theta.min()) - 0.1 * rng
+    c_hi = float(theta.max()) + 0.1 * rng
     if max_offset is None:
         max_offset = 0.5 * rng
     if min_width is None:
@@ -449,6 +473,8 @@ def fit_rocking_curve(
                 opt.zero_grad()
                 rocking_nll(evaluate(q)[4], data, sigma).sum().backward()
                 opt.step()
+                with torch.no_grad():
+                    q.data[:, 0].clamp_(c_lo, c_hi)      # keep the centre in the scanned range
             q = q.detach()
         return _polish(q)
 
@@ -586,6 +612,7 @@ def fit_rocking_curve(
             except Exception:
                 break
             trial = q + delta
+            trial[:, 0].clamp_(c_lo, c_hi)              # project the centre into the scanned range
             new = (residual(trial) ** 2).sum(-1)
             better = new < prev
             q = torch.where(better[:, None], trial, q)
