@@ -502,12 +502,18 @@ def rodrigues_to_orient_mat(rod) -> np.ndarray:
     if _is_torch(rod):
         return _rodrigues_to_orient_mat_torch(rod)
     rod = np.asarray(rod, dtype=np.float64)
-    norm = np.linalg.norm(rod)
-    cThOver2 = math.cos(math.atan(norm))
-    th = 2 * math.atan(norm)
-    quat = np.array([cThOver2, rod[0]/cThOver2, rod[1]/cThOver2, rod[2]/cThOver2])
-    if th > EPS:
-        w = quat[1:] * th / math.sin(th / 2)
+    norm = float(np.linalg.norm(rod))
+    th = 2.0 * math.atan(norm)
+    # A Rodrigues vector is n*tan(th/2), so the rotation vector is simply n*th.
+    #
+    # The previous form built a quaternion with vector part rod/cos(th/2) and
+    # then scaled by th/sin(th/2). But the quaternion vector part is n*sin(th/2),
+    # and rod/cos(th/2) = n*sin(th/2)/cos^2(th/2) -- too large by 1/cos^2(th/2).
+    # The returned matrix was a proper rotation about the RIGHT axis at the
+    # WRONG angle, th/cos^2(th/2): 30 deg came back 32.154, 60 as 80, 90 as 180.
+    # Exact only as th -> 0, which is why it looked right in small-angle use.
+    if norm > EPS:
+        w = (rod / norm) * th
     else:
         w = np.array([0.0, 0.0, 0.0])
     wskew = np.array([
@@ -829,23 +835,26 @@ def _axis_angle_to_orient_mat_torch(axis, angle_deg) -> torch.Tensor:
 def _rodrigues_to_orient_mat_torch(rod: torch.Tensor) -> torch.Tensor:
     """Rodrigues vector -> 3x3 R via skew-symmetric matrix exponential.
 
-    Mirrors the NumPy implementation step-for-step (note: the formula uses
-    `quat[1:] * th / sin(th/2)` rather than the textbook `axis * angle`;
-    this matches the C library reference and we preserve it for parity).
+    Mirrors the NumPy implementation step-for-step.
+
+    This used to use `quat[1:] * th / sin(th/2)` instead of the textbook
+    `axis * angle`, described here as matching a C reference and preserved for
+    parity. It is wrong: it inflates the rotation angle by 1/cos^2(th/2). No
+    test enforced the claimed parity -- the suite checked the identity (where
+    the error vanishes), structural properties the error preserves, and
+    numpy-vs-torch agreement, which held because both backends carried the same
+    error.
     """
     dtype, device = _torch_dtype_device(rod)
     r = _to_torch(rod, dtype=dtype, device=device)
     norm = torch.linalg.vector_norm(r, dim=-1, keepdim=False)
-    c_th_over_2 = torch.cos(torch.atan(norm))
     th = 2.0 * torch.atan(norm)
-    spatial = r / c_th_over_2.unsqueeze(-1)
-    sin_half = torch.sin(th / 2.0)
-    safe = th > EPS
-    sin_half_safe = torch.where(safe, sin_half, torch.ones_like(sin_half))
-    scale = torch.where(
-        safe, th / sin_half_safe, torch.zeros_like(th)
-    )
-    w = spatial * scale.unsqueeze(-1)
+    # w = n * th, with n = rod/|rod|. See the NumPy backend for why the old
+    # quaternion route inflated the angle by 1/cos^2(th/2).
+    safe = norm > EPS
+    norm_safe = torch.where(safe, norm, torch.ones_like(norm))
+    scale = torch.where(safe, th / norm_safe, torch.zeros_like(th))
+    w = r * scale.unsqueeze(-1)
     wx, wy, wz = w[..., 0], w[..., 1], w[..., 2]
     zeros = torch.zeros_like(wx)
     skew = torch.stack(

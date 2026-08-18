@@ -211,3 +211,63 @@ class TestRodrigues:
     def test_orthogonality(self):
         R = rodrigues_to_orient_mat([0.1, 0.2, 0.3])
         np.testing.assert_allclose(R @ R.T, np.eye(3), atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Rodrigues -> matrix: the ANGLE, not just the structure
+# ---------------------------------------------------------------------------
+
+def test_rodrigues_to_orient_mat_has_the_right_rotation_angle():
+    """|r| = tan(theta/2), so the matrix must rotate by exactly 2*atan(|r|).
+
+    This is the assertion the suite was missing. Until it existed the function
+    returned a proper rotation about the correct axis at the WRONG angle,
+    inflated by 1/cos^2(theta/2) -- 30 deg came back as 32.154, 60 as 80, 90 as
+    180 -- and every existing test passed: [0,0,0] is the one input where the
+    error vanishes, det/orthogonality are preserved by it, and the numpy/torch
+    comparison agreed because both backends carried it.
+
+    120 deg is deliberately NOT in this list. theta/cos^2(theta/2) = 480 there,
+    and 480 mod 360 = 120, so the broken function returns the correct angle by
+    coincidence and a test using it would certify the bug.
+    """
+    import math
+    import numpy as np
+
+    for deg in (5.0, 30.0, 60.0, 90.0, 170.0):
+        r = math.tan(math.radians(deg) / 2.0)
+        R = np.asarray(rodrigues_to_orient_mat([0.0, 0.0, r]), dtype=float)
+        cos_t = (np.trace(R) - 1.0) / 2.0
+        got = math.degrees(math.acos(max(-1.0, min(1.0, cos_t))))
+        assert got == pytest.approx(deg, abs=1e-9), f"{deg} deg came back as {got}"
+
+
+def test_rodrigues_to_orient_mat_preserves_the_axis():
+    """The old code got the axis right and the angle wrong; assert both, so a
+    future change cannot trade one for the other."""
+    import numpy as np
+
+    rod = np.array([0.3, -0.5, 0.2])
+    R = np.asarray(rodrigues_to_orient_mat(rod), dtype=float)
+    evals, evecs = np.linalg.eig(R)
+    axis = np.real(evecs[:, int(np.argmin(np.abs(evals - 1.0)))])
+    axis /= np.linalg.norm(axis)
+    expect = rod / np.linalg.norm(rod)
+    assert abs(float(expect @ axis)) == pytest.approx(1.0, abs=1e-12)
+
+
+def test_rodrigues_agrees_with_axis_angle_construction():
+    """Cross-check against an INDEPENDENT constructor.
+
+    The pre-existing tests compared the function to itself (numpy vs torch) and
+    to properties it satisfies while wrong. axis_angle_to_orient_mat builds the
+    same rotation by a different route, so it can disagree.
+    """
+    import math
+    import numpy as np
+
+    for deg in (30.0, 60.0, 90.0):
+        r = math.tan(math.radians(deg) / 2.0)
+        a = np.asarray(axis_angle_to_orient_mat([0.0, 0.0, 1.0], deg), dtype=float)
+        b = np.asarray(rodrigues_to_orient_mat([0.0, 0.0, r]), dtype=float)
+        assert np.abs(a - b).max() < 1e-12

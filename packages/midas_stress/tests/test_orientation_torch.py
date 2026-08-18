@@ -380,3 +380,35 @@ def test_fundamental_zone_with_sym_runs_on_mps():
     sym = torch.tensor(sym_list, dtype=torch.float32, device="mps")
     out = fundamental_zone(q, sym=sym)
     assert out.device.type == "mps"
+
+
+def test_rodrigues_torch_has_the_right_angle_not_just_numpy_parity():
+    """Parity with numpy is not correctness when both backends share an error.
+
+    test_rodrigues_to_orient_mat_torch_matches_numpy passed throughout the
+    period when both returned theta/cos^2(theta/2) instead of theta. Assert the
+    absolute angle on the torch path too.
+    """
+    import math
+
+    for deg in (30.0, 60.0, 90.0):
+        r = math.tan(math.radians(deg) / 2.0)
+        R = rodrigues_to_orient_mat(torch.tensor([0.0, 0.0, r], dtype=torch.float64))
+        cos_t = (torch.diagonal(R, dim1=-2, dim2=-1).sum() - 1.0) / 2.0
+        got = math.degrees(math.acos(max(-1.0, min(1.0, float(cos_t)))))
+        assert abs(got - deg) < 1e-9, f"{deg} deg came back as {got}"
+
+
+def test_rodrigues_torch_batched_angles_are_right():
+    """The batched path must not be correct only in the (1,) case."""
+    import math
+
+    degs = [10.0, 45.0, 90.0, 150.0]
+    rods = torch.tensor([[0.0, 0.0, math.tan(math.radians(d) / 2.0)] for d in degs],
+                        dtype=torch.float64)
+    R = rodrigues_to_orient_mat(rods)
+    assert R.shape == (len(degs), 3, 3)
+    cos_t = (torch.diagonal(R, dim1=-2, dim2=-1).sum(-1) - 1.0) / 2.0
+    for d, c in zip(degs, cos_t.tolist()):
+        got = math.degrees(math.acos(max(-1.0, min(1.0, c))))
+        assert abs(got - d) < 1e-9, f"{d} deg came back as {got}"
