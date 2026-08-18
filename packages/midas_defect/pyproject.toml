@@ -35,7 +35,7 @@ dependencies = [
     "midas-diffract>=0.1",       # HEDMForwardModel for predicted spot positions
     "midas-index>=0.1",          # initial-pass indexer for seed_index.py
     "midas-peakfit>=0.1",        # connected-component peak extraction (torch)
-    "midas-invert>=0.1",         # shared fit + mixture-deconvolution primitives (used by peakshape.py)
+    "midas-invert>=0.1.1",         # shared fit + mixture-deconvolution primitives (used by peakshape.py)
 ]
 
 [project.scripts]

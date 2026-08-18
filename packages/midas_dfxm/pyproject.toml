@@ -28,7 +28,7 @@ dependencies = [
     "midas-hkls>=0.5",       # lattice math, form factors, structure factors, hkl enumeration (torch)
     "midas-2d>=0.1",         # continuous-q structure factor, resolution convolution, detector projection
     "midas-defect",          # Stroh sextic contrast-factor solver, slip systems, GND, rods
-    "midas-invert>=0.1",     # shared differentiable-inversion primitives (fit, losses, UQ, design)
+    "midas-invert>=0.1.1",     # shared differentiable-inversion primitives (fit, losses, UQ, design)
     "midas-distortion",      # detector distortion model (single source of truth)
 ]
 

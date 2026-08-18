@@ -26,7 +26,7 @@ dependencies = [
     # Section 3. Do NOT re-port their primitives.
     "midas-hkls>=0.5",           # lattice math, form factors, structure factors, hkl enumeration (torch)
     "midas-pink>=0.1",           # ParameterisedSpectrum: mono/pink/white energy model
-    "midas-invert>=0.1",         # shared differentiable-inversion primitives (fit, UQ, design, mixture, surrogate)
+    "midas-invert>=0.1.1",         # shared differentiable-inversion primitives (fit, UQ, design, mixture, surrogate)
 ]
 
 [project.optional-dependencies]
