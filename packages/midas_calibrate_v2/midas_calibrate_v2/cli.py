@@ -96,6 +96,29 @@ def main(argv: Optional[List[str]] = None) -> int:
                          "sets always collide somewhere, and a blended ring's "
                          "centroid is dragged by its neighbour. 12 is a "
                          "reasonable start; 0 (default) disables.")
+    ff.add_argument("--refine-distortion", default="full",
+                    choices=("none", "radial", "radial+2fold", "radial+1fold",
+                             "radial+3fold", "radial+4fold", "full"),
+                    help="which distortion block to refine. 'radial' is the "
+                         "right answer whenever the azimuth-coverage gate warns: "
+                         "the a_k/phi_k harmonics need azimuth to be "
+                         "identifiable and just rail at their bounds on a narrow "
+                         "wedge. Default 'full' (all 15) preserves the previous "
+                         "behaviour.")
+    ff.add_argument("--min-eta-bins-per-ring", type=int, default=0, metavar="N",
+                    help="drop any ring carried by fewer than N usable (ring, "
+                         "eta) fits. A ring the exposure barely measures still "
+                         "yields centroids, and those are noise the geometry "
+                         "absorbs. This is an absolute count, so it scales with "
+                         "EtaBinSize — pick it from the ring distribution, do "
+                         "not copy a number (a fully-covered ring carries ~13 "
+                         "fits at 5 deg bins, ~36 at 2 deg). 0 disables.")
+    ff.add_argument("--min-ring-snr", type=float, default=0.0, metavar="S",
+                    help="drop any ring whose median peak height over a local "
+                         "linear baseline is below S sigma. 5 is a reasonable "
+                         "start; 0 disables. Its main effect is to make the "
+                         "E<->M loop converge rather than wander, so the "
+                         "reported geometry is not a lucky iterate.")
     ff.add_argument("--blend-cross-phase-only", action="store_true",
                     help="restrict --min-ring-separation to collisions between "
                          "DIFFERENT calibrants, leaving same-phase doublets to "
@@ -243,6 +266,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             raw_folder=args.raw_folder, calibrant=args.calibrant,
             min_ring_separation_px=args.min_ring_separation,
             blend_exclude_cross_phase_only=args.blend_cross_phase_only,
+            refine_distortion=args.refine_distortion,
+            min_eta_bins_per_ring=args.min_eta_bins_per_ring,
+            min_ring_snr=args.min_ring_snr,
             wavelength_A=args.wavelength,
             data_group=args.image_group, dark_group=args.dark_group,
             reduce=args.reduce,

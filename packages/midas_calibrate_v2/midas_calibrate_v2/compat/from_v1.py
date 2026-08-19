@@ -316,6 +316,30 @@ def add_panel_zero_sum_constraint(
     spec.zero_sum_lambda = float(lambda_zs)
 
 
+def add_panel_no_expansion_constraint(
+    spec: CalibrationSpec,
+    *,
+    lambda_ex: float = 1e6,
+) -> None:
+    """Pin the panel field's radial-expansion component to zero.
+
+    The translation gauge (``fix_panel_id`` or ``Σ panel = 0``) leaves a second
+    nullspace untouched: pushing every module outward in proportion to its
+    radius shifts all ring radii the same way an ``Lsd`` error does, so the fit
+    can trade freely between them. Measured on a 48-panel Pilatus, 11 % of the
+    fitted panel field sat in that mode, and moving it into ``Lsd`` cancelled
+    73 % of its effect on 2θ.
+
+    Without this, per-panel numbers read as module positions when they are
+    partly a distance error wearing a disguise. Use it together with — not
+    instead of — the translation gauge.
+
+    See :func:`midas_calibrate_v2.loss.panel_gauge.panel_expansion_residual`.
+    """
+    spec.no_panel_expansion = True
+    spec.panel_expansion_lambda = float(lambda_ex)
+
+
 def add_per_ring_offset(
     spec: CalibrationSpec, n_rings: int,
     *,

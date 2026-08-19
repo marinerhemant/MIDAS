@@ -72,6 +72,22 @@ def _generate_sim_radii_px(*, lattice_a: float, lattice_b: float, lattice_c: flo
     return np.array(sorted(set(round(r, 3) for r in out)))
 
 
+def _distortion_refine_flags(spec) -> Dict[str, bool]:
+    """Map a distortion-block selector onto v1's ``Refine["p0".."p14"]`` flags.
+
+    ``refine_distortion`` used to be a single bool covering all fifteen
+    coefficients, so there was no way to act on the azimuth gate's advice
+    ("refine the radial block only") without hand-building a spec.
+    """
+    from ..forward.distortion import (V2_TO_V1_DISTORTION,
+                                      resolve_distortion_block)
+    names = resolve_distortion_block(spec)
+    flags = {f"p{i}": False for i in range(15)}
+    for nm in names:
+        flags[f"p{int(V2_TO_V1_DISTORTION[nm])}"] = True
+    return flags
+
+
 # ============================================================ result type
 
 @dataclass
@@ -199,6 +215,8 @@ def calibrate(
     calibrant: Union[str, Dict, Sequence[Union[str, Dict]]] = "CeO2",
     min_ring_separation_px: float = 0.0,
     blend_exclude_cross_phase_only: bool = False,
+    min_eta_bins_per_ring: int = 0,
+    min_ring_snr: float = 0.0,
     output_dir: Optional[Union[str, Path]] = None,
     initial_Lsd: float = 1_000_000.0,
     BC_guess: Optional[Tuple[float, float]] = None,
@@ -212,7 +230,7 @@ def calibrate(
     lm_max_iter: int = 200,
     build_residual_corr: bool = True,
     refine_tilts: bool = True,
-    refine_distortion: bool = True,
+    refine_distortion: Union[bool, str, Sequence[str]] = True,
     panel_layout=None,
     panel_mode: str = "radius",
     panel_tol_shift_px: float = 3.0,
@@ -487,7 +505,7 @@ def calibrate(
         Refine={"Lsd": True, "BC": True,
                 "ty": bool(refine_tilts), "tz": bool(refine_tilts),
                 "Wavelength": False, "Parallax": False,
-                **{f"p{i}": refine_distortion for i in range(15)}},
+                **_distortion_refine_flags(refine_distortion)},
         Device=device, Dtype="fp64" if dtype == torch.float64 else "fp32",
     )
     # Multi-calibrant: every phase enters the ring table (Phases wins over the
@@ -495,6 +513,8 @@ def calibrate(
     # single-phase consumers of v1 keep working).
     v1.Phases = phases_from_calibrants(calibrant)
     v1.MinRingSeparation = float(min_ring_separation_px)
+    v1.MinEtaBinsPerRing = int(min_eta_bins_per_ring)
+    v1.MinRingSNR = float(min_ring_snr)
     v1.BlendExcludeCrossPhaseOnly = bool(blend_exclude_cross_phase_only)
 
     bin_path = None

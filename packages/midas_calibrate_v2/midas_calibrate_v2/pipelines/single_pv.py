@@ -29,7 +29,7 @@ from ..loss.pseudo_strain import pseudo_strain_residual
 from ..loss.robust_trim import stratified_trim, evaluate_full_strain
 from ..parameters.spec import CalibrationSpec
 from ..seed.auto_max_ring import auto_detect_max_ring
-from ._common import FittedDataset, filter_ring_table
+from ._common import FittedDataset, filter_ring_table, ring_table_for
 
 
 @dataclass
@@ -247,7 +247,11 @@ def autocalibrate_pv(
             skip_extract = True
         else:
             skip_extract = False
-            rt = build_ring_table(v1_params)
+            # ring_table_for (not build_ring_table) so MinRingSeparation and the
+            # spec's ring exclusions reach this pipeline too — they used to apply
+            # only to the centroid path, so a two-calibrant fit run through the
+            # pseudo-Voigt pipeline silently kept its blended rings.
+            rt = ring_table_for(v1_params, spec=spec)
             # Auto-detect max ring if not already capped — uses v1's 3-criteria
             # method (extent / separation / SNR).  Run once on iter 0 only.
             max_ring_eff = getattr(spec, "max_ring_number", 0)
@@ -436,6 +440,13 @@ def autocalibrate_pv(
                                     getattr(spec, "zero_sum_dr_k_lambda", 1e6)))
         if _zs_active:
             from ..loss.constraints import zero_sum_residual
+        # Second panel nullspace: a uniform radial expansion of the modules is
+        # degenerate with Lsd, and fix_panel_id / zero-sum do not touch it.
+        _ex_active = bool(getattr(spec, "no_panel_expansion", False)) \
+            and panel_layout is not None
+        _ex_lambda = float(getattr(spec, "panel_expansion_lambda", 1e6))
+        if _ex_active:
+            from ..loss.panel_gauge import panel_expansion_residual
         # Gaussian priors on individual parameters
         # (Parameter.prior = GaussianPrior(mean, std)) contribute
         # (θ - μ)/σ rows so LM cost matches -2 log posterior.  Active
@@ -461,6 +472,14 @@ def autocalibrate_pv(
                 zs = zero_sum_residual(unpacked_now, lambda_zs=_zs_lambda)
                 if zs.numel() > 0:
                     r = torch.cat([r, zs])
+            if _ex_active:
+                ex = panel_expansion_residual(
+                    unpacked_now, panel_layout=panel_layout,
+                    bc_y=unpacked_now.get("BC_y", v1_params.BC_y),
+                    bc_z=unpacked_now.get("BC_z", v1_params.BC_z),
+                    lambda_ex=_ex_lambda)
+                if ex.numel() > 0:
+                    r = torch.cat([r, ex])
             if _has_gauss_prior:
                 pr = gaussian_prior_residual(unpacked_now, spec)
                 if pr.numel() > 0:

@@ -237,6 +237,33 @@ def autocalibrate(
                     print(f"[v2 iter {it}] converged")
                 break
 
+    # ---- `tx` is STRUCTURALLY UNFITTABLE from a powder — say so out loud.
+    #
+    # A rotation about the beam axis leaves concentric rings EXACTLY unchanged,
+    # so `tx` is absent from the refine set and stays at its seed (0 unless the
+    # template carried one). Every other geometry scalar is pinned by the rings;
+    # this one is invisible to them, and to every diagnostic computed from them
+    # — strain, ring overlay, per-ring ppm all pass while it is wrong.
+    #
+    # Consequence measured at 20-ID-E (Varex, 2026-08-18): an uncorrected roll
+    # of tx = -0.267 deg was the dominant systematic in FF `DiffPos` on every
+    # dataset at that station. It is purely TANGENTIAL, so the radial residual
+    # stayed at +-20 ppm and the calibration reported 60.4 ue and a clean
+    # overlay. Correcting it took DiffPos from 365 to 237 um.
+    #
+    # tx is recoverable only from single-crystal spots:
+    #     midas-joint-ff-calibrate grain-tx --paramstest <master> --layer-dir <layer>
+    # and that tool is ITERATIVE — compose and repeat until the reported
+    # residual is ~0.
+    if verbose:
+        _tx = float(getattr(v1_params, "tx", 0.0) or 0.0)
+        if _tx == 0.0:
+            print("[v2] NOTE: tx is not refined here and is 0 — a powder pattern is "
+                  "invariant under rotation about the beam, so this calibration "
+                  "CANNOT see a detector roll. If the recon shows a tangential "
+                  "residual with a clean radial one, recover tx from grains "
+                  "(midas-joint-ff-calibrate grain-tx) and iterate.")
+
     # ---- Adopt the best iterate, not the last (see the loop preamble).
     # v1_params must be moved with it: the residual-corr stage below re-runs the
     # E-step off v1_params, so leaving it on the last iterate would extract peaks

@@ -379,7 +379,7 @@ def azimuth_coverage_gate(
                f"({frac * 100:.0f} %, longest arc {span_deg:.0f}°)"
                + (f" while refining {', '.join(refined_harmonics)} — these are "
                   f"weakly separable from BC (1-fold) and tilts (2-fold); "
-                  f"consider freezing them"
+                  f"consider refine_distortion='radial'"
                   if refined_harmonics else
                   " — geometry is determined over a limited wedge"))
     else:
@@ -387,9 +387,10 @@ def azimuth_coverage_gate(
         msg = (f"azimuthal coverage {covered_deg:.0f}° "
                f"({frac * 100:.0f} %, longest arc {span_deg:.0f}°)"
                + (f" is too narrow to determine {', '.join(refined_harmonics)}; "
-                  f"freeze the azimuthal harmonics (refine iso_R* only) or add a "
-                  f"second detector position. A second calibrant will NOT help — "
-                  f"both phases share this wedge."
+                  f"use refine_distortion='radial' (or --refine-distortion "
+                  f"radial) to keep the isotropic terms and freeze the "
+                  f"harmonics, or add a second detector position. A second "
+                  f"calibrant will NOT help — both phases share this wedge."
                   if refined_harmonics else
                   " — a narrow wedge; treat tilts and beam centre as weakly "
                   "determined"))

@@ -6,6 +6,7 @@ and beyond).
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -90,6 +91,151 @@ def ring_table_for(
 
 
 @dataclass
+class RingQuality:
+    """Per-ring measurables from one E-step, and the keep/drop decision."""
+    ring_idx: int
+    phase: str
+    r_ideal_px: float
+    n_eta: int                  # fits that survived the per-fit SNRMin cut
+    snr_median: float           # median baseline-referenced SNR over those fits
+    kept: bool
+    reason: str = ""
+
+
+def ring_quality(fits: "FittedDataset") -> List[RingQuality]:
+    """Measure each ring's coverage and contrast from the extracted fits."""
+    import numpy as _np
+    rid = fits.ring_idx.detach().cpu().numpy()
+    snr = (fits.snr_baseline.detach().cpu().numpy()
+           if fits.snr_baseline is not None
+           else fits.snr.detach().cpu().numpy())
+    out: List[RingQuality] = []
+    for r in sorted(set(int(v) for v in rid)):
+        m = rid == r
+        phase = "?"
+        r_ideal = float("nan")
+        if fits.rt is not None and r < len(fits.rt):
+            phase = fits.rt.phase_of(r)
+            r_ideal = float(fits.rt.r_ideal_px[r])
+        out.append(RingQuality(ring_idx=r, phase=phase, r_ideal_px=r_ideal,
+                               n_eta=int(m.sum()),
+                               snr_median=float(_np.median(snr[m])) if m.any() else 0.0,
+                               kept=True))
+    return out
+
+
+def filter_fits_by_ring_quality(
+    fits: "FittedDataset",
+    *,
+    min_eta_bins: int = 0,
+    min_ring_snr: float = 0.0,
+    min_rings_kept: int = 4,
+    verbose: bool = False,
+) -> Tuple["FittedDataset", List[RingQuality]]:
+    """Drop whole rings that this exposure does not actually measure.
+
+    A ring table comes from crystallography and says nothing about whether a
+    ring is measurable *here*.  Weak, vignetted or grainy rings still yield a
+    centroid per η bin, and those centroids are noise the geometry then
+    absorbs.  Measured on a real 1-ID CeO2+LaB6 frame, its main effect is
+    STABILITY rather than a lower best-iterate: with it the alternating E<->M
+    loop converged in two iterations (84.2, 84.4 ue) where the same fit without
+    it wandered (91, 72, 139, 154 ue) and its apparent best was a lucky iterate
+    the next one undid.  The larger single win on that frame was freezing the
+    distortion (181 -> 72 ue), not this filter.
+
+    Unlike ``auto_detect_max_ring``, which returns one radial cutoff, this
+    removes rings INDIVIDUALLY: on an interleaved two-phase table a weak LaB6
+    ring in the middle must not cap every ring outside it.
+
+    ``min_eta_bins`` is an ABSOLUTE count and therefore scales with
+    ``EtaBinSize``: on one real frame the best-covered ring carried 13 fits at
+    5 deg bins and ~36 at 2 deg, so a threshold tuned at one binning is not
+    portable to the other.  Pick it from the actual distribution
+    (:func:`ring_quality` reports it) rather than copying a number.
+
+    Returns ``(filtered_fits, per_ring_report)``.  With both thresholds at 0
+    the dataset is returned unchanged.
+    """
+    import numpy as _np
+    report = ring_quality(fits)
+    if min_eta_bins <= 0 and min_ring_snr <= 0.0:
+        return fits, report
+
+    drop = set()
+    for q in report:
+        why = []
+        if min_eta_bins > 0 and q.n_eta < min_eta_bins:
+            why.append(f"only {q.n_eta} η bins < {min_eta_bins}")
+        if min_ring_snr > 0.0 and q.snr_median < min_ring_snr:
+            why.append(f"SNR {q.snr_median:.1f} < {min_ring_snr:g}")
+        if why:
+            q.kept = False
+            q.reason = "; ".join(why)
+            drop.add(q.ring_idx)
+
+    if not drop:
+        return fits, report
+    # Never let the filter empty the dataset.  It runs on every E-step, so a
+    # single bad iterate — where the geometry has wandered and no ring looks
+    # sharp — would otherwise abort the whole calibration instead of just
+    # scoring badly and being rejected by the best-iterate logic.  Keep the
+    # best-ranked rings and say so.
+    n_keep = len(report) - len(drop)
+    if n_keep < min_rings_kept:
+        ranked = sorted(report, key=lambda q: (q.n_eta, q.snr_median),
+                        reverse=True)[:min_rings_kept]
+        rescued = {q.ring_idx for q in ranked}
+        for q in report:
+            if q.ring_idx in rescued and not q.kept:
+                q.kept = True
+                q.reason += "  [kept: floor]"
+        drop -= rescued
+        warnings.warn(
+            f"per-ring quality filter would have left {n_keep} of "
+            f"{len(report)} rings (MinEtaBinsPerRing={min_eta_bins}, "
+            f"MinRingSNR={min_ring_snr:g}); kept the {len(rescued)} best-ranked "
+            "instead. Either the thresholds are too tight for this binning "
+            "(they scale with EtaBinSize and Width) or the geometry has "
+            "wandered — check the per-iteration strain.",
+            RuntimeWarning, stacklevel=2)
+    if not drop:
+        return fits, report
+
+    rid = fits.ring_idx.detach().cpu().numpy()
+    keep = torch.as_tensor(~_np.isin(rid, list(drop)), dtype=torch.bool,
+                           device=fits.ring_idx.device)
+
+    def _sel(t):
+        return None if t is None else t[keep]
+
+    out = FittedDataset(
+        Y_pix=fits.Y_pix[keep], Z_pix=fits.Z_pix[keep],
+        ring_idx=fits.ring_idx[keep], snr=fits.snr[keep],
+        ring_two_theta_deg=fits.ring_two_theta_deg[keep],
+        rho_d=fits.rho_d, weights=_sel(fits.weights),
+        panel_idx=_sel(fits.panel_idx), rt=fits.rt,
+        ring_d_spacing_A=_sel(fits.ring_d_spacing_A),
+        phase_idx=_sel(fits.phase_idx), phase_names=fits.phase_names,
+        snr_baseline=_sel(fits.snr_baseline),
+    )
+    if verbose:
+        by_phase: dict = {}
+        for q in report:
+            if not q.kept:
+                by_phase.setdefault(q.phase, []).append(q)
+        parts = ", ".join(f"{k} {len(v)}" for k, v in sorted(by_phase.items()))
+        print(f"[e-step] ring quality: dropped {len(drop)} of {len(report)} rings "
+              f"({parts}); {int(keep.sum())} of {keep.numel()} fits kept",
+              flush=True)
+        for q in report:
+            if not q.kept:
+                print(f"           drop ring {q.ring_idx:3d} ({q.phase}, "
+                      f"R={q.r_ideal_px:7.1f} px): {q.reason}", flush=True)
+    return out, report
+
+
+@dataclass
 class FittedDataset:
     """Bundle of E-step outputs in torch form."""
 
@@ -112,6 +258,10 @@ class FittedDataset:
     # without it you cannot see the two disagreeing.
     phase_idx: Optional[torch.Tensor] = None       # long [n_pts]
     phase_names: Tuple[str, ...] = ()
+    # Peak height over a linear baseline / scatter at the window ends.  This is
+    # what the per-ring quality filter aggregates; ``snr`` above is peak/mean
+    # and keeps its historical meaning for ``SNRMin``.
+    snr_baseline: Optional[torch.Tensor] = None
 
 
 def run_estep_v1(
@@ -153,7 +303,10 @@ def run_estep_v1(
         phase_idx = torch.as_tensor(rt.phase_idx, dtype=torch.long,
                                     device=device)[rid]
 
-    return FittedDataset(
+    snr_b = torch.tensor([getattr(p, "snr_baseline", 0.0) for p in fits],
+                         dtype=dtype, device=device)
+
+    fd = FittedDataset(
         Y_pix=Y, Z_pix=Z, ring_idx=rid, snr=snr,
         ring_two_theta_deg=rtt_per_pt,
         rho_d=torch.as_tensor(rho_d, dtype=dtype, device=device),
@@ -161,7 +314,20 @@ def run_estep_v1(
         ring_d_spacing_A=torch.as_tensor(
             rt.d_spacing, dtype=dtype, device=device)[rid],
         phase_idx=phase_idx, phase_names=rt.phase_names,
+        snr_baseline=snr_b,
     )
+    # Per-ring quality filter.  Applied AFTER extraction because it needs the
+    # fits themselves, not the predicted radii — a ring can be perfectly well
+    # separated and still be unmeasurable on this exposure.
+    fd, _ = filter_fits_by_ring_quality(
+        fd,
+        min_eta_bins=int(getattr(v1_params, "MinEtaBinsPerRing", 0) or 0),
+        min_ring_snr=float(getattr(v1_params, "MinRingSNR", 0.0) or 0.0),
+        verbose=verbose,
+    )
+    return fd
 
 
-__all__ = ["FittedDataset", "run_estep_v1", "filter_ring_table", "ring_table_for"]
+__all__ = ["FittedDataset", "run_estep_v1", "filter_ring_table",
+           "ring_table_for", "RingQuality", "ring_quality",
+           "filter_fits_by_ring_quality"]

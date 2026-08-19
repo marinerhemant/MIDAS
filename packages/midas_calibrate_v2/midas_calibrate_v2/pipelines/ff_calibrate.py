@@ -404,6 +404,9 @@ def calibrate_ff_from_files(
     calibrant: Union[str, Sequence[str]] = "CeO2",
     min_ring_separation_px: float = 0.0,
     blend_exclude_cross_phase_only: bool = False,
+    refine_distortion: Union[bool, str, Sequence[str]] = True,
+    min_eta_bins_per_ring: int = 0,
+    min_ring_snr: float = 0.0,
     wavelength_A: Optional[float] = None,
     px_um: Optional[float] = None,
     n_pixels_y: Optional[int] = None,
@@ -463,10 +466,12 @@ def calibrate_ff_from_files(
         image, wavelength=wavelength_A, pxY=px_um, calibrant=calibrant,
         min_ring_separation_px=min_ring_separation_px,
         blend_exclude_cross_phase_only=blend_exclude_cross_phase_only,
+        min_eta_bins_per_ring=min_eta_bins_per_ring,
+        min_ring_snr=min_ring_snr,
         im_trans=tuple(im_trans), initial_Lsd=initial_Lsd_um,
         output_dir=str(out_paramstest.parent),
         n_iter=n_iter, lm_max_iter=lm_max_iter,
-        refine_tilts=True, refine_distortion=True,
+        refine_tilts=True, refine_distortion=refine_distortion,
         device=device, verbose=verbose,
     )
 

@@ -28,7 +28,7 @@ from ..loss.pseudo_strain import pseudo_strain_residual
 from ..loss.robust_trim import stratified_trim, evaluate_full_strain
 from ..parameters.spec import CalibrationSpec
 from ..seed.auto_max_ring import auto_detect_max_ring
-from ._common import FittedDataset, filter_ring_table
+from ._common import FittedDataset, filter_ring_table, ring_table_for
 
 
 @dataclass
@@ -145,7 +145,11 @@ def autocalibrate_pv_2d(
     unpacked = None
 
     for it in range(n_iter):
-        rt = build_ring_table(v1_params)
+        # ring_table_for (not build_ring_table) so MinRingSeparation and the
+        # spec's ring exclusions reach this pipeline too — they used to apply
+        # only to the centroid path, so a two-calibrant fit run through the
+        # pseudo-Voigt pipeline silently kept its blended rings.
+        rt = ring_table_for(v1_params, spec=spec)
         max_ring_eff = getattr(spec, "max_ring_number", 0)
         if auto_max_ring and max_ring_eff == 0 and it == 0:
             img_for_snr = (image - dark) if dark is not None else image
