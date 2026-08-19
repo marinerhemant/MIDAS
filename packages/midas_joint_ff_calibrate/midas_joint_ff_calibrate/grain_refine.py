@@ -795,8 +795,46 @@ def refine_geometry_from_grains(
         import re as _re
         out_path = Path(out_paramstest)
         txt = Path(paramstest).read_text()
+        # Which refined scalars are RELATIVE to the geometry the input
+        # reconstruction already used, and so must be COMPOSED rather than
+        # overwritten when writing a paramstest for a FRESH run?
+        #
+        # The rule follows _build_model: a scalar seeded there from ``v1`` is
+        # absolute (the fit replaces it); a scalar hardcoded to 0.0 is a
+        # CORRECTION applied on top of whatever the observations already carry.
+        #
+        #   Lsd, ty, tz, BC, distortion : seeded from v1        -> ABSOLUTE
+        #   Wedge                       : geom built wedge=0.0  -> RELATIVE
+        #                                 (observed omega already carries the
+        #                                 pipeline's wedge correction)
+        #   tx                          : DEPENDS ON THE PATH
+        #       observed_from_raw=False -> geom built tx=0.0 and the trial tx
+        #           ROTATES the stored YLab/ZLab, which already carry the
+        #           pipeline's tx            -> RELATIVE
+        #       observed_from_raw=True  -> observations are re-derived from raw
+        #           pixels and tx is applied inside the detector correction
+        #           ("do NOT also rotate")   -> ABSOLUTE
+        #
+        # Without this, iterating the tool silently DISCARDS the previous pass:
+        # measured on 20-ID Au (5 grains, MinNrPx-4 spot list)
+        #     pass 1 on a tx=0 recon        -> -0.158497
+        #     pass 2 on the -0.1585 recon   -> -0.087265   (the residual)
+        #     composed total                -> -0.245762
+        # against -0.2455 from an independent ring/eta systematics fit. Writing
+        # -0.087265 back would apply a THIRD of the true roll — a second pass
+        # strictly worse than the first, with no error and no log line.
+        _relative = {"Wedge"} | (set() if observed_from_raw else {"tx"})
         for nm in refine_params:
-            line = f"{nm} {float(unpacked[nm]):.10g}"
+            value = float(unpacked[nm])
+            if nm in _relative:
+                prior = float(getattr(v1, nm, 0.0) or 0.0)
+                if prior:
+                    LOG.info(
+                        "grain-tx: %s is a correction on top of the input "
+                        "reconstruction — composing %.6g (already applied) + "
+                        "%.6g (fitted) = %.6g", nm, prior, value, prior + value)
+                value = prior + value
+            line = f"{nm} {value:.10g}"
             pat = rf"(?m)^{nm}\b.*$"
             if _re.search(pat, txt):
                 txt = _re.sub(pat, line, txt)
