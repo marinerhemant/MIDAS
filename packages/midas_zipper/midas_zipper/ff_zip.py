@@ -190,90 +190,28 @@ def write_analysis_parameters(z_groups, config):
     sp_pro_analysis, sp_pro_meas = z_groups['sp_pro_analysis'], z_groups['sp_pro_meas']
     print("\nWriting analysis parameters to Zarr file...")
 
-    FORCE_DOUBLE_PARAMS = { "MinPeakSNR", "RMin", "RMax", "px", "PixelSize", "Completeness", "MinMatchesToAcceptFrac", 
-        "OverArea", "IntensityThresh", "MinS_N", "YPixelSize", "ZPixelSize", "BeamStopY", "BeamStopZ", 
-        "DetDist", "MaxDev", "OmegaStart", "OmegaFirstFile", "OmegaStep", "step", "BadPxIntensity", 
-        "GapIntensity", "FitWeightMean", "PixelSplittingRBin", "tolTilts", "tolBC", "tolLsd", "DiscArea", 
-        "OverlapLength", "ReferenceRingCurrent", "zDiffThresh", "GlobalPosition", "tolPanelFit", "tolP", 
-        "tolP0", "tolP1", "tolP2", "tolP3", "tolP4", "tolShifts", "tolRotation", "tolLsdPanel", "tolP2Panel", 
-        "DoubletSeparation", "MultFactor", "StepSizePos", "tInt", "tGap", "StepSizeOrient", "MarginRadius", 
-        "MarginRadial", "MarginEta", "MarginOme", "MargABG", "MargABC", "OmeBinSize", "EtaBinSize", "RBinSize", 
-        "EtaMin", "MinEta", "EtaMax", "X", "Y", "Z", "U", "V", "W", "SHpL", "Polariz", "MaxOmeSpotIDsToIndex", 
-        "MinOmeSpotIDsToIndex", "BeamThickness", "Wedge", "Rsample", "Hbeam", "Vsample", "RhoD", "MaxRingRad", 
-        "Lsd", "Wavelength", "Width", "WidthTthPx", "UpperBoundThreshold", "p4", "p5", "Parallax", "p3", "p2", 
-        "p1", "p0", "p6", "p7", "p8", "p9", "p10", "p11", "p12", "p13", "p14", "tz", "ty", "tx",
-        "tolP5", "tolP6", "tolP7", "tolP8", "tolP9", "tolP10", "tolP11", "tolP12", "tolP13", "tolP14", "tolParallax",
-        "WeightMask", "WeightFitRMSE", "QBinSize", "QMin", "QMax",
-        # v2 distortion harmonics (carried natively by calibrate-v2; peakfit +
-        # transforms read these instead of p0..p14 when present).
-        "iso_R2", "iso_R4", "iso_R6", "a1", "phi1", "a2", "phi2", "a3", "phi3",
-        "a4", "phi4", "a5", "phi5", "a6", "phi6" }
-    FORCE_INT_PARAMS = { "Twins", "MaxNFrames", "DoFit", "DiscModel", "UseMaximaPositions", "UsePixelOverlap", 
-        "MaxNrPx", "MinNrPx", "MaxNPeaks", "PhaseNr", "NumPhases", "MinNrSpots", "UseFriedelPairs", "OverallRingToIndex", 
-        "SpaceGroup", "LayerNr", "DoFullImage", "SkipFrame", "SumImages", "Normalize", "SaveIndividualFrames", 
-        "OmegaSumFrames", "NrFilesPerSweep", "NPanelsY", "NPanelsZ", "Padding", "PanelSizeY", "PanelSizeZ", 
-        "PanelGapsY", "PanelGapsZ", "doPeakFit", "nIterations", "NormalizeRingWeights", "OutlierIterations", 
-        "WeightByRadius", "WeightByFitSNR", "L2Objective", "PerPanelLsd", "PerPanelDistortion", "FixPanelID", 
-        "MinIndicesForFit", "LocalMaximaOnly", "FitParallax",
-        # Opt-in local background subtraction in the peak search
-        # (midas_peakfit.background). BgSubtract 0 = legacy/C behaviour.
-        "BgSubtract", "BgNSectors" }
-    FORCE_STRING_PARAMS = { "GapFile", "BadPxFile", "ResultFolder", "PanelShiftsFile", "MaskFile",
-        "GrainsFile", "ResidualCorrectionMap" }
-    RENAME_MAP = { "OmegaStep": "step", "Completeness": "MinMatchesToAcceptFrac", "px": "PixelSize", 
-        "LatticeConstant": "LatticeParameter", "OverAllRingToIndex": "OverallRingToIndex", 
-        "resultFolder": "ResultFolder", "OmegaRange": "OmegaRanges", "BoxSize": "BoxSizes" }
+    # The type coercion below lives in ``param_refresh`` so that this create
+    # path and the in-place refresh path
+    # (``param_refresh.refresh_analysis_params``, used by the pipeline's
+    # zip_convert stage when it reuses an existing archive) type every key
+    # identically. If the two drifted, a refresh would report spurious
+    # differences on keys nobody edited -- or silently miss a real one.
+    from .param_refresh import (ANALYSIS_PATH, MEASUREMENT_PATH,
+                                coerce_analysis_params)
 
-    for key, value in config.items():
+    _coerced, _coerce_warnings = coerce_analysis_params(config)
+    _group_for = {ANALYSIS_PATH: sp_pro_analysis, MEASUREMENT_PATH: sp_pro_meas}
+    for _p in _coerced:
         try:
-            target_key = RENAME_MAP.get(key, key)
-            target_group = sp_pro_analysis
-            if key in ["OmegaStep", "start", "datatype", "doPeakFit"]: target_group = sp_pro_meas
-
-            if key == 'BC':
-                sp_pro_analysis.create_dataset('YCen', data=np.array([value[0]], dtype=np.double))
-                sp_pro_analysis.create_dataset('ZCen', data=np.array([value[1]], dtype=np.double))
-            elif key == 'LatticeConstant' or key == 'LatticeParameter':
-                values = value if isinstance(value, list) else [value]
-                padded_values = np.zeros(6, dtype=np.double)
-                padded_values[:len(values)] = values
-                target_group.create_dataset(target_key, data=padded_values.astype(np.double))
-            elif key == 'ImTransOpt':
-                # Ensure the value from the param file is a list
-                values_to_write = value if isinstance(value, list) else [value]
-                
-                # Create a numpy array. Use flatten() to guarantee it is 1D.
-                arr = np.array(values_to_write, dtype=np.int32).flatten()
-                
-                print(f"  - Writing '{target_key}' as a 1D array with shape: {arr.shape}")
-                target_group.create_dataset(target_key, data=arr)
-            elif key in ['RingThresh', 'RingsToExclude', 'OmegaRange', 'BoxSize']:
-                temp_value = value if isinstance(value, list) else [value]
-                if not temp_value or not isinstance(temp_value[0], list):
-                    values_to_write = [temp_value]
-                else:
-                    values_to_write = temp_value
-                arr = np.array(values_to_write)
-                print(key,target_key,arr,arr.ndim)
-                if arr.ndim == 1:
-                    print(f"  - Info: Reshaping 1D array for '{target_key}' to ensure 2D shape.")
-                    arr = arr.reshape(1, -1)
-                dtype = np.int32 if key == 'ImTransOpt' else np.double
-                target_group.create_dataset(target_key, data=arr.astype(dtype))
-            else:
-                arr = None
-                if key in FORCE_STRING_PARAMS or target_key in FORCE_STRING_PARAMS:
-                    arr = np.array([np.bytes_(str(value).encode('UTF-8'))])
-                elif key in FORCE_DOUBLE_PARAMS or target_key in FORCE_DOUBLE_PARAMS:
-                    arr = np.array(value if isinstance(value, list) else [value], dtype=np.double)
-                elif key in FORCE_INT_PARAMS or target_key in FORCE_INT_PARAMS:
-                    arr = np.array(value if isinstance(value, list) else [value], dtype=np.int32)
-                else:
-                    if isinstance(value, str): arr = np.array([np.bytes_(value.encode('UTF-8'))])
-                    else: arr = np.array(value if isinstance(value, list) else [value])
-                if arr is not None: target_group.create_dataset(target_key, data=arr)
+            _group_for[_p.path].create_dataset(_p.key, data=_p.value)
         except Exception as e:
-            print(f"  - Warning: Could not write parameter '{key}'. Reason: {e}")
+            # Same tolerance as before: one unwritable key must not cost the
+            # rest of the parameter set.
+            print(f"  - Warning: Could not write parameter '{_p.source_key}'. Reason: {e}")
+    for _w in _coerce_warnings:
+        print(f"  - Warning: {_w}")
+    print(f"  - Wrote {len(_coerced)} analysis parameter dataset(s).")
+
 
     # --- LocalMaximaOnly mode: force dependent parameters ---
     if int(config.get('LocalMaximaOnly', 0)) == 1:

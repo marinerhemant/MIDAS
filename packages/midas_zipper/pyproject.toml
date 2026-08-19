@@ -38,6 +38,7 @@ dev = [
 [project.scripts]
 midas-ff-zip = "midas_zipper.ff_zip:main"
 midas-update-zarr = "midas_zipper.update_zarr:main"
+midas-refresh-zarr-params = "midas_zipper.param_refresh:main"
 
 [project.urls]
 Homepage = "https://github.com/marinerhemant/MIDAS"
