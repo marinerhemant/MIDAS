@@ -11,7 +11,7 @@ import pytest
 def test_pipeline_runs_on_tiny_run_dir(tiny_run_dir: Path):
     from midas_process_grains.pipeline import ProcessGrains
     pg = ProcessGrains.from_param_file(tiny_run_dir / "paramstest.txt", device="cpu")
-    result = pg.run(mode="spot_aware")
+    result = pg.run(mode="adaptive")   # was spot_aware (disabled)
     assert result.n_grains >= 1
     assert result.orient_mat.shape == (result.n_grains, 3, 3)
     assert result.positions.shape == (result.n_grains, 3)
@@ -21,7 +21,7 @@ def test_pipeline_runs_on_tiny_run_dir(tiny_run_dir: Path):
 def test_pipeline_writes_csvs(tiny_run_dir: Path, tmp_path: Path):
     from midas_process_grains.pipeline import ProcessGrains
     pg = ProcessGrains.from_param_file(tiny_run_dir / "paramstest.txt", device="cpu")
-    result = pg.run(mode="spot_aware")
+    result = pg.run(mode="adaptive")   # was spot_aware (disabled)
     out = tmp_path / "out"
     result.write(out, h5=True, diagnostics_h5=True)
     assert (out / "Grains.csv").exists()
@@ -60,7 +60,7 @@ def test_consolidated_h5_has_expected_groups(tiny_run_dir: Path, tmp_path: Path)
     import h5py
     from midas_process_grains.pipeline import ProcessGrains
     pg = ProcessGrains.from_param_file(tiny_run_dir / "paramstest.txt", device="cpu")
-    result = pg.run(mode="spot_aware")
+    result = pg.run(mode="adaptive")   # was spot_aware (disabled)
     out = tmp_path / "out"
     result.write(out, h5=True, diagnostics_h5=True)
     with h5py.File(out / "data_consolidated.h5", "r") as f:
@@ -73,14 +73,14 @@ def test_consolidated_h5_has_expected_groups(tiny_run_dir: Path, tmp_path: Path)
         assert f["attrs"].attrs["sg_nr"] == 225
         assert f["attrs"].attrs["mode"].decode() if isinstance(
             f["attrs"].attrs["mode"], bytes
-        ) else f["attrs"].attrs["mode"] == "spot_aware"
+        ) else f["attrs"].attrs["mode"] == "adaptive"
 
 
 def test_diagnostics_h5_records_per_grain_metadata(tiny_run_dir: Path, tmp_path: Path):
     import h5py
     from midas_process_grains.pipeline import ProcessGrains
     pg = ProcessGrains.from_param_file(tiny_run_dir / "paramstest.txt", device="cpu")
-    result = pg.run(mode="spot_aware")
+    result = pg.run(mode="adaptive")   # was spot_aware (disabled)
     out = tmp_path / "out"
     result.write(out, h5=False, diagnostics_h5=True)
     with h5py.File(out / "processgrains_diagnostics.h5", "r") as f:
@@ -102,7 +102,7 @@ def test_cli_smoke(tiny_run_dir: Path, tmp_path: Path, capsys, monkeypatch):
     rc = main([
         str(tiny_run_dir / "paramstest.txt"),
         "1",
-        "--mode", "spot_aware",
+        "--mode", "adaptive",
         "--device", "cpu",
         "--dtype", "float64",
         "--out-dir", str(out),

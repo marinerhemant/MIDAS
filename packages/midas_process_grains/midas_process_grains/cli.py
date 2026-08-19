@@ -49,9 +49,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="CPU thread count (used only on cpu device). Default 1.",
     )
     p.add_argument(
-        "--mode", choices=("legacy", "paper_claim", "spot_aware", "adaptive",
+        # 'spot_aware' is DISABLED and removed from the choices; it was also
+        # the DEFAULT here, so anything invoking this CLI without --mode got
+        # it. See the adjudication in the help text below.
+        "--mode", choices=("legacy", "paper_claim", "adaptive",
                            "physics", "c_parity"),
-        default="spot_aware",
+        default="c_parity",
         help="Pipeline mode. 'adaptive' derives the misori threshold from the "
              "antimode of the pairwise-misorientation histogram of the alive "
              "candidates (no hand-tuned MisoriTol). 'physics' enables the v4 "
@@ -60,7 +63,12 @@ def _build_parser() -> argparse.ArgumentParser:
              "variant-constrained Hungarian split for over-merged clusters, "
              "twin + sub-grain labeling, NNLS grain-size recompute on splits, "
              "and a hierarchical GrainsV4.csv emitter. "
-             "Use 'c_parity' for a bit-level replica of the C ProcessGrains pipeline.",
+                  "Default 'c_parity' is a bit-level replica of the C ProcessGrains "
+             "pipeline. 'spot_aware' is DISABLED and rejected: against EBSD on "
+             "shade_LSHR only 7.2%% of the 691 grains it adds over c_parity had "
+             "a partner (vs 80.4%% for the shared population), and on 20-ID "
+             "alumina it returned 1652 grains against c_parity's 533 while "
+             "placing 4.1%% of them outside the physical sample.",
     )
     p.add_argument(
         "--min-nr-spots", type=int, default=None,

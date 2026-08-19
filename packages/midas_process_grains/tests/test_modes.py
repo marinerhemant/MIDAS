@@ -28,19 +28,22 @@ def test_paper_claim_mode_uses_001_degrees_and_jaccard_09():
     assert p.StrainMethod == "fable_beaudoin"
 
 
-def test_spot_aware_mode_default_is_05_and_kenesei():
-    """Default spot_aware uses MisoriTol=0.5° (gathers C-cluster equivalents
-    correctly; 0.25° was too tight on real data and split real grains)."""
+def test_spot_aware_is_disabled_and_raises():
+    """'spot_aware' must never run — it is rejected, not silently remapped.
+
+    It over-produces grains: against EBSD on shade_LSHR only 7.2% of the 691
+    grains it adds over c_parity had a partner, and on 20-ID alumina it
+    returned 1652 grains against c_parity's 533 while placing 4.1% of them
+    outside the physical sample.
+    """
     p = ProcessGrainsParams()
-    p = apply_mode_defaults(p, "spot_aware")
-    assert p.MisoriTol == 0.5
-    assert p.StrainMethod == "kenesei"
+    with pytest.raises(ValueError, match="DISABLED"):
+        apply_mode_defaults(p, "spot_aware")
 
 
-def test_spot_aware_mode_with_explicit_fable_keeps_fable():
-    p = ProcessGrainsParams(StrainMethod="fable_beaudoin")
-    p = apply_mode_defaults(p, "spot_aware")
-    assert p.StrainMethod == "fable_beaudoin"
+def test_spot_aware_absent_from_valid_modes():
+    from midas_process_grains.modes import VALID_MODES
+    assert "spot_aware" not in VALID_MODES
 
 
 def test_alias_lstsq_resolves_to_kenesei():
@@ -60,7 +63,7 @@ def test_strain_method_both_is_valid():
 
 def test_user_explicit_misori_tol_wins_over_mode_default():
     p = ProcessGrainsParams(MisoriTol=0.10)
-    p = apply_mode_defaults(p, "spot_aware")
+    p = apply_mode_defaults(p, "paper_claim")   # was spot_aware (disabled)
     assert p.MisoriTol == 0.10
 
 
@@ -71,8 +74,8 @@ def test_invalid_mode_raises():
 
 
 def test_misori_tol_rad_converts_correctly():
-    p = ProcessGrainsParams()
-    p = apply_mode_defaults(p, "spot_aware")
+    p = ProcessGrainsParams(MisoriTol=0.5)
+    p = apply_mode_defaults(p, "paper_claim")   # was spot_aware (disabled)
     import math
     assert abs(misori_tol_rad(p) - math.radians(0.5)) < 1e-15
 
@@ -103,7 +106,7 @@ def test_adaptive_mode_respects_user_override():
 
 def test_needs_adaptive_misori_only_in_adaptive_mode():
     p = ProcessGrainsParams()  # MisoriTol = None
-    assert needs_adaptive_misori(p, "spot_aware") is False
+    assert needs_adaptive_misori(p, "paper_claim") is False
     assert needs_adaptive_misori(p, "legacy") is False
     assert needs_adaptive_misori(p, "adaptive") is True
 

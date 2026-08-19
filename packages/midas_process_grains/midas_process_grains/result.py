@@ -77,7 +77,13 @@ class ProcessGrainsResult:
     # Snapshot of what the run used.
     sg_nr: int = 225
     lattice_reference: Tuple[float, ...] = (0.0,) * 6
-    mode: str = "spot_aware"
+    # Provenance only: stamped into the HDF5 attrs by io/consolidated.py, and
+    # always set explicitly by pipeline.run. The default is deliberately NOT a
+    # real mode name -- it used to be "spot_aware", so a result constructed
+    # without it stamped a mode that is now disabled and cannot have produced
+    # the data. An unset provenance field should say so rather than name a run
+    # that did not happen.
+    mode: str = "unknown"
 
     @property
     def n_grains(self) -> int:

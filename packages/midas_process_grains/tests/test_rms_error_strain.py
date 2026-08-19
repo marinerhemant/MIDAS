@@ -53,7 +53,7 @@ def test_rms_error_strain_nonzero_on_strained_synthetic(tiny_run_dir: Path):
     _doctor_strained_grain(tiny_run_dir, eps=1e-3)
     pg = ProcessGrains.from_param_file(tiny_run_dir / "paramstest.txt",
                                        device="cpu")
-    res = pg.run(mode="spot_aware")
+    res = pg.run(mode="adaptive")   # was spot_aware (disabled)
     assert res.n_grains >= 1
     rms = np.asarray(res.rms_error_strain)
     strain = np.asarray(res.strain_grain)[0]

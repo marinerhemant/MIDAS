@@ -62,7 +62,7 @@ def test_d0_advisory_fires_on_large_ring_offset(tiny_run_dir: Path, capsys):
     _doctor_offset_lattice(tiny_run_dir, ppm=-850.0)
     pg = ProcessGrains.from_param_file(tiny_run_dir / "paramstest.txt",
                                        device="cpu")
-    res = pg.run(mode="spot_aware")
+    res = pg.run(mode="adaptive")   # was spot_aware (disabled)
     out = capsys.readouterr().out
     if "reference lattice / wavelength likely mis-calibrated" in out:
         # The flag tripped → the advisory must accompany it.

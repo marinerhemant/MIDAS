@@ -53,7 +53,8 @@ from .io.binary import (
 from .io.hkls import HklTable, load_hkl_table
 from .io.ids_hash import IDsHash, load_ids_hash
 from .modes import (
-    VALID_MODES, apply_mode_defaults, misori_tol_rad, needs_adaptive_misori,
+    SPOT_AWARE_DISABLED, VALID_MODES, apply_mode_defaults, misori_tol_rad,
+    needs_adaptive_misori,
 )
 from .params import ProcessGrainsParams, read_paramstest_pg
 from .result import ProcessGrainsResult
@@ -63,6 +64,73 @@ __all__ = ["ProcessGrains"]
 
 
 _DEG2RAD = math.pi / 180.0
+
+
+# ---------------------------------------------------------------------------
+# c_parity result adapter
+# ---------------------------------------------------------------------------
+
+
+def _result_from_grains_csv(
+    path: Union[str, Path],
+    *,
+    sg_nr: int = 225,
+    lattice_reference: Tuple[float, ...] = (0.0,) * 6,
+) -> ProcessGrainsResult:
+    """Build a :class:`ProcessGrainsResult` from a written ``Grains.csv``.
+
+    Used only by ``mode='c_parity'``, which emits its artefacts through the
+    C-replica writer. Reading them back is deliberate: it keeps ONE
+    implementation of the C-parity strain solve, so the returned object cannot
+    disagree with the file on disk. Re-deriving the same quantities here would
+    be a second implementation whose drift nothing would catch.
+
+    Column layout is the 47-column legacy schema documented in
+    ``io/csv.py`` — ``eFab`` (24..32) is the grain-frame strain and ``eKen``
+    (33..41) the lab/sample-frame one, per that schema.
+    """
+    path = Path(path)
+    rows = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("%"):
+                continue
+            rows.append([float(t) for t in line.split()])
+    arr = (np.asarray(rows, dtype=np.float64) if rows
+           else np.zeros((0, 47), dtype=np.float64))
+    n = arr.shape[0]
+
+    def col(a, b=None):
+        if n == 0:
+            return np.zeros((0,) if b is None else (0, b - a), dtype=np.float64)
+        return arr[:, a] if b is None else arr[:, a:b]
+
+    t = torch.from_numpy
+    return ProcessGrainsResult(
+        ids=t(col(0).astype(np.int64)),
+        # rep_pos is a row index into OrientPosFit.bin and is NOT carried by
+        # Grains.csv. -1 marks "not recorded" rather than inventing a row 0.
+        rep_pos=t(np.full(n, -1, dtype=np.int64)),
+        orient_mat=t(col(1, 10).reshape(n, 3, 3).copy()),
+        positions=t(col(10, 13).copy()),
+        lattice=t(col(13, 19).copy()),
+        grain_radius=t(col(22).copy()),
+        confidence=t(col(23).copy()),
+        strain_grain=t(col(24, 33).reshape(n, 3, 3).copy()),
+        strain_lab=t(col(33, 42).reshape(n, 3, 3).copy()),
+        diff_pos_um=t(col(19).copy()),
+        diff_ome_deg=t(col(20).copy()),
+        diff_angle_deg=t(col(21).copy()),
+        rms_error_strain=t(col(42).copy()),
+        phase_nr=t(col(43).astype(np.int32)),
+        sg_nr=int(sg_nr),
+        lattice_reference=tuple(lattice_reference),
+        mode="c_parity",
+        # SpotMatrix.csv / GrainIDsKey.csv were written beside Grains.csv; they
+        # are not re-parsed, so these stay empty rather than half-populated.
+        diagnostics={"c_parity_artifacts_dir": str(path.parent)},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +154,10 @@ class ProcessGrains:
     ids_hash: Optional[IDsHash] = None
     # Per-spot grain radius (SpotID → µm) from Radius_*.csv; None if absent.
     spot_radius_by_id: Optional[np.ndarray] = None
+    # The parameter file this was built from, when there was one. c_parity
+    # reads paramstest itself, and defaulting to run_dir/"paramstest.txt"
+    # silently discards a differently-named file the caller was handed.
+    param_file: Optional[Path] = None
 
     # ---- Constructors ------------------------------------------------------
 
@@ -108,7 +180,8 @@ class ProcessGrains:
         params = read_paramstest_pg(pf)
         dev = resolve_device(device)
         dt = resolve_dtype(dev, dtype)
-        return cls(params=params, run_dir=Path(run_dir), device=dev, dtype=dt)
+        return cls(params=params, run_dir=Path(run_dir), device=dev, dtype=dt,
+                   param_file=pf)
 
     # ---- Loading -----------------------------------------------------------
 
@@ -218,20 +291,94 @@ class ProcessGrains:
 
     # ---- Run ---------------------------------------------------------------
 
-    def run(self, mode: str = "spot_aware") -> ProcessGrainsResult:
+    def _run_c_parity(
+        self, *, out_dir: Optional[Union[str, Path]] = None,
+    ) -> ProcessGrainsResult:
+        """``mode='c_parity'`` — dispatch to the C-replica pipeline.
+
+        Deliberately calls the *same* function as the ``midas-process-grains``
+        CLI rather than re-deriving the grains here. c_parity's whole purpose is
+        to reproduce ``ProcessGrains.c``; a second implementation of its strain
+        solve in this module could drift from the first and the drift would be
+        invisible (both would "converge"). One implementation, two callers.
+        """
+        from .compute.c_parity_run import run_c_parity_pipeline_from_disk
+
+        out = Path(out_dir) if out_dir is not None else self.run_dir
+        dev = self.device
+        device_str = (dev.type if getattr(dev, "index", None) is None
+                      else f"{dev.type}:{dev.index}") if hasattr(dev, "type") else str(dev)
+
+        kwargs = dict(
+            run_dir=self.run_dir,
+            out_dir=out,
+            paramstest=self.param_file,      # None → run_dir/paramstest.txt
+            device=device_str,
+            min_nr_spots=self.params.MinNrSpots,
+            confidence_min=self.params.Completeness,   # None → from the file
+        )
+        # MisoriTol is Optional with None meaning "not set in paramstest", so
+        # only override the C default when the caller actually chose a value.
+        if self.params.MisoriTol is not None:
+            kwargs["misori_tol_stage1_deg"] = float(self.params.MisoriTol)
+
+        run_c_parity_pipeline_from_disk(**kwargs)
+
+        grains_csv = out / "Grains.csv"
+        if not grains_csv.exists():
+            raise RuntimeError(
+                f"c_parity reported success but {grains_csv} was not written. "
+                "Refusing to return a result that describes no output."
+            )
+        return _result_from_grains_csv(
+            grains_csv,
+            sg_nr=int(getattr(self.params, "SpaceGroup", 225) or 225),
+            lattice_reference=tuple(
+                getattr(self.params, "LatticeConstant", None) or (0.0,) * 6),
+        )
+
+    def run(self, mode: str = "c_parity",
+            *, out_dir: Optional[Union[str, Path]] = None) -> ProcessGrainsResult:
         """End-to-end: cluster + resolve + strain + (optional) stress.
 
         Parameters
         ----------
         mode : str
-            One of ``legacy``, ``paper_claim``, ``spot_aware``.
+            ``c_parity`` (the default), ``legacy``, ``paper_claim`` or
+            ``adaptive``. ``spot_aware`` is disabled and raises — see
+            :data:`SPOT_AWARE_DISABLED`.
+        out_dir : path, optional
+            ``c_parity`` only; defaults to ``run_dir``. See the note below.
+
+        Notes
+        -----
+        **``c_parity`` writes its artefacts as part of the call.** It dispatches
+        to :func:`~.compute.c_parity_run.run_c_parity_pipeline_from_disk` — the
+        same function the ``midas-process-grains`` CLI runs — which emits
+        ``Grains.csv`` / ``GrainIDsKey.csv`` / ``SpotMatrix.csv`` into
+        ``out_dir``. The returned result is then read back from that
+        ``Grains.csv``, so the object and the file cannot disagree and the
+        C-parity strain solve has exactly one implementation. You do **not**
+        need to call ``result.write()`` afterwards; doing so rewrites the same
+        rows. Every other mode is pure-compute and leaves writing to the caller.
 
         Returns
         -------
         ProcessGrainsResult
         """
+        if mode == "spot_aware":
+            raise ValueError(SPOT_AWARE_DISABLED)
+        if mode == "c_parity":
+            return self._run_c_parity(out_dir=out_dir)
+        if out_dir is not None:
+            raise ValueError(
+                "out_dir applies to mode='c_parity' only; every other mode is "
+                "pure-compute — call result.write(out_dir) instead."
+            )
         if mode not in VALID_MODES:
-            raise ValueError(f"mode must be one of {VALID_MODES}; got {mode!r}")
+            raise ValueError(
+                f"mode must be 'c_parity' or one of {VALID_MODES}; got {mode!r}"
+            )
         params = apply_mode_defaults(self.params, mode)
         if self.binaries is None:
             # The per-spot residual table (FitBest.bin) is only needed by the

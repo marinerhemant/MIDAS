@@ -96,7 +96,7 @@ def _append_param(run_dir: Path, line: str) -> None:
 def _run(run_dir: Path):
     from midas_process_grains.pipeline import ProcessGrains
     pg = ProcessGrains.from_param_file(run_dir / "paramstest.txt", device="cpu")
-    return pg.run(mode="spot_aware")
+    return pg.run(mode="adaptive")   # was spot_aware (disabled)
 
 
 def test_grains_below_the_gate_are_dropped(tiny_run_dir):

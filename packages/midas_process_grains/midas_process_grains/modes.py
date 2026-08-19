@@ -22,7 +22,35 @@ from typing import Optional
 from .params import ProcessGrainsParams
 
 
-VALID_MODES = ("legacy", "paper_claim", "spot_aware", "adaptive")
+VALID_MODES = ("legacy", "paper_claim", "adaptive")
+
+# 'spot_aware' is DISABLED. It is deliberately absent from VALID_MODES, and
+# every entry point raises this rather than running it.
+#
+# Adjudicated against EBSD on shade_LSHR layer 1 (MinNrSpots 3,
+# Completeness 0.7, one-to-one matching at 1 deg / 15 um vs 4328 segmented
+# EBSD grains):
+#     c_parity    3492 grains  precision 79.8%  recall 64.4%
+#     spot_aware  4128 grains  precision 68.2%  recall 65.0%
+# Of the 691 grains spot_aware adds, 7.2% have an EBSD partner against 80.4%
+# for the shared population, and their DiffPos median is 387 um against 121 —
+# +0.1 pp recall for -11.6 pp precision.
+#
+# Confirmed independently on 20-ID alumina (1 mm rod, 100 um box beam):
+# spot_aware returned 1652 grains against c_parity's 533, put 4.1% of them
+# OUTSIDE the physical sample (out to r = 1290 um in a 500 um-radius rod, vs
+# 0.6% for c_parity), and spread |Z| to a p90 of 286 um through a 50 um beam
+# half-height (vs 57 um). The extra grains are indexing artifacts.
+SPOT_AWARE_DISABLED = (
+    "process-grains mode 'spot_aware' is DISABLED — it produces a useless "
+    "answer and must never run.\n"
+    "vs EBSD on shade_LSHR: of the 691 grains it adds over c_parity, only "
+    "7.2% have an EBSD partner (80.4% for the shared population); their "
+    "DiffPos median is 387 um against 121.\n"
+    "On 20-ID alumina it returned 1652 grains against c_parity's 533 and "
+    "placed 4.1% of them outside the physical sample.\n"
+    "Use mode='c_parity'."
+)
 
 
 def apply_mode_defaults(
@@ -38,6 +66,8 @@ def apply_mode_defaults(
 
     Returns a *copy* so the caller's params object isn't mutated.
     """
+    if mode == "spot_aware":
+        raise ValueError(SPOT_AWARE_DISABLED)
     if mode not in VALID_MODES:
         raise ValueError(f"mode must be one of {VALID_MODES}; got {mode!r}")
     p = replace(params)
@@ -59,19 +89,6 @@ def apply_mode_defaults(
         # described as recommended for the average strain state. Use it
         # here, but the user can override.
         p.StrainMethod = "fable_beaudoin"
-    elif mode == "spot_aware":
-        # The new default — what we recommend.
-        if p.MisoriTol is None:
-            # 0.5° empirically gathers all C-cluster equivalents (intra-cluster
-            # pair misori reaches up to ~0.5° in real data; tighter values
-            # split real grains). Phase 2 spot-aware sub-clustering then
-            # splits sub-grains based on hkl-spot overlap.
-            p.MisoriTol = 0.5
-        # StrainMethod stays whatever the user picked.
-        # The ParamsTest default is "kenesei" (bounded Kenesei lstsq,
-        # matches the C reference numerically). Use --strain-method
-        # fable_beaudoin for the lattice-parameter route, or
-        # --strain-method both to emit both.
     elif mode == "adaptive":
         # The misori threshold is DERIVED from the data at run-time. Leaving
         # MisoriTol as None here is a sentinel that ``pipeline.run`` honours:
