@@ -45,20 +45,34 @@ def parse_grains_header(path):
     return meta
 
 def parse_param(run_dir):
-    """Pull provenance from paramstest.txt / *ParamFile*.txt if present."""
+    """Pull provenance from paramstest.txt / *ParamFile*.txt if present.
+
+    Candidates are MERGED, earliest-wins, rather than stopping at the first file
+    that yields anything. The per-layer ``paramstest.txt`` the C stages consume is
+    STRIPPED: it carries ``Distance`` (not ``Lsd``) and drops ``BC``,
+    ``Completeness`` and ``RingThresh`` entirely. Since it is also the first
+    candidate, an early break meant every real run rendered "Lsd ?" in the
+    provenance strip while the master parameter file sitting next to it had the
+    value. ``k not in p`` already gives the per-layer file precedence, so merging
+    only fills gaps.
+
+    ``Distance`` is accepted as an alias for ``Lsd`` for the same reason.
+    """
+    ALIAS={"Distance":"Lsd"}
+    WANT=("Wavelength","Lsd","px","NrPixels","OmegaStep","OmegaStart","Completeness")
     p={}
     cands=glob.glob(os.path.join(run_dir,"paramstest.txt"))+glob.glob(os.path.join(run_dir,"*ParamFile*.txt"))\
           +glob.glob(os.path.join(os.path.dirname(run_dir.rstrip("/")),"*ParamFile*.txt"))
     for f in cands:
         for ln in open(f):
+            ln=ln.split("#",1)[0]
             t=ln.split()
             if len(t)<2: continue
-            k=t[0]
-            if k in ("Wavelength","Lsd","px","NrPixels","OmegaStep","OmegaStart","Completeness") and k not in p:
+            k=ALIAS.get(t[0],t[0])
+            if k in WANT and k not in p:
                 p[k]=t[1].rstrip(";")
             if k=="BC" and "BC" not in p: p["BC"]=f"{t[1].rstrip(chr(59))} {t[2].rstrip(chr(59))}"
             if k=="RingThresh": p.setdefault("rings",[]).append(t[1])
-        if p: break
     return p
 
 def is_cubic(sg):  return sg is not None and 195<=sg<=230
@@ -117,6 +131,88 @@ def fig_error_maps(C,D,outp):
         cb=fig.colorbar(sc,ax=a,shrink=0.82,pad=0.02);cb.ax.tick_params(labelsize=8)
     fig.suptitle("Per-grain error / quality maps (beam-plane X–Y)",x=0.02,ha="left",fontsize=12.5,weight="bold")
     fig.tight_layout(rect=[0,0,1,0.96]); fig.savefig(outp,bbox_inches="tight"); plt.close(fig)
+
+def fig_per_grain_residuals(C, S, outp):
+    """Per-SPOT DiffPos and DiffOme, resolved PER GRAIN.
+
+    The grain-level DiffPos in Grains.csv is a MEAN over that grain's matched
+    spots, so a small tail of badly-matched spots dominates it (the same trap
+    hard rule 6 names for calibrant strain). Measured on 20-ID Au: the core sits
+    at ~161 um (about one spot width) while a ~8% tail reaches >1 mm, and 91% of
+    those tail spots had a CLOSER spot available -- i.e. they are
+    mis-assignments, not misfit. Plotting the per-spot distribution per grain is
+    the only way to see that; the mean hides it.
+    """
+    if S is None:
+        fig, ax = plt.subplots(figsize=(7, 2)); ax.axis("off")
+        ax.text(.5, .5, "no residual sidecar", ha="center", color=MUT)
+        fig.savefig(outp, bbox_inches="tight"); plt.close(fig); return
+    gi = S["grain_idx"].astype(int)
+    dlen = np.hypot(S["dy_um"], S["dz_um"])
+    dome = S["dome_deg"]
+    gids = np.unique(gi)
+    order = np.argsort([np.median(dlen[gi == g]) for g in gids])
+    gids = gids[order]
+    show = gids if len(gids) <= 24 else gids[np.linspace(0, len(gids)-1, 24).astype(int)]
+
+    fig, ax = plt.subplots(2, 2, figsize=(13, 7.6))
+    # (0,0) per-grain violin/strip of per-spot DiffPos
+    data = [dlen[gi == g] for g in show]
+    pos = np.arange(len(show))
+    parts = ax[0,0].violinplot(data, positions=pos, widths=0.85, showextrema=False)
+    for b in parts["bodies"]:
+        b.set_facecolor(TEAL); b.set_alpha(0.35); b.set_edgecolor("none")
+    for i, v in enumerate(data):
+        ax[0,0].plot(np.full(len(v), i) + (np.random.default_rng(i).random(len(v))-.5)*0.28,
+                     v, ".", ms=2.0, color=INK, alpha=0.45)
+        ax[0,0].plot([i-0.42, i+0.42], [np.median(v)]*2, "-", color=COPPER, lw=2)
+    ax[0,0].set_xticks(pos); ax[0,0].set_xticklabels([str(int(g)) for g in show],
+                                                     rotation=90, fontsize=7)
+    ax[0,0].set_ylabel("per-spot |Δpos| (µm)"); ax[0,0].set_xlabel("grain")
+    ax[0,0].set_title("DiffPos per spot, by grain — copper = median", fontsize=10)
+
+    # (0,1) the pooled distribution, log-x, with core/tail split
+    allv = dlen[np.isfinite(dlen) & (dlen > 0)]
+    ax[0,1].hist(allv, bins=np.logspace(np.log10(max(allv.min(),1)),
+                                        np.log10(allv.max()), 70),
+                 color=TEAL, alpha=.85)
+    med = np.median(allv)
+    ax[0,1].axvline(med, color=COPPER, lw=1.5, ls="--", label=f"median {med:.0f} µm")
+    ax[0,1].axvline(allv.mean(), color=INK, lw=1.5, ls=":",
+                    label=f"MEAN {allv.mean():.0f} µm  ← DiffPos")
+    ax[0,1].set_xscale("log"); ax[0,1].set_xlabel("per-spot |Δpos| (µm)")
+    ax[0,1].set_ylabel("spots"); ax[0,1].legend(fontsize=8, frameon=False)
+    ax[0,1].set_title("pooled — the mean sits far above the median", fontsize=10)
+
+    # (1,0) per-grain DiffOme
+    dd = [dome[gi == g] for g in show]
+    parts = ax[1,0].violinplot(dd, positions=pos, widths=0.85, showextrema=False)
+    for b in parts["bodies"]:
+        b.set_facecolor(COPPER); b.set_alpha(0.35); b.set_edgecolor("none")
+    for i, v in enumerate(dd):
+        ax[1,0].plot(np.full(len(v), i) + (np.random.default_rng(i).random(len(v))-.5)*0.28,
+                     v, ".", ms=2.0, color=INK, alpha=0.45)
+    ax[1,0].axhline(0, color=MUT, lw=.8)
+    ax[1,0].set_xticks(pos); ax[1,0].set_xticklabels([str(int(g)) for g in show],
+                                                     rotation=90, fontsize=7)
+    ax[1,0].set_ylabel("per-spot Δω (deg)"); ax[1,0].set_xlabel("grain")
+    ax[1,0].set_title("DiffOme per spot, by grain", fontsize=10)
+
+    # (1,1) cumulative share of the MEAN carried by the worst spots
+    sv = np.sort(allv)[::-1]
+    frac = np.arange(1, len(sv)+1) / len(sv)
+    ax[1,1].plot(100*frac, 100*np.cumsum(sv)/sv.sum(), color=TEAL, lw=1.8)
+    for f in (0.05, 0.10):
+        k = max(1, int(f*len(sv)))
+        ax[1,1].plot([100*f], [100*sv[:k].sum()/sv.sum()], "o", color=COPPER, ms=5)
+        ax[1,1].annotate(f"worst {100*f:.0f}% carry {100*sv[:k].sum()/sv.sum():.0f}%",
+                         (100*f, 100*sv[:k].sum()/sv.sum()), textcoords="offset points",
+                         xytext=(8, -10), fontsize=8, color=INK)
+    ax[1,1].plot([0,100],[0,100], "--", color=MUT, lw=.8)
+    ax[1,1].set_xlabel("worst N% of spots"); ax[1,1].set_ylabel("% of the summed |Δpos|")
+    ax[1,1].set_title("how concentrated is the error?", fontsize=10)
+    fig.tight_layout(); fig.savefig(outp, bbox_inches="tight"); plt.close(fig)
+
 
 def fig_residuals(D,S,outp):
     fig,ax=plt.subplots(2,3,figsize=(13,7.4))
@@ -380,6 +476,10 @@ def main():
           "Per-grain error and quality maps", "Completeness, spots, internal angle, residual, DiffPos, strain error.")
     plate("residuals",   lambda p: fig_residuals(D, S, p),
           "Residual diagnostics", "Per-ring Δr, residual vs η, Δrad–Δtan density, angle histograms.")
+    plate("per_grain_resid", lambda p: fig_per_grain_residuals(C, S, p),
+          "DiffPos and DiffOme per spot, by grain",
+          "Grains.csv reports the MEAN over each grain's spots, so a small tail "
+          "dominates it. These are the underlying per-spot distributions.")
     plate("strain",      lambda p: fig_strain(C, nom_a, D, p),
           "Strain, lattice and quality", "Hydrostatic map, component boxplots, lattice-a, completeness.")
     plate("grain_hists", lambda p: fig_grain_error_hists(C, D, p),
