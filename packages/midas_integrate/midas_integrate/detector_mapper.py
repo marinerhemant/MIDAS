@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence
@@ -69,6 +70,63 @@ except ImportError:
     _numba_map_kernel = None
     _numba_map_kernel_subpixel = None
     HAVE_NUMBA = False
+
+
+class MapTruncationWarning(UserWarning):
+    """Map entries were dropped because a detector row filled its buffer.
+
+    Raised (as a warning) by ``build_map``. It is deliberately not gated on
+    ``verbose``: truncation drops ``frac`` and ``areaWeight`` together, so a
+    normalised profile can still look correct while absolute flux, per-bin
+    area, and bin occupancy are wrong.
+    """
+
+
+#: Default ceiling on the transient per-row map buffer
+#: (NrPixelsZ × per_row_max × 6 × 8 bytes).
+DEFAULT_MAP_BUFFER_BYTES = 4 * 1024 ** 3
+
+
+def estimate_per_row_max(params,
+                         max_bytes: int = DEFAULT_MAP_BUFFER_BYTES) -> int:
+    """Per-detector-row entry budget implied by the binning geometry.
+
+    One pixel maps onto roughly ``(1/RBinSize)`` radial bins and, at the
+    innermost radius, ``(deg subtended by one pixel) / EtaBinSize`` azimuthal
+    bins; sub-pixel splitting multiplies that by ``SubPixelLevel**2``. A fixed
+    guess (the old ``max(NrPixelsY*4, 4000)``) underestimates this badly at
+    fine ``RBinSize`` and drops entries silently.
+
+    The result is padded for corner effects and then clamped so the transient
+    buffer stays under ``max_bytes``. When the clamp bites — most easily with
+    ``SubPixelLevel > 1``, where a detector row lying along a cardinal azimuth
+    is split everywhere — the build emits ``MapTruncationWarning`` rather than
+    dropping entries quietly.
+    """
+    n_y = max(int(params.NrPixelsY), 1)
+    n_z = max(int(params.NrPixelsZ), 1)
+
+    r_bin = float(getattr(params, "RBinSize", 0.0) or 0.0)
+    # +2 for the two partially-covered bins at each end of the span
+    r_bins_per_px = (1.0 / r_bin + 2.0) if r_bin > 0 else 3.0
+
+    eta_bin = float(getattr(params, "EtaBinSize", 0.0) or 0.0)
+    r_min = float(getattr(params, "RMin", 0.0) or 0.0)
+    if eta_bin > 0 and r_min > 0:
+        # angle subtended by one pixel at the innermost ring, in degrees
+        deg_per_px = math.degrees(1.0 / r_min)
+        eta_bins_per_px = deg_per_px / eta_bin + 2.0
+    else:
+        eta_bins_per_px = 3.0
+
+    spl = max(int(getattr(params, "SubPixelLevel", 1) or 1), 1)
+
+    per_px = r_bins_per_px * eta_bins_per_px * (spl * spl)
+    est = int(math.ceil(n_y * per_px * 1.30))          # 30 % headroom
+
+    # Clamp to the memory budget: buffer is n_z × per_row × 6 float64.
+    budget = max(int(max_bytes // (n_z * 6 * 8)), 1)
+    return int(min(max(est, 4000), budget))
 
 
 @dataclass
@@ -381,8 +439,10 @@ def build_map(
                 ``NUMBA_NUM_THREADS`` env var).
         use_numba: True/False to force, None to auto-detect.
         per_row_max_entries: maximum bins a single detector row can populate.
-                When None, defaults to NrPixelsY * 4 (covers PILATUS3-style
-                geometry; bump if you see truncation warnings).
+                When None, it is derived from the binning geometry by
+                ``estimate_per_row_max`` — a fixed guess silently drops
+                entries at fine ``RBinSize``. Override only to cap memory,
+                and check the truncation warning if you do.
         verbose: Print progress.
     """
     params.validate()
@@ -501,9 +561,7 @@ def build_map(
 
     if use_n:
         if per_row_max_entries is None:
-            # Heuristic: max ~4 bins per pixel (1×R bin × ~4 Eta bins for
-            # most PILATUS-style geometries; bump for very fine binning).
-            per_row_max_entries = max(NY * 4, 4000)
+            per_row_max_entries = estimate_per_row_max(params)
         if mask is not None:
             mask_arr = np.ascontiguousarray(mask, dtype=np.float64)
             mask_present = 1
@@ -579,10 +637,21 @@ def build_map(
                 raw_z_arr.astype(np.float64),
                 int(per_row_max_entries),
             )
-        truncated_rows = (per_row_count == per_row_max_entries).sum()
-        if truncated_rows > 0 and verbose:
-            print(f"  WARNING: {truncated_rows} row(s) hit per_row_max; "
-                  "rerun with a larger per_row_max_entries to capture all entries.")
+        # Truncation silently drops map entries. Both `frac` and `areaWeight`
+        # go together so a normalised profile can still look plausible, while
+        # absolute flux, bin area, and whole bins are wrong. Never hide this
+        # behind `verbose`.
+        truncated_rows = int((per_row_count == per_row_max_entries).sum())
+        if truncated_rows > 0:
+            warnings.warn(
+                f"map truncated: {truncated_rows} detector row(s) hit "
+                f"per_row_max_entries={per_row_max_entries:,}, so map entries "
+                f"were dropped. Normalised intensity may still look sane while "
+                f"absolute flux and bin area are wrong, and whole bins can go "
+                f"missing. Rebuild with a larger per_row_max_entries "
+                f"(try {per_row_max_entries * 4:,}).",
+                MapTruncationWarning, stacklevel=2,
+            )
 
         # Flatten + bin-major regroup
         # Each entry is (bin_idx, raw_y, raw_z, frac, deltaR, area)

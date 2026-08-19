@@ -84,6 +84,11 @@ def detector_mapper_main(argv=None) -> int:
                    help="Optional binary pixel mask (TIFF or raw); 1 = masked.")
     p.add_argument("-j", "--jobs", type=int, default=-1,
                    help="Number of joblib workers (default: -1 = all CPUs)")
+    p.add_argument("--per-row-max", type=int, default=None,
+                   help="Entries a single detector row may contribute to the "
+                        "map. Default is derived from RBinSize/EtaBinSize/"
+                        "SubPixelLevel. Raise it if you get a map-truncation "
+                        "warning; lower it to cap memory.")
     p.add_argument("-q", "--quiet", action="store_true")
     p.add_argument("-V", "--version", action="version",
                    version=f"midas-integrate {__version__}")
@@ -107,6 +112,7 @@ def detector_mapper_main(argv=None) -> int:
         params, output_dir=out_dir,
         mask=mask_arr, flat=flat_arr,
         n_jobs=args.jobs,
+        per_row_max_entries=args.per_row_max,
         verbose=not args.quiet,
     )
     print(f"wrote: {map_path}")
