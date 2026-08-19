@@ -233,6 +233,7 @@ def extract_fitted_points(
     Eta_chunks: List[np.ndarray] = []
     ring_idx_chunks: List[np.ndarray] = []
     snr_chunks: List[np.ndarray] = []
+    snr_base_chunks: List[np.ndarray] = []
 
     for ring_i, r_ideal in enumerate(rt.r_ideal_px):
         idx = np.where(np.abs(cake.R_centers - r_ideal) <= half_px)[0]
@@ -253,6 +254,31 @@ def extract_fitted_points(
         peak = I.max(axis=0)
         mean = I.mean(axis=0) + 1e-12
         snr = peak / mean
+        # Baseline-referenced SNR for the per-ring quality filter: subtract a
+        # straight line through the two window ends, then compare the peak
+        # height to the scatter at those ends.  A weak ring riding a sloping
+        # background scores high on peak/mean but low here, which is the
+        # discrimination the ring filter needs.
+        n_win = I_block.shape[0]
+        if n_win >= 5:
+            edge = max(2, n_win // 8)
+            lo = I_block[:edge].mean(axis=0)
+            hi = I_block[-edge:].mean(axis=0)
+            ramp = np.linspace(0.0, 1.0, n_win)[:, None]
+            base_lin = lo[None, :] + (hi - lo)[None, :] * ramp
+            height = (I_block - base_lin).max(axis=0)
+            # Noise floor from counting statistics.  The scatter at the window
+            # ends alone goes to zero wherever the ends happen to be flat (a
+            # masked gap, an off-panel region, a saturated shelf) and the ratio
+            # then explodes — measured maxima of ~1e7 on a real frame, which
+            # made any SNR threshold inert because almost every ring "passed".
+            # A peak cannot be known better than sqrt(N) on its own baseline.
+            ends = np.concatenate([I_block[:edge], I_block[-edge:]], axis=0)
+            base_level = np.maximum(ends.mean(axis=0), 0.0)
+            noise = np.maximum(ends.std(axis=0), np.sqrt(np.maximum(base_level, 1.0)))
+            snr_base = height / noise
+        else:
+            snr_base = np.zeros_like(snr)
         keep = valid_tot & (snr >= snr_min)
         if not keep.any():
             continue
@@ -260,6 +286,7 @@ def extract_fitted_points(
         Eta_chunks.append(eta_centers[keep])
         ring_idx_chunks.append(np.full(int(keep.sum()), ring_i, dtype=np.int64))
         snr_chunks.append(snr[keep])
+        snr_base_chunks.append(snr_base[keep])
 
     if not R_chunks:
         return []
@@ -268,6 +295,7 @@ def extract_fitted_points(
     Eta_targets = np.concatenate(Eta_chunks)
     ring_idxs = np.concatenate(ring_idx_chunks)
     snrs = np.concatenate(snr_chunks)
+    snr_bases = np.concatenate(snr_base_chunks)
 
     Y_pix, Z_pix = invert_REta_to_pixel_batch(
         R_targets, Eta_targets,
@@ -280,6 +308,7 @@ def extract_fitted_points(
         FittedPoint(
             Y_pix=float(Y_pix[i]), Z_pix=float(Z_pix[i]),
             ring_idx=int(ring_idxs[i]), snr=float(snrs[i]),
+            snr_baseline=float(snr_bases[i]),
         )
         for i in range(R_targets.shape[0])
     ]

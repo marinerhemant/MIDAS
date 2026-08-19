@@ -37,6 +37,12 @@ class FittedPoint:
     Z_pix: float
     ring_idx: int      # index into RingTable
     snr: float = 1.0
+    # Peak height over a LINEAR baseline across the radial window, divided by
+    # the scatter at the window ends.  ``snr`` above is peak/mean inside the
+    # window, which scores a ring sitting on a sloping background as strong;
+    # this one does not, so it is what the per-ring quality filter aggregates.
+    # Kept separate so ``SNRMin`` keeps its historical meaning.
+    snr_baseline: float = 0.0
 
 
 @dataclass

@@ -66,6 +66,15 @@ class CalibrationParams:
     # Restrict that exclusion to collisions between DIFFERENT calibrants,
     # leaving same-phase doublets to the doublet co-fitter.
     BlendExcludeCrossPhaseOnly: bool = False
+    # ---- per-ring quality filter (applied AFTER the E-step, on the fits) ----
+    # A ring table is crystallography; it says nothing about whether a given
+    # ring is actually measurable on this exposure.  Weak, partially-shadowed
+    # or grainy rings still produce centroids, and those centroids are noise
+    # that the geometry then absorbs.  These two drop a ring outright when it
+    # is not carried by enough of the azimuth, or not far enough above its own
+    # local background.  0 disables (historical behaviour).
+    MinEtaBinsPerRing: int = 0      # need >= this many usable (ring, eta) fits
+    MinRingSNR: float = 0.0         # need >= this median baseline-referenced SNR
 
     # ----------------------------------------------- E-step binning
     Width: float = 800.0           # μm; ring half-width
@@ -157,12 +166,23 @@ class CalibrationParams:
                 vals = [float(v) for v in val.split()]
                 if len(vals) >= 6:
                     params.LatticeConstant = tuple(vals[:6])  # type: ignore
+            elif key in ("FixPanelID", "FixedPanelID"):
+                # MIDAS spells this `FixPanelID` everywhere else -- the C
+                # (CalibrantIntegratorOMP.c, FitMultipleGrains.c),
+                # midas_params' registry, and the files AutoCalibrateZarr
+                # writes. It was never parsed here under either spelling, so
+                # the anchored panel silently stayed 0 whatever the file said.
+                params.FixedPanelID = int(float(val.split()[0]))
             elif key == "MaxRingRad":
                 params.MaxRingRad = float(val.split()[0])
             elif key == "MinRingRad":
                 params.MinRingRad = float(val.split()[0])
             elif key == "MinRingSeparation":
                 params.MinRingSeparation = float(val.split()[0])
+            elif key == "MinEtaBinsPerRing":
+                params.MinEtaBinsPerRing = int(float(val.split()[0]))
+            elif key == "MinRingSNR":
+                params.MinRingSNR = float(val.split()[0])
             elif key == "BlendExcludeCrossPhaseOnly":
                 params.BlendExcludeCrossPhaseOnly = bool(int(val.split()[0]))
             elif key == "Phase":
