@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.10.0"
+version = "0.10.1"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -59,7 +59,7 @@ dependencies = [
                                    # re-read Parameters.txt into an archive that already exists.
     # parsl + pipeline orchestrators
     "midas-parsl-configs>=0.1.0",
-    "midas-ff-pipeline>=0.4.3",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
+    "midas-ff-pipeline>=0.6.0",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-nf-pipeline>=0.6.1",
     "midas-pipeline>=0.15.0",      # >=0.7.0 FF refinement precision default + unrefined-position guard;
                                    # >=0.8.0 fit-grain/process-grains floors; >=0.8.2 the zipper floor;
@@ -88,7 +88,7 @@ ff = [
     # >=0.12.0 is the preflight release: below it, a mistyped --params or a
     # wrong RawFolder skipped every FF stage and still exited 0.
     "midas-pipeline>=0.15.0",
-    "midas-ff-pipeline>=0.4.3",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
+    "midas-ff-pipeline>=0.6.0",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.4.0",          # >=0.2.7: paramstest parser strips ';' terminator
     "midas-integrate>=0.5.0",
     "midas-joint-ff-calibrate>=0.4.0", # grain-tx + full-joint refine (IUCrJ 2026)

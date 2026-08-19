@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -114,15 +115,20 @@ def _build_parser() -> argparse.ArgumentParser:
                             "sharding is faster than a single 96-thread "
                             "process. Ignored on GPU. '1' or '0' disables.")
     p_run.add_argument("--indexer-backend", default="c-omp",
-                       choices=["python", "c-omp"],
-                       help="indexing backend: 'c-omp' (default) shells out to "
-                            "the bundled unified C binary (OpenMP, fast); "
-                            "'python' uses the in-process torch/numba indexer "
-                            "(needed for GPU / multi-GPU / cpu-shard runs and "
-                            "the fp64 parity gate).")
-    p_run.add_argument("--pg-mode", default="spot_aware",
-                       choices=["spot_aware", "legacy", "paper_claim"],
-                       help="midas_process_grains mode")
+                       choices=["c-omp"],
+                       help="indexing backend. 'c-omp' only (bundled unified C "
+                            "binary, OpenMP). midas-pipeline >=0.15.0 accepts "
+                            "nothing else -- there is no supported GPU indexing "
+                            "path -- and this shim forwards the value verbatim.")
+    p_run.add_argument("--pg-mode", default="c_parity",
+                       choices=["legacy", "paper_claim", "c_parity"],
+                       help="midas_process_grains mode. 'spot_aware' is DISABLED "
+                            "and no longer accepted: against EBSD on shade_LSHR "
+                            "it traded 11.6 pp of precision for 0.1 pp of recall, "
+                            "and on 20-ID alumina it placed 4.1%% of its grains "
+                            "outside the physical sample. It used to be the "
+                            "default here, so results change if you never passed "
+                            "this flag.")
     p_run.add_argument("--machine", default="local")
     p_run.add_argument("--n-nodes", type=int, default=1)
     p_run.add_argument("--log-level", default="INFO",
@@ -737,12 +743,24 @@ def _cmd_simulate(args: argparse.Namespace) -> int:
 # ``midas_ff_pipeline.testing`` stays (it already re-exports
 # ``midas_pipeline.testing`` and is imported by the notebooks build).
 
-#: ff flag -> midas-pipeline flag. Everything else passes through untouched;
-#: 38 of the 41 ``run`` flags already share a name.
-_FLAG_RENAMES = {
-    "--loss": "--refine-loss",
-    "--mode": "--refine-mode",
-    "--solver": "--refine-solver",
+#: ff flag -> midas-pipeline flag. Everything else passes through untouched.
+#: Empty since midas-pipeline 0.15.0: the only three renames this shim had
+#: pointed at flags that no longer exist (see ``_FLAG_DROPPED``).
+_FLAG_RENAMES: dict[str, str] = {}
+
+#: ff flag -> why midas-pipeline 0.15.0 stopped accepting its translation.
+#:
+#: These are DROPPED, not renamed and not forwarded. Every one configured the
+#: in-process PyTorch refiner, which 0.15.0 disables: indexing and refinement
+#: run on the c-omp binaries only, and the c-omp refiner uses a vendored
+#: Nelder-Mead with no configurable solver or loss. Forwarding them made
+#: ``midas-ff-pipeline run --loss angular`` die in midas-pipeline's argparse
+#: with "unrecognized arguments", which reads like a broken install rather
+#: than a retired option.
+_FLAG_DROPPED = {
+    "--loss":   "the c-omp refiner has no configurable loss",
+    "--mode":   "the c-omp refiner has no configurable strategy",
+    "--solver": "the c-omp refiner uses a vendored Nelder-Mead",
 }
 
 #: Subcommands that take ``--scan-mode``.
@@ -752,27 +770,34 @@ _SCAN_MODE_SUBCOMMANDS = {"run"}
 def translate_argv(argv: list[str]) -> list[str]:
     """Rewrite a midas-ff-pipeline argv into a midas-pipeline argv.
 
-    Handles both ``--flag value`` and ``--flag=value``. Deprecated ``--loss``
-    values are resolved here so they never reach the refiner.
+    Handles both ``--flag value`` and ``--flag=value``. Flags in
+    ``_FLAG_DROPPED`` are removed along with their value, and warned about --
+    midas-pipeline no longer accepts them at all.
     """
     out: list[str] = []
+    skip_value_for: Optional[str] = None
     for i, tok in enumerate(argv):
         flag, sep, value = tok.partition("=")
+        if skip_value_for is not None:
+            # this token is the dropped flag's value
+            skip_value_for = None
+            continue
+        if flag in _FLAG_DROPPED:
+            warnings.warn(
+                f"{flag} is no longer supported and has been dropped: "
+                f"{_FLAG_DROPPED[flag]}. midas-pipeline >=0.15.0 runs "
+                f"refinement on c-omp only.",
+                DeprecationWarning, stacklevel=2,
+            )
+            if not sep:
+                # `--flag value` form: also swallow the value that follows
+                skip_value_for = flag
+            continue
         if flag in _FLAG_RENAMES:
             new = _FLAG_RENAMES[flag]
             out.append(f"{new}{sep}{value}" if sep else new)
             continue
-        # a bare value following --loss: resolve a retired name in place
-        if i and argv[i - 1] == "--loss":
-            tok = resolve_loss(tok)[0]
         out.append(tok)
-
-    # `--loss=pixel` form
-    out = [
-        f"--refine-loss={resolve_loss(t.split('=', 1)[1])[0]}"
-        if t.startswith("--refine-loss=") else t
-        for t in out
-    ]
 
     # inject --scan-mode ff for the subcommands that accept it
     for i, tok in enumerate(out):

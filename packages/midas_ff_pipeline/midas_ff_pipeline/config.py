@@ -75,11 +75,18 @@ class PipelineConfig:
     refine_loss: Literal["full3d", "angular", "internal_angle"] = "full3d"
     refine_mode: Literal["", "iterative", "all_at_once", "c_recipe"] = "c_recipe"
     indexer_group_size: int = 4                    # default to small group for fp64 safety
-    # Indexing backend: "c-omp" (default) shells out to the bundled unified
-    # C binary (OpenMP, fast); "python" uses the in-process torch/numba
-    # indexer (device/dtype/group-size/shard knobs only apply here).
-    indexer_backend: Literal["python", "c-omp"] = "c-omp"
-    process_grains_mode: Literal["spot_aware", "legacy", "paper_claim"] = "spot_aware"
+    # Indexing backend: "c-omp" ONLY. This shim delegates to midas-pipeline,
+    # which since 0.15.0 accepts nothing else -- there is no supported GPU
+    # indexing path. "python" was offered here and would be forwarded verbatim
+    # into an argparse that now rejects it.
+    indexer_backend: Literal["c-omp"] = "c-omp"
+    # c_parity, not spot_aware. spot_aware is DISABLED in midas-process-grains
+    # >=0.9.0 and rejected by midas-pipeline >=0.15.0: against EBSD on
+    # shade_LSHR it traded -11.6 pp of precision for +0.1 pp of recall, and on
+    # a 20-ID alumina rod it placed 4.1% of its grains outside the sample.
+    # It was the default here, so this changes results for anyone who never
+    # passed --pg-mode -- which is the point.
+    process_grains_mode: Literal["legacy", "paper_claim", "c_parity"] = "c_parity"
 
     # Multi-GPU sharding for the indexer stage. Comma-separated list of
     # CUDA device indices, e.g. "0,1" to fan the indexer across two GPUs.
