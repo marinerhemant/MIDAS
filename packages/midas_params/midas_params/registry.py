@@ -1448,7 +1448,9 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="SubPixelCardinalWidth", type=ParamType.FLOAT, category="Peak search",
         description="Half-width for cardinal-η sub-pixel splitting.",
-        applies_to=ALL, default=5.0, units="deg", stages=S_PEAK, hidden_in_wizard=True,
+        # 10.0 matches DetectorMapper.c:109. Was 5.0, which disagreed with the
+        # C and so produced a different map from the same parameter file.
+        applies_to=ALL, default=10.0, units="deg", stages=S_PEAK, hidden_in_wizard=True,
     ),
 
     # ═══════════════════════════════════════════════════════════════════════

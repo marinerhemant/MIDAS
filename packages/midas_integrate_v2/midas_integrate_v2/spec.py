@@ -111,7 +111,10 @@ class IntegrationSpec:
     Write2D: int = 0
     DoBinSort: int = 1
     SubPixelLevel: int = 1
-    SubPixelCardinalWidth: float = 5.0
+    # Must match DetectorMapper.c:109 (10.0). A different default here silently
+    # produced a different map from the same parameter file, and the v1<->v2
+    # compat round-trip carried the wrong value across.
+    SubPixelCardinalWidth: float = 10.0
     Parallax: torch.Tensor = field(default_factory=lambda: _t(0.0))
     SolidAngleCorrection: int = 0
     PolarizationCorrection: int = 0

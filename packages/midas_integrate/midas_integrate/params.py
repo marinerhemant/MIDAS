@@ -72,7 +72,9 @@ class IntegrationParams:
     Write2D: int = 0
     DoBinSort: int = 1
     SubPixelLevel: int = 1
-    SubPixelCardinalWidth: float = 5.0
+    # Must match DetectorMapper.c:109 — a different default here silently
+    # produced a different map from the same parameter file.
+    SubPixelCardinalWidth: float = 10.0
     Parallax: float = 0.0
     SolidAngleCorrection: int = 0
     PolarizationCorrection: int = 0
