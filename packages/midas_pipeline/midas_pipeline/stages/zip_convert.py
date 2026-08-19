@@ -71,6 +71,10 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
     # claims. zip_workers=1 is the serial legacy behaviour.
     def _do_scan(s):
         if s.zip_path.exists():
+            # A pre-existing scan zip carries whatever parameters it was built
+            # with; re-read the parameter file into it (see _param_refresh).
+            _refresh(ctx, s.zip_path, s.scan_dir,
+                     f"zip_convert(PF) scan {s.scan_nr}")
             return "present"
         if not cfg.convert_files:
             LOG.warning("zip_convert(PF): scan %d zip missing (%s) and "
@@ -130,11 +134,15 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
     layer_dir = ctx.layer_dir
     if cfg.zarr_path and Path(cfg.zarr_path).exists():
         LOG.info("zip_convert(FF): using --zarr %s", cfg.zarr_path)
-        return _ff_result(started, [Path(cfg.zarr_path)], present=1, built=0, failed=0)
+        rep = _refresh(ctx, Path(cfg.zarr_path), layer_dir, "zip_convert(FF)")
+        return _ff_result(started, [Path(cfg.zarr_path)], present=1, built=0,
+                          failed=0, refresh=rep)
     existing = list(layer_dir.glob("*.MIDAS.zip"))
     if existing:
         LOG.info("zip_convert(FF): found %s", existing[0])
-        return _ff_result(started, existing, present=1, built=0, failed=0)
+        rep = _refresh(ctx, existing[0], layer_dir, "zip_convert(FF)")
+        return _ff_result(started, existing, present=1, built=0, failed=0,
+                          refresh=rep)
     if not cfg.convert_files:
         LOG.info("zip_convert(FF): no zip in %s and --convert-files off; skip.",
                  layer_dir)
@@ -234,11 +242,37 @@ def _tail(path: Path, n: int = 8) -> list[str]:
         return []
 
 
-def _ff_result(started: float, zips, *, present: int, built: int, failed: int):
+def _refresh(ctx: StageContext, zip_path: Path, work_dir: Path, label: str):
+    """Re-read Parameters.txt into an already-built archive.
+
+    Off by ``--no-refresh-params``. Newly built archives are skipped -- they
+    were written from this very parameter file moments ago.
+    """
+    if not getattr(ctx.config, "refresh_params", True):
+        LOG.info("%s: --no-refresh-params; leaving the archive's parameters "
+                 "as built", label)
+        return None
+    from ._param_refresh import refresh_zip_params
+    return refresh_zip_params(
+        zip_path=zip_path,
+        param_file=ctx.config.params_file,
+        work_dir=work_dir,
+        force=bool(getattr(ctx.config, "force_param_refresh", False)),
+        label=label,
+    )
+
+
+def _ff_result(started: float, zips, *, present: int, built: int, failed: int,
+               refresh=None):
     finished = time.time()
+    metrics = {"n_present": present, "n_built": built, "n_failed": failed}
+    if refresh is not None:
+        # Into midas_state.h5, so "which parameters did this run actually use"
+        # is answerable after the fact rather than from memory.
+        metrics.update(refresh.to_metrics())
     return StageResult(
         stage_name="zip_convert",
         started_at=started, finished_at=finished, duration_s=finished - started,
         outputs={"zips": [str(z) for z in zips]},
-        metrics={"n_present": present, "n_built": built, "n_failed": failed},
+        metrics=metrics,
     )

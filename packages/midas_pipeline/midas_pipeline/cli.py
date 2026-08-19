@@ -164,36 +164,12 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="skip these stages (repeatable)")
 
     # Refinement
-    run.add_argument("--pf-refine-mode", choices=["fixed", "voxel_bounded"],
-                     default="fixed",
-                     help="(pf) position-refinement mode")
-    run.add_argument("--refine-solver", choices=["lbfgs", "lm", "nelder_mead", "adam", "lm_batched"],
-                     default="lbfgs")
-    run.add_argument("--refine-loss",
-                     choices=["full3d", "angular", "internal_angle"],
-                     default="full3d")  # 2D 'pixel' loss disabled in fit-grain
-    run.add_argument("--refine-mode",
-                     choices=["", "iterative", "all_at_once", "c_recipe"],
-                     default="c_recipe",
-                     help="refinement strategy. Default 'c_recipe' is the "
-                          "ported C staged recipe (per-grain-independent "
-                          "batched LM + IRLS): 1.25 um against the c-omp "
-                          "refiner on a full 1-ID shade_LSHR layer, where "
-                          "'iterative' and 'all_at_once' give ~40 um. On the "
-                          "datasetA Ni layer it took the median |dposition| "
-                          "from 205.8 um to 11.6 um (null 11.0) and cut grains "
-                          "beyond 500 um from 18.5%% to 1.2%%. Use "
-                          "'all_at_once' only to reproduce a pre-0.8 run.")
-    run.add_argument("--use-bounds", action="store_true",
-                     help="bound refinement via sigmoid reparam (torch-native, "
-                          "autograd-preserving); recommended for PF to prevent "
-                          "boundary-voxel drift")
-    run.add_argument("--bound-euler-deg", type=float, default=5.0,
-                     help="±half-width on each Euler component (default 5°)")
-    run.add_argument("--bound-lat-abc-pct", type=float, default=0.01,
-                     help="±fractional half-width on a, b, c (default 0.01 = 1%%)")
-    run.add_argument("--bound-lat-angle-deg", type=float, default=2.0,
-                     help="±half-width on α, β, γ (default 2°)")
+    #
+    # NOTE: --pf-refine-mode / --refine-solver / --refine-loss / --refine-mode /
+    # --use-bounds / --bound-* were REMOVED. Every one of them configured the
+    # in-process PyTorch refiner, which is disabled (flaky, and it used to be
+    # the silent default). The c-omp refiner has no configurable solver or
+    # loss, so these flags advertised tuning that does not exist.
 
     # Indexer
     run.add_argument("--group-size", default="auto",
@@ -209,19 +185,21 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--cpu-shards", default="auto",
                      help="how many CPU-only indexer shards to run in parallel. "
                           "'auto' picks max(1, n_cpus // 16) on CPU, 1 elsewhere.")
-    run.add_argument("--indexer-backend", choices=["python", "c-omp"],
-                     default="c-omp",
-                     help="indexing backend: 'c-omp' (default, bundled unified "
-                          "C binary, requires OpenMP-built midas-index install) "
-                          "or 'python' (in-process numba/torch; needed for GPU "
-                          "runs and the fp64 parity gate).")
-    run.add_argument("--refine-backend", choices=["python", "c-omp"],
-                     default="python",
-                     help="refinement backend: 'python' (default, in-process "
-                          "PyTorch refiner; differentiable, GPU/MPS, UQ) or "
-                          "'c-omp' (bundled unified C binary midas_fitgrain; "
-                          "FF refines position, PF fixes it; requires "
-                          "OpenMP-built midas-fit-grain install).")
+    # c-omp ONLY, both stages, both scan modes. Restricted to a single choice
+    # so argparse rejects anything else outright; PipelineConfig re-checks so
+    # a programmatic caller cannot bypass it either. '--refine-backend python'
+    # used to be the DEFAULT, which made '--indexer-backend c-omp' read as "on
+    # the C path" while refinement silently ran torch/CUDA.
+    run.add_argument("--indexer-backend", choices=["c-omp"], default="c-omp",
+                     help="indexing backend. 'c-omp' only (bundled unified C "
+                          "binary; requires an OpenMP-built midas-index). "
+                          "There is no supported GPU indexing path.")
+    run.add_argument("--refine-backend", choices=["c-omp"], default="c-omp",
+                     help="refinement backend. 'c-omp' only (bundled unified C "
+                          "binary midas_fitgrain; FF refines position, PF fixes "
+                          "it; requires an OpenMP-built midas-fit-grain). The "
+                          "Python/torch refiner is disabled — it is broken and "
+                          "was silently reached by default.")
 
     # Recon (PF)
     run.add_argument("--do-tomo", type=int, default=1, choices=[0, 1])
@@ -365,7 +343,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Process-grains (FF only)
     run.add_argument("--pg-mode",
-                     choices=["spot_aware", "legacy", "paper_claim", "c_parity"],
+                     choices=["legacy", "paper_claim", "c_parity"],
                      default="c_parity",
                      # Every literal percent must be doubled: argparse runs the help
                      # string through %-formatting, so a bare '%' raises and takes the
@@ -378,9 +356,11 @@ def _build_parser() -> argparse.ArgumentParser:
                           "grains vs C's 6138; matched pairs agree to 0.0000 "
                           "deg and 0.000 um) and is the most accurate against "
                           "EBSD on shade_LSHR (precision 79.8%% vs spot_aware's "
-                          "68.2%% at equal recall). 'spot_aware' keeps ~18%% more "
-                          "grains, of which only 7.2%% are EBSD-corroborated. "
-                          "NOTE: only 'spot_aware', 'legacy' and 'paper_claim' "
+                          "68.2%% at equal recall). 'spot_aware' is DISABLED: it "
+                          "kept ~18%% more grains of which only 7.2%% were "
+                          "EBSD-corroborated, and on 20-ID alumina it placed "
+                          "4.1%% of them outside the physical sample. "
+                          "NOTE: only 'legacy' and 'paper_claim' "
                           "write processgrains_diagnostics.h5; 'c_parity' returns "
                           "without calling result.write(), so the default mode "
                           "produces no residual sidecar.")
@@ -394,6 +374,16 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--preproc-thresh", type=int, default=-1)
     run.add_argument("--no-convert", dest="convert_files", action="store_false")
     run.set_defaults(convert_files=True)
+    run.add_argument("--no-refresh-params", dest="refresh_params",
+                     action="store_false",
+                     help="do NOT re-read Parameters.txt into an existing "
+                          ".MIDAS.zip; downstream stages then use whatever "
+                          "geometry the zarr was built with")
+    run.set_defaults(refresh_params=True)
+    run.add_argument("--force-param-refresh", action="store_true",
+                     help="refresh parameters even when a changed key "
+                          "invalidates a stage output that already exists "
+                          "(those outputs are then stale -- delete them)")
     run.add_argument("--file-name", default=None)
     run.add_argument("--num-files-per-scan", type=int, default=1)
     run.add_argument("--normalize-intensities", type=int, default=2,
@@ -698,16 +688,13 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
             friedel_symmetric_scan_filter=args.friedel,
         )
 
-    refinement = RefinementConfig(
-        position_mode=args.pf_refine_mode,
-        solver=args.refine_solver,
-        loss=args.refine_loss,
-        mode=args.refine_mode,
-        use_bounds=bool(args.use_bounds),
-        bound_euler_deg=float(args.bound_euler_deg),
-        bound_lat_abc_pct=float(args.bound_lat_abc_pct),
-        bound_lat_angle_deg=float(args.bound_lat_angle_deg),
-    )
+    # Solver / loss / bounds are PYTHON-REFINER knobs only. The c-omp refiner
+    # (the only backend) uses a vendored Nelder-Mead with no configurable loss,
+    # and returns from _run_ff/_run_pf long before the FitConfig block that
+    # reads these. Their CLI flags are removed rather than left as dead options
+    # advertising a tunability that does not exist; the dataclass defaults are
+    # inert on the c-omp path.
+    refinement = RefinementConfig()
     recon = ReconConfig(
         do_tomo=bool(args.do_tomo),
         method=args.recon_method,
@@ -837,6 +824,8 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         num_frame_chunks=args.num_frame_chunks,
         preproc_thresh=args.preproc_thresh,
         convert_files=args.convert_files,
+        refresh_params=getattr(args, "refresh_params", True),
+        force_param_refresh=getattr(args, "force_param_refresh", False),
         file_name=args.file_name,
         num_files_per_scan=args.num_files_per_scan,
         normalize_intensities=args.normalize_intensities,

@@ -22,7 +22,8 @@ from midas_pipeline.stages import indexing, refinement
 
 
 def _ff_ctx(tmp_path: Path, *, has_files: bool, n_seeds: int = 3,
-            indexer_backend: str = "python") -> StageContext:
+            indexer_backend: str = "c-omp",
+            refine_backend: str = "c-omp") -> StageContext:
     params = tmp_path / "P.txt"
     params.write_text("SpaceGroup 225\n")
     cfg = PipelineConfig(
@@ -31,12 +32,14 @@ def _ff_ctx(tmp_path: Path, *, has_files: bool, n_seeds: int = 3,
         scan=ScanGeometry.ff(),
         device="cpu", dtype="float64",
         n_cpus=4,
-        # Pin the python backend explicitly: the default is "c-omp", which
-        # dispatches the installed C binary instead of `python -m midas_index`.
-        # Without this pin the assertion below depends on whether the C
-        # binary happens to be built on the test machine.
+        # c-omp is the ONLY permitted backend for indexing and refinement;
+        # PipelineConfig rejects anything else. Tests that need the C binary to
+        # look "built" monkeypatch midas_index.backend_c.available/binary_path.
         indexer_backend=indexer_backend,
-        refinement=RefinementConfig(solver="lbfgs", loss="angular", mode="all_at_once"),
+        refine_backend=refine_backend,
+        # solver/loss/mode were PYTHON-refiner knobs; the c-omp refiner has no
+        # configurable solver or loss, so the defaults are inert here.
+        refinement=RefinementConfig(),
     )
     layer_dir = tmp_path / "Layer1"
     layer_dir.mkdir(exist_ok=True)
@@ -74,28 +77,19 @@ def test_indexing_ff_skips_when_artifacts_missing(tmp_path: Path):
     assert result.skipped is True
 
 
-def test_indexing_ff_invokes_midas_index_subprocess(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-):
-    """When inputs are present, dispatch shells to ``python -m midas_index``."""
-    seen = {}
+def test_python_backends_are_refused(tmp_path: Path):
+    """Indexing and refinement are c-omp ONLY; the python path is gone.
 
-    def fake_run(cmd, **kwargs):
-        seen["cmd"] = cmd
-        seen["cwd"] = kwargs.get("cwd")
-        _write_stub_seeds(Path(kwargs.get("cwd")))
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr("subprocess.run", fake_run)
-    ctx = _ff_ctx(tmp_path, has_files=True, n_seeds=5)
-    indexing.run(ctx)
-
-    assert seen["cmd"][1:3] == ["-m", "midas_index"]
-    # Positional args: paramstest, block_nr, n_blocks, n_seeds, n_cpus
-    assert seen["cmd"][3].endswith("paramstest.txt")
-    assert seen["cmd"][4:7] == ["0", "1", "5"]
-    assert seen["cmd"][7] == "4"  # n_cpus
-    assert seen["cwd"] == str(ctx.layer_dir)
+    Replaces the two tests that asserted dispatch to ``python -m midas_index``
+    and ``python -m midas_fit_grain``. Those paths are disabled: the python
+    refiner is flaky, and because ``refine_backend`` DEFAULTED to "python" a
+    run launched with ``--indexer-backend c-omp`` alone silently refined on
+    torch/CUDA. PipelineConfig now rejects both, so a programmatic caller
+    cannot reach them either.
+    """
+    for kw in ({"indexer_backend": "python"}, {"refine_backend": "python"}):
+        with pytest.raises(ValueError, match="c-omp binaries ONLY"):
+            _ff_ctx(tmp_path, has_files=True, **kw)
 
 
 def test_indexing_ff_comp_invokes_c_binary(
@@ -142,51 +136,12 @@ def test_refinement_ff_skips_when_artifacts_missing(tmp_path: Path):
     assert result.skipped is True
 
 
-def test_refinement_ff_invokes_midas_fit_grain_subprocess(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-):
-    """When inputs are present, dispatch shells to ``python -m midas_fit_grain``."""
-    seen = {}
-
-    def fake_run(cmd, **kwargs):
-        seen["cmd"] = cmd
-        seen["cwd"] = kwargs.get("cwd")
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr("subprocess.run", fake_run)
-    ctx = _ff_ctx(tmp_path, has_files=True, n_seeds=7)
-    refinement.run(ctx)
-
-    assert seen["cmd"][1:3] == ["-m", "midas_fit_grain"]
-    assert seen["cmd"][3].endswith("paramstest.txt")
-    assert seen["cmd"][4:7] == ["0", "1", "7"]
-    assert seen["cmd"][7] == "4"  # n_cpus
-    assert "--solver" in seen["cmd"]
-    assert "lbfgs" in seen["cmd"]
-    assert "--loss" in seen["cmd"]
-    assert "angular" in seen["cmd"]
-    assert seen["cwd"] == str(ctx.layer_dir)
-
-
-def test_refinement_ff_swaps_pixel_to_angular_for_multidet(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-):
-    """Multi-detector paramstest → pixel loss swapped to angular."""
-    seen = {}
-
-    def fake_run(cmd, **kwargs):
-        seen["cmd"] = cmd
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr("subprocess.run", fake_run)
-    ctx = _ff_ctx(tmp_path, has_files=True)
-    (ctx.layer_dir / "paramstest.txt").write_text(
-        "RingNumbers 1\nDetParams 0\n"
-    )
-    refinement.run(ctx)
-    # pixel → angular swap
-    loss_idx = seen["cmd"].index("--loss")
-    assert seen["cmd"][loss_idx + 1] == "angular"
+# NOTE: test_refinement_ff_invokes_midas_fit_grain_subprocess and
+# test_refinement_ff_swaps_pixel_to_angular_for_multidet were REMOVED. Both
+# asserted python-refiner argv (``--solver lbfgs``, ``--loss angular``, and the
+# pixel->angular swap for multi-detector). The c-omp refiner takes no solver or
+# loss argument, so there is nothing left to assert. c-omp refinement dispatch
+# is covered by the FF/PF stage tests that pin refine_backend="c-omp".
 
 
 # ---------------------------------------------------------------------------

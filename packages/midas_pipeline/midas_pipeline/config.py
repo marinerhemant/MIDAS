@@ -46,6 +46,39 @@ RefineLoss = Literal["full3d", "angular", "internal_angle"]   # 2D 'pixel' disab
 RefineMode = Literal["", "iterative", "all_at_once", "c_recipe"]
 ProcessGrainsMode = Literal["spot_aware", "legacy", "paper_claim", "c_parity"]
 
+# "spot_aware" stays in the Literal so an old config or script fails with the
+# explanation below rather than a bare type error — it is rejected in
+# PipelineConfig.__post_init__, never run.
+_SPOT_AWARE_DISABLED = (
+    "process_grains mode 'spot_aware' is DISABLED — it produces a useless "
+    "answer and must never run.\n"
+    "Adjudicated against EBSD on shade_LSHR layer 1: of the 691 grains it adds "
+    "over c_parity, only 7.2% have an EBSD partner (vs 80.4% for the shared "
+    "population) and their DiffPos median is 387 um against 121. It buys "
+    "+0.1 pp recall for -11.6 pp precision.\n"
+    "Confirmed again on 20-ID alumina (1 mm rod, 100 um beam): spot_aware gave "
+    "1652 grains against c_parity's 533, placed 4.1% of them OUTSIDE the "
+    "physical sample (up to r = 1290 um in a 500 um-radius rod, vs 0.6%), and "
+    "spread |Z| to a p90 of 286 um through a 50 um beam half-height (vs 57).\n"
+    "Use process_grains_mode='c_parity' (the default)."
+)
+
+# Indexing and refinement run on the bundled c-omp binaries ONLY. There is no
+# GPU path for either stage, in either scan mode.
+_COMP_ONLY_BACKENDS = ("c-omp",)
+
+
+def _backend_error(which: str, value: str) -> str:
+    return (
+        f"{which}_backend={value!r} is not allowed — midas-pipeline runs "
+        f"indexing and refinement on the c-omp binaries ONLY.\n"
+        "There is no supported GPU path for either stage, in FF or PF. The "
+        "Python refiner is known-broken, and because it used to be the DEFAULT "
+        "a run launched with '--indexer-backend c-omp' alone would silently "
+        "refine on torch/CUDA.\n"
+        f"Use {which}_backend='c-omp'."
+    )
+
 
 # ---------------------------------------------------------------------------
 # ScanGeometry — the FF/PF distinction lives here
@@ -515,17 +548,25 @@ class PipelineConfig:
     #               time). Required: midas-index installed with a working
     #               OpenMP toolchain; otherwise backend_c.available()
     #               returns False and the stage raises.
-    #   "python"  — In-process Python+numba+torch indexer. Needed for GPU
-    #               runs and the fp64 parity gate.
+    #
+    # "python" (in-process Python+numba+torch) is NO LONGER SELECTABLE — see
+    # _require_comp_backends. It is listed here only so this comment is not
+    # read as an omission: there is no GPU indexing path, and the fp64 parity
+    # gate that used to justify one is not a production mode.
     indexer_backend: str = "c-omp"
 
-    # Refinement backend (FF + PF):
-    #   "python"  — In-process PyTorch refiner (default; differentiable, GPU/MPS,
-    #               UQ). Shells `python -m midas_fit_grain` (FF) / scan_driver (PF).
+    # Refinement backend (FF + PF): "c-omp" ONLY — see _require_comp_backends.
     #   "c-omp"   — Bundled unified C binary `midas_fitgrain` (FitUnified):
     #               vendored Nelder-Mead, shared forward; FF refines position,
     #               PF fixes it. Requires midas-fit-grain installed with OpenMP.
-    refine_backend: str = "python"
+    #
+    # This defaulted to "python" (in-process PyTorch, GPU/MPS). That default
+    # was a trap: `--indexer-backend c-omp` alone reads as "the run is on the
+    # C path", while refinement silently went to torch/CUDA and failed in ways
+    # that cost two ~90-minute re-indexes to notice. The Python refiner is also
+    # known-broken. No GPU backend for indexing or refinement, in either scan
+    # mode, ever.
+    refine_backend: str = "c-omp"
 
     # Process-grains (FF mode only — see plan §3d)
     # c_parity, not spot_aware. Adjudicated against EBSD on shade_LSHR layer 1
@@ -578,6 +619,17 @@ class PipelineConfig:
     num_frame_chunks: int = -1
     preproc_thresh: int = -1
     convert_files: bool = True
+
+    # zip_convert reuses any existing .MIDAS.zip, and every downstream stage
+    # reads geometry from the ZARR rather than from Parameters.txt -- so
+    # editing tx/Lsd/BC and re-running into the same result folder used to keep
+    # the OLD value silently. When true, zip_convert re-reads the parameter
+    # file and rewrites the analysis parameters that differ (never the ones the
+    # stored frames depend on -- those raise). force_param_refresh proceeds
+    # even when a changed key invalidates a stage output that already exists.
+    refresh_params: bool = True
+    force_param_refresh: bool = False
+
     file_name: Optional[str] = None
     num_files_per_scan: int = 1
     normalize_intensities: int = 2
@@ -607,7 +659,20 @@ class PipelineConfig:
     # Misc
     log_level: str = "INFO"
 
+    def _require_comp_backends(self) -> None:
+        """Indexing and refinement are c-omp only; anything else is fatal.
+
+        Enforced here rather than only in the CLI so that a config built
+        programmatically — a script, a notebook, a test — cannot reach a
+        non-c-omp backend either.
+        """
+        if self.indexer_backend not in _COMP_ONLY_BACKENDS:
+            raise ValueError(_backend_error("indexer", self.indexer_backend))
+        if self.refine_backend not in _COMP_ONLY_BACKENDS:
+            raise ValueError(_backend_error("refine", self.refine_backend))
+
     def __post_init__(self) -> None:
+        self._require_comp_backends()
         self.result_dir = str(Path(self.result_dir).resolve())
         self.params_file = str(Path(self.params_file).resolve())
         if self.zarr_path:
@@ -622,6 +687,8 @@ class PipelineConfig:
             self.nf_result_dir = str(Path(self.nf_result_dir).resolve())
         if self.resume == "from" and not self.resume_from_stage:
             raise ValueError("resume='from' requires resume_from_stage")
+        if self.process_grains_mode == "spot_aware":
+            raise ValueError(_SPOT_AWARE_DISABLED)
         if self.resume_from_stage and self.resume != "from":
             self.resume = "from"
         if self.layer_selection is None:

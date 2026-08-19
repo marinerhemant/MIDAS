@@ -42,7 +42,10 @@ dependencies = [
     # judged the coupling workflow-level because peakfit needs the zipper only in
     # its dev extra -- true for peakfit, not for this package, which invokes the
     # zipper itself.
-    "midas-zipper>=0.1.5",                # raw → .MIDAS.zip ingest (pip-portable)
+    # >=0.2.0: midas_zipper.param_refresh, which the zip_convert stage imports
+    # to re-read Parameters.txt into an archive that already exists. Below the
+    # floor that import fails at stage time, after the run has already started.
+    "midas-zipper>=0.2.0",                # raw → .MIDAS.zip ingest (pip-portable)
     # The FBP reconstruction backend. midas_pipeline.recon.fbp used to reach
     # it by a sys.path hop into <repo>/TOMO and a shell-out to the MIDAS_TOMO
     # C binary -- which only resolved from a source checkout, and depended on
@@ -63,7 +66,10 @@ dependencies = [
     # >=0.7.0: reads Completeness as an alias for ConfidenceTol. Below it, the
     # selection keys this pipeline now writes into paramstest are ignored and
     # the user silently gets no grain gate at all.
-    "midas-process-grains>=0.7.0",
+    # >=0.9.0: 'spot_aware' is disabled and rejected rather than run. Below it
+    # a config naming that mode still executes it, and it places grains outside
+    # the physical sample (4.1% on a 20-ID alumina rod).
+    "midas-process-grains>=0.9.0",
     "midas-diffract>=0.1.0",
     "midas-parsl-configs>=0.1.0",
     "midas-stress>=0.6.0",                # canonical orientation/diffraction primitives

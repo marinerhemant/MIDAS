@@ -114,14 +114,13 @@ def test_run_pf_full(tmp_path):
         "--params", str(params), "--result", str(tmp_path / "out"),
         "--n-scans", "15", "--scan-step", "5.0", "--beam-size", "5.0",
         "--seeding-mode", "merged-ff",
-        "--pf-refine-mode", "voxel_bounded",
+        # --pf-refine-mode was REMOVED with the other python-refiner knobs.
         "--cw-potts-lambda", "0.5",
     ])
     cfg = build_config(args)
     assert cfg.is_pf
     assert cfg.scan.n_scans == 15
     assert cfg.seeding.mode == "merged-ff"
-    assert cfg.refinement.position_mode == "voxel_bounded"
     assert cfg.fusion.cw_potts_lambda == 0.5
 
 
