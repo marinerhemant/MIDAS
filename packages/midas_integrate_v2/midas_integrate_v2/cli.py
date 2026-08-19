@@ -18,7 +18,9 @@ subpixel oversampling.
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +35,7 @@ from . import (
     profile_1d_diff,
     write_map_bin_from_geometry,
 )
+from .binning.polygon import PolygonBinGeometry, integrate_polygon
 
 # ── MIDAS preflight: richer argument errors when midas-params is installed ───
 _MIDAS_DIST = "midas-integrate-v2"
@@ -76,17 +79,31 @@ def _load_image(path: Path, *, NY: int, NZ: int,
     return arr.reshape(NZ, NY).astype(np.float64)
 
 
-def _build_geometry_and_integrate(spec, image, *, mode: str, K: int):
+def _build_geometry_and_integrate(spec, image, *, mode: str, K: int,
+                                  want_geom: bool = False):
+    """Integrate one frame. Returns the 1-D profile, or
+    ``(profile, cake, geom, integrate_fn)`` when ``want_geom``.
+
+    The extra return is what the v1 binary writers need: ``Int2D.bin`` is the
+    cake, and the area-weighted profile needs the geometry's per-bin weights.
+    """
     img_t = torch.from_numpy(image)
+    fn = None
     if mode == "hard":
-        geom = HardBinGeometry.from_spec(spec)
+        geom, fn = HardBinGeometry.from_spec(spec), integrate_hard
         int2d = integrate_hard(img_t, geom, normalize=True)
         prof = int2d.sum(dim=0) / (
             (int2d > 0).to(int2d.dtype).sum(dim=0).clamp(min=1)
         )
     elif mode == "subpixel":
-        geom = SubpixelBinGeometry.from_spec(spec, K=K)
+        geom, fn = SubpixelBinGeometry.from_spec(spec, K=K), integrate_subpixel
         int2d = integrate_subpixel(img_t, geom, normalize=True)
+        prof = int2d.sum(dim=0) / (
+            (int2d > 0).to(int2d.dtype).sum(dim=0).clamp(min=1)
+        )
+    elif mode == "polygon":
+        geom, fn = PolygonBinGeometry.from_spec(spec), integrate_polygon
+        int2d = integrate_polygon(img_t, geom, normalize=True)
         prof = int2d.sum(dim=0) / (
             (int2d > 0).to(int2d.dtype).sum(dim=0).clamp(min=1)
         )
@@ -96,6 +113,8 @@ def _build_geometry_and_integrate(spec, image, *, mode: str, K: int):
         prof = profile_1d_diff(int2d, spec)
     else:
         raise ValueError(f"unknown --mode {mode!r}")
+    if want_geom:
+        return prof.detach().numpy(), int2d, geom, fn
     return prof.detach().numpy()
 
 
@@ -118,12 +137,17 @@ def integrate_main(argv=None) -> int:
                    help="numpy dtype string for raw binary input "
                         "(e.g. 'uint16'); ignored for TIFF")
     p.add_argument("--mode", default="subpixel",
-                   choices=["hard", "subpixel", "soft"],
-                   help="Binning kernel (default: subpixel)")
+                   choices=["hard", "subpixel", "polygon", "soft"],
+                   help="Binning kernel (default: subpixel). 'polygon' is the "
+                        "exact Green's-theorem polygon-arc area.")
     p.add_argument("-K", "--subpixel-K", type=int, default=2,
                    help="Subpixel oversampling factor (only when --mode=subpixel)")
     p.add_argument("--out", type=Path, default=None,
                    help="Output CSV path (default: <image>.profile.csv)")
+    p.add_argument("--v1-out", type=Path, default=None, metavar="DIR",
+                   help="Also write the v1 binaries the beamline chain reads: "
+                        "lineout.bin, lineout_simple_mean.bin and Int2D.bin. "
+                        "Not available for --mode soft.")
     p.add_argument("--no-trans-opt", action="store_true",
                    help="Skip ImTransOpt forward-application "
                         "(image is already in post-transform coords)")
@@ -148,9 +172,21 @@ def integrate_main(argv=None) -> int:
         spec.TransOpt = []
         spec.NrTransOpt = 0
 
-    prof = _build_geometry_and_integrate(
-        spec, image, mode=args.mode, K=args.subpixel_K,
+    prof, cake, geom, integ_fn = _build_geometry_and_integrate(
+        spec, image, mode=args.mode, K=args.subpixel_K, want_geom=True,
     )
+
+    if args.v1_out is not None:
+        if integ_fn is None:
+            raise SystemExit("--v1-out is not available for --mode soft "
+                             "(no per-bin weight to area-weight the profile)")
+        from .io.v1_outputs import bin_weights, write_v1_outputs
+        written = write_v1_outputs(
+            args.v1_out, [cake], spec=spec,
+            weights=bin_weights(geom, integ_fn),
+        )
+        for w in written:
+            print(f"wrote: {w}")
 
     n_r = spec.n_r_bins
     r_axis = spec.RMin + spec.RBinSize * (np.arange(n_r) + 0.5)
@@ -200,6 +236,64 @@ def write_map_main(argv=None) -> int:
     )
     print(f"wrote: {map_p}")
     print(f"       {nmap_p}")
+    return 0
+
+
+def server_main(argv=None) -> int:
+    """``midas-integrate-v2-server`` — the C-protocol streaming server."""
+    p = _midas_make_parser(
+        prog="midas-integrate-v2-server",
+        description=(
+            "Streaming integrator server on the IntegratorFitPeaksGPUStream "
+            "wire protocol (TCP, port 60439 by default). An existing beamline "
+            "feeder can drive this unchanged; outputs are the v1 files "
+            "lineout.bin, lineout_simple_mean.bin and Int2D.bin."
+        ),
+    )
+    p.add_argument("params", type=Path, help="v1-style paramstest text file")
+    p.add_argument("--mode", default="subpixel",
+                   choices=["hard", "subpixel"],
+                   help="Binning kernel (default: subpixel)")
+    p.add_argument("-K", "--subpixel-K", type=int, default=2,
+                   help="Subpixel oversampling K (only when --mode=subpixel)")
+    p.add_argument("--port", type=int, default=60439)
+    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--out", type=Path, default=Path("."),
+                   help="Where the v1 output files are written on shutdown")
+    p.add_argument("--no-2d", action="store_true", help="Skip Int2D.bin")
+    p.add_argument("-V", "--version", action="version",
+                   version=f"midas-integrate-v2 {__version__}")
+    args = p.parse_args(argv)
+
+    from .binning.hard import integrate_hard
+    from .binning.subpixel import integrate_subpixel
+    from .streaming.socket_server import V2FrameServer
+
+    spec = spec_from_v1_paramstest(args.params, requires_grad=False)
+    spec.validate()
+    if args.mode == "hard":
+        geom, fn = HardBinGeometry.from_spec(spec), integrate_hard
+    else:
+        geom, fn = SubpixelBinGeometry.from_spec(spec, K=args.subpixel_K), integrate_subpixel
+
+    srv = V2FrameServer(spec=spec, geom=geom, integrate_fn=fn,
+                        out_dir=args.out, host=args.host, port=args.port,
+                        write_2d=not args.no_2d).start()
+    print(f"midas-integrate-v2-server listening on {args.host}:{args.port} "
+          f"(mode={args.mode}"
+          + (f", K={args.subpixel_K}" if args.mode == "subpixel" else "") + ")")
+    print("Ctrl-C to stop and flush.")
+
+    stop = threading.Event()
+    signal.signal(signal.SIGINT, lambda *_: stop.set())
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())
+    try:
+        while not stop.wait(0.5):
+            pass
+    finally:
+        written = srv.stop()
+        for w in written:
+            print(f"wrote: {w}")
     return 0
 
 
