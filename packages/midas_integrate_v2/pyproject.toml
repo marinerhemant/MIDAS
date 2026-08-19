@@ -38,8 +38,16 @@ dependencies = [
     "midas-params>=0.9.0",  # preflight: CLI errors + path checks
     "numpy>=1.22",
     "torch>=2.1",
-    "midas-integrate>=0.4.0",
-    "midas-calibrate-v2>=0.1.0",
+    # >=0.5.0: SubPixelCardinalWidth defaults to 10.0 to match the C. This
+    # package's spec.py carries the same default, and the v1<->v2 compat
+    # round-trip moves the value across -- mismatched floors put the two codes
+    # back to building different maps from one parameter file.
+    "midas-integrate>=0.5.0",
+    # >=0.8.0: write_v1_paramstest emits the panel-shifts sidecar and points
+    # PanelShiftsFile at it. This package now READS that file; below the floor
+    # nothing writes it and multi-panel integration runs with zero shifts --
+    # the exact silent-discard this release fixes on the consuming side.
+    "midas-calibrate-v2>=0.8.0",
     "midas-distortion>=0.2.0",
 ]
 
@@ -61,6 +69,7 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 midas-integrate-v2 = "midas_integrate_v2.cli:integrate_main"
 midas-integrate-v2-write-map = "midas_integrate_v2.cli:write_map_main"
 midas-integrate-v2-batch = "midas_integrate_v2.cli:batch_main"
+midas-integrate-v2-server = "midas_integrate_v2.cli:server_main"
 midas-integrate-v2-pdf = "midas_integrate_v2.cli:pdf_main"
 midas-bootstrap = "midas_integrate_v2.cli:bootstrap_main"
 
