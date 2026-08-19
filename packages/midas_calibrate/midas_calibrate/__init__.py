@@ -14,7 +14,7 @@ from .refine import FittedPoint, RefineResult, refine_geometry
 from .orchestrator import CalibrationResult, IterRecord, autocalibrate
 from .estep import CakeProfile, integrate_cake, run_estep
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "CakeProfile",
