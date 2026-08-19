@@ -97,7 +97,7 @@ For HDF5/Zarr data sources (non-raw-frame inputs).
 | `px`        | double | µm     | —       | yes      | Pixel size. Renamed to `PixelSize` in Zarr. |
 | `Lsd`       | double | µm     | 0       | yes      | Sample-to-detector distance. Alias: `Distance`. |
 | `BC`        | 2×double | pixels | 0 0   | yes      | Beam center `Y_px Z_px`. Split into `YCen`/`ZCen` in Zarr. |
-| `tx`        | double | deg    | 0       | no       | Detector rotation about X-ray axis. |
+| `tx`        | double | deg    | 0       | no       | Detector rotation about X-ray axis (roll about the beam). **Consumed by the `transforms` stage only** — `apply_tilt_distortion` (`midas_transforms/fit_setup/core.py:376`) bakes it into the corrected spot positions, so the indexer and both refiner backends see spots that already carry it and have no `tx` of their own. Change it and re-run: `zip_convert` re-reads it into an existing `.MIDAS.zip` and refuses if a stage output built with the old value is still on disk (`--no-refresh-params` opts out). Powder calibration is structurally blind to it (concentric rings are invariant under a roll); fit it from grains with `midas_joint_ff_calibrate.grain_refine`, composing and iterating its residual. |
 | `ty`        | double | deg    | 0       | no       | Detector rotation about horizontal axis. |
 | `tz`        | double | deg    | 0       | no       | Detector rotation about vertical axis. |
 | `p0`–`p14`  | double | varies | 0 (see [§3a](#3a-distortion-model)) | no | Distortion polynomial coefficients. **Not applicable to NF-HEDM** (NF uses direct pinhole+tilts geometry, no polynomial). |
@@ -246,14 +246,35 @@ Most of these are calibration/integrator keys but a few apply to peak fitting.
 | `AdaptiveEtaBins`            | int  | bool | 0      | Adapt η bins to spot density. |
 | `L2Objective`                | int  | bool | 0      | Use L2 norm instead of L1. |
 | `PeakFitMode`                | int  | code | 0      | 0 = pseudo-Voigt, 1 = GSAS-II TCH. |
-| `SubPixelLevel`              | int  | —   | 1       | Sub-pixel splitting at cardinal η (1=off, 4=default). |
-| `SubPixelCardinalWidth`      | double | deg | 5.0  | Half-width for cardinal η sub-pixel splitting. |
+| `SubPixelLevel`              | int  | —   | 1       | Sub-pixel splitting at cardinal η. 1 = off, and 1 is the default in every code path. **Leave it at 1** — see note below. |
+| `SubPixelCardinalWidth`      | double | deg | 10.0 | Half-width for cardinal η sub-pixel splitting. |
 | `ConvergenceThresholdPPM`    | double | ppm | 0    | Early-stop Δstrain threshold (0=disabled). |
 | `SkipVerification`           | int  | bool | 0      | Skip final verification E-step. |
 | `RingDiagnosticsCSV`         | str  | path | `""`   | Output path for ring-wise diagnostics. |
 | `ResumeFromCheckpoint`       | int  | bool | 0      | Resume calibration from checkpoint. |
 | `GradientCorrection`         | int  | bool | 0      | Apply beam gradient correction. |
 | `UpperBoundThreshold`        | int  | counts | —    | Saturation cap; pixels above this are ignored in peak search. |
+
+> **`SubPixelLevel` must stay at 1.** Three separate reasons, all measured on
+> 20-ID Pilatus data (2026-08-18):
+>
+> 1. `IntegratorFitPeaksGPUStream.cu:916` converts the fractional sub-pixel
+>    coordinate back to a pixel index with a C cast, which **truncates**
+>    instead of rounding, so sub-pixels with negative centre offsets read the
+>    neighbouring pixel. Restoring round-to-parent on the identical map removes
+>    99.998 % of the resulting in-band error. Only this CUDA path is affected —
+>    `IntegratorZarrOMP.c:1731-1744` and `IntegrationCore.c:66` interpolate.
+> 2. `MapperCore.c:211-212` raises `binMaskFlag` only on the first sub-quad, so
+>    `SubPixelLevel > 1` under-flags mask contamination (75 494 flagged bins at
+>    level 1 vs 69 659 at level 4). This one affects the CPU path too.
+> 3. Independently of any defect, sub-pixel splitting does not reduce
+>    cardinal-angle aliasing and makes it worse at η = 0 — σ/µ 5.00 % at
+>    level 1 vs 8.52 % at level 4. See
+>    `packages/midas_integrate/dev/paper3/cardinal_angle_aliasing.tex`,
+>    §"Sub-pixel splitting does not resolve the artifact".
+>
+> `SubPixelLevel 0` behaves identically to `1` (the code tests
+> `if (SubPixelLevel > 1)`), but write `1`.
 
 ## 9. Indexing
 
@@ -269,7 +290,7 @@ These are passed to `IndexerOMP` via the Zarr analysis file (not via
 | `StepSizeOrient`     | double | deg      | 0       | yes      | Orientation search step. Typical: 0.2. Alias: `StepsizeOrient`. |
 | `StepSizePos`        | double | µm       | —       | yes      | Position search step. Typical: 100. |
 | `MarginOme`          | double | deg      | 0       | no       | ω tolerance for spot matching. Typical: 0.5. |
-| `MarginEta`          | double | deg      | 0       | no       | η tolerance (deg) for spot matching. Typical: 500 (µm in some flows — verify per-executable). |
+| `MarginEta`          | double | **µm**   | 0       | no       | Azimuthal (η) spot-matching tolerance, as an **arc length in µm on the detector** — *not* degrees. Typical: 500. |
 | `MarginRadial`       | double | µm       | —       | no       | 2θ (radial) spot-matching tolerance. |
 | `MarginRadius`       | double | µm       | —       | no       | Equivalent grain radius filter. |
 | `MinEta`             | double | deg      | 0       | no       | Azimuthal pole exclusion. Typical: 6. Alias: `ExcludePoleAngle`. |

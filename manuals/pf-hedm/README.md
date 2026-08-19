@@ -113,8 +113,10 @@ $PY -c "import midas_pf_odf; from midas_fit_grain import scan_seed, fitbest_adap
 ```
 
 The bridge (`midas_fit_grain.scan_seed` + `fitbest_adapter`) is required for a c-omp PF
-refine to feed pf-odf. If `backend_c.available()` is `False`, use `--refine-backend python`
-(far slower) or rebuild `midas-fit-grain` with an OpenMP toolchain.
+refine to feed pf-odf. If `backend_c.available()` is `False`, **rebuild `midas-fit-grain`
+with an OpenMP toolchain** — that is the only fix. There is no Python fallback any more:
+`--refine-backend` accepts `c-omp` and nothing else (`midas_pipeline/config.py:666`), and
+the Python refiner it used to name is known-broken.
 
 ## 0a. THE ORDER
 

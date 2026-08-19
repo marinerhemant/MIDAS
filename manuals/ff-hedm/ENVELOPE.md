@@ -75,7 +75,13 @@ Skipped on a given run but perfectly possible. These read identically to hard li
 parameter file and mean the opposite.
 
 - **`tx` not refined from grains.** A choice, not a limit. The powder pass cannot do it (§1),
-  the grain pass can.
+  the grain pass can — `midas_joint_ff_calibrate.grain_refine`, on **raw** `SpotMatrix`
+  pixels (`midas_joint_ff_calibrate/grain_refine.py:426`). It reports the *residual* roll
+  left over from whatever `tx` the reconstruction ran with, so compose
+  (`tx_total = tx_applied + tx_reported`) and iterate; each pass recovers only part of what
+  remains. Feed the result back through `Parameters.txt` and re-run from `transforms`, the
+  stage that applies it — **not** a refiner setting, and absent from both backends by design
+  (phase-3 §7).
 - **Diagnostics sidecar not written.** If `residuals/spot_table` is absent the report is
   descriptive only. That is a pipeline-version question, not a measurement limit — the
   current pipeline writes it.

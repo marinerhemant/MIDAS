@@ -48,7 +48,12 @@ this entry does not apply and the detector-centre entry does.
 rather than translating it.
 
 **Lever.** Refine Lsd against a calibrant. Powder cannot constrain `tx` (rotation about
-the beam) — keep it fixed there and refine it from grains in a second pass.
+the beam) — keep it fixed there and refine it from grains in a second pass with
+`midas_joint_ff_calibrate.grain_refine`, whose reported `tx` is a **residual** that must be
+composed onto the applied one and iterated (`midas_joint_ff_calibrate/grain_refine.py:426`).
+Put the resulting `tx` in `Parameters.txt` and re-run from `transforms` — that is the stage
+that applies it (`midas_transforms/fit_setup/core.py:376`). Do not look for `tx` in the
+indexer or refiner: neither backend carries one, and neither should.
 
 ## Position refinement runaway
 

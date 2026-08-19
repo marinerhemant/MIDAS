@@ -147,14 +147,34 @@ proceed. Everything not blocked by it should still be finished first.
    don't apply; a silent no-op and a silent failure look identical in the log tail. Read
    the per-stage provenance in `<result>/LayerNr_N/midas_state.h5`.
 10b. **Indexing and refinement are BOTH c-omp — there is no GPU backend for either
-   stage, in FF or PF.** Pass `--indexer-backend c-omp --refine-backend c-omp` on
-   every run. The two stages have *different* defaults: the indexer already picks
-   c-omp, but the **refiner defaults to python + torch + CUDA**, so a run whose log
-   says `indexing(FF, c-omp)` can still be silently half on the GPU path. It then
-   dies with a bare `CalledProcessError` and **no child traceback** (the wrapper
-   swallows the subprocess's stderr), and because `transforms` re-runs on resume,
-   every retry costs a full re-index — measured at ~90 min a time on a 24 900-seed
-   layer, twice (§7).
+   stage, in FF or PF.** This is now **enforced, not advisory**: `--indexer-backend`
+   and `--refine-backend` accept `c-omp` and nothing else, and
+   `_require_comp_backends` (`midas_pipeline/config.py:666`) re-checks from
+   `__post_init__` so a library caller cannot bypass it. Both default to `c-omp`, so passing them is
+   optional. The refiner *used* to default to python + torch + CUDA, which made a
+   log line reading `indexing(FF, c-omp)` mean the run was silently half on the GPU
+   path; it died with a bare `CalledProcessError` and **no child traceback**, and
+   every retry cost a full re-index — ~90 min a time on a 24 900-seed layer, twice
+   (§7). The Python refiner is known-broken and is not a fallback. The flags that
+   tuned it (`--refine-solver`, `--refine-loss`, `--refine-mode`,
+   `--pf-refine-mode`, `--use-bounds`, `--bound-*`) are **removed**.
+
+   **Do not talk yourself out of c-omp because its source has no `tx`.** The
+   detector roll is applied in `transforms` (`midas_transforms/fit_setup/core.py:376`),
+   which corrects the spots *before* either backend sees them; a refiner that
+   re-applied it would double-count. Neither backend has `tx` in its geometry
+   model and neither needs one (§7).
+
+10c. **`--pg-mode spot_aware` is DISABLED — do not try to re-enable it.** The
+   default is `c_parity`, which reproduces the C reference (datasetA Ni: 6150
+   grains vs C's 6138, matched pairs agreeing to 0.0000° and 0.000 µm). Adjudicated
+   against EBSD on `shade_LSHR`, `spot_aware` bought **+0.1 pp of recall for
+   −11.6 pp of precision**, and only **7.2 %** of the 691 grains it added had an
+   EBSD partner (vs 80.4 % for the shared population). On a 20-ID alumina rod it
+   returned 1652 grains against 533 and put **4.1 % of them outside the physical
+   sample**. **Why the branch does this is not yet diagnosed** — it is disabled on
+   its output, not on a root cause, so treat any re-enabling proposal as an open
+   investigation, not a settled question (§7, Lab Notebook §2e).
 
 The first ten rules are about distrusting the *data*. These four are about distrusting
 your own run, and they are the ones a context-free session skips:
@@ -214,7 +234,12 @@ your own run, and they are the ones a context-free session skips:
 | params zipped by `midas-zipper` < 0.1.5 | `BgSubtract`, `BgNSectors` and `MinPeakSNR` are **silently dropped** from the zarr — the peak search runs with settings you did not set | §0, §6c |
 | `midas-fit-grain` checked against 0.5.7 and no further | labels are correct, positions are still the **unrefined indexer seeds** (0.6.0) and `c_recipe` is missing (0.7.0) | §0, §8a |
 | version floors read from this document instead of from the tree | **eight** declarations rose for silent-wrong-answer reasons in the nine days after this file was written, across five packages | §0 |
-| `--refine-backend` left unset | the **refiner** defaults to python+torch+CUDA while the indexer defaults to c-omp — the run is silently half on the GPU path, dies with a bare `CalledProcessError` and no child traceback, and each retry costs a full re-index | rule 10b, §7 |
+| `--refine-backend` left unset | **CLOSED** — both backends are now `c-omp`-only and `c-omp` by default, enforced in argparse *and* in `PipelineConfig`. Historically the refiner defaulted to python+torch+CUDA while the indexer defaulted to c-omp, so the run went silently half onto the GPU path, died with a bare `CalledProcessError` and no child traceback, and each retry cost a full re-index. A handbook or script still passing `--refine-backend python` is pre-fix | rule 10b, §7 |
+| grain counts compared across `--pg-mode` values | the modes are **not** interchangeable, and `spot_aware` is now **disabled** for manufacturing grains — 4.1 % of them outside the physical sample on a 20-ID rod, and only 7.2 % of the ones it added over `c_parity` had an EBSD partner. A higher grain count from it was never evidence of better recall | rule 10c, §7 |
+| `processgrains_diagnostics.h5` missing on a default run | not a version problem — `c_parity` (the default) returns without writing the residual sidecar. `--generate-h5` does not change it | §7 |
+| `MinNrSpots` < 3 on a full rotation | a 2-spot "grain" is **under-determined** (orientation has 3 DOF) — the refiner fits it, reports a position and lattice, and it survives every downstream filter, diluting every population statistic. **≥ 3 always; 2 only for a partial rotation; never below 2** | §6 |
+| matching margins left at a beamline template's `1500 / 1500 / 1.5` | recommended working values are `MarginRadial 500`, `MarginEta 500`, `MarginOme 0.5` (§10). At 1500 the residual simply **fills the matching window** — measured `\|d\|` p95 = 1478 µm against a 1500 µm margin — and spots get multiply-claimed (848 k matched observations from 471 k spots). Inflates `DiffPos` without any geometry being wrong | §6, DIAGNOSIS |
+| a backend judged by grepping its source for `tx` | `tx` is applied in `transforms`, not in indexing or refinement — **no** backend carries it, python included, and re-applying it downstream would double-count. Concluding "c-omp cannot see `tx`" abandons the only supported fast path for a non-defect. The deprecated `FF_HEDM/src/FitPosOrStrainsOMP.c` is also not the binary c-omp runs (that is `midas_fit_grain/c_src/FitUnified.c`) | §7 |
 | `--only` given a **comma-separated** list | `--only` is *repeatable*, not comma-separated. `--only a,b` is read as one stage named `"a,b"`, matches nothing, and the run reports **success with zero stages executed** in ~1 s. The orchestrator validates that `--only` omits required *upstream* stages, but does **not** validate that a stage name exists | §7 |
 
 ---

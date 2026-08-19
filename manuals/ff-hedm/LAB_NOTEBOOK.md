@@ -164,6 +164,58 @@ and 0.5.6 wrote `col 22 = mean_angle, col 23 = mean_pos, col 24 = mean_ome` (0.5
 believing it was internal angle. That changes which candidate becomes the grain, not just
 a printed label. One more reason not to run < 0.5.7.
 
+#### 2e-i. SUPERSEDED (2026-08-19) — `spot_aware` is DISABLED; the default is `c_parity`
+
+**Everything above describes what `spot_aware` does, and it still describes it
+accurately. What changed is that it no longer runs.** The opening sentence of §2e —
+"`--mode spot_aware`, what `midas-pipeline --scan-mode ff` runs" — is **no longer
+true**: `--pg-mode` defaults to `c_parity`, `spot_aware` is off the choice list, and
+`PipelineConfig.__post_init__` rejects it (`midas_pipeline/config.py:687`).
+
+**The adjudication that settled it — against EBSD, on a population, not on one
+specimen.** `shade_LSHR` layer 1, a single refiner output, `MinNrSpots 3` +
+`Completeness 0.7`, one-to-one matched at 1° / 15 µm against 4328 segmented EBSD
+grains:
+
+| mode | grains | precision | recall |
+|---|---|---|---|
+| C `ProcessGrains` | 3491 | 79.8 % | 64.3 % |
+| `c_parity` | 3492 | 79.8 % | 64.4 % |
+| `spot_aware` | 4128 | 68.2 % | 65.0 % |
+
+Of the **691 grains `spot_aware` adds**, **7.2 %** have an EBSD partner against
+**80.4 %** for the shared population; their `DiffPos` median is **387 µm vs 121**.
+Net: **+0.1 pp recall for −11.6 pp precision.**
+
+Second dataset, different failure signature, same direction — 20-ID alumina rod,
+1 mm diameter, 100 µm beam: `spot_aware` **1652 grains vs `c_parity`'s 533**, with
+**4.1 % placed outside the physical sample** (out to r = 1290 µm inside a
+500 µm-radius rod, against 0.6 %) and `|Z|` p90 **286 µm through a 50 µm beam
+half-height** (against 57). Grains outside the rod and above the illuminated
+height are not a threshold preference.
+
+`c_parity` is the C reference reproduced: datasetA Ni, **6150 grains vs C's 6138**,
+matched pairs agreeing to **0.0000°** and **0.000 µm**.
+
+> **OPEN — this is a disabling, not an explanation.** The mechanism by which the
+> `spot_aware` branch manufactures these grains is **not diagnosed**. Two symptoms
+> are on record (low-EBSD-partner extras with ~3× the `DiffPos`; positions escaping
+> the sample envelope and the beam height) and they are consistent with the branch
+> admitting cluster members that should have been merged or rejected — but that is a
+> **hypothesis, not a finding**. Do not write it up as the cause, and do not re-enable
+> the branch because one dataset looks better with it. What would settle it: take the
+> 691 extras on `shade_LSHR` and ask whether each is a distinct cluster or a duplicate
+> of a kept grain, then check the same on the alumina out-of-sample 4.1 %.
+
+**Reconciling this with §3d.** §3d found that on `Au3_cubes_ff_000008` python
+`spot_aware` gave 2 grains where C gave 6, and that C was **over-segmenting** — that
+measurement stands and is not retracted. It is a statement about C splitting one
+orientation family into duplicates on a 2-grain specimen; it is **not** evidence that
+`spot_aware`'s grain-determination is better at population scale, which is what the
+EBSD adjudication above measures. A single-specimen dedup win and a
+several-thousand-grain precision loss are compatible, and only the second one governs
+which mode ships.
+
 ### 2f. Why the answer used to jump between runs
 
 Before the fixes, a single flipped peak renumbered the spot IDs, which changed cluster
@@ -395,6 +447,12 @@ worse fits: the two python-matching grains (1000, 1177) have the lowest DiffPos
 python's two land on C's best members at **0.031°** and **0.018°**, and no C grain is more
 than 1° from a python counterpart. **python `spot_aware` gives the right answer here.**
 
+> **Scope this claim (2026-08-19).** "Here" means this 2-grain specimen, where the
+> question was whether C duplicated one orientation family. It does **not** generalise:
+> `spot_aware` was later disabled after an EBSD adjudication on `shade_LSHR` and a
+> 20-ID alumina rod showed it manufacturing grains at population scale (§2e-i). Both
+> results stand; they answer different questions.
+
 **The cross-family ~60° is a Σ3 annealing twin**, and it is about ⟨111⟩ — every one of the
 eight cross pairs, several within 0.01–0.11° of the ideal axis. So the specimen is one
 grain plus its twin.
@@ -454,6 +512,12 @@ credible reflection, and the rest of the spot list is noise (§4d).
 
 **Still open:**
 
+- **Why the `spot_aware` process-grains branch manufactures grains** (§2e-i). It was
+  **disabled on 2026-08-19 on the strength of its output** — −11.6 pp precision against
+  EBSD on `shade_LSHR`, 4.1 % of grains outside the physical sample on a 20-ID alumina
+  rod — with **no root cause established**. This is the largest open item in the
+  grain-determination path: a disabled branch whose failure mode is undiagnosed can have
+  a sibling defect in the branch that *is* shipping. Next step is on record in §2e-i.
 - **Grain positions are good to ~100 µm, not better** (§2d). Quote them accordingly.
 - 899 of 1176 candidate pairs sit at 0.45–0.64°, just outside C's 0.4° merge threshold.
   Whether that is same-grain spread or real substructure is **not resolved**.
@@ -615,7 +679,7 @@ Handbook §11 is the one-paragraph summary of this table.
 | Energy **95.0 keV** | three instrument records + beamline confirmation | 4 |
 | CeO₂ 0/180 repeatability | `Lsd`/`BC` repeat to 0.01 % / 0.01 px across an independent 180° repeat | 5f |
 | Shared env missing `matplotlib`, `scikit-image` | import failure on chutoro | 1 |
-| `darkLoc` vs `darkDataset` | the zipper reads `config['darkLoc']` (`ff_zip.py:334`) and writes an all-zero dark when unset. Confirmed by reading `zarr["exchange/dark"]` before (max 0) and after (mean **1870.55**) | 3d |
+| `darkLoc` vs `darkDataset` | the zipper reads `config['darkLoc']` (`ff_zip.py:290`) and writes an all-zero dark when unset. Confirmed by reading `zarr["exchange/dark"]` before (max 0) and after (mean **1870.55**) | 3d |
 | `midas-fit-grain` 0.5.6 rotated the residual columns; 0.5.7 fixes it | the same grain's ω residual went from **223.87°** to **0.054°** | 8a |
 | `RingThresh` sensitivity | measured on this dataset | 6b |
 | Pipeline is bit-reproducible | 3 runs identical at all 27 artifacts; `Grains.csv` md5 `0449046c4a1eaa698d447fa480f10671` | 12 |

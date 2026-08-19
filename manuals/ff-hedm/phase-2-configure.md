@@ -25,6 +25,21 @@ Ring selection: only rings with **full azimuthal coverage** are safe defaults. W
 the centre of a 2048² detector, that is everything inside the *nearest-edge* radius;
 rings between the nearest-edge and far-corner radii are partial and bias η coverage.
 
+### `MinNrSpots` — never below 3 on a full rotation, never below 2 ever
+
+**HARD RULE: `MinNrSpots` must be ≥ 3.** The only exception is a **partial rotation**
+scan, where it may be dropped to **2** — and never below 2 under any circumstances.
+
+Two spots do not constrain a grain: an orientation has three degrees of freedom, so a
+2-spot "grain" is under-determined and the refiner will happily fit it, report a position
+and a lattice, and pass every downstream filter. On a full 360° sweep every real grain has
+far more than three reflections in range, so `MinNrSpots 2` buys nothing except
+under-determined false grains that dilute every population statistic you then quote.
+
+The example file's recommended working value is `MinNrSpots 3` (§10). Beamline parameter
+files in circulation carry `MinNrSpots 2` — that is a defect to fix, not a template to
+copy.
+
 `Rsample`, `Hbeam`, `BeamThickness`, `Vsample`, `GlobalPosition` are **not** descriptions
 of the sample. **HARD RULE: never set `Rsample`/`Hbeam` to the true sample dimensions.**
 They are a deliberately generous *search bound*; tighten them to the real size and any

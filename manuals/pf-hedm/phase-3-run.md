@@ -36,23 +36,28 @@ by hand if needed.
 ## 3.3 Indexing — seeded
 
 With the FF seed wired (phase 2.4), the scanning indexer combs only each voxel's candidate
-orientations. The **c-omp** indexer (`--indexer-backend c-omp`) is the fast path and writes
+orientations. The **c-omp** indexer (the only one, and the default) writes
 the consolidated `Output/IndexBest_all.bin` (tens of GB). Confirm it actually took the
 seeded path: a seeded layer finishes in tens of minutes; if it runs for hours pegging every
 core, the `GrainsFile` line did not reach the binary (phase 2.4).
 
 ## 3.4 Refinement — c-omp, and the two files it needs
 
-**`--refine-backend c-omp` is not optional, and it is not only about speed.** Indexing and
-refinement both run c-omp; **there is no GPU backend for either stage, in PF or FF.** The
-two stages have *different defaults*: the indexer already picks c-omp, but with no flag the
-**refiner falls back to python + torch + CUDA**, so a run whose log says
-`indexing(PF, c-omp)` can still be silently half on the GPU path. Measured on an FF layer
-(24 900 seeds, 471 k spots) it then died after ~12 s with a bare
+**c-omp is now the only backend either stage accepts, in PF or FF.**
+`--indexer-backend` and `--refine-backend` take `c-omp` and nothing else — argparse
+restricts the choice list and `_require_comp_backends` (`midas_pipeline/config.py:666`)
+re-checks it from `__post_init__`, so a notebook driving the config directly cannot bypass
+it either. Both default to `c-omp`; passing them is optional now.
+
+**What that closed.** The refiner used to fall back to **python + torch + CUDA** with no
+flag, so a run whose log said `indexing(PF, c-omp)` could be silently half on the GPU path.
+Measured on an FF layer (24 900 seeds, 471 k spots) it died after ~12 s with a bare
 `subprocess.CalledProcessError … non-zero exit status 1` and **no child traceback** — the
 wrapper swallows the subprocess's stderr — and because `transforms` re-runs on resume, each
-retry cost a ~90-minute re-index. **Check the log: both the indexing and the refinement
-line must say `c-omp`.**
+retry cost a ~90-minute re-index. The Python refiner is known-broken; it is not a slower
+fallback, and `--refine-solver` / `--refine-loss` / `--refine-mode` / `--pf-refine-mode` /
+`--use-bounds` / `--bound-*` were removed with it. **Still check the log says `c-omp` on
+both lines** — that now confirms the binaries were found and ran.
 
 On speed, separately: a full layer refines in ~a minute or two on c-omp vs a GIL-bound
 multi-day python refine. The pipeline handles the two things the C refiner needs in PF mode

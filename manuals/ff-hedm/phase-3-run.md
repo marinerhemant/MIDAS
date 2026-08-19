@@ -18,35 +18,78 @@ midas-pipeline run --scan-mode ff \
     --refine-backend c-omp
 ```
 
-### Both backends are c-omp. There is no GPU path for indexing or refinement.
+### Both backends are c-omp — now the only choice the code accepts
 
-**Pass `--indexer-backend c-omp --refine-backend c-omp` on every run, FF and PF
-alike.** The two stages have **different defaults** and only one of them is right:
+**This is no longer something you have to remember.** `--indexer-backend` and
+`--refine-backend` each take **`c-omp` and nothing else**: argparse restricts the
+choice list, and `_require_comp_backends` (`midas_pipeline/config.py:666`), called
+from `PipelineConfig.__post_init__`, re-checks it — so a notebook or library caller
+that builds a `PipelineConfig` directly cannot bypass it either. Both flags default
+to `c-omp`, so the two lines above are optional — keep them if you like the run
+command to be explicit.
 
-| stage | with no flag | log line |
-|---|---|---|
-| indexing | already c-omp | `indexing(FF, c-omp): …/midas_index/bin/midas_indexer` |
-| **refinement** | **python + torch + CUDA** | `refinement(FF): python -m midas_fit_grain … --device cuda` |
+The c-omp binaries (`midas_index/bin/midas_indexer`,
+`midas_fit_grain/bin/midas_fitgrain`) have no GPU path at all, so CUDA
+contention, OOM and driver mismatch cannot occur in either stage.
 
-So a run that *looks* like it is on the c-omp fast path — because the indexing
-line says so — is silently half on the GPU path. The c-omp binaries
-(`midas_index/bin/midas_indexer`, `midas_fit_grain/bin/midas_fitgrain`) have no
-GPU path at all, so CUDA contention, OOM and driver mismatch cannot occur there.
+**What this closed.** The refiner used to default to **python + torch + CUDA**
+while the indexer defaulted to `c-omp`, so a run whose log said
+`indexing(FF, c-omp)` was silently half on the GPU path. Measured on a 20-ID
+alumina FF layer (24 900 seeds, 471 k spots): refinement died after ~12 s with a
+bare `subprocess.CalledProcessError … non-zero exit status 1` and **no child
+traceback** — `run_checked_streamed` swallows the subprocess's stderr. It was
+first misdiagnosed as GPU contention and "fixed" with `CUDA_VISIBLE_DEVICES=0`;
+it failed again identically. Because `transforms` re-runs on resume, **each retry
+cost a ~90-minute re-index** — two of them. The Python refiner is
+known-broken independently of that; it is not a fallback.
 
-**The failure is silent and expensive.** Measured on a 20-ID alumina FF layer
-(24 900 seeds, 471 k spots): refinement died after ~12 s with a bare
-`subprocess.CalledProcessError … non-zero exit status 1` and **no child
-traceback** — `run_checked_streamed` swallows the subprocess's stderr, so the
-log says nothing about the real cause. It was first misdiagnosed as GPU
-contention and "fixed" with `CUDA_VISIBLE_DEVICES=0`; it failed again
-identically. Because `transforms` re-runs on resume and invalidates everything
-downstream, **each retry cost a ~90-minute re-index** — two of them.
+**Refiner tuning flags are gone with it.** `--pf-refine-mode`, `--refine-solver`,
+`--refine-loss`, `--refine-mode`, `--use-bounds` and `--bound-*` were **removed**
+— every one configured the in-process PyTorch refiner. The c-omp refiner has no
+configurable solver or loss, so those flags advertised tuning that does not
+exist. An old script carrying them now fails at argument parsing, which is the
+intended outcome: it was not doing what it claimed before.
 
-**Check both lines in the log say `c-omp`.** If the refinement line reads
-`python -m midas_fit_grain`, the flag is missing: kill the run rather than let it
-proceed. A bare `CalledProcessError` from `midas_fit_grain` with no underlying
-error is the signature — suspect the backend before the GPU, the data or the
-geometry.
+**Still worth reading the log:** both stage lines should say `c-omp`. That is now
+a check that the *binaries* were found and ran, not that the flags were right.
+
+### The c-omp refiner has no `tx`, and that is correct — `tx` is applied in `transforms`
+
+Grep either c-omp binary's source for `tx` and you find nothing that acts on it.
+This has been read as "the c-omp backends ignore `tx`, so a `tx` in
+`Parameters.txt` can never reach the result, therefore do not use c-omp."
+**That conclusion is wrong, and it is the wrong reason to abandon the fast
+path.** `tx` is consumed *upstream*. By the time either backend runs, the spots
+already carry the correction:
+
+| stage | what it does with `tx` |
+|---|---|
+| `zip_convert` | carries `tx` from `Parameters.txt` into the zarr — it is in the zipper's float key set (`midas_zipper/ff_zip.py:204`) |
+| `transforms` | **applies it.** `apply_tilt_distortion` (`midas_transforms/fit_setup/core.py:376`) sends every raw pixel through `pixel_to_REta_torch` (`midas_transforms/fit_setup/transform.py:82`) and writes *corrected* lab-frame µm into `InputAll.csv` → `Spots.bin` / `ExtraInfo.bin` |
+| `indexing` (c-omp) | reads those corrected spots. It parses a `DetTx` out of `DetParams` and then never reads it back (`midas_index/c_src/IndexerUnified.c:2374`) — a dead store, not a dropped correction |
+| `refinement` (c-omp) | reads the same corrected spots — it mmaps `AllSpots` straight out of the transforms output (`midas_fit_grain/c_src/FitUnified.c:1348`). No `tx` in the geometry model, by design |
+| `refinement` (python) | parses `tx` into its config and deliberately does **not** apply it — `apply_tilts` stays False because "the refined tilts live in the *observed* positions already" (`midas_fit_grain/driver.py:249`) |
+
+The two refiner backends therefore agree: **observed spots are in the ideal
+detector frame and the forward model predicts in the ideal frame.** Re-applying
+`tx` inside the refiner would be a *double* correction, not a fix. A `tx` change
+does reach the result — through `transforms`, which is why `transforms` and
+everything downstream of it must re-run when you change it (§7 resume).
+
+Two further traps in this diagnosis:
+
+- **`FF_HEDM/src/FitPosOrStrainsOMP.c` is not the binary `--refine-backend c-omp`
+  runs.** The shipped c-omp refiner is
+  `packages/midas_fit_grain/c_src/FitUnified.c`; `FF_HEDM/` is soft-deprecated C
+  (spine, "Maintained code"). Reading the deprecated tree to characterise a
+  shipped backend gives a true statement about the wrong file.
+- **Fitting `tx` is a separate tool, not a refiner setting.**
+  `midas_joint_ff_calibrate.grain_refine` is the only thing that fits it; it
+  works on **raw** `SpotMatrix` pixels and rotates them by a trial `tx`
+  (`midas_joint_ff_calibrate/grain_refine.py:426`). Its output is the *residual*
+  roll relative to whatever `tx` the reconstruction already ran with, so it must
+  be **composed** (`tx_total = tx_applied + tx_reported`) and **iterated** to
+  convergence — see [`ENVELOPE.md`](ENVELOPE.md) §5.
 
 13 stages, each with a provenance entry in `<result>/LayerNr_N/midas_state.h5`:
 
@@ -64,30 +107,53 @@ at startup; explicit values always win.
 > `midas-ff-pipeline` is **deprecated** as of 0.4.0 — use `midas-pipeline run --scan-mode ff`.
 > Same orchestrator underneath.
 
-### The default `--pg-mode` writes no residual sidecar
+### `--pg-mode`: `c_parity` is the default, and `spot_aware` is DISABLED
 
-`--pg-mode` defaults to **`c_parity`**, and that branch returns without calling
-`result.write()`. So `processgrains_diagnostics.h5` — which carries `residuals/spot_table`,
-the per-observation residuals every downstream diagnostic needs — **is never produced by a
-default run**, with or without `--generate-h5` (the FF `process_grains` stage does not read
-that flag; FF `consolidation` is an unconditional no-op stub).
+`--pg-mode` takes `legacy`, `paper_claim` or **`c_parity`** (the default).
+**`spot_aware` has been removed from the choice list and is rejected in four
+independent places** — `PipelineConfig.__post_init__` (`midas_pipeline/config.py:687`),
+the `midas-process-grains` CLI, and the package's own dispatcher and pipeline
+(`midas_process_grains/modes.py:69`, `pipeline.py:235`). Calling the library directly
+does not get you around it; an old script or config that asks for it fails with the
+reason rather than running.
 
-Nothing errors. The run completes, `Grains.csv` is correct, and the sidecar is simply
-absent, which reads as "this pipeline version doesn't write one" rather than as a mode
-choice.
+**Why it was disabled — adjudicated against EBSD, not against taste.**
+On `shade_LSHR` layer 1, one refiner output, `MinNrSpots 3` + `Completeness 0.7`,
+one-to-one matched at 1° / 15 µm against 4328 segmented EBSD grains:
 
-If you want the sidecar, ask for a mode that writes it:
+| mode | grains | precision | recall |
+|---|---|---|---|
+| C `ProcessGrains` | 3491 | 79.8 % | 64.3 % |
+| **`c_parity`** | **3492** | **79.8 %** | **64.4 %** |
+| `spot_aware` | 4128 | 68.2 % | 65.0 % |
 
-```bash
-midas-pipeline run --scan-mode ff --params Parameters.txt --result results/ \
-    --layers 1-1 --pg-mode spot_aware
-```
+Of the **691 grains `spot_aware` adds** over `c_parity`, only **7.2 % have an EBSD
+partner** against **80.4 %** for the shared population, and their `DiffPos` median is
+**387 µm against 121**. It buys **+0.1 pp of recall for −11.6 pp of precision**.
 
-`spot_aware`, `legacy` and `paper_claim` all write it; `c_parity` does not. Note the modes
-are not interchangeable scientifically — on `Au3_cubes_ff_000008`, `c_parity` returned 5
-grains and `spot_aware` returned 2 (the documented parent + Σ3 twin, matching Lab Notebook
-§3a's C-cross-checked radii to five decimals). Read `--pg-mode --help` for the
-accuracy trade-off before choosing on convenience.
+Confirmed independently on a 20-ID alumina rod (1 mm diameter, 100 µm beam):
+`spot_aware` returned **1652 grains against `c_parity`'s 533**, placed **4.1 % of
+them outside the physical sample** (out to r = 1290 µm in a 500 µm-radius rod, vs
+0.6 %), and spread `|Z|` to a **p90 of 286 µm through a 50 µm beam half-height**
+(vs 57). Grains outside the rod and above the beam are not a tuning preference.
+
+`c_parity` reproduces the C reference: on datasetA Ni it returns **6150 grains vs
+C's 6138**, and matched pairs agree to **0.0000°** and **0.000 µm**.
+
+> **Open, not closed.** *Why* the `spot_aware` branch manufactures those grains is
+> **not yet diagnosed** — it is disabled on its output, not on a root cause. Do not
+> treat "spot_aware is wrong" as a finished explanation, and do not re-enable it on
+> the strength of a single dataset looking better. See Lab Notebook §2e.
+
+**The one thing `c_parity` costs you: no residual sidecar.** That branch returns
+without calling `result.write()`, so `processgrains_diagnostics.h5` — which carries
+`residuals/spot_table`, the per-observation residuals every downstream diagnostic
+needs — **is not produced by a default run**, with or without `--generate-h5` (the FF
+`process_grains` stage does not read that flag; FF `consolidation` is a no-op stub).
+Nothing errors; the run completes and `Grains.csv` is correct. `legacy` and
+`paper_claim` write the sidecar, but **neither is a drop-in substitute for
+`c_parity`'s grain list** — pick one for diagnostics on a scratch run, not for the
+grain list you report.
 
 **Two things to check in the log every time:**
 
@@ -97,6 +163,30 @@ accuracy trade-off before choosing on convenience.
    invocation — which may have used a different threshold, a different dark, or a broken
    config. It costs 0.3 s instead of 55 s, so it is easy to miss. **After changing any
    peak-search or dark parameter, delete `results/` entirely**, do not rely on resume.
+
+   **Geometry used to bite hardest here, and `tx` most of all.** `zip_convert(FF)` reuses
+   any existing `*.MIDAS.zip`, and `transforms` reads the geometry out of the **zarr**,
+   not out of `Parameters.txt` (`midas_transforms/params.py:751`). So editing `tx`, `Lsd`,
+   `BC` or a distortion coefficient and re-running into the same result folder silently
+   kept the *old* value while the run reported success — the observation "changing `tx`
+   does nothing", which is a **stale zarr** and not a backend that ignores `tx`.
+
+   **`zip_convert` now re-reads the parameter file into an archive it reuses**
+   (`midas_pipeline/stages/_param_refresh.py`, rewriting via
+   `midas_zipper.param_refresh`). Check the log line — it names every key it changed,
+   and the same list lands in `midas_state.h5` under `n_params_refreshed` /
+   `params_refreshed`, so "which parameters did this run actually use" is answerable
+   afterwards instead of from memory. Three things it deliberately will not do:
+
+   | situation | what happens |
+   |---|---|
+   | a key the **stored frames** depend on changed (`SkipFrame`, `Padding`, `FileStem`, pixel layout) | **hard error.** Those were consumed when the frames were written, so patching the number would leave the data and the metadata describing different things — a silently shifted ω in `SkipFrame`'s case. Delete the zip and let it rebuild |
+   | a changed key invalidates a stage output **that already exists** (`RingThresh` vs `Temp/AllPeaks_PS.bin`) | **hard error**, naming the key and the stage. Refreshing the zarr alone would move the staleness one stage downstream, not fix it. Delete those outputs, or pass `--force-param-refresh` and accept they are stale |
+   | the rewrite did not actually take | **hard error.** `zip -u` replaces an entry only when the staged file is *newer* and otherwise exits 12 having changed nothing, so every refresh is verified by re-reading the archive |
+
+   `--no-refresh-params` turns the whole thing off and restores the old
+   inherit-whatever-the-zarr-has behaviour. To fix an archive outside a pipeline run:
+   `midas-refresh-zarr-params --zip <f>.MIDAS.zip --params Parameters.txt [--dry-run]`.
 
 Subprocess stages (`peakfit_torch`, `midas_indexer`, `midas_fit_grain`) are invoked by
 bare name, so the env's `bin` must be on `PATH` — calling `midas-pipeline` by full path is
