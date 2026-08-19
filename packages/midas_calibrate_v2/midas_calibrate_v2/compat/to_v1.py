@@ -5,7 +5,7 @@ Downstream MIDAS HEDM tools consume the v1 format; v2 exports here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 import torch
 
@@ -56,10 +56,48 @@ def write_v1_paramstest(
     unpacked: Dict[str, torch.Tensor],
     template: V1Params,
     path: Path | str,
-) -> None:
-    """Write a v1-compatible paramstest.txt at the given path."""
+    *,
+    panel_shifts_name: Optional[str] = None,
+) -> Optional[Path]:
+    """Write a v1-compatible paramstest.txt at the given path.
+
+    When the calibration refined per-panel terms, the panel shifts are also
+    written to a sidecar next to the paramstest and ``PanelShiftsFile`` is set
+    to point at it. Without that the refined panel geometry stays inside the
+    result object and every downstream integrator silently runs with zero
+    panel shifts.
+
+    Returns the sidecar path, or ``None`` for a single-panel calibration.
+
+    Args:
+        panel_shifts_name: sidecar filename. Defaults to
+            ``<paramstest stem>_panelshifts.txt``.
+    """
     out = unpacked_to_v1_params(unpacked, template)
+
+    path = Path(path)
     out.write(path)
+
+    shifts_path: Optional[Path] = None
+    if unpacked.get("panel_delta_yz") is not None \
+            and unpacked.get("panel_delta_theta") is not None:
+        # CalibrationParams has no PanelShiftsFile field (and cannot round-trip
+        # one through its own constructor), so the name comes from the caller
+        # or is derived from the paramstest name.
+        name = panel_shifts_name or f"{path.stem}_panelshifts.txt"
+        shifts_path = path.parent / name
+        write_panel_shifts_file(unpacked, shifts_path)
+        # CalibrationParams has no PanelShiftsFile field, so to_text() cannot
+        # carry it — append the key instead. v1 and the C DetectorMapper
+        # resolve it relative to the working directory, so emit the bare name
+        # and keep the sidecar beside the paramstest.
+        text = path.read_text()
+        if "PanelShiftsFile" not in text:
+            if not text.endswith("\n"):
+                text += "\n"
+            path.write_text(text + f"PanelShiftsFile {name}\n")
+
+    return shifts_path
 
 
 def write_ff_paramstest(
