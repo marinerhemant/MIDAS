@@ -87,7 +87,9 @@ def _build_geometry_and_integrate(spec, image, *, mode: str, K: int,
     The extra return is what the v1 binary writers need: ``Int2D.bin`` is the
     cake, and the area-weighted profile needs the geometry's per-bin weights.
     """
-    img_t = torch.from_numpy(image)
+    # The geometry tensors live on spec.device(); index_add against them needs
+    # the image there too, or CUDA raises on a CPU/GPU index mismatch.
+    img_t = torch.from_numpy(image).to(spec.device())
     fn = None
     if mode == "hard":
         geom, fn = HardBinGeometry.from_spec(spec), integrate_hard
@@ -114,8 +116,8 @@ def _build_geometry_and_integrate(spec, image, *, mode: str, K: int,
     else:
         raise ValueError(f"unknown --mode {mode!r}")
     if want_geom:
-        return prof.detach().numpy(), int2d, geom, fn
-    return prof.detach().numpy()
+        return prof.detach().cpu().numpy(), int2d, geom, fn
+    return prof.detach().cpu().numpy()
 
 
 def integrate_main(argv=None) -> int:
@@ -148,6 +150,9 @@ def integrate_main(argv=None) -> int:
                    help="Also write the v1 binaries the beamline chain reads: "
                         "lineout.bin, lineout_simple_mean.bin and Int2D.bin. "
                         "Not available for --mode soft.")
+    p.add_argument("--device", default="cpu",
+                   help="cpu | cuda | cuda:1 — the geometry and the kernels "
+                        "run wherever the spec tensors live")
     p.add_argument("--no-trans-opt", action="store_true",
                    help="Skip ImTransOpt forward-application "
                         "(image is already in post-transform coords)")
@@ -155,7 +160,8 @@ def integrate_main(argv=None) -> int:
                    version=f"midas-integrate-v2 {__version__}")
     args = p.parse_args(argv)
 
-    spec = spec_from_v1_paramstest(args.params, requires_grad=False)
+    spec = spec_from_v1_paramstest(args.params, requires_grad=False,
+                                   device=torch.device(args.device))
     spec.validate()
 
     image = _load_image(args.image,
@@ -258,6 +264,8 @@ def server_main(argv=None) -> int:
                    help="Subpixel oversampling K (only when --mode=subpixel)")
     p.add_argument("--port", type=int, default=60439)
     p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--device", default="cpu",
+                   help="cpu | cuda | cuda:1")
     p.add_argument("--out", type=Path, default=Path("."),
                    help="Where the v1 output files are written on shutdown")
     p.add_argument("--no-2d", action="store_true", help="Skip Int2D.bin")
@@ -269,7 +277,8 @@ def server_main(argv=None) -> int:
     from .binning.subpixel import integrate_subpixel
     from .streaming.socket_server import V2FrameServer
 
-    spec = spec_from_v1_paramstest(args.params, requires_grad=False)
+    spec = spec_from_v1_paramstest(args.params, requires_grad=False,
+                                   device=torch.device(args.device))
     spec.validate()
     if args.mode == "hard":
         geom, fn = HardBinGeometry.from_spec(spec), integrate_hard
@@ -280,7 +289,7 @@ def server_main(argv=None) -> int:
                         out_dir=args.out, host=args.host, port=args.port,
                         write_2d=not args.no_2d).start()
     print(f"midas-integrate-v2-server listening on {args.host}:{args.port} "
-          f"(mode={args.mode}"
+          f"(device={args.device}, mode={args.mode}"
           + (f", K={args.subpixel_K}" if args.mode == "subpixel" else "") + ")")
     print("Ctrl-C to stop and flush.")
 

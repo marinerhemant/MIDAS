@@ -31,6 +31,16 @@ __all__ = ["bin_weights", "profile_1d_v1", "r_axis_from_spec",
 WEIGHT_THRESHOLD = 1e-10
 
 
+def _geom_device(geom) -> torch.device:
+    """Where the geometry's tensors live. The weights must be built there."""
+    for v in vars(geom).values():
+        if torch.is_tensor(v):
+            return v.device
+        if isinstance(v, (list, tuple)) and v and torch.is_tensor(v[0]):
+            return v[0].device
+    return torch.device("cpu")
+
+
 def bin_weights(geom, integrate_fn) -> torch.Tensor:
     """Per-bin weight, shape ``(n_eta, n_r)``.
 
@@ -39,7 +49,9 @@ def bin_weights(geom, integrate_fn) -> torch.Tensor:
     landing in each bin. It depends only on the geometry, never on the data, so
     compute it once per geometry and reuse it for every frame.
     """
-    ones = torch.ones((geom.n_pixels_z, geom.n_pixels_y), dtype=torch.float64)
+    dev = _geom_device(geom)
+    ones = torch.ones((geom.n_pixels_z, geom.n_pixels_y), dtype=torch.float64,
+                      device=dev)
     # trans_opt is a property of the image, not the geometry; a uniform image
     # is invariant under it, and skipping it avoids a needless copy.
     return integrate_fn(ones, geom, normalize=False, apply_trans_opt=False)
@@ -53,7 +65,7 @@ def profile_1d_v1(int2d: torch.Tensor,
     ``area_weighted`` reproduces v1's ``Σ(I·A) / Σ(A)``; ``simple_mean``
     reproduces its ``Σ(I where A>0) / count(A>0)``.
     """
-    I = int2d.detach().to(torch.float64)
+    I = int2d.detach().cpu().to(torch.float64)
     if mode == "simple_mean":
         valid = (I != 0)
         n = valid.sum(dim=0).clamp(min=1)
@@ -62,7 +74,7 @@ def profile_1d_v1(int2d: torch.Tensor,
         raise ValueError(f"unknown mode {mode!r}")
     if weights is None:
         raise ValueError("area_weighted needs weights; see bin_weights()")
-    W = weights.detach().to(torch.float64)
+    W = weights.detach().cpu().to(torch.float64)
     valid = W > WEIGHT_THRESHOLD
     num = (I * W * valid).sum(dim=0)
     den = (W * valid).sum(dim=0)
