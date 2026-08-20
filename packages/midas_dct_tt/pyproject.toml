@@ -20,6 +20,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
+    "hdf5plugin>=4.0",
     "numpy>=1.20",
     "torch>=2.0",
     # Sibling MIDAS packages -- reused per implementation_plan.md Section 3.

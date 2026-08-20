@@ -44,6 +44,17 @@ carry the ``2*pi`` convention (``|G| = 2*pi/d``), matching ``midas_dfxm``.
 See ``implementation_plan.md``. Not released -- this package is private until
 ``RELEASE_CHECKLIST.md`` is worked through.
 """
+
+# Register the HDF5 filter plugins (bitshuffle, LZ4, zstd) that Eiger / Dectris
+# and ESRF files are written with.  hdf5plugin ships the plugin binaries but
+# only registers them with the HDF5 library when it is imported — declaring it
+# as a dependency is not enough.  Without this, reading such a dataset fails
+# with "can't open directory (/usr/local/lib/plugin)".
+try:  # pragma: no cover - environment-dependent
+    import hdf5plugin as _hdf5plugin  # noqa: F401
+except ImportError:  # HDF5 files with no plugin filter still read fine
+    pass
+
 __version__ = "0.1.1"
 
 from .conventions import (

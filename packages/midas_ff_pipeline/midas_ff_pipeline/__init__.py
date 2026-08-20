@@ -24,6 +24,16 @@ Public API:
 
 from __future__ import annotations
 
+# Register the HDF5 filter plugins (bitshuffle, LZ4, zstd) that Eiger / Dectris
+# and ESRF files are written with.  hdf5plugin ships the plugin binaries but
+# only registers them with the HDF5 library when it is imported — declaring it
+# as a dependency is not enough.  Without this, reading such a dataset fails
+# with "can't open directory (/usr/local/lib/plugin)".
+try:  # pragma: no cover - environment-dependent
+    import hdf5plugin as _hdf5plugin  # noqa: F401
+except ImportError:  # HDF5 files with no plugin filter still read fine
+    pass
+
 import warnings as _warnings
 
 __version__ = "0.6.0"

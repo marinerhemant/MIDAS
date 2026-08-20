@@ -24,6 +24,7 @@ dependencies = [
     "torch>=2.0",
     "pandas>=1.5",
     "h5py>=3.0",
+    "hdf5plugin>=4.0",
     # Sibling MIDAS package -- the differentiable HEDM forward model
     # (Sharma et al., IUCrJ 2025) that this package builds on.
     "midas-diffract>=0.1",

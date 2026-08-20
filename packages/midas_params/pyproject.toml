@@ -29,7 +29,14 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
 # Discovery module will eventually need these for HDF5/Zarr introspection.
-discovery = ["h5py>=3.0", "zarr>=2.0", "numpy>=1.22"]
+# hdf5plugin belongs HERE and not in base dependencies: this package keeps
+# `dependencies = []` on purpose (it is the leaf everything else imports), and
+# the only HDF5 reads are discovery.py's guarded ones. It is listed at all
+# because __init__ imports it to register the bitshuffle/LZ4/zstd plugin
+# binaries -- that import is try/except, so without this the registration
+# silently does not happen and an Eiger/ESRF file fails to read with
+# "can't open directory (/usr/local/lib/plugin)" rather than an ImportError.
+discovery = ["h5py>=3.0", "zarr>=2.0", "numpy>=1.22", "hdf5plugin>=4.0"]
 
 [project.urls]
 Homepage = "https://github.com/marinerhemant/MIDAS"
