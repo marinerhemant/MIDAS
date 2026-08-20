@@ -91,11 +91,15 @@ def write_v1_paramstest(
         # carry it — append the key instead. v1 and the C DetectorMapper
         # resolve it relative to the working directory, so emit the bare name
         # and keep the sidecar beside the paramstest.
-        text = path.read_text()
-        if "PanelShiftsFile" not in text:
-            if not text.endswith("\n"):
-                text += "\n"
-            path.write_text(text + f"PanelShiftsFile {name}\n")
+        # The template's own PanelShiftsFile rides through CalibrationParams.extra
+        # into to_text(). Leaving it would point this brand-new geometry at the
+        # PREVIOUS calibration's shifts -- silently, and they are usually the
+        # ones that were just superseded. Drop any inherited line, then write
+        # ours.
+        kept = [ln for ln in path.read_text().splitlines()
+                if ln.split()[:1] != ["PanelShiftsFile"]]
+        kept.append(f"PanelShiftsFile {name}")
+        path.write_text("\n".join(kept) + "\n")
 
     return shifts_path
 

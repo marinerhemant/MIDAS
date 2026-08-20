@@ -284,6 +284,13 @@ class CalibrationParams:
         lines.append(f"RhoD {self.RhoD:.6f}")
         lines.append(f"SpaceGroup {self.SpaceGroup}")
         lines.append("LatticeConstant " + " ".join(f"{v:.6f}" for v in self.LatticeConstant))
+        # Binning keys are parsed by from_file, so they must be emitted too --
+        # otherwise a paramstest written here cannot be handed to an integrator
+        # without being hand-patched first.
+        if self.RBinSize > 0:
+            lines.append(f"RBinSize {self.RBinSize:g}")
+        if self.EtaBinSize > 0:
+            lines.append(f"EtaBinSize {self.EtaBinSize:g}")
         for k, v in self.extra.items():
             lines.append(f"{k} {v}")
         return "\n".join(lines) + "\n"
