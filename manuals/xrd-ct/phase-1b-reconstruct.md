@@ -27,9 +27,15 @@ scan.
 
 ```python
 from midas_dt import find_centre
-res = find_centre(stack, method="com+sweep")
+res = find_centre(stack, method="com", cross_check=True)   # cross_check is the default
 print(res.describe())          # "axis shift +2.135 px (com+sweep)"
+print(res.method, res.well_determined, res.detail["com_shift"], res.detail["sweep_shift"])
 ```
+
+**`method="com+sweep"` is not a valid input** — `midas_dt` 0.5.0 raises
+`ValueError: method must be 'com' or 'sweep'`. `"com+sweep"` is what the *result* reports in
+`res.method` once the cross-check has run. Pass `method="com"`; `cross_check=True` is the
+default and is what runs the confirming sweep.
 
 Two independent estimators, deliberately:
 
@@ -38,10 +44,17 @@ Two independent estimators, deliberately:
 * **`sweep`** — reconstruct across a range of shifts and score each by image variance. Slower
   by the number of trials.
 
-`com+sweep` runs both and **flags disagreement** rather than silently preferring one. Take a
+`cross_check` runs both and **flags disagreement** rather than silently preferring one. Take a
 disagreement seriously: it usually means a low-contrast or near-symmetric object where the
 centre genuinely is not well determined, and the reconstruction will be soft no matter which
 value you pick.
+
+**Two traps in reading the result.** If `com` reports itself not `well_determined`, the
+function returns **early, without running the sweep** — so an agreement you never got can look
+like one you did. And `_sweep` is *seeded at the COM value* with `step=0.5`, so its grid
+contains the seed: on the DAC Ti S1 set `com_shift` and `sweep_shift` came back
+**bit-identical** at −0.114 px, which confirms nothing finer than 0.5 px. `well_determined`
+only asserts |sweep − com| ≤ 1.0 px. Do not quote the third decimal.
 
 A wrong shift blurs or doubles every voxel. It does not error.
 

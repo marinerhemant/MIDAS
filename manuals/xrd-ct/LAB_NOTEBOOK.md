@@ -538,14 +538,69 @@ never revealed, and it had already been promoted to *established*.
    into a design conclusion before being verified. Re-derivation **reversed** it: a
    thinned-to-300 case gave +0.506, not +0.023.
 
+### 5h. DAC Ti S1 per-voxel radial gradient — **REFUTED twice, 2026-08-20**
+
+A per-voxel centre-to-rim apparent-d gradient (+1829…+4996 µε, claimed
+sign-consistent across five rings and two phases) was refuted by `/verify` on all
+**four** lenses, then refuted again by a **pre-registered** re-run after the
+extraction bugs were fixed. Both verdicts are in `~/.claude/skill-log.jsonl`;
+working directory `~/Desktop/analysis/dac_ti_strain/`.
+
+**Two extraction bugs, one of them inherited by §6's withdrawn number.**
+*BUG A* — `np.nan_to_num` maps a dead raw-η column's centroid to **0 px**, then
+ten raw columns are averaged into a bin: one dead column moves the bin ~34 px out
+of ~345 (1–2 × 10⁵ µε). |t|-dependent, so it back-projects into a centred radial
+pattern and *predicts* the sign consistency that was offered as physics.
+*BUG B* — the rebin stored mean(area) and mean(centroid), so the moment was
+mean(a)·mean(c) rather than mean(a·c).
+**Fix:** drop dead raw columns from both sums *before* the rebin and carry
+`area = Σaᵢ`, `moment = Σaᵢcᵢ`. Also `Σsig/√Σnoise²`, not the mean of per-column
+SNRs — the two differ by √10, so the old SNR ≥ 3 gate was never the gate it
+looked like.
+
+**All three nulls were vacuous, in three different ways.** They planted a
+*spatially uniform* field into a *linear* reconstruction, so `M = d·I` survives
+masking elementwise and the ratio returns `d` regardless of truncation, missing
+wedge or mask — the operator ledger `known-limits.md` (outside this repo) says a planted-uniform-field test cannot
+see this, in advance. One null also planted a variation in **R** while the
+measurement reported **d** (`dd/d = −0.99·dR/R`, so it was subtracted with
+inverted sign), and its annuli had **zero voxel overlap** with the measurement's.
+
+**After the fix, the pre-registered test refuted the sample-level claim too:**
+α(100) **+2850**, α(110) **+1041**, ω(300) **+1071**, α(012) **−323** µε; ring
+spread **8.8×** against a 3× limit. **α(012) reversed sign** from +4970. And the
+decisive internal check: **α(100) and α(110) both have c-axis fraction χ = 0 —
+they measure the same a-axis — yet differ by ~1800 µε with non-overlapping CIs.**
+No strain field can do that; it bounds what this dataset supports regardless of
+model.
+
+**α(101) vindicated the doc set.** `manuals/xrd-ct/ENVELOPE.md:99` says to exclude it as a
+doublet; v1 kept it on a gap/FWHM of 2.04 against a 2.00 gate. Under a correct
+`n_live == 10` selection it yields **zero** usable bins.
+
+**Standing suspicion for this technique:** across the four primary rings `E_even`
+was **monotonic in window/FWHM** (2.52× → −323, 2.88× → +1041, 4.00× → +1071,
+5.71× → +2850). A real strain signal must be window-*independent* above ~2.3×
+FWHM (§ the area-invariance line). Treat any centroid-strain number as
+provisional until a window sweep shows it plateaus.
+
 ## 6. Provisional — labelled provisional, and must stay that way
 
 > **These have NOT been through `/verify`.** The label travels with the number into any text
 > that leaves the session, not only into working notes.
 
-**Ti deviatoric strain 0.3–0.7 %** — six reflections, 3352–7324 µε (5–95 % inter-percentile),
-MAD 1228–3354 µε. Credible **because the six independent reflections agree**, which is the
-right reason and still not verification.
+**Ti deviatoric strain 0.3–0.7 %** — ~~six reflections, 3352–7324 µε (5–95 % inter-percentile),
+MAD 1228–3354 µε. Credible **because the six independent reflections agree**~~
+**→ WITHDRAWN 2026-08-20. Do not quote.** The extraction it came from
+(`ti_full_extract.py`) zero-fills a dead raw-η column's centroid via
+`np.nan_to_num` and then averages ten raw columns into a bin, so one dead column
+drags that bin by ~34 px out of ~345. Measured on 12 real frames, bins that
+*passed* the SNR gate while carrying a zeroed centroid: α(012) 2 @ 199 652 µε,
+α(110) 4 @ 100 035 µε, ω(300) 7 @ 200 120 µε. The defect is |t|-dependent, so it
+concentrates in the low-SNR outer translations. On a corrected re-extraction
+**α(012) reverses sign**. The "six reflections agree" argument is therefore void —
+they shared a common systematic, not a common measurement. See
+`~/Desktop/analysis/dac_ti_strain/` and §5h.
 
 **Ti texture bound |S| ≲ 0.1** — from amplitude² scaling of the measured 0.17 % against a
 planted 25 %.
