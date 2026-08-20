@@ -149,6 +149,83 @@ absolute difference 0 over 648 000 bins. Any difference is a bug worth chasing.
 If it exceeds ~1e-5, check that both runs used the same `Map.bin`.
 
 
+## Distortion coefficients sit on their bounds
+
+**Test.** Two candidate causes, and they are told apart by *which* coefficients
+rail. Run both gates
+(`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/diagnostics.py:281`
+and `:401`) and look at the per-parameter 1σ from the Laplace covariance.
+
+**If the railed ones are `a_k`/`phi_k` and the azimuth gate reports a narrow
+wedge** → the harmonics are not identifiable. A k-fold harmonic needs azimuth;
+over a narrow arc it is degenerate with the beam centre (1-fold) and the tilts
+(2-fold). Measured on a detector with the beam centre off the panel corner, 66–73°
+of each ring: 3, 4, 7 and 7 of 15 coefficients pinned at ±0.002 across four
+panels.
+
+**If the railed ones are `iso_R*` and `RhoD` is much larger than the outer ring**
+→ the radial terms have no lever. At ρ_max = 0.32, ρ⁶ = 1e-03 and the fitted
+coefficients came back with 1σ of 0.9 to 15 on values of order 1e-03.
+
+**Lever.** For the first, `refine_distortion="radial"` or `"none"` (rule 11);
+for the second, `RhoD` = outer ring radius in µm (rule 12). Then confirm the loop
+settles — a railed coefficient and a wandering loop are the same illness.
+
+**If nothing rails and every refined coefficient is several σ from zero** → the
+distortion is real and determined. Keep it.
+
+---
+
+## The E↔M loop will not settle
+
+**Test.** Look at the *honest* per-iteration strain — re-extracted at each
+post-refinement geometry, not the optimiser's own objective
+(`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/single.py:184`). Then
+re-run with the distortion frozen, changing nothing else.
+
+**If the trace oscillates by more than ~2× and freezing settles it** → too many
+sloppy directions. Measured on one frame: full distortion gave 232, 181, 613,
+779 µε; `"radial"` gave 199, 284, 1380, 2718 µε; `"none"` gave 91, 72, 139, 154;
+`"none"` plus a per-ring quality filter converged in two iterations at 84.2, 84.4
+and stopped.
+
+Note what that costs if unnoticed: with an oscillating trace, "best of history"
+returns whichever iterate was luckiest. The 72 µε above is such an iterate — the
+next iteration undid it.
+
+**If freezing does not settle it** → not the parameterisation. Check the seed
+(H2), the ring assignment, and whether the ring set is dominated by rings the
+frame does not really carry (rule 13).
+
+**If the in-loop number looks fine but re-extraction disagrees with it** → you are
+reading the M-step objective, not fit quality. On a real two-calibrant frame that
+gap was 41 µε in-loop against 418 µε re-extracted.
+
+---
+
+## Two calibrants agree, but you are not sure that means anything
+
+**Test.** Read the absolute per-phase residual *before* the ratio
+(`packages/midas_calibrate_v2/midas_calibrate_v2/loss/diagnostics.py:139`). Then
+ask whether both phases could be sitting on a common noise floor.
+
+**If the absolute residual is well above the 100 µε gate** → the agreement is not
+evidence. Two calibrants described equally badly agree by construction. Measured:
+one run reported 193 / 196 µε, "agree to within 1.02×", and was read as a pass;
+a converged run on the same frame gave 45.6 / 69.0 µε — ratio 1.51, i.e. worse
+agreement and far better absolute.
+
+**If the absolute residual is at the floor and the phases still differ by more
+than ~1.5×** → real disagreement, and it is the useful result. The honest
+uncertainty on the geometry is the spread between the phases, not the fit's
+formal σ. Suspect the assumed lattice constants first (da/a is degenerate with
+dLsd/Lsd), then a genuine per-phase sample position (§4b.3).
+
+**If the absolute residual is at the floor and the phases agree** → the geometry
+describes both powders. This is the only combination that is a pass.
+
+---
+
 ## The calibration passes every gate but you doubt the distance
 
 **Test.** Compare λ from three sources: the parameter file, the filename /

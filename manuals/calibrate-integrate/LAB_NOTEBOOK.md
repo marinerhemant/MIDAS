@@ -4,9 +4,11 @@ The spine says what to do. This says **why**, and records what had to be
 withdrawn. Read this before re-investigating anything here: several attractive
 hypotheses are recorded as refuted, with the measurement that killed each.
 
-All work 2026-08-18/19. Dataset: 48-panel Pilatus (1475 × 1679, 172 µm), APS
-20-ID, CeO2 at 63 keV, frame `ceria_..._000868.tiff`. Scripts and raw outputs
-are archived with the release handoff for this work — the paths live there
+§1–§6 are 2026-08-18/19 on a 48-panel Pilatus (1475 × 1679, 172 µm), APS 20-ID,
+CeO2 at 63 keV, frame `ceria_..._000868.tiff`. **§6bis–§11 are a second detector
+and a second failure mode** — the 4-panel GE Hydra at 1-ID, two calibrants in one
+exposure, beam centre off the panel — and are scoped in §6bis. Scripts and raw
+outputs are archived with the release handoff for this work; the paths live there
 rather than here, because they are on beamline scratch and will not outlive it.
 
 **Status labels are load-bearing.** ESTABLISHED = survived adversarial review.
@@ -200,3 +202,156 @@ separately in §2 (0.03 % on in-band L2) by running the compiled binary at level
 
 v2 CPU vs CUDA agree **exactly** (max absolute difference 0 over 648 000 bins) —
 float64 throughout, no reduction-order noise.
+
+
+---
+
+## §6bis. Second dataset: 4-panel GE Hydra, mixed CeO2 + LaB6, off-panel beam centre
+
+Sections §7–§11 were measured 2026-08-17/19 on a **different detector class** from
+the rest of this notebook: the four monolithic GE panels of the 1-ID Hydra
+(2048², 200 µm, `tx` = 300/30/120/210°), CeO2 + LaB6 mixed in one exposure at
+80.802 keV, sample-to-detector ≈ 2.73 m. The beam centre lies **beyond a panel
+corner**, so every ring is a partial arc and each panel sees one contiguous
+azimuthal wedge of 66–73°.
+
+That is outside §0's reference geometry in two ways that matter — mixed calibrant,
+and an azimuth budget four to five times smaller than a beam-centre-on-panel
+detector. Treat the *procedures* below as transferable and every *number* as
+belonging to this detector.
+
+Data: `/gdata/dm/1ID/2025/bt_1id_jul25/data/ge{1..4}/cal_CeO2_LaB6_HL_10f6s_sweep`.
+
+---
+
+## §7. What a second calibrant buys, and what it does not — ESTABLISHED
+
+**It does not buy wavelength.** SVD of the (λ, Lsd) Jacobian over the real ring
+sets, at the reference geometry:
+
+| ring set | cond(JᵀJ) | soft direction |
+|---|---|---|
+| CeO2 only (11 rings) | 1.148e3 | (+0.16792, −0.98580) |
+| LaB6 only (19) | 1.037e3 | (+0.16762, −0.98585) |
+| CeO2 + LaB6 (30) | 1.060e3 | (+0.16772, −0.98583) |
+
+The soft direction rotates by **0.011°**. Both phases enter the forward model
+only through their d-spacings, so λ → kλ, Lsd → Lsd/k acts identically on every
+`d_k` — a second calibrant adds *rows* to the Jacobian, not a direction. Linked
+distances give cond = 2.6e1 on the same data, a factor 44. This is an independent
+route to hard rule 9 and agrees with the planted-error test in §ENVELOPE.
+
+**It does not buy azimuth.** Both powders illuminate the same wedge.
+
+**It does buy √N and a cross-check.** Fit points 533 → 1060 after the blend cut
+(2.03×); σ on Lsd / BC / tilts tightened 29–43 %, against 30 % predicted by √N.
+Nothing beyond counting.
+
+**Blend accounting.** After merging exact hkl degeneracies (14 rows absorbed on
+ge1), a 12 px cut costs 6 or 7 rings of about 40, consistently across all four
+panels. The degeneracy merge is not optional: LaB6 (300)/(221) and CeO2
+(511)/(333) are one physical ring with two labels, and any blend rule reads them
+as zero-separation doublets.
+
+**Powder quality is not symmetric.** Per-η peak-height CV, four panels:
+CeO2 0.08–0.11, LaB6 0.36–0.47. LaB6 is 3.5–4.5× grainier on every panel, and it
+sets the residual floor: the best joint fits reached 45.6 µε on CeO2 rings and
+68–69 µε on LaB6's, whichever ring set was fitted.
+
+---
+
+## §8. A narrow azimuthal wedge does not determine the harmonics — ESTABLISHED
+
+The shipped calibrations for the four panels had **3, 4, 7 and 7 of 15**
+distortion coefficients pinned at ±0.002. ge3 and ge4 sat exactly on the bound.
+
+Refitting reproduced the cause. Honest per-iteration strain (re-extracted at each
+post-refinement geometry), ge1, everything else held fixed:
+
+| refined | trace (µε) | converged |
+|---|---|---|
+| full distortion | 232, 181, 613, 779 | no |
+| `"radial"` (iso_R2/R4/R6 only) | 199, 284, 1380, 2718 | no |
+| `"none"` | 91, 72, 139, 154 | no |
+| `"none"` + per-ring filter | 84.2, 84.4 | **yes, 2 iterations** |
+
+Two things worth separating. First, freezing the distortion is the large move
+(181 → 72). Second, **`"radial"` was not enough** — the three iso terms are
+near-collinear over the available ρ range and diverged worse than the full set.
+Do not treat "radial only" as a safe default; run the gate and check the trace.
+
+With distortion frozen the four panels agree on the distance to 0.26 mm
+(SD 0.11 mm), so the geometry does not depend on resolving the distortion — the
+same conclusion §5 reached about the panel parameterisation.
+
+---
+
+## §9. RhoD is a normalisation, and the wrong value silently kills the radial terms — ESTABLISHED
+
+The shipped files carried `RhoD` = 2e6 µm against an outermost fitted ring at
+551–632 kµm, i.e. ρ_max ≈ 0.28–0.32. Then ρ⁴ = 8e-03 and ρ⁶ = 1e-03, and
+`iso_R4` / `iso_R6` returned 1σ of 0.9 to 15 on coefficients of order 1e-03 —
+unmeasured, and railed. Setting `RhoD` to the outer ring radius (ρ_max ≈ 1)
+brought every σ to the same order as its coefficient.
+
+Nothing about the residual announces this: the strain is unremarkable either way.
+It is only visible in the covariance, which is why the gate reports the ratio.
+
+---
+
+## §10. The per-ring quality filter buys convergence, not a smaller number — PROVISIONAL
+
+**A claim made earlier in this work was wrong and is corrected here.** The
+per-ring filter was described as "worth about 4× in converged residual". Isolating
+one knob at a time (the table in §8) shows the 4× belongs to **freezing the
+distortion**, not to the filter. The filter's contribution is stability: with it
+the loop converged in two iterations and stopped; without it the same fit
+wandered 91 → 72 → 139 → 154 µε, and its apparent best (72.5) was an iterate the
+next one destroyed.
+
+That is still worth having — an unconverged run reports whichever iterate was
+luckiest — but it is a different claim, and the earlier one is withdrawn.
+
+Two implementation notes, both found by measurement rather than design:
+
+- The first baseline-referenced SNR estimator divided by the scatter at the
+  radial-window ends, which goes to zero wherever those ends are flat. Measured
+  maxima of **1.03e7**, which made any SNR threshold inert — 34 of 36 rings
+  "passed" at every threshold. Fixed with a counting-statistics floor,
+  `max(std_ends, √baseline)` (`packages/midas_calibrate/midas_calibrate/estep.py:270`);
+  the same frame then spans 0.0–22.3.
+- `MinEtaBinsPerRing` is an **absolute** count and scales with `EtaBinSize`. On
+  one frame the best-covered ring carried 13 fits at 5° bins and ~36 at 2°. A
+  threshold tuned at one binning is not portable; read the distribution off
+  `ring_quality()`.
+
+Stays PROVISIONAL: measured on one panel, one frame, and not attacked fresh.
+
+---
+
+## §11. Per-phase sample position: an upper bound, not a measurement — PROVISIONAL
+
+Two capillaries stuck together would put each powder at its own distance. Fitting
+that with the tilts **shared** (one detector cannot tilt differently for different
+powders) gives, on ge1:
+
+| model | dLsd, LaB6−CeO2 | transverse | mean strain |
+|---|---|---|---|
+| shared position | — | — | 54.9 µε |
+| + dLsd | **−71.8 ± 34.4 µm** (2.1σ) | — | 57.4 µε |
+| + dLsd, dBC | −191.6 ± 123.0 µm (1.6σ) | −8 µm, −23 µm (0.7σ, 1.2σ) | 57.4 µε |
+
+The powders are co-located to ~100 µm along the beam and ~30 µm across it, adding
+the offsets does not improve the fit, and the three-offset model does not converge
+(dLsd swinging −192 → +318 µm across iterations).
+
+**Two reasons this is an upper bound rather than a measurement.** It is 2.1σ from
+one panel. And `dLsd/Lsd` = −2.6e-05 is *exactly* what a LaB6 lattice constant of
+4.15678 Å instead of 4.15689 would produce — a difference of 0.0001 Å. One frame
+cannot separate them; several exactly-known distances can.
+
+**A method error worth recording.** The first version of this measurement let each
+phase have its own tilts and reported a **1.43 mm** offset at 3.7σ. The tilts were
+absorbing the difference. Sharing them collapsed it to 72 µm. The 1.43 mm figure
+is withdrawn. Same shape as the `R(pixel)` mistake in §5: a quantity that looked
+like a measurement was an artefact of what else was left free.

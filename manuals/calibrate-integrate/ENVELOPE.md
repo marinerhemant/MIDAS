@@ -81,6 +81,52 @@ A **second** run, on the single-panel dataset above, found two more:
 Five defects across two runs. The rate has not flattened; expect more.
 
 
+## Now exercised: mixed calibrant, off-panel beam centre (2026-08-19/20)
+
+A third detector class: the **4-panel GE Hydra** at 1-ID (2048², 200 µm,
+`tx` 300/30/120/210°), **CeO2 + LaB6 in one exposure** at 80.802 keV, ~2.73 m,
+beam centre beyond a panel corner so every ring is a partial arc over 66–73° of
+azimuth. Lab Notebook §6bis–§11.
+
+| path | evidence |
+|---|---|
+| multi-phase ring table, both calibrants, all four panels | 39–42 usable rings/panel; exact hkl degeneracies merged (14 rows on ge1) |
+| blend exclusion at 12 px | costs 6–7 rings of ~40, consistently on all four |
+| H1 caught on real data | published block 91 mm off for these frames; four panels agree to SD 0.11 mm, ring residual 14 → 0.13 px |
+| azimuth-coverage and RhoD gates | both `fail` on the shipped settings, correctly |
+| distortion-block selector | `full` / `radial` / `none` compared on one frame; only `none` converged |
+| per-ring quality filter | converged in 2 iterations vs a wandering loop without it |
+| per-phase residual reporting | 45.6 / 69.0 µε on ge1 |
+| per-phase sample position, `mode="same_detector"` | −71.8 ± 34.4 µm, ge1 only |
+
+## Not exercised on that detector — do not promote
+
+| path | why |
+|---|---|
+| **held-out strain gate (§4 / H3)** | every strain quoted for the Hydra is **full-set**, not held-out. The §4 gate is specifically held-out < 100 µε *and* a small held-out/full gap; that split was never run |
+| refits on ge2 / ge3 / ge4 | the census, distance, azimuth and powder-quality numbers cover all four; **every strain and every fitted geometry is ge1 only**. ge3/ge4 have 7/15 railed coefficients against ge1's 3/15, so do not assume they land together |
+| per-phase sample position beyond ge1 | one panel, 2.1σ, and degenerate with the lattice constant |
+| integration on the Hydra | this work stopped at calibration; nothing was integrated |
+| the multi-phase path on a beam-centre-on-panel detector | the whole mixed-calibrant record is from one narrow-wedge geometry, where the harmonics were unidentifiable anyway. What multi-phase does when the azimuth is *not* the binding limit is untested |
+
+**A procedural violation worth recording.** The knob-isolation runs in Lab
+Notebook §8 and §10 seeded the beam centre and distance from the published block
+in order to hold everything but one knob fixed. That is halt condition **H2**.
+The scope is bounded: the 91 mm result and the four-panel agreement come from
+`make_seed` and from ring-radius ratios, neither of which used the prior block —
+only the strain comparison inherited it. Recorded rather than quietly excused,
+because H2 exists precisely because such seeding is easy to justify locally.
+
+## Numbers that are Hydra-specific, not constants
+
+- 66–73° azimuth, and everything that follows from it (rule 11's verdict that
+  even `"radial"` diverges) — that is this beam-centre geometry, not a general result.
+- 12 px blend cut — from this ring spacing at this distance and energy.
+- `MinEtaBinsPerRing` thresholds — absolute counts that scale with `EtaBinSize`.
+- LaB6 3.5–4.5× grainier than CeO2 — these two powder lots.
+
+---
+
 ## Adversarial eval — the halt conditions, tested (2026-08-19)
 
 The first three runs all used *healthy* data, so the doc set's detection
@@ -100,5 +146,18 @@ previous run. The wavelength one was **not**: the doc set never mentioned the
 run would have absorbed the 1 % into `Lsd`, passed the strain gate, and reported
 a confidently wrong distance. Now hard rule 9, with a DIAGNOSIS entry.
 
-Still untested: H2 (seeded from a bad block), H4 (unresolvable shifts file),
-H5 (dLsd free), H7 (non-powder frame). Each needs its own planted-fault run.
+Still untested as *planted faults*: H2 (seeded from a bad block), H4
+(unresolvable shifts file), H5 (dLsd free), H7 (non-powder frame). Each needs its
+own run.
+
+H1, H9, H10 and H11 have since been met on **real** data rather than planted
+ones — a published block 91 mm wrong for its frames, both identifiability gates
+failing on the shipped settings, and a loop oscillating between 84 and 4692 µε
+(Lab Notebook §6bis–§9). Real-data hits are weaker evidence than a planted fault,
+because nobody withheld the answer; they do show the conditions fire outside a
+test harness.
+
+H8 (calibrants disagreeing at the floor) is **not** yet met either way: on the one
+frame measured, the phases differ 1.51× at 45.6 / 69.0 µε, which is above the
+threshold — but the absolute residual is not demonstrably at the floor, so the
+gate's precondition is unproven.

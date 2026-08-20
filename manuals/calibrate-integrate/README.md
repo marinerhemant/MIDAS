@@ -32,6 +32,8 @@ Everything in this document was measured on **one detector**: a 48-panel Pilatus
 |---|---|
 | tiled Pilatus / single-panel area detector, powder calibrant | continue |
 | a different detector geometry | continue, but re-derive the numbers — the *procedure* transfers, the *values* in §4 and §6 do not |
+| **two calibrants mixed in one exposure** (e.g. CeO2 + LaB6) | continue, and add **§4b** — one extra step, plus different expectations about what the second calibrant buys |
+| **beam centre off the panel** (partial arcs, one azimuthal wedge) | continue, but read **rule 11** first — most of the distortion model is not identifiable and refining it will not converge |
 | spotty single-crystal rings, not powder | **stop** — this is `ff-hedm` or `pf-hedm` |
 | tomographic translation series | **stop** — this is `xrd-ct` |
 | no calibrant anywhere in the experiment | **stop and ask.** A geometry cannot be invented from a sample pattern |
@@ -211,6 +213,111 @@ entirely; everything else is identical.
 
 ---
 
+## §4b. Two calibrants on one exposure
+
+Someone mixed CeO2 and LaB6, or stuck two capillaries together. **Be clear about
+what this buys before spending effort on it** — the accounting below is measured
+(Lab Notebook §7), and two of the three things people expect from it are not
+available.
+
+| | |
+|---|---|
+| ✅ roughly twice the fit points, denser radial sampling | σ on Lsd / BC / tilts tightens ~30–43 %, which is exactly √N and no more |
+| ✅ a cross-check no single calibrant can give | the gap between the two phases is a systematic-error estimate |
+| ✅ per-phase sample position, if the powders are not co-located | §4b.3 |
+| ❌ **wavelength** | both phases enter only through their d-spacings; rule 9 is unchanged |
+| ❌ **azimuthal harmonics** | both powders illuminate the *same* wedge; rule 11 is unchanged |
+| ❌ freedom from the lattice constant | da/a is exactly degenerate with dLsd/Lsd, per phase |
+
+### §4b.1 Declare both phases
+
+```python
+from midas_calibrate_v2.seed.calibrant import phases_from_calibrants
+v1.Phases = phases_from_calibrants(["CeO2", "LaB6"])   # FIRST entry seeds
+v1.MinRingSeparation = 12.0        # px; drop rings that collide in radius
+```
+
+or, in a parameter file (`packages/midas_calibrate/midas_calibrate/params.py:60`):
+
+```
+Phase CeO2 225 5.41153 5.41153 5.41153 90 90 90
+Phase LaB6 221 4.15689 4.15689 4.15689 90 90 90
+MinRingSeparation 12.0
+```
+
+or from the CLI: `--calibrant CeO2 --calibrant LaB6 --min-ring-separation 12`.
+
+**Order matters.** Seeding matches an arc pattern against *one* ring table, so
+the first entry is the one `make_seed` uses. Put the smoother powder first: on
+the reference frame the LaB6 seed returned 2095 mm against the CeO2 seed's
+2735 mm. That is not a bug and not a tie to break by averaging — §4b.4.
+
+`build_ring_table` (`packages/midas_calibrate/midas_calibrate/rings.py:150`)
+then returns the union, sorted by radius, tagged with `phase_idx`. Everything
+downstream of the ring table only ever asks a fitted point for its expected 2θ,
+so no other stage needs to know about phases.
+
+### §4b.2 The blend cut, and the trap inside it
+
+Two interleaved ring sets always collide somewhere, and a blended ring's
+centroid is dragged by its neighbour with no error and no warning.
+`drop_blended_rings` (`rings.py:256`) flags the colliding rings **individually** —
+not a radial cutoff, which would discard every ring outside the first collision.
+
+**The trap:** several apparent zero-separation "doublets" are *exact hkl
+degeneracies* — LaB6 (300)/(221), (410)/(322); CeO2 (511)/(333), (600)/(442).
+Same d, one physical ring, two labels. They must be **merged, not excluded**.
+`build_ring_table` does this by d-spacing — `_dedup_by_d`
+(`packages/midas_calibrate/midas_calibrate/rings.py:129`), called at
+`rings.py:186`, at the relative tolerance `DEFAULT_D_DEDUP_REL_TOL`
+(`rings.py:29`). On the reference frame it absorbed 14 rows, and skipping it
+would throw away good rings while looking like prudence.
+
+After merging, a 12 px cut costs **6 or 7 rings of about 40** on every panel.
+
+### §4b.3 If the powders may not be co-located
+
+Each phase then sees its own distance, and a transverse offset moves its
+apparent beam centre. Pass the same frame twice, one calibrant each, with
+`build_multi_spec(..., mode="same_detector")`
+(`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/multi.py:47`), which
+shares the tilts and distortion and leaves `Lsd`, `BC_y`, `BC_z` per phase — that
+per-exposure block *is* the sample position.
+
+**Share the tilts.** One detector cannot tilt differently for different powders,
+and leaving them free does not merely waste parameters, it biases what is left:
+independently-refined tilts absorbed the difference between the calibrants and
+reported a **1.43 mm** relative offset where sharing them gives **72 ± 34 µm**
+(Lab Notebook §11).
+
+Then do not over-read the answer: `dLsd/Lsd` for phase B is exactly degenerate
+with a relative error in phase B's lattice constant. A single frame cannot
+separate "the capillary sits 72 µm closer" from "the lattice constant is
+2.6e-05 low". Several exactly-known distances can — rule 9's lever.
+
+### §4b.4 Read the per-phase residual, not the pooled mean
+
+```python
+from midas_calibrate_v2.loss.diagnostics import per_phase_summary
+print(per_phase_summary(r_uE, fits.phase_idx, fits.phase_names))
+```
+
+(`packages/midas_calibrate_v2/midas_calibrate_v2/loss/diagnostics.py:139`.)
+
+**Gate.** The two phases should agree, *and* the absolute residual should be near
+the floor. Agreement alone is not a pass: two calibrants sitting on a common
+noise floor agree by construction. On the reference frame a run at 193 µε
+reported the phases agreeing to 1.02× and that was read as success — it fails the
+100 µε gate, and a converged run on the same data gave 45.6 / 69.0 µε, i.e.
+**worse agreement, far better absolute**. Check the absolute number first, then
+the ratio.
+
+**Halt condition H8** if the phases disagree by more than ~1.5× once the absolute
+residual is at the floor: the error budget is systematic, and the honest
+uncertainty on the geometry is the spread between the phases, not the fit's σ.
+
+---
+
 ## §5. Integrate
 
 ### §5a. One file
@@ -305,6 +412,17 @@ manufacture a false discrepancy (Lab Notebook §3).
 - **H6** Scale = one experiment (several distances or detectors). Not exercised;
   ask rather than improvise.
 - **H7** A non-powder sample, or no calibrant anywhere in the experiment.
+- **H8** Two calibrants whose per-phase residuals differ by more than ~1.5× once
+  the absolute residual is at the floor (§4b.4).
+- **H9** The azimuth-coverage gate returns `fail`, i.e. harmonics are being
+  refined on a wedge too narrow to determine them (rule 11).
+- **H10** The per-iteration strain does not settle. An alternating E↔M loop that
+  oscillates by more than about 2× between iterations has not converged, and
+  "best of history" is then selecting a lucky iterate, not a calibration.
+  Freeze parameters until it settles (rule 11) rather than reporting the best
+  number the run happened to touch.
+- **H11** `RhoD` more than ~1.5× the outermost fitted ring radius while radial
+  distortion is refined (rule 12).
 
 ---
 
@@ -362,6 +480,43 @@ manufacture a false discrepancy (Lab Notebook §3).
 10. **`FixPanelID` is a gauge choice, not a measurement.** Panel shifts from two
    calibrations with different anchors are not directly comparable.
 
+11. **Refine only the distortion the azimuth supports.** Every `a_k`/`phi_k` pair
+   is a k-fold azimuthal harmonic and needs azimuth to be identifiable. Over a
+   narrow wedge they are degenerate with the beam centre (1-fold) and the tilts
+   (2-fold), so they rail at their bounds and the E↔M loop stops converging.
+   Measured on a 4-panel detector whose beam centre lies off the corner, giving
+   66–73° of each ring: the shipped calibration had **3, 4, 7 and 7 of its 15
+   coefficients pinned at ±0.002**, and a refit with them free oscillated between
+   84 and 4692 µε across iterations.
+
+   Use `refine_distortion="radial"` — or an explicit list — instead of the
+   all-or-nothing boolean
+   (`packages/midas_calibrate_v2/midas_calibrate_v2/forward/distortion.py:49`).
+   On that frame even `"radial"` was not enough and `"none"` was required: 181 µε
+   diverging → 72 µε. **Check, do not assume:** run the azimuth gate
+   (`.../pipelines/diagnostics.py:281`), refine the largest block that passes,
+   and confirm the loop settles.
+
+   A second calibrant does **not** help here. Both powders illuminate the same
+   wedge, so multi-phase adds rows to the Jacobian, not a new direction.
+
+12. **Set `RhoD` to the outer ring radius, in µm.** The distortion polynomial
+   lives in `ρ = R_µm / RhoD`, so `RhoD` is a normalisation, not a measurement —
+   but it sets the dynamic range of every radial term. Left far beyond the
+   outermost ring, ρ stays small and the high powers collapse: at ρ_max = 0.32,
+   ρ⁶ is 1e-03 and `iso_R4` / `iso_R6` came back with 1σ of 0.9 to 15 on
+   coefficients of order 1e-03, railed at their bounds. `calibrate()` derives a
+   sane value; a *template* may not. Gate: `.../pipelines/diagnostics.py:401`.
+
+13. **A ring table is crystallography, not a measurement of this exposure.**
+   Weak, vignetted or grainy rings still produce a centroid per η bin, and those
+   centroids are noise the geometry absorbs. Filter rings on what the frame
+   actually carries — `MinEtaBinsPerRing` / `MinRingSNR`
+   (`.../pipelines/_common.py:127`) — and note the count is absolute, so it
+   scales with `EtaBinSize`: a fully-covered ring carried 13 fits at 5° bins and
+   ~36 at 2° on the same frame. Read the distribution off `ring_quality()` rather
+   than copying a threshold.
+
 ---
 
 ## §9. Traps that silently corrupt results
@@ -378,3 +533,9 @@ manufacture a false discrepancy (Lab Notebook §3).
 | wrong λ | absorbed into `Lsd`; **strain gate passes**, distance wrong by the same fraction | rule 9 — take λ from the beamline, cross-check the filename |
 | integrating without `--mask` | bins biased low near gaps; no error, no warning | pass `--mask` (§5a) |
 | a written paramstest inheriting the template's `PanelShiftsFile` | new geometry silently uses the *previous* calibration's panel shifts | `midas-calibrate-v2 ≥ 0.8.1`; check the line before reusing the file |
+| `RhoD` inherited from a template and far too large | radial distortion terms rail; strain still looks reasonable | rule 12; RhoD gate |
+| harmonics refined on a narrow azimuthal wedge | coefficients on their bounds, loop oscillates, "best iterate" is luck | rule 11; azimuth gate; H10 |
+| two calibrants, exact hkl degeneracies treated as blends | good rings silently excluded as "zero-separation doublets" | merge by d-spacing — `_dedup_by_d`, `rings.py:129` — before any blend rule |
+| two calibrants agreeing at a high residual | read as validation; it is two phases on a common noise floor | §4b.4 — absolute number first, ratio second |
+| `tx` set to 0 on a panel that is physically mounted rotated | ring radii barely move so the fit converges; the exported file then carries an azimuthal frame rotated from the detector, and `ty`/`tz` are expressed in it | `tx` is not refined — carry it from the panel; downstream η is wrong otherwise |
+| a geometry-only paramstest treated as a runnable parameter file | missing `MaxRingRad`, `ImTransOpt`, file/scan keys; a missing `MaxRingRad` is the indexer's ring-array overflow | export from a template, or check the key list before handing it on |
