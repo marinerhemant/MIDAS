@@ -7,8 +7,19 @@ The differentiability boundary:
 """
 
 from .params import ProcessParams
-from .io import load_tiff_stack, from_tensor, frame_paths
-from .median import temporal_median, spatial_median
+from .io import (
+    load_tiff_stack,
+    load_stack,
+    from_tensor,
+    frame_paths,
+    layer_file,
+    is_hdf5,
+    open_source,
+    FrameSource,
+    TiffFrameSource,
+    Hdf5FrameSource,
+)
+from .median import temporal_median, spatial_median, streaming_temporal_median
 from .log_filter import build_log_kernel, apply_log
 from .peaks import (
     label_components,
@@ -23,8 +34,16 @@ from .pipeline import ProcessImagesPipeline, FrameResult
 __all__ = [
     "ProcessParams",
     "load_tiff_stack",
+    "load_stack",
     "from_tensor",
     "frame_paths",
+    "layer_file",
+    "is_hdf5",
+    "open_source",
+    "FrameSource",
+    "TiffFrameSource",
+    "Hdf5FrameSource",
+    "streaming_temporal_median",
     "temporal_median",
     "spatial_median",
     "build_log_kernel",

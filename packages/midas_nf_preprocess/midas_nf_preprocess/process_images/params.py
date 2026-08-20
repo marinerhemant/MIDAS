@@ -30,8 +30,23 @@ class ProcessParams:
     output_directory: str = ""  # if empty, falls back to data_directory in __post_init__
     orig_filename: str = ""
     reduced_filename: str = ""
+    # "tif" (one file per FRAME, the 1-ID layout) or "h5"/"hdf5"/"nxs" (one file
+    # per DETECTOR DISTANCE holding that distance's whole sweep, the 20-ID
+    # HT-HEDM layout). The reader is chosen from this alone -- see
+    # process_images/io.py.
     ext_orig: str = "tif"
     ext_reduced: str = "bin"
+    # HDF5 dataset holding the frames. DXchange layout at 20-ID.
+    data_loc: str = "exchange/data"
+    # Divide raw counts by this on the way in. DEFAULT 1.0 AND NEVER INFERRED:
+    # the encoding is per SCAN, not per detector. On one 20-ID camera serial,
+    # nfdev_jul26 is 10-bit stored x64 (max 65472) while bt_20id_jul26b is
+    # 12-bit unscaled (max 4092). Dividing the second by 64 turns "threshold 2"
+    # into "threshold 128", which thresholds the pedestal and makes the
+    # background read as signal -- three consecutive wrong distance
+    # calibrations came from exactly that. io.check_pixel_scale warns when the
+    # data disagrees with this value; it never corrects it.
+    pixel_scale: float = 1.0
 
     # Layout
     raw_start_nr: int = 0
@@ -61,6 +76,37 @@ class ProcessParams:
     # NrFilesPerDistance 600 and OmegaStep -0.3. Everything downstream
     # (SpotsInfo sizing, frame indices, omega) then refers to summed frames.
     sum_frames: int = 1
+
+    # --- streaming: never hold the whole layer in RAM -----------------------
+    # 0 = auto (stream when the layout is HDF5, materialise for TIFF, which is
+    # what 1-ID reductions have always done), 1 = always stream, -1 = never.
+    #
+    # Streaming exists because a whole layer does not fit: the 20-ID Oryx at
+    # 1442 x 4600 x 5320 is 141 GB at fp32, which is what kept that data out of
+    # the pipeline entirely. Results are IDENTICAL either way at the default
+    # MedianFrames 0 -- same frames, same median -- so this is a memory knob,
+    # not a reduction choice.
+    stream_frames: int = 0
+    # Frames used for the temporal median. 0 = all of them (the historical
+    # behaviour, and the default). A positive value takes that many EVENLY
+    # SPACED frames instead.
+    #
+    # Measured on NF_Au_cube_0802_000708 (rows 2070-2530), 60 frames against
+    # all 1440: 0.043 % of pixels differ, max |diff| 4 counts, and at the
+    # production threshold the blobs >= 4 px are IDENTICAL on five frames
+    # spread across the sweep (24 vs 24), with the above-threshold pixel count
+    # up 0.1-3.8 %. So subsampling did not change what was detected here.
+    #
+    # Still PROVISIONAL and still opt-in: that is one row band of one distance
+    # of one scan. A sparser scan, a drifting background or a longer exposure
+    # could all move it, and the failure would be silent -- a median biased
+    # high suppresses weak spots without raising anything.
+    median_frames: int = 0
+    # Rows per block when the median is computed without materialising the
+    # layer. 0 = whole frame at once. The blocked path holds
+    # median_frames x rows x Y rather than N x Z x Y: at 60 frames and 460 rows
+    # that is ~0.3 GB against 141 GB.
+    median_row_block: int = 0
 
     # Processing
     # float, not int: the arithmetic in process_frame was always float, so the
@@ -208,6 +254,11 @@ class ProcessParams:
             ("ReducedFileName", "reduced_filename", str),
             ("extOrig", "ext_orig", str),
             ("extReduced", "ext_reduced", str),
+            ("DataLoc", "data_loc", str),
+            ("PixelScale", "pixel_scale", float),
+            ("StreamFrames", "stream_frames", int),
+            ("MedianFrames", "median_frames", int),
+            ("MedianRowBlock", "median_row_block", int),
             ("BlanketSubtraction", "blanket_subtraction", float),
             ("BlanketSigma", "blanket_sigma", float),
             ("NLMDenoise", "nlm_denoise", int),

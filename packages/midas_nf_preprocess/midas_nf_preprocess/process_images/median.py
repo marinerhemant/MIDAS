@@ -34,6 +34,67 @@ def temporal_median(stack: torch.Tensor) -> torch.Tensor:
     return stack.median(dim=0).values
 
 
+def streaming_temporal_median(
+    source,
+    *,
+    n_frames: Optional[int] = None,
+    row_block: int = 0,
+    device=None,
+    dtype=None,
+) -> torch.Tensor:
+    """Temporal median of a layer without holding the layer in memory.
+
+    Reads a band of rows across the selected frames, medians it, and moves on.
+    Peak memory is ``n_frames x row_block x Y`` instead of ``N x Z x Y`` -- at
+    60 frames and 460 rows that is ~0.3 GB against the 141 GB a whole 20-ID
+    layer needs at fp32, which is the difference between this data entering the
+    pipeline and not.
+
+    Parameters
+    ----------
+    source : :class:`~midas_nf_preprocess.process_images.io.FrameSource`
+    n_frames : how many EVENLY SPACED frames to median. ``None``/0 = all of
+        them, which is the default and matches :func:`temporal_median` exactly.
+
+        Subsampling is opt-in and PROVISIONAL. Measured once, on
+        ``NF_Au_cube_0802_000708`` rows 2070-2530: 60 frames against all 1440
+        moved 0.043 % of pixels by at most 4 counts and left the detected blobs
+        (>= 4 px at the production threshold) IDENTICAL on five frames spread
+        across the sweep. That is one band of one distance of one scan, and a
+        median biased high would suppress weak spots silently, so the default
+        stays at "all frames".
+    row_block : rows per pass. 0 = whole frame at once.
+
+    Returns
+    -------
+    Tensor ``[Z, Y]``.
+
+    Notes
+    -----
+    Uses ``torch.median`` per block, not ``np.median``, so the result is
+    element-identical to :func:`temporal_median` on the same frames. The two
+    disagree for an even frame count -- torch selects the lower of the two
+    middle elements, numpy averages them -- and a median that shifts by half a
+    count when the code path changes would be a silent difference between
+    reductions.
+    """
+    total = int(source.n_frames)
+    if n_frames and 0 < int(n_frames) < total:
+        idx = torch.linspace(0, total - 1, int(n_frames)).round().to(torch.long)
+        idx = sorted(set(int(i) for i in idx))
+    else:
+        idx = list(range(total))
+
+    nz, ny = int(source.nz), int(source.ny)
+    blk = int(row_block) if row_block and int(row_block) > 0 else nz
+    out = torch.empty((nz, ny), dtype=dtype or torch.float32, device=device or "cpu")
+    for r0 in range(0, nz, blk):
+        r1 = min(r0 + blk, nz)
+        band = torch.from_numpy(source.read_rows(idx, r0, r1))
+        out[r0:r1] = band.to(device=out.device, dtype=out.dtype).median(dim=0).values
+    return out
+
+
 def _unfold_blocks(img: torch.Tensor, k: int) -> torch.Tensor:
     """Extract k x k neighborhoods around every pixel as the last dim.
 

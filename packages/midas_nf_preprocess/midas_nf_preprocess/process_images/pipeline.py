@@ -26,9 +26,9 @@ import numpy as np
 import torch
 
 from ..device import resolve_device, resolve_dtype, apply_cpu_threads
-from .io import from_tensor, load_tiff_stack
+from .io import from_tensor, is_hdf5, load_stack, open_source
 from .log_filter import build_log_kernel
-from .median import spatial_median, temporal_median
+from .median import spatial_median, streaming_temporal_median, temporal_median
 from .params import ProcessParams
 from .peaks import PeakFindOutputs, find_peaks
 from .spots_io import SpotsBitMask
@@ -248,8 +248,33 @@ class ProcessImagesPipeline:
     # ------------------------------------------------------------------
 
     def load_layer(self, layer_nr: int) -> torch.Tensor:
-        """Load all frames for one layer into a tensor [N, Z, Y]."""
-        return load_tiff_stack(self.params, layer_nr, self.device, self.dtype)
+        """Load all frames for one layer into a tensor [N, Z, Y].
+
+        Materialises the layer regardless of layout. See :meth:`_should_stream`
+        for when ``process_layer`` declines to call this at all.
+        """
+        return load_stack(self.params, layer_nr, self.device, self.dtype)
+
+    def _should_stream(self) -> bool:
+        """Whether to process this layer block-by-block instead of loading it.
+
+        ``StreamFrames`` 1 forces streaming, -1 forbids it, 0 (the default)
+        streams when the layout is HDF5 and materialises for TIFF -- which
+        keeps every existing 1-ID reduction on the code path it has always
+        used, while the 20-ID layout, where a layer is 141 GB at fp32, gets the
+        one that fits.
+
+        The two paths read the same frames and compute the same median at the
+        default ``MedianFrames 0``, so the SpotsInfo output does not depend on
+        this. The only thing that does is the SumFrames persistence diagnostic,
+        whose control index is a function of the run length.
+        """
+        mode = int(getattr(self.params, "stream_frames", 0) or 0)
+        if mode > 0:
+            return True
+        if mode < 0:
+            return False
+        return is_hdf5(self.params)
 
     def from_stack(self, stack: torch.Tensor) -> torch.Tensor:
         """Validate-and-pass-through a user-supplied stack tensor."""
@@ -601,6 +626,130 @@ class ProcessImagesPipeline:
     # Phase 3 + accumulate: per-layer
     # ------------------------------------------------------------------
 
+    def _reset_persistence(self) -> None:
+        self._persist_inter, self._persist_base, self._persist_ctrl = {}, {}, {}
+        self._persist_max_lag = 6
+
+    def _new_bitmask(self) -> SpotsBitMask:
+        return SpotsBitMask(
+            n_layers=self.params.n_distances,
+            nr_files_per_layer=self.params.n_frames_per_distance,
+            nr_pixels_y=self.params.nr_pixels_y,
+            nr_pixels_z=self.params.nr_pixels_z,
+        )
+
+    def _frame_worker_plan(self, on_cuda: bool) -> tuple:
+        """``(n_workers, move_frames_to_cpu)`` for the frame loop.
+
+        Threads, not processes: skimage's fast NLM and scipy's labeller both
+        release the GIL, so threads scale (measured ~4x on 4 threads) without
+        pickling 16 MB frames between workers.
+
+        Threading multiplies the PER-FRAME GPU temporaries by the worker count:
+        spatial_median's im2col alone OOM'd a 47 GB card at 64 workers.
+
+        The frames USED TO be relocated to the host whenever NLM was on,
+        because NLM was scikit-image only and therefore forced a host
+        round-trip per frame -- so the CPU was where the work had to happen
+        anyway. ``denoise.nl_means_torch`` removes that constraint (42x per
+        frame on an A6000), so frames now STAY on the device and the loop is
+        capped for memory instead. ``NLMBackend skimage`` restores the old
+        behaviour, which is why that case still moves them.
+        """
+        n_workers = max(1, int(getattr(self, "n_cpus", 1) or 1))
+        nlm_on = int(getattr(self.params, "nlm_denoise", 0)) == 1
+        nlm_backend = str(getattr(self.params, "nlm_backend", "auto"))
+        if nlm_on and nlm_backend == "skimage" and on_cuda:
+            return n_workers, True
+        if on_cuda:
+            # NLM on the device roughly doubles the per-frame temporaries
+            # (~1.1 GB per 4600x5320 frame), so allow fewer concurrent frames.
+            return min(n_workers, 4 if nlm_on else 8), False
+        return n_workers, False
+
+    def _process_layer_streaming(
+        self,
+        layer_nr: int,
+        *,
+        bitmask: Optional[SpotsBitMask] = None,
+    ) -> SpotsBitMask:
+        """Process one layer a block at a time, never holding it in memory.
+
+        This is what lets 20-ID HT-HEDM into the pipeline: a layer there is
+        1442 x 4600 x 5320, i.e. **141 GB at fp32**, and ``process_all`` used to
+        begin by loading exactly that. Peak memory here is one block of frames
+        plus the median.
+
+        Reads happen in the PARENT thread and only the per-frame processing is
+        threaded, because ``h5py`` is not safe under concurrent reads unless
+        HDF5 was built thread-safe. The block size matches the threaded
+        materialised path's batch, so the persistence diagnostic sees runs of
+        the same length and reports the same statistic.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        with open_source(self.params, layer_nr) as src:
+            n_files = src.n_frames
+            if n_files < 1:
+                raise ValueError(
+                    f"No frames to process for layer {layer_nr} "
+                    f"(NrFilesPerDistance={self.params.nr_files_per_distance}).")
+
+            median = streaming_temporal_median(
+                src,
+                n_frames=int(getattr(self.params, "median_frames", 0) or 0),
+                row_block=int(getattr(self.params, "median_row_block", 0) or 0),
+                device=self.device,
+                dtype=self.dtype,
+            )
+
+            n_workers, to_cpu = self._frame_worker_plan(self.device.type == "cuda")
+            if to_cpu:
+                median = median.cpu()
+            frame_dev = torch.device("cpu") if to_cpu else self.device
+
+            # The same three frames spread across the layer that the
+            # materialised path measures on -- measure_threshold_sigma probes
+            # linspace(0, N-1, 3), and here that is the whole probe stack.
+            probe_idx = np.linspace(0, n_files - 1, 3).astype(int)
+            probe = torch.from_numpy(src.read_frames(probe_idx)).to(
+                device=frame_dev, dtype=self.dtype)
+            self._blanket = self._resolve_threshold(probe, median, layer_nr)
+            del probe
+
+            self._reset_persistence()
+            if bitmask is None:
+                bitmask = self._new_bitmask()
+            layer_idx = layer_nr - 1
+            batch = max(n_workers, 32)
+
+            ex = ThreadPoolExecutor(max_workers=n_workers) if n_workers > 1 else None
+            try:
+                for lo in range(0, n_files, batch):
+                    hi = min(lo + batch, n_files)
+                    block = torch.from_numpy(src.read_block(lo, hi)).to(
+                        device=frame_dev, dtype=self.dtype)
+                    if ex is None:
+                        results = [
+                            self.process_frame(j, block[j - lo], median, layer_nr)
+                            for j in range(lo, hi)
+                        ]
+                    else:
+                        results = list(ex.map(
+                            lambda j: self.process_frame(
+                                j, block[j - lo], median, layer_nr),
+                            range(lo, hi),
+                        ))
+                    for j, result in zip(range(lo, hi), results):
+                        bitmask.set_frame_from_labels(layer_idx, j, result.labels)
+                    self._accumulate_persistence([r.labels > 0 for r in results])
+                    del block
+            finally:
+                if ex is not None:
+                    ex.shutdown()
+        self._log_sumframes_recommendation(layer_nr)
+        return bitmask
+
     def process_layer(
         self,
         layer_nr: int,
@@ -616,23 +765,23 @@ class ProcessImagesPipeline:
         stack    : optional pre-loaded ``[N, Z, Y]`` tensor. If absent, loaded from disk.
         bitmask  : optional existing ``SpotsBitMask`` to write into. If absent, a
             fresh single-layer mask is allocated.
+
+        A layer that is not passed in as ``stack`` and whose layout streams
+        (:meth:`_should_stream`) is never materialised -- see
+        :meth:`_process_layer_streaming`.
         """
+        if stack is None and self._should_stream():
+            return self._process_layer_streaming(layer_nr, bitmask=bitmask)
         if stack is None:
             stack = self.load_layer(layer_nr)
         else:
             stack = self.from_stack(stack)
         median = self.temporal_median(stack)
         self._blanket = self._resolve_threshold(stack, median, layer_nr)
-        self._persist_inter, self._persist_base, self._persist_ctrl = {}, {}, {}
-        self._persist_max_lag = 6
+        self._reset_persistence()
 
         if bitmask is None:
-            bitmask = SpotsBitMask(
-                n_layers=self.params.n_distances,
-                nr_files_per_layer=self.params.n_frames_per_distance,
-                nr_pixels_y=self.params.nr_pixels_y,
-                nr_pixels_z=self.params.nr_pixels_z,
-            )
+            bitmask = self._new_bitmask()
 
         # 0-indexed layer for the bitmask (matches C ``layer = nLayers - 1`` at L927).
         layer_idx = layer_nr - 1
@@ -645,36 +794,14 @@ class ProcessImagesPipeline:
         # It used to be a plain serial loop, and `n_cpus` only ever reached
         # torch.set_num_threads on CPU -- so on device=cuda the cores sat idle.
         #
-        # Threads, not processes: skimage's fast NLM and scipy's labeller both
-        # release the GIL, so threads scale (measured ~4x on 4 threads) without
-        # pickling 16 MB frames between workers.
-        #
         # Frames are processed in batches and the bitmask writes are done in the
         # PARENT, in frame order: set_frame_from_labels mutates shared state, and
         # keeping the writes serial avoids needing a lock and keeps the output
         # bit-identical to the serial path regardless of worker scheduling.
-        n_workers = max(1, int(getattr(self, "n_cpus", 1) or 1))
-
-        # Threading the frame loop multiplies the PER-FRAME GPU temporaries by
-        # the worker count: spatial_median's im2col alone OOM'd a 47 GB card at
-        # 64 workers.
-        #
-        # This USED TO relocate the whole layer to the host whenever NLM was on,
-        # because NLM was scikit-image only and therefore forced a host
-        # round-trip per frame -- so the CPU was where the work had to happen
-        # anyway. `denoise.nl_means_torch` removes that constraint (42x per
-        # frame on an A6000), so the stack now STAYS on the device and the
-        # frame loop is capped for memory instead, exactly as in the NLM-off
-        # case. Set NLMBackend skimage to restore the old behaviour.
-        nlm_on = int(getattr(self.params, "nlm_denoise", 0)) == 1
-        nlm_backend = str(getattr(self.params, "nlm_backend", "auto"))
-        if nlm_on and nlm_backend == "skimage" and stack.is_cuda:
+        n_workers, to_cpu = self._frame_worker_plan(bool(stack.is_cuda))
+        if to_cpu:
             stack = stack.cpu()
             median = median.cpu()
-        elif stack.is_cuda:
-            # NLM on the device roughly doubles the per-frame temporaries
-            # (~1.1 GB per 4600x5320 frame), so allow fewer concurrent frames.
-            n_workers = min(n_workers, 4 if nlm_on else 8)
 
         if n_workers <= 1:
             buf = []
