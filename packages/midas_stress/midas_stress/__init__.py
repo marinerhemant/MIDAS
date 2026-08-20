@@ -30,7 +30,7 @@ except ImportError:  # HDF5 files with no plugin filter still read fine
 
 import importlib
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 # public name -> submodule it lives in. Loaded lazily on first access, so
 # importing the package pulls in nothing heavy (and no torch).

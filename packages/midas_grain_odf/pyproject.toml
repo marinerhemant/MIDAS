@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-grain-odf"
-version = "0.1.2"
+version = "0.1.3"
 description = "Differentiable per-grain orientation distribution functions from FF-HEDM data"
 readme = "README.md"
 requires-python = ">=3.9"

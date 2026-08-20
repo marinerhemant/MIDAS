@@ -41,7 +41,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 from .params import ProcessGrainsParams, read_paramstest_pg
 

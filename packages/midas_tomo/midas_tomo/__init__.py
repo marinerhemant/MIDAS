@@ -28,7 +28,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 from pathlib import Path
 

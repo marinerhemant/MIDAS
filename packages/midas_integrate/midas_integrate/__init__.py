@@ -15,7 +15,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 from midas_integrate.bin_io import (
     PXLIST_DTYPE,
