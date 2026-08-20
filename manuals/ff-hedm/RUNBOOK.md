@@ -81,6 +81,34 @@ until you have ruled out the plumbing** — check the §0 floors first (§8b ite
 
 ---
 
+### R2d. Reference geometry and reconstruction — 20-ID Varex, `bt_20id_jul26b`
+
+Established 2026-08-15 on ti7al (`ti7al_att6_e0p1_BH100_OL25_scans13`, layer 1).
+Detector 2880², 150 µm, monolithic. Ti-7Al, hexagonal, SG 194.
+
+| quantity | value | how |
+|---|---|---|
+| energy | 63.000 keV (λ 0.19680026389101524 Å) | **asserted, not measured** — these files carry no energy metadata; the GUI seed says 0.1958 Å |
+| `Lsd` | 895 409 – 895 424 µm | CeO2 `Ceria_0805_…aero_0_002468`, `--mode ff` |
+| `BC` | ≈ (1450.84, 1467.46) px | same; auto-seeded, never guessed |
+| tilts | ty ≈ −0.36 to −0.38°, tz ≈ 0.52 to 0.55°, tx = 0 from powder | `--mode ff` |
+| **`RhoD`** | **309 538 µm** (corner 2063.6 px × 150) | rule 15 / §6d. The template's `2000000` indexes **0 seeds** |
+| calibrant strain | 58 – 61 µε post-residual, 88 – 91 µε in-loop | `--mode ff`, gate 100 µε |
+| calibration repeatability | **±15 µm in `Lsd`, ±3 µε** — *not* bit-reproducible | three identical runs: 895409.47 / 895409.47 / 895423.84 |
+| sweep | 1442 raw frames, **1441 used** | `SkipFrame 1` |
+| ω (MIDAS) | `OmegaStart 180`, `OmegaStep -0.25` | already negated in the file |
+| `RingThresh` | 75/75/75/70/70/70 (rings 1–6), `OverAllRingToIndex 3` | ring 3 carries ~3× ring 1's spots; seeding from ring 1 cost 35 grains |
+| rings in `hkls.csv` | **46** | at the correct `RhoD`; 745 at the wrong one |
+| grains | **208**, or **226** after §5h | `--refine tx,Wedge` re-run |
+| `tx` / `Wedge` | −0.0786° / −0.0072° | §5h; profile contrast 3.9 in `tx` |
+| grain-Z scatter | 153 µm → **76 µm** after §5h | against 29 µm for a uniform 100 µm beam slab |
+| completeness | median 0.580 → 0.630 | still rising at the 0.4 cut, so the list is truncated |
+| runtime | ~4 min for one layer | 32 CPU, CUDA, binning on CPU |
+
+Other samples in the same beamtime, for scale: nf709 (cubic) 8060 grains and
+only 70 rings even at the wrong `RhoD`; ruby (SG 167) just 6 grains, with a much
+larger `tx` ≈ −0.26° that profiles cleanly (contrast 91).
+
 ## R3. Current pick-up point
 
 > **Every session updates this section before it ends.** If it is stale, the next session

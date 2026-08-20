@@ -229,18 +229,69 @@ head -2 grid.txt | tail -1 | awk '{print "edge_half =", $5}'
 
 ### 10f. Image processing
 
-All read by `midas_nf_preprocess.process_images` (`process_images/params.py:83-105`).
+All read by `midas_nf_preprocess.process_images` (`process_images/params.py:243-285`).
 
 | Key | Units | Meaning |
 |---|---|---|
 | `BlanketSubtraction` | counts (**float** since `4e90be80`; was int) | flat offset subtracted **after** the temporal median, then clamped at 0 (`process_images/pipeline.py:165-166`). An absolute count does not transfer between reductions — prefer `BlanketSigma` |
 | `BlanketSigma` | multiples of σ | **the transferable threshold.** `threshold = BlanketSigma × σ_MAD` of the POST-denoise residual, measured **per layer**; overrides `BlanketSubtraction` when set (`4e90be80`, §8k). ~3.5σ was optimal across a 14-configuration catalog however it was reached |
-| `MedFiltRadius` | px | spatial median radius: `0` = identity, `1` = 3×3, `2` = 5×5 (`process_images/params.py:225`) |
+| `MedFiltRadius` | px | spatial median radius: `0` = identity, `1` = 3×3, `2` = 5×5 (`process_images/params.py:276`) |
 | `GaussFiltRadius` | px | maps to the LoG `sigma` field — the *name* is `GaussFiltRadius`, the field is `sigma` |
 | `LoGMaskRadius` | px | LoG kernel half-width |
 | `DoLoGFilter` | 0/1 | `0` labels connected components of `img > 0` directly (`pipeline.py:180-195`). **Not a simple "always 1"** — LoG can suppress genuine weak peaks, so weak-signal samples are run with `0` and tolerate the cosmics. See the decision table in §5b. Changing it requires regenerating `SpotsInfo.bin`. |
 | `OrigFileName` / `ReducedFileName` | stem | input / reduced stems |
-| `extOrig` / `extReduced` | e.g. `tif` / `bin` | extensions |
+| `extOrig` / `extReduced` | e.g. `tif` / `bin` | extensions. **`extOrig` also selects the reader**: `tif`/`tiff` = one file per FRAME (1-ID); `h5`/`hdf5`/`hdf`/`nxs` = one file per DETECTOR DISTANCE, all frames inside (20-ID) — see below |
+| `DataLoc` | HDF5 path | dataset holding the frames; default `exchange/data` (DXchange). Ignored for TIFF |
+| `PixelScale` | divisor, counts | raw counts are divided by this on read. **Default 1.0 and never inferred** — see below |
+| `StreamFrames` | 0/1/−1 | `0` (default) streams for HDF5 and materialises for TIFF; `1` always streams; `−1` never. A memory knob only — the two paths give an identical `SpotsInfo.bin` |
+| `MedianFrames` | count | frames used for the temporal median. `0` (default) = all of them. A positive value takes that many **evenly spaced** |
+| `MedianRowBlock` | rows | rows per pass when the median is computed without materialising the layer. `0` = whole frame |
+
+#### The 20-ID HDF5 layout
+
+`extOrig h5` switches `process_images` from "one file per frame" to "one file per detector
+distance", and the file index then advances **per distance**
+(`process_images/io.py::layer_file`):
+
+```
+<DataDirectory>/<OrigFileName>_<RawStartNr + layer - 1>.<extOrig>
+#  RawStartNr 708, nDistances 3  ->  _000708.h5  _000709.h5  _000710.h5
+```
+
+A second **sample layer** (another y position) is a separate parameter file with its own
+`RawStartNr`. The stride between sample layers is deliberately not guessed: at 20-ID the six
+files of a two-layer scan are grouped distance-**minor**, and that was established from the
+beam-shadow observables, not from the file names (Lab Notebook §7e).
+
+`NrFilesPerDistance` is still the frame count you want, **not** the dataset length — a 20-ID
+sweep runs −180 → +180.25 in 1442 frames whose last two duplicate the first two, so it is
+`1440`. Set it from the ω range.
+
+#### `PixelScale` — the parameter that exists because of one specific disaster
+
+**The encoding is per SCAN, not per detector.** On the same 20-ID camera serial,
+`nfdev_jul26` is 10-bit stored ×64 (max 65472) and `bt_20id_jul26b` is 12-bit unscaled
+(max 4092, unique values 0, 2, 4, 6, 8, …). Dividing the second by 64 turns "threshold 2"
+into "threshold 128", which thresholds the **pedestal** — the background then reads as
+signal, and it produced three consecutive wrong distance calibrations before anyone checked
+(Lab Notebook §8b).
+
+So it is never auto-detected. `io.check_pixel_scale` warns in both directions on the first
+block read — values all multiples of 64 with the maximum past 12-bit full scale while
+`PixelScale 1`, or values *not* multiples of 64 while `PixelScale 64` — and then leaves the
+value alone. **Run `np.unique` on one frame of the scan in front of you** and set it.
+
+#### `MedianFrames` — measured once, still opt-in
+
+Subsampling the temporal median is what makes a 1440-frame layer cheap. Measured on
+`NF_Au_cube_0802_000708`, rows 2070–2530, **60 frames against all 1440**: 0.043 % of pixels
+differ, max |diff| 4 counts, and at the production threshold the blobs ≥ 4 px are
+**identical** on five frames spread across the sweep (24 vs 24), with the above-threshold
+pixel count up 0.1–3.8 %.
+
+That is one row band of one distance of one scan, and a median biased high suppresses weak
+spots **silently**. Hence the default stays at all frames. Provenance:
+`~/Desktop/analysis/nfdev_jul26_20id/validate_h5_reader.py`.
 | `WriteFinImage` | 0/1 | forced to 1 when `Deblur != 0` (`process_images/params.py:229`) |
 | `Deblur`, `WriteLegacyBin` | 0/1 | |
 | `SoftTemperature` | float or `auto` | **Python extension, not in the C** — sigmoid temperature for the differentiable spot-probability surrogate (`params.py:14-18`) |

@@ -364,21 +364,40 @@ notebook §7a). Energy is an **absorption edge**; the foil table is printed in t
 > from a name"). Record the 20-ID energy as **inferred, not measured**, and say so in any
 > report that quotes it. A rigorous value needs the foil selection logged, or an edge scan.
 
-**What you can still do at 20-ID while the two blockers are open.** `midas_nf_preprocess`
-has no HDF5 reader and `process_all` loads a whole layer into RAM (141 GB at fp32 on this
-detector), so **the pipeline cannot be entered at all** — not even the geometry-independent
-peak finding that hard rule 4b otherwise encourages running early. Still available, and
-this is the whole list:
+**Entering the pipeline at 20-ID.** This used to be impossible — `midas_nf_preprocess` had
+no HDF5 reader and `process_all` began by loading a whole layer into RAM, which is 141 GB at
+fp32 on this detector. Both are now closed (`process_images/io.py`,
+`process_images/median.py::streaming_temporal_median`), so the reduction runs on the HDF5
+directly. Four keys do it:
 
-- read `exchange/data` shape, `exchange/theta` range and step directly with `h5py`
+```
+extOrig     h5          # one file per DETECTOR DISTANCE, not per frame
+DataLoc     exchange/data
+PixelScale  1           # or 64 -- CHECK np.unique, do not inherit it
+RawStartNr  708         # -> _000708.h5 _000709.h5 _000710.h5 for nDistances 3
+```
+
+Streaming is automatic for HDF5 (`StreamFrames 0`, the default): frames are read a block at
+a time and the layer is never resident. The streamed and materialised paths produce an
+**identical** `SpotsInfo.bin` — verified on 8 real frames of `NF_Au_cube_0802_000708` as
+well as on synthetic fixtures — so this is a memory route, not a second reduction.
+`PARAMETERS.md` §10f has the full key list, the sample-layer convention and the
+`MedianFrames` measurement.
+
+Verified against the real file (`validate_h5_reader.py`, 2026-08-19): frames read identical
+to `h5py` at indices 0/1/719/1439; `NrFilesPerDistance 1440` against a 1442-frame dataset;
+`PixelScale` warns on a wrong setting and stays quiet on the right one.
+
+Do **not** convert to TIFF to avoid any of this. The pixel scaling and the ω-sign question
+(hard rule 1) both survive the conversion and become harder to see afterwards.
+
+**Still 20-ID-specific, still yours to do by hand:**
+
+- read `exchange/theta` range and step to set `NrFilesPerDistance` from the ω RANGE
 - check `data_dark` / `data_white` for the all-zero placeholder case
-- read a single frame to confirm the ×64 encoding before anything else
+- `np.unique` on one frame to fix `PixelScale` **before** anything else
 - recover the scan definition from the `nfscan(...)` call in the ipython log
-- run `midas_nf_preprocess.beam_calib.{shadow,triangulate}` ad hoc on extracted frames
-
-Anything past that waits on the blockers. Do **not** work around them by converting to
-TIFF: the ×64 scaling and the ω-sign question (hard rule 1) both survive the conversion and
-become harder to see.
+- `midas_nf_preprocess.beam_calib.{shadow,triangulate}` for BC and Lsd (§6, §6e)
 
 **Traps specific to this format:**
 
@@ -392,28 +411,28 @@ become harder to see.
    frame costs ~35 MB of chunk reads, not 49 MB of frame.
 4. **`midas_nf_preprocess` cannot read any of this yet** — see the two blockers below.
 
-**Two blockers before this data can enter the pipeline at all** (both established by
-reading the code, 2026-08-01):
+**The two blockers that used to sit here are CLOSED** (opened 2026-08-01, closed
+2026-08-19). They were: no HDF5 reader in `midas_nf_preprocess`, and `process_all` loading a
+whole layer into RAM. Recorded because the *shape* of the fix matters —
 
-- **No HDF5 support.** `grep h5py packages/midas_nf_preprocess` returns **zero** files;
-  `process_images/io.py:24-36` builds `<dir>/<stem>_<NNNNNN>.<ext>` and calls
-  `tifffile.imread`. Reuse `midas_calibrate_v2.io.readers.read_image`, which already
-  dispatches `.h5`/`.hdf5`/`.nxs` with `data_loc="exchange/data"` — **do not write a new
-  reader.**
-- **The whole layer is loaded into RAM.** `process_all` does `stack = load_layer(...)` then
-  `temporal_median(stack)` (`process_images/pipeline.py:157, 273-277`). At 1442 × 4600 ×
-  5320 that is **141 GB at fp32** (282 GB at the `torch.float64` default). A row-blocked
-  temporal median is required; a working one is in
-  `~/Desktop/analysis/nfdev_jul26_20id/distance_grouping.py::temporal_median`.
+- The reader is chosen from `extOrig`, and one HDF5 holds one **distance**, so the file
+  index advances per distance rather than per frame (`process_images/io.py::layer_file`).
+  `process_images` used to address distances as frame-index ranges inside one series, which
+  is why a per-distance container needed a source abstraction and not a second loader.
+- The median is row-blocked and reads through the same source
+  (`median.py::streaming_temporal_median`), so peak memory is a block, not a layer.
 
-Also: `process_images` addresses distances as **frame-index ranges inside one series**
-("layer" == detector distance, §3d). Here each distance is a **separate file**, so the
-frame-addressing model needs a per-distance file list, not a `RawStartNr` stride.
+**Do not inherit the 1-ID pixel convention** — with one exception now measured. `ybc =
+2047 − col`, `zbc = 2047 − row` encodes *that* detector and *that* viewer/writer chain, and
+on a different beamline the array→lab mapping must be re-derived; getting it wrong **mirrors
+the microstructure invisibly**. At 20-ID it *was* re-derived rather than assumed: one
+reduction pass wrote both bitmasks, and the Y-reversed twin scored **maxC 0.000000 with zero
+voxels ≥ 0.5** against 0.6957 / 634 voxels for the 1-ID convention (Lab Notebook §7g). So
+the flip transfers to the 20-ID Oryx **as a measurement**. The method — build both masks
+from one expensive reduction and let the calibrant decide — is what to repeat on the next
+new detector, not the constant.
 
-**Do not inherit the 1-ID pixel convention.** `ybc = 2047 − col`, `zbc = 2047 − row`
-encodes *that* detector and *that* viewer/writer chain. On a different beamline the array→lab
-mapping must be re-derived, and getting it wrong **mirrors the microstructure invisibly** —
-the same silent failure mode as the ω sign (§2).
+The ω sign is a different matter and is **not** settled by that test (hard rule 1).
 
 ---
 

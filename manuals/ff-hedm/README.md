@@ -13,11 +13,26 @@ Everything else the agent works out or asks for. **The order in §0a is not opti
 each step produces an input the next one needs, and two of them (§2, §3e) cannot be
 checked after the fact.
 
-**Scope.** Every recipe here is **1-ID, a single monolithic GE panel, DM-converted
-`.ge5.h5`, one layer.** Multi-panel (GE1–4) and multi-layer scans are *not* covered:
-`cross_det_merge` appears in this document only as a no-op. If your data differs in
-detector count, file format, or layer count, **stop and ask** rather than adapting a
-recipe — the §3 field maps and §5 calibration assume this configuration throughout.
+**Scope.** Two single-panel configurations, one layer at a time:
+
+| | **1-ID GE** | **20-ID HT-HEDM Varex** |
+|---|---|---|
+| files | DM-converted `.ge5.h5` | `.vrx.h5` |
+| detector | monolithic GE, 2048² @ 200 µm | Varex, 2880² @ 150 µm |
+| dark | `Dark` file, `darkLoc` | `Dark` file, **`darkLoc /exchange/bright`** — `/exchange/dark` exists and is all zeros |
+| ω sign | par field 9 = `aero` ⇒ negate (§2) | `OmegaStart 180`, `OmegaStep -0.25` already negated in the file |
+| frame 0 | throwaway, `SkipFrame 1` (rule 2) | same |
+| `ImTransOpt` | establish per detector (§3f) | **2** (flip-Z), verified on `bt_20id_jul26b` |
+| verified on | `bt_1id_jul26` | `bt_20id_jul26b` ti7al / nf709 / ruby |
+
+Multi-panel (GE1–4) and multi-layer scans are *not* covered: `cross_det_merge`
+appears in this document only as a no-op. If your data differs in detector count
+or layer count, **stop and ask** rather than adapting a recipe.
+
+**Where the two diverge, it is called out inline as “20-ID:”.** The geometry
+recipe, the ω sign discipline and every hard rule apply to both. Three things
+are genuinely different and each has cost a day: the dark group, `RhoD` (rule
+15), and the calibration entry point (§5, `midas-calibrate-v2 --mode ff`).
 
 Not a tutorial. Follow the steps in order; each one names the file to read, the command to
 run, the field to look at, and the branch to take.
@@ -51,13 +66,13 @@ else is opened when you reach it. Section numbers are continuous across the set.
 |---|---|---|
 | **`README.md`** (this) | scope gate, install gate (§0), the order (§0a), hard rules, halt conditions | always — start here |
 | [`phase-0-survey.md`](phase-0-survey.md) | §0b, §0c, §1, §1a, §1b — environment, folder survey, already-processed check | before touching data |
-| [`phase-1-geometry.md`](phase-1-geometry.md) | §2–§5g — ω sign, metadata, dark, `SkipFrame`, energy, distance, calibration | the long one; most silent failures live here |
-| [`phase-2-configure.md`](phase-2-configure.md) | §6, §6b, §6c, §10 — parameter file, `RingThresh`, `MinPeakSNR`, key reference | when writing `Parameters.txt` |
+| [`phase-1-geometry.md`](phase-1-geometry.md) | §2–§5h — ω sign, metadata, dark, `SkipFrame`, energy, distance, calibration, and **`tx`/`Wedge` from grains (§5h)** | the long one; most silent failures live here |
+| [`phase-2-configure.md`](phase-2-configure.md) | §6, §6b, §6c, **§6d (`RhoD`)**, §10 — parameter file, `RingThresh`, `MinPeakSNR`, key reference | when writing `Parameters.txt` |
 | [`phase-3-run.md`](phase-3-run.md) | §7, §12 — running the pipeline, resume traps, reproducibility check | when launching |
 | [`phase-4-read-report.md`](phase-4-read-report.md) | §8–§8b, §11, §14–§14c — `Grains.csv` checks, validation buckets, report, done-means | when a result exists |
 | [`DIAGNOSIS.md`](DIAGNOSIS.md) | symptom → discriminating test → cause → lever | **when something looks wrong** — indexed by symptom, not by step |
 | [`RUNBOOK.md`](RUNBOOK.md) | §R1–§R3 — where it runs, what healthy looks like *with conditions*, and the current pick-up point | on resume, and before quoting any number as "normal" |
-| [`LAB_NOTEBOOK.md`](LAB_NOTEBOOK.md) | evidence, measurement ledger, **retracted claims** | before re-investigating anything |
+| [`LAB_NOTEBOOK.md`](LAB_NOTEBOOK.md) | evidence, measurement ledger, **retracted claims** — Lab Notebook §1–§7 the 1-ID campaign, **Lab Notebook §8 the 20-ID Varex campaign** | before re-investigating anything |
 | [`ENVELOPE.md`](ENVELOPE.md) | what this measurement can and cannot determine, sorted by whether anything can be done about it | before promising an answer, and **before suggesting a different measurement** |
 | [`C_REFERENCE.md`](C_REFERENCE.md) | §13–§13d — the C cross-check recipe | only when a python result looks wrong |
 
@@ -92,14 +107,17 @@ seems wrong:**
 | Condition | Why you cannot decide it yourself |
 |---|---|
 | par field 9 is **not** `aero` | no other value's ω sign has ever been established here (§2, §11) |
-| the data is not 1-ID / single GE panel / DM-`.ge5.h5` / one layer | every field map and geometry recipe below assumes it (header, §3) |
+| `ImTransOpt` unknown for this detector, with no prior geometry and no asymmetric feature | a wrong flip mirrors the reconstruction and neither the grain list nor the calibrant strain shows it — the mirrored fit scored the *better* strain (§3f) |
+| the data is neither 1-ID GE nor 20-ID Varex, or is multi-panel / multi-layer | every field map and geometry recipe below assumes one of the two configurations in the scope table (header, §3) |
 | **no calibrant** file in the folder | there is no geometry without one, and `DetZ` is not a substitute (§0b, §4b) |
 | any package **below floor** after §0 | three of them produce plausible wrong answers, not errors (§0) |
 | calibrant strain **> 100 µε** after §5 | hard gate; a converged fit above it is not usable (rule 6) |
 | the ring overlay does not match the frame | the fit is on the wrong rings; nothing downstream can detect it (§5d) |
-| the dark reads **all zero** in the zarr | every threshold returns 0 peaks; tuning `RingThresh` cannot fix it (§3d) |
+| the dark reads all zero in the zarr **and the data frames still carry the pedestal** | every threshold returns 0 peaks; tuning `RingThresh` cannot fix it (§3d). **Check both halves.** On 20-ID Varex `exchange/dark` in the zarr is all zeros *by design* while the data is already dark-subtracted (raw frame mean ~1850 → zarr ~0.6): that is cosmetic, not the fault |
 | `nFrames` ≠ logged frames − `SkipFrame` | something is skipping twice or not at all; ω is shifted either way (§3e) |
+| `RhoD` is not ≈ `corner_px × px`, or `hkls.csv` reaches ring ≥ 500 | the indexer's ring tables are fixed at 500 and older builds write past them; you get 0 seeds indexed and exit 0 (rule 15, §6d) |
 | grain positions **pile up** at ±`Rsample` or ±`Hbeam`/2 | the envelope is binding — and the fix is forbidden to you by rule 9 (§6, §8b) |
+| **every** grain's strain sits at `1.000e+04` µε with `RMSErrorStrain` ~`1e36` | the strain column is not a measurement — `IDsHash.csv` is missing and d₀ was taken as 0. Grain count, positions, orientations and completeness are all still correct, so nothing else looks wrong (DIAGNOSIS *Strain pegged at its bound*) |
 | this document and the tree **disagree** | report it; do not work around it (§0) |
 
 When you halt, say which row fired, what you measured, and what you would need in order to
@@ -200,6 +218,49 @@ your own run, and they are the ones a context-free session skips:
     misorientation → `midas_stress`; structure factors → `midas_hkls`; image reading →
     `midas_calibrate_v2.io.readers.read_image`.
 
+This one belongs with the first group — it is about distrusting the parameter
+file — but is numbered last so the references above keep their numbers:
+
+15. **`RhoD` is the beam-centre-to-farthest-corner distance in MICRONS, and it is
+    two things at once (§6d).** It normalises the distortion polynomial
+    (`ρ = R_µm / RhoD`) *and*, aliased to `MaxRingRad`, caps hkl generation.
+    Compute it, never copy it: `corner_px × px`, which
+    `midas-calibrate-v2 --mode ff` does for you. Measured on 20-ID: `RhoD
+    2000000` against a 2880 px / 150 µm detector (true value **309 538**)
+    generated **745 rings**, overran the indexer's fixed 500-ring array, and
+    indexed **0 of 4569 seeds while exiting 0**. The same file with `RhoD`
+    corrected gives 208 grains. Two further traps ride on it: the exporter
+    `ff_paramstest_from_auto_result` does **not** replace `RhoD`, so a bad value
+    survives recalibration; and the damage is **material-dependent** — cubic
+    nf709 generated only 70 rings from the same wrong value and reconstructed
+    fine, so "it worked on my other sample" is not evidence the value is right.
+
+16. **Ring numbers come from the RUN's own `hkls.csv` — never regenerate them.**
+    MIDAS's ring numbering diverges from a fresh `generate_hkls()` above ring
+    ~19, and it **fails silently**: on 20-ID alumina, requesting "ring 30"
+    believing it was (4,-2,6) at 21 % relative intensity actually selected
+    (4,0,-2) at 2.7 %, and "ring 32" selected (2,-1,12) at 0.33 % — nearly
+    extinct. They returned 115 and 88 spots, exactly right for what was
+    *actually* asked for. Read ring → (hkl, radius) out of the run's
+    `hkls.csv` and match on **(h,k,l)**, never on ring number. Two corollaries:
+    rings closer than the radial margin get **duplicated, not split** (two rings
+    3.9 px apart emitted every one of 2930 peaks **twice**, under both labels,
+    byte-identical `YLab`/`ZLab`/`Omega`); and never audit ring signal with a
+    **max-projection**, which is dominated by hot pixels — mask any pixel firing
+    in more than a few percent of frames first.
+
+17. **A beam narrower than the sample caps what is reconstructable (§ DIAGNOSIS
+    `split.illumination_radial`).** The beam is fixed in the lab while the sample
+    rotates, so a grain at radial offset *r* is lit only `f(r) =
+    (2/π)·arcsin(hw/r)` of the rotation — 13 % at r = 250 µm for a 100 µm beam.
+    Below `MinMatchesToAcceptFrac` (default 0.5) such a grain can only be
+    accepted on coincidental matches, so the output is not "fewer grains" but
+    **fabricated** ones. Measured on a 1 mm alumina rod: **zero** well-fitting
+    grains beyond r = 100 µm, and grains lit 8.8 % of the rotation had 85 % of
+    their assigned spots recorded while outside the beam. Report the near-axis
+    subset and say so; the full cross-section needs a translation scan, not a
+    re-run.
+
 ### Traps that silently corrupt results
 
 | Trap | Symptom if missed | Where |
@@ -213,7 +274,7 @@ your own run, and they are the ones a context-free session skips:
 | calibrant fit accepted on strain alone | wrong ring assignment fits beautifully | §5d |
 | E↔M loop returns its LAST iterate | ships a worse geometry than the run found (72 vs 18 µε) | §5c |
 | ring-ratio check skipped | innermost ring mis-assigned; Lsd off by a ring-spacing factor | §5b |
-| `ImTransOpt` differs between calibration and recon | geometry mirrored relative to the fit | §6 |
+| `ImTransOpt` differs between calibration and recon | geometry mirrored relative to the fit. Measured: every wrong variant scored a **better** strain than the correct one (47.2 and 55.6 µε vs 58.2), with BC landing exactly on `N-1 − BC` | §3f, §6 |
 | lattice constant left as the calibrant's | CeO₂ rings predicted for a gold sample | §6 |
 | `Rsample`/`Hbeam` set to the REAL sample size | grains plop onto the bounding-box edges — an artefactual pile-up at ±Rsample, ±Hbeam/2 | §6 |
 | residual-correction map applied when it made strain worse | v2 discards it automatically — check it did | §5c |
@@ -233,12 +294,20 @@ your own run, and they are the ones a context-free session skips:
 | `midas-process-grains` < 0.7.0 | `Completeness` / `MinNrSpots` are parsed and **discarded** — measured **23710 grains vs 6132** from the same refiner output, no error. Reads as "the peak search is finding noise" | §0, §8b |
 | params zipped by `midas-zipper` < 0.1.5 | `BgSubtract`, `BgNSectors` and `MinPeakSNR` are **silently dropped** from the zarr — the peak search runs with settings you did not set | §0, §6c |
 | `midas-fit-grain` checked against 0.5.7 and no further | labels are correct, positions are still the **unrefined indexer seeds** (0.6.0) and `c_recipe` is missing (0.7.0) | §0, §8a |
+| `RhoD` copied from another sample's file | **material-dependent** silent kill: hexagonal ti7al generated 745 rings and indexed 0 of 4569 seeds; cubic nf709 generated 70 from the same value and was fine | rule 15, §6d |
+| `hkls.csv` reaching ring ≥ 500 on a pre-fix `midas-index` | `RingHKL[Rnr]`/`RingTtheta[Rnr]` were written unbounded, through the `data`/`ndata` bin pointers. Fixed builds skip the row and warn; older ones corrupt and exit 0 | rule 15 |
+| `ImTransOpt` read with `getattr(v1, ...)` | `CalibrationParams` does not carry it — it lands in `.extra`. Reading it the obvious way silently calibrates with **no** image transform, mirroring an axis. Measured: BC_z 1411.59 instead of 1467.46 (= 2879 − 1467.46) **at 55.6 µε, PASS** — a better strain than the correct fit's 58.2 | §5d |
+| a refined parameter sitting exactly on a bound | not a measurement — the fit ran out of room. Seen three times: `Wedge` at +5.0 from a misread ω key, `iso_R4`/`iso_R6` at +0.05 from six grains. `midas-joint-ff-calibrate` ≥ 0.1.9 names it and exits 1 | §5h |
+| distortion "refined" by `grain-tx` on 0.1.8 | `v2_coeffs_from_named` builds a numpy array via `float(v)`, detaching the graph — the harmonics got **zero gradient** and never moved, while being reported as refined | §5h |
+| `grain-tx` on a parameter file that says `OmegaStart` | pre-0.1.7 read only `OmegaFirstFile` and took the frame count from `NrFilesPerSweep` (= 1 on one-file-per-sweep). 5 matched spots of 12 355, `Wedge` railed at its bound, `rc=0` | §5h |
+| running a CLI from the wrong environment | `--mode ff: invalid choice` and friends are version, not syntax. The version number alone may not distinguish builds — check content, not `--version` | §0 |
 | version floors read from this document instead of from the tree | **eight** declarations rose for silent-wrong-answer reasons in the nine days after this file was written, across five packages | §0 |
 | `--refine-backend` left unset | **CLOSED** — both backends are now `c-omp`-only and `c-omp` by default, enforced in argparse *and* in `PipelineConfig`. Historically the refiner defaulted to python+torch+CUDA while the indexer defaulted to c-omp, so the run went silently half onto the GPU path, died with a bare `CalledProcessError` and no child traceback, and each retry cost a full re-index. A handbook or script still passing `--refine-backend python` is pre-fix | rule 10b, §7 |
 | grain counts compared across `--pg-mode` values | the modes are **not** interchangeable, and `spot_aware` is now **disabled** for manufacturing grains — 4.1 % of them outside the physical sample on a 20-ID rod, and only 7.2 % of the ones it added over `c_parity` had an EBSD partner. A higher grain count from it was never evidence of better recall | rule 10c, §7 |
 | `processgrains_diagnostics.h5` missing on a default run | not a version problem — `c_parity` (the default) returns without writing the residual sidecar. `--generate-h5` does not change it | §7 |
 | `MinNrSpots` < 3 on a full rotation | a 2-spot "grain" is **under-determined** (orientation has 3 DOF) — the refiner fits it, reports a position and lattice, and it survives every downstream filter, diluting every population statistic. **≥ 3 always; 2 only for a partial rotation; never below 2** | §6 |
-| matching margins left at a beamline template's `1500 / 1500 / 1.5` | recommended working values are `MarginRadial 500`, `MarginEta 500`, `MarginOme 0.5` (§10). At 1500 the residual simply **fills the matching window** — measured `\|d\|` p95 = 1478 µm against a 1500 µm margin — and spots get multiply-claimed (848 k matched observations from 471 k spots). Inflates `DiffPos` without any geometry being wrong | §6, DIAGNOSIS |
+| matching margins tightened to "improve" `DiffPos` | **Do not.** `MarginRadial` / `MarginEta` / `MarginRadius` / `MarginOme` bracket what **indexing does not yet know** — position, orientation and strain are all still coarse at that stage (`StepSizePos 100`, `StepSizeOrient 0.1`) — **not** the spot size. Two consequences. (1) Tightening cannot lower `DiffPos` for a given grain: the **refiner never reads these values**, and applying `500 / 500 / 0.5` produced **bit-identical** refiner output. (2) What it actually changes is **which candidates survive indexing**, dropping the ones whose position the coarse search placed least well. On a sample wider than the beam that deletes off-axis grains and *looks* like an improvement while biasing the result toward the rotation axis. Sizing them against the spot width (2–3 px) is the specific error to avoid | rule 9, §6 |
+| a run passing `--refine-solver` / `--refine-loss` / `--refine-mode` / `--use-bounds` / `--bound-*` / `--pf-refine-mode` | **removed** (2026-08-19), so argparse fails with `unrecognized arguments`. Every one configured the in-process PyTorch refiner, which is disabled; the c-omp refiner has no configurable solver or loss. Delete the flag — there is no replacement and nothing is lost | rule 10b, §7 |
 | a backend judged by grepping its source for `tx` | `tx` is applied in `transforms`, not in indexing or refinement — **no** backend carries it, python included, and re-applying it downstream would double-count. Concluding "c-omp cannot see `tx`" abandons the only supported fast path for a non-defect. The deprecated `FF_HEDM/src/FitPosOrStrainsOMP.c` is also not the binary c-omp runs (that is `midas_fit_grain/c_src/FitUnified.c`) | §7 |
 | `--only` given a **comma-separated** list | `--only` is *repeatable*, not comma-separated. `--only a,b` is read as one stage named `"a,b"`, matches nothing, and the run reports **success with zero stages executed** in ~1 s. The orchestrator validates that `--only` omits required *upstream* stages, but does **not** validate that a stage name exists | §7 |
 
@@ -341,12 +410,15 @@ Each row produces an input the next one needs. Two of them cannot be checked aft
 | 1 | **Survey the folder** → write `SURVEY.md`. | §0b | Nothing else can start until you know which file is the sweep, which the dark, which the calibrant. |
 | 2 | **ω sign** from par field 9. | §2 | **Not detectable afterwards.** A sign error mirrors the microstructure with completeness unchanged. |
 | 3 | **Scan definition + dark pairing + `SkipFrame`.** | §3 | `SkipFrame` shifts every ω by one step if wrong — also invisible in the grain list. |
+| 3b | **Settle `ImTransOpt`.** | §3f | Must be identical in calibration and reconstruction. Wrong, it mirrors everything, and the calibrant strain gets *better*, not worse. |
 | 4 | **Energy, then distance.** | §4 | Calibration needs λ. `DetZ` is only a seed. |
 | 5 | **Calibrate on the calibrant**, overlay the rings. | §5 | Gate: ≤ 100 µε, and the overlay is mandatory. No geometry, no reconstruction. |
 | 6 | **Zip the sweep only** — `--only zip_convert`. | §7 | `midas-ring-thresh` reads the zarr, so the zarr must exist before the threshold can be measured. |
 | 7 | **Measure `RingThresh`** on that zarr; set it. | §6b | A template threshold is meaningless for your detector and exposure. |
 | 8 | **Build the parameter file.** | §6 | Needs the geometry (5), the scan definition (3) and the threshold (7). Replace the calibrant's lattice with the sample's. |
+| 8b | **Check `RhoD`, and the ring count once `hkl` has run.** | §6d | `RhoD` is both the distortion normalisation and the hkl cap. Wrong, it can index **0 seeds and exit 0** (rule 15). |
 | 9 | **Run the rest of the pipeline.** | §7 | |
+| 9b | **Refine `tx` and `Wedge` from the grains, then re-run 9.** | §5h | The two the calibrant is structurally blind to. Measured: 208 → 226 grains, grain-Z scatter halved. Optional, but do it before quoting positions. |
 | 10 | **Read the result, then report.** | §8, §14 | |
 
 **Step 6 is the one people miss.** §6b tells you to measure `RingThresh` from the data,

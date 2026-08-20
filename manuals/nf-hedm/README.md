@@ -13,15 +13,18 @@ Everything else the agent works out or asks for. **The order in §0 is not optio
 was confirmed with the instrument scientist, and getting it wrong is itself a documented
 failure mode.
 
-**Scope.** Everything here assumes **1-ID**: §3a–§3g and the `2047 − index` BC convention
-are that beamline and that detector chain only. 20-ID HT-HEDM is a different acquisition,
-detector and file format — see §3h, which lists two blockers that must be cleared before
-that data can enter the pipeline at all.
+**Scope.** The metadata recipes (§3a–§3g) assume **1-ID**. 20-ID HT-HEDM is a different
+acquisition, detector and file format, and has its own route in §3h — the reduction now runs
+on its HDF5 directly (`extOrig h5`), so the two blockers that used to close that door are
+gone. **What is NOT resolved at 20-ID is the ω sign**, and that one is not a code problem:
+see hard rule 1 for what it costs and how to report it.
 
 **On any other beamline, stop and ask rather than adapting a recipe.** The array→lab
 mapping has to be re-derived, not inherited, and getting it wrong **mirrors the
 microstructure invisibly** — the same silent failure mode as the ω sign, with nothing in
-the `.mic` that shows it (§3h).
+the `.mic` that shows it. At 20-ID it *was* re-derived and the 1-ID flip survived, by a
+margin that leaves no doubt (maxC 0.000000 vs 0.6957 for the two candidates) — that is the
+method to copy, not the constant (§3h).
 
 Not a tutorial. Follow the steps in order; each one names the file to read, the command to
 run, the field to look at, and the branch to take.
@@ -91,8 +94,8 @@ seems wrong:**
 |---|---|
 | par field 9 is **not** `aero` | no other value's ω sign has ever been established here (§2, §11) |
 | no folder with `FileCount.txt` + `fastsweep_Emon.txt` + `*_SequenceOfEvents.log` | you cannot write a paramfile at all (§3a) |
-| the data is **20-ID / HDF5 / Bluesky** | different acquisition, format and scaling; two blockers are still open (§3h) |
-| any beamline **other than 1-ID** | the `2047 − index` BC convention encodes *this* detector; getting it wrong mirrors the microstructure invisibly (§3h) |
+| the data is **20-ID** and you are about to report an orientation map | the reduction runs (§3h), but the **ω sign is undetermined there**, so the map is mirror-ambiguous. Not a reason to stop working — a reason the label has to travel with the result (hard rule 1) |
+| any beamline **other than 1-ID or 20-ID** | the `2047 − index` BC convention encodes *this* detector; getting it wrong mirrors the microstructure invisibly. Re-derive it the way §3h did — both masks from one reduction — rather than inheriting it |
 | any package **below floor** after §1 | `SumFrames` units inverted; a mixed resolve is silently wrong (§1, §8j) |
 | `fit_axis(...).is_reliable` is **False** | the shadow tracker refused — branch on it, do not override (§6e) |
 | both ybc routes fail | ybc is **not measurable from this scan**; inheriting it is a decision, not a default (§6e) |
@@ -119,8 +122,21 @@ proceed. Everything not blocked by it should still be finished first.
    > does **not** determine the sign for the paramfile or the forward model. Because a
    > wrong sign mirrors the microstructure with confidence unchanged, no downstream check
    > in this set — not confidence, not the neighbour-misorientation coherence test — can
-   > catch it. **Treat 20-ID ω sign as undetermined and halt.** Filling this gap needs a
-   > determination at the beamline, not a re-reading of these files.
+   > catch it.
+   >
+   > **This is no longer a reason to halt** — the geometry, the distances, the confidence
+   > distribution and the grain statistics are all invariant under the mirror, and three
+   > 20-ID campaigns were reduced and reconstructed without it. What it forbids is
+   > *reporting a 20-ID orientation map without the label*: **handedness undetermined,
+   > map may be mirrored.** Carry that into the report, not just the notes.
+   >
+   > **Two results that look like they settle it and do not.** The cube-2 cross-check
+   > (diffraction r = 497.0 µm against the absorption shadow's 499.8 ± 2 µm, Lab Notebook
+   > §8g) compares a **radius**, which is mirror-invariant. The phase→position convention
+   > `θ = −φ − 90°` was *calibrated against the reconstructions themselves*, so it is
+   > self-consistent under a global mirror of both and cannot test handedness either.
+   > Filling this gap needs a determination at the beamline — a known rotation sense, or a
+   > sample with a known chirality — not a re-reading of these files.
 2. **The TIFF tree does not contain the metadata (§3).** `/gdata/dm/1ID/<year>/<beamtime>/data/nf/`
    holds only images. Distances, ω, energy, exposure live in a *separate* acquisition-log
    folder. Find it or stop.
@@ -224,7 +240,8 @@ distrusting your own run, and they are the ones a context-free session skips:
 | assuming `EdgeLength` must equal `GridSize` | **RETRACTED** — `EdgeLength` is an independent, supported knob (`hex_grid/grid.py:97-153`); small probe triangles on a coarse grid are intentional, and the voxel count never changes. Forcing them equal made triangles 10 µm and cost ~94 GiB/voxel. Lab notebook R2 | §10e |
 | `EdgeLength` ≪ `GridSize` with `mic2grains -doNeighborSearch 1` | merge threshold is `2·TriEdgeSize` while neighbours are `GridSize/2` apart ⇒ **every voxel its own grain**; grain areas describe the probe, not the cell | §10e |
 | `MinMisoNSaves` left at its **1.0 default** with `SaveNSolutions 1` | a per-window symmetry misorientation dominates runtime, AND a later higher-confidence solution is silently discarded | lab notebook §2 |
-| 20-ID HDF5 assumed to be ×64 scaled | **the encoding is PER-CAMPAIGN, not per-detector.** `nfdev_jul26` is 10-bit stored ×64 (max 65472); `bt_20id_jul26b` on the SAME detector serial is 12-bit unscaled (max 4092, unique values 0,2,4,6,8,10,12,16,…). Dividing the second by 64 turns "threshold 2" into "threshold 128" and thresholds the **pedestal** — the background then looks like signal | §3h |
+| 20-ID HDF5 assumed to be ×64 scaled | **the encoding is PER-CAMPAIGN, not per-detector.** `nfdev_jul26` is 10-bit stored ×64 (max 65472); `bt_20id_jul26b` on the SAME detector serial is 12-bit unscaled (max 4092, unique values 0,2,4,6,8,10,12,16,…). Dividing the second by 64 turns "threshold 2" into "threshold 128" and thresholds the **pedestal** — the background then looks like signal. Now declared as `PixelScale`, which defaults to 1 and warns in both directions but **never infers**: run `np.unique` on a frame | §3h, §10f |
+| `NrFilesPerDistance` taken from the HDF5 dataset length | the sweep can exceed 360°: `NF_Au_cube_0802` holds **1442** frames spanning −180 → +180.25, whose last two duplicate the first two. The right answer is **1440**, from the ω RANGE. A naive `theta[0] == theta[1440]` test returns False and is also wrong — compare angles mod 360, not values | §3h |
 | ring / powder analysis on a coarse-grained NF sample | an NF spot lands at *grain position* + `Lsd·tan(2θ)·d̂`, so rings are smeared by the **illuminated sample width**. On `nf_sampleD` (247 µm wide) that is 2.0× the 111→200 spacing ⇒ **no rings exist**, and any `Lsd` or lattice parameter fitted to the radial profile is meaningless | §5e |
 | BC carried over from an earlier campaign at the same beamline | the beam stripe moved **57 px = 31 µm** between `nfdev_jul26` and `bt_20id_jul26b`. Re-measure zbc every campaign | §6d |
 | `shadow.track_shadow` left at its `band_frac=0.30` default at 20-ID | tracker wanders into the beam's dim wings; axis is wrong by **+100 to +130 px** and the amplitude comes back clipped. `band_frac=0.70` reproduces the known Au axis to **0.41 px**. `fit_axis(...).is_reliable` correctly returns False — **branch on it** | §6e |

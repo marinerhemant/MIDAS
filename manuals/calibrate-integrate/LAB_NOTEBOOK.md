@@ -5,9 +5,9 @@ withdrawn. Read this before re-investigating anything here: several attractive
 hypotheses are recorded as refuted, with the measurement that killed each.
 
 All work 2026-08-18/19. Dataset: 48-panel Pilatus (1475 × 1679, 172 µm), APS
-20-ID, CeO2 at 63 keV, frame `ceria_..._000868.tiff`. Scripts on chutoro under
-`/scratch/s20hedm/bt_20id_jun26/subpixel_check/`; source of truth on the Mac at
-`~/Desktop/analysis/andrew_subpixel_2026-08-18/`.
+20-ID, CeO2 at 63 keV, frame `ceria_..._000868.tiff`. Scripts and raw outputs
+are archived with the release handoff for this work — the paths live there
+rather than here, because they are on beamline scratch and will not outlive it.
 
 **Status labels are load-bearing.** ESTABLISHED = survived adversarial review.
 PROVISIONAL = measured, not independently attacked. RETRACTED = withdrawn, with

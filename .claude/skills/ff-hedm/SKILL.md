@@ -3,11 +3,16 @@ name: ff-hedm
 description: >-
   Take a far-field HEDM (FF-HEDM) dataset from raw frames to a validated grain
   list: survey the folder, establish the omega sign, calibrate on a calibrant,
-  measure RingThresh, run the MIDAS pipeline, read Grains.csv, and report with
-  provenance. Use when asked to reconstruct, index, calibrate or diagnose an
-  FF-HEDM / far-field 3DXRD beamtime, when handed a folder of .ge5.h5 or GE
-  detector frames, or when an FF reconstruction looks wrong. Covers 1-ID with a
-  single monolithic GE panel; stops and asks outside that.
+  measure RingThresh, run the MIDAS pipeline, refine the powder-blind tx and
+  Wedge from the grains, read Grains.csv, and report with provenance. Use when
+  asked to reconstruct, index, calibrate or diagnose an FF-HEDM / far-field
+  3DXRD beamtime, when handed a folder of .ge5.h5 / GE or .vrx.h5 / Varex
+  detector frames, or when an FF reconstruction looks wrong — including a run
+  that finishes with zero grains, zero seeds indexed, a crash in process-grains,
+  a refined parameter sitting on its bound, or every grain's strain railed at
+  its bound. Covers 1-ID with a monolithic GE
+  panel and 20-ID HT-HEDM with a Varex, single panel and one layer at a time;
+  stops and asks outside that.
 ---
 
 # FF-HEDM reconstruction
@@ -45,6 +50,24 @@ Sample material: <e.g. gold cubes / unknown, tell me from the data>
 3. **The order is not optional.** Two steps (the ω sign, the frame-0 skip) cannot be
    checked after the fact, because getting them wrong changes the answer without changing
    anything you would look at.
+
+## Two configurations
+
+**1-ID / GE** (`.ge5.h5`, 2048² @ 200 µm) and **20-ID HT-HEDM / Varex**
+(`.vrx.h5`, 2880² @ 150 µm). The spine's scope table lists what differs; the
+geometry recipe, the ω discipline and every hard rule apply to both. Three
+things are genuinely different and each has cost a day:
+
+* the dark lives in **`/exchange/bright`** on the Varex — `/exchange/dark`
+  exists and is all zeros;
+* **`RhoD`** must be computed, never copied (spine rule 15, §6d). Wrong, it
+  indexes **zero seeds and exits 0**, and whether it bites at all depends on the
+  sample's symmetry;
+* calibrate with **`midas-calibrate-v2 --mode ff`** (§5), which writes the
+  parameter file and fixes `RhoD` for you.
+
+After a first reconstruction, **§5h** refines `tx` and `Wedge` from the grains —
+the two a powder calibrant is structurally blind to.
 
 ## When something looks wrong
 

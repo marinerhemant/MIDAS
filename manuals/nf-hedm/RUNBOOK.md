@@ -101,9 +101,11 @@ and post-sum readers.
    `process_images`, `seed_orientations` and `tomo_filter` carry unit tests over synthetic
    data only. A reconstruction is not wrong because of this, but a report that does not say
    so is overclaiming.
-2. **20-ID HT-HEDM cannot enter the pipeline** — two blockers, both open: no HDF5 support
-   in `midas_nf_preprocess`, and `process_all` loads a whole layer into RAM (141 GB at
-   fp32 on that detector). §3h.
+2. **20-ID HT-HEDM: the ω sign is undetermined**, so every orientation map from that
+   beamline is mirror-ambiguous and must say so. The two code blockers that used to sit
+   here — no HDF5 support, and a whole layer loaded into RAM — are **closed**; set
+   `extOrig h5` and the reduction runs, streaming by default (§3h, §10f). The sign is not
+   a code problem and needs a determination at the beamline.
 3. **Geometry A vs B is a preference, not a measurement** (§11 could-not-verify 11). Do
    not report A as "the verified geometry".
 4. **`DIAGNOSIS.md` has four entries.** Three is a working start; it grows the day someone

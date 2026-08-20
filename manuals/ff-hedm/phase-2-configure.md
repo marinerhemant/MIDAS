@@ -51,6 +51,27 @@ Leave the generous defaults (2000 µm here, matching `FF_HEDM/Example/Parameters
 
 ## 6b. Set `RingThresh` from the data, not from a template
 
+> **Which ring is "ring 30"? Read the run's own `hkls.csv` (README rule 16).** MIDAS's
+> numbering diverges from a fresh `generate_hkls()` above ring ~19 and **fails silently**.
+> On 20-ID alumina, adding "ring 30" and "ring 32" believing they were the 2nd and 4th
+> strongest available actually selected reflections at 2.7 % and 0.33 % relative
+> intensity; they yielded 115 and 88 spots against the ~3000 expected. Map ring → (hkl,
+> radius) from `hkls.csv` and match on **(h,k,l)**, never on the ring index.
+>
+> Two things to check before adding any ring:
+> * **Radial isolation.** Rings closer together than the radial margin are **duplicated,
+>   not split** — two rings 3.9 px apart emitted all 2930 peaks *twice*, once under each
+>   label, with byte-identical `YLab`/`ZLab`/`Omega`. A spot mislabelled between them is
+>   unmatchable, which is worse than not adding the ring.
+> * **Signal, measured with hot pixels rejected.** Do **not** judge a ring from a
+>   max-projection: one stuck pixel gives a full-amplitude "ring" at its own radius
+>   forever, which scored several dead rings at SNR > 30. Mask any pixel firing in more
+>   than a few percent of frames, then count detections per unit annulus area.
+>
+> And check the payoff is real before spending a run on it: on that alumina layer, going
+> from 8 to 13 rings changed the internal-angle distribution not at all (median 0.544 →
+> 0.545). Corundum simply had no more usable rings.
+
 `RingThresh <ring> <threshold>` is the single most consequential number in the peak
 search, and the value in any example file is meaningless for your detector, exposure and
 sample. Measure it.
@@ -179,6 +200,75 @@ what it removes against the raw frames before trusting it.
 
 ---
 
+
+## 6d. `RhoD` — compute it, never copy it
+
+`RhoD` is the **beam-centre-to-farthest-corner distance, in micrometres**:
+
+```
+RhoD = px * hypot(max(BC_y, N_y-1-BC_y), max(BC_z, N_z-1-BC_z))
+```
+
+`midas-calibrate-v2 --mode ff` writes it for you. Compute it if you are writing
+the file by hand. Do **not** inherit it from another sample's parameter file.
+
+It is two quantities wearing one name, which is why a wrong value does two
+unrelated kinds of damage:
+
+* **the distortion normalisation** — the polynomial is in `ρ = R_µm / RhoD`, so
+  an oversized `RhoD` makes every term feeble and the fitted coefficients run to
+  their bounds trying to compensate;
+* **the hkl cap** — it is aliased to `MaxRingRad`
+  (`midas_transforms/params.py`, `__post_init__`), so it sets how far out
+  reflections are generated.
+
+**Measured, 20-ID Varex, 2880 px at 150 µm (true `RhoD` = 309 538):**
+
+| `RhoD` | rings in `hkls.csv` | seeds indexed | grains |
+|---|---|---|---|
+| 2 000 000 | 745 | **0 of 4569** | crash in `process-grains` |
+| 309 538 | 46 | 3122 of 4515 | 208 |
+
+The zero-seed run **exited 0**. Nothing between the parameter file and the empty
+`Grains.csv` reported a problem.
+
+Three things make this worse than an ordinary bad number:
+
+1. **It is material-dependent.** The same `RhoD 2000000` gave only 70 rings on
+   cubic nf709, which reconstructed fine — a low-symmetry cell generates far
+   more distinct rings than a high-symmetry one. "It worked on my other sample"
+   is not evidence.
+2. **Recalibration does not fix it.** `ff_paramstest_from_auto_result` replaces
+   geometry, distortion, `px` and `RawFolder`, but **not** `RhoD`; a bad value in
+   the template survives untouched. `--mode ff` rewrites it explicitly for this
+   reason.
+3. **A pixel value looks plausible.** The GUI seed file for this beamtime carried
+   `RhoD 2064.118261`, which is the corner distance **in pixels**. That is
+   ~150× too small, which makes the polynomial explode rather than go limp.
+
+**The check, after `hkl` has run:**
+
+```bash
+awk 'NR>1{print $5}' <result>/LayerNr_1/hkls.csv | sort -n | tail -1   # must be < 500
+```
+
+500 is `MAX_N_RINGS` in `midas_index/c_src/IndexerUnified.c`. Builds from
+2026-08-16 onward skip out-of-range rows and warn; before that they were written
+unbounded, through `RingTtheta` and into the `data`/`ndata` bin pointers, after
+which every seed matched nothing. If the count is over 500 and you cannot
+upgrade, fix `RhoD` — do not cap `hkls.csv` by hand.
+
+Full evidence chain — the three-way isolating control, the memory layout, and the
+confounded parameter sweep that nearly closed the investigation — is in
+**Lab Notebook §8a–§8b**.
+
+Validation catches it without running anything:
+
+```bash
+midas-params validate <paramsfile> --path ff
+```
+
+---
 
 ## 10. Parameter-file reference
 

@@ -75,6 +75,20 @@ Before interpreting it:
    `OverAllRingToIndex` still need work.
 7. **`indexing: 0 / N seeds with non-zero data`** in the log deserves an explanation before
    any grain list is trusted.
+8. **Bin `DiffPos` against grain position** — specifically the radial offset
+   `r = sqrt(X² + Y²)` from the rotation axis. If the well-fitting grains all sit within
+   roughly the beam half-width and there are none beyond it, the reconstruction is
+   **illumination-limited**: only the near-axis core is determined and the rest of the
+   population is manufactured. This is the single cheapest check for the failure in
+   DIAGNOSIS `split.illumination_radial`, and it is free.
+
+> **`Confidence` is not a grain-quality metric — do not filter on it.** It is dominated by
+> the chance-match floor whenever the spot list is dense. Measured on a 20-ID alumina layer
+> (1652 grains): median `Confidence` was **flat at ~0.72 from r = 0 to 600 µm** while
+> `DiffPos` climbed 544 → 783 µm over the same range, and one grain carried `Confidence`
+> **1.000** with `DiffPos` **688 µm**. Rank and cut on **`DiffPos`**; treat a high
+> `Confidence` as no evidence at all. (Item 2 above still holds for the *shape* of the
+> completeness distribution — bimodality is informative — but the absolute value is not.)
 
 ---
 

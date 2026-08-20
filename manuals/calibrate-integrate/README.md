@@ -14,7 +14,8 @@ delegates to phase files, everything needed to run a reduction is here. Paths no
 covered here are **not yet exercised** — §7 lists them, and the rule there is stop
 and ask, not improvise.
 
-Citations are `path:line` relative to `$MIDAS = /Users/hsharma/opt/MIDAS`.
+Citations are `path:line` **relative to the repository root**, so they
+resolve wherever the tree is checked out.
 
 **`LAB_NOTEBOOK.md` is the companion.** This file is the procedure. The notebook is
 the evidence: how each rule was measured, and the claims that had to be
@@ -42,6 +43,9 @@ untested path to a recommendation.
 
 ## §1. Install gate — free, and skipping it invalidates everything
 
+At APS, the shared environment is on the `/home/beams*` filesystem and is
+visible from every beamline host:
+
 ```bash
 conda deactivate
 export PATH=/home/beams12/S1IDUSER/opt/envs/midas/bin:$PATH
@@ -49,8 +53,9 @@ export CUDA_DEVICE_ORDER=PCI_BUS_ID KMP_DUPLICATE_LIB_OK=TRUE
 python -c "import midas_integrate_v2 as a, midas_calibrate_v2 as b; print(a.__version__, b.__version__)"
 ```
 
-`conda deactivate` is required: an active `midas_env` shadows the shared env's
-`bin` even after you set `PATH`.
+`conda deactivate` is required: an active `midas_env` shadows that `bin` even
+after you set `PATH`. Outside APS, activate any environment with the packages
+installed — nothing below depends on this path.
 
 **The gate is behavioural, not a version number.** Four defects produce
 plausible wrong answers rather than errors. Run:
@@ -97,8 +102,23 @@ print(a.shape, a.dtype, 'min', a.min(), 'max', a.max(), 'median', np.median(a))
   look at I(η) on a strong ring — flat means powder.
 - **Negative values** (`-1`, `-2`) are gap / bad-pixel sentinels, not counts.
   Clip them to 0 before calibrating; do **not** feed them to a fitter.
-- **A mask** covering gaps and bad pixels: find it or make it. On the reference
-  detector it covered 202 550 pixels.
+- **A mask** covering gaps and bad pixels: find it, or build one. If the facility
+  has no bad-pixel map, a workable recipe is the ratio of each pixel to the
+  azimuthal median at its own radius — smooth it, call the low tail a shadow,
+  then add the beamstop disc, exact zeros and a frame border. Masking is not
+  cosmetic: it moved **804 of 2980 bins by >1 %** on a single-panel frame with
+  only 1 % masked, and 1775 of 1800 bins on the tiled one.
+
+**Check `ImTransOpt` before anything else.** It declares how the stored frame
+maps onto detector coordinates (row/column flips). A wrong value mirrors the
+beam centre and every downstream number follows it, silently. It cannot be
+checked after calibrating, because the refiner absorbs the mirror.
+
+Test it directly: bin R about the file's beam centre under each candidate
+transform and compare ring-centroid scatter. On a single-panel 2880² frame the
+correct `ImTransOpt 2` gave **0.039 px RMS** about ideal; without the flip,
+**1.374 px**, and ring contrast collapsed from 101 to 6.9. The right value is
+unmistakable — but only if you look.
 
 **Halt condition H1.** If the folder contains a parameter file, do not assume it
 is correct for these frames. Check it (§6, "verify against the raw rings")
@@ -142,7 +162,9 @@ Python API:
 import numpy as np, tifffile
 from midas_calibrate.params import CalibrationParams
 from midas_calibrate_v2.seed.auto_seed import make_seed
-from midas_calibrate_v2.compat.from_v1 import spec_from_v1_params, add_panel_parameters
+from midas_calibrate_v2.compat.from_v1 import (
+    spec_from_v1_params, add_panel_parameters,
+    add_panel_no_expansion_constraint)
 from midas_calibrate_v2.compat.to_v1 import write_v1_paramstest
 from midas_calibrate_v2.forward.panels import PanelLayout
 from midas_calibrate_v2.pipelines.four_stage import autocalibrate_four_stage
@@ -162,6 +184,7 @@ v1.validate()
 spec = spec_from_v1_params(v1)
 add_panel_parameters(spec, n_panels=N, tol_shift_px=2.0, tol_rot_deg=0.0,
                      enable_lsd=False, enable_p2=False)     # modules only — rule 4
+add_panel_no_expansion_constraint(spec)                     # rule 7
 layout = PanelLayout.regular(NY, NZ, SY, SZ, gap_y=GAPS_Y, gap_z=GAPS_Z)
 
 res = autocalibrate_four_stage(v1, img, spec=spec, panel_layout=layout,
@@ -311,9 +334,33 @@ manufacture a false discrepancy (Lab Notebook §3).
 
 6. **Match rings by position, not by rank.** (Lab Notebook §3.)
 
-7. **A powder ring cannot determine a module's tangential shift.** With η spread
+7. **Turn on the expansion gauge for a tiled detector.** `fix_panel_id` and
+   Σ panel = 0 remove the *translation* nullspace. They do not touch a second
+   one: pushing every module outward in proportion to its radius shifts ring
+   radii exactly the way an `Lsd` error does, so the fit trades freely between
+   them. Measured: 11 % of the fitted panel field sat in that mode, ~73 % of it
+   absorbable into `Lsd`. Without the gauge, panels rail — 9 of 48 in one run.
+   `add_panel_no_expansion_constraint(spec)`.
+
+8. **A powder ring cannot determine a module's tangential shift.** With η spread
    much below 90° on a module the 2 × 2 Fisher block is rank-1: only the radial
    component is identifiable. Do not report the tangential part as a measurement.
+
+9. **λ is NOT determined by a single-distance powder pattern.** Wavelength and
+   `Lsd` are degenerate: a ring at radius R constrains only the ratio, so a
+   wrong λ is absorbed into `Lsd` and **the strain gate still passes**. A 1 %
+   energy error becomes a 1 % distance error, silently, with a calibration that
+   looks clean.
+
+   So take λ from the beamline (monochromator/undulator), never from the fit,
+   and cross-check it against the filename and the metadata. To break the
+   degeneracy you need **several exactly-known distances** —
+   `midas-calibrate-v2 --lsd-offsets`, which refines one shared `L0` plus known
+   offsets and a shared λ. Measured on a planted 1 % error: the two hypotheses
+   differed by 0.063 vs 0.083 px RMS, i.e. barely distinguishable.
+
+10. **`FixPanelID` is a gauge choice, not a measurement.** Panel shifts from two
+   calibrations with different anchors are not directly comparable.
 
 ---
 
@@ -321,10 +368,13 @@ manufacture a false discrepancy (Lab Notebook §3).
 
 | trap | symptom | guard |
 |---|---|---|
+| wrong `ImTransOpt` | beam centre mirrored; calibration still converges | test ring scatter per transform, §2 |
+| a template's `SubPixelLevel > 1` copied into the written paramstest | the calibration output itself violates hard rule 1 | `midas-calibrate-v2 ≥ 0.8.2` clamps it and warns |
 | v2 below 0.9.0 discards panel shifts | rings misplaced by up to 0.5 px, panel-organised | version floor §1 |
 | v1 map buffer truncates at fine `RBinSize` | absolute flux and bin occupancy wrong, normalised profile looks fine | v1 ≥ 0.5.0, or `per_row_max_entries=40000` |
 | `SubPixelCardinalWidth` default differed 5.0 vs 10.0 | two codes build different maps from one file | both ≥ the floors in §1 |
 | `FixPanelID` never parsed | anchored panel silently 0 | `midas-calibrate` ≥ 0.3.1 |
 | wrong calibration block active in the parameter file | every ring offset, uniformly | §6 overlay |
+| wrong λ | absorbed into `Lsd`; **strain gate passes**, distance wrong by the same fraction | rule 9 — take λ from the beamline, cross-check the filename |
 | integrating without `--mask` | bins biased low near gaps; no error, no warning | pass `--mask` (§5a) |
 | a written paramstest inheriting the template's `PanelShiftsFile` | new geometry silently uses the *previous* calibration's panel shifts | `midas-calibrate-v2 ≥ 0.8.1`; check the line before reusing the file |

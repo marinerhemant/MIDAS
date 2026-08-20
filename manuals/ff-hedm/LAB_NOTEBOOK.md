@@ -1,16 +1,26 @@
-# FF-HEDM Lab Notebook — `bt_1id_jul26` / `Au3_cubes_ff_000008`
+# FF-HEDM Lab Notebook — `bt_1id_jul26` (§1–§7) and `bt_20id_jul26b` (§8)
 
 **Companion to `FF_HEDM_Handbook.md`.** The handbook says what to do; this records what
 was actually found, how it was measured, and what turned out to be wrong. They are kept
 apart on purpose: the handbook has to stay short enough to follow, and this has to stay
 honest enough to stop a refuted idea coming back.
 
-Dataset throughout: APS 1-ID, GE5 (ADEPT) 2048², 200 µm pixels, 95.0 keV, Au cubes,
-`Au3_cubes_ff_000008`, 1440 used frames, ω 180 → −179.75 at −0.25°/frame. `§n` without a
+Two campaigns, kept in one file so "read the notebook before re-investigating" still
+means one place.
+
+* **§1–§7 — APS 1-ID**, GE5 (ADEPT) 2048², 200 µm pixels, 95.0 keV, Au cubes,
+  `Au3_cubes_ff_000008`, 1440 used frames, ω 180 → −179.75 at −0.25°/frame.
+* **§8 — APS 20-ID HT-HEDM**, Varex 2880², 150 µm pixels, 63.0 keV (asserted),
+  `bt_20id_jul26b`: ti7al (hexagonal), nf709 (cubic), ruby (SG 167). 1441 used frames,
+  same ω convention.
+
+Unqualified section numbers below §8 refer to the 1-ID campaign. `§n` without a
 qualifier means a section of *this* file; handbook sections are named as such.
 
-**Read §4 before re-opening any question here** — three attractive claims are recorded
-there as retracted, with the measurement that killed each one.
+**Read §4 and §8h before re-opening any question here** — eight attractive claims are
+recorded there as retracted, with the measurement that killed each one. Four of them are
+mine from the 20-ID campaign, including one that reached a delivered write-up before a
+third run refuted it.
 
 ---
 
@@ -121,13 +131,34 @@ can move a long way with every spot still inside the matching window. The remain
 discriminator is `DiffPos`, and its minimum is shallow.
 
 **What this means in practice:** quote grain positions to ~100 µm on this dataset, not to
-the six decimals `Grains.csv` prints. If you need better, tighten the matching margins
-toward 1 px — do NOT touch `Rsample`/`Hbeam`, which are a search bound (hard rule 9).
+the six decimals `Grains.csv` prints.
+
+> **Correction, 2026-08-19.** This section originally continued "if you need better,
+> tighten the matching margins toward 1 px". **That advice is withdrawn.** The margins
+> bracket what **indexing does not yet know** — position, orientation and strain are all
+> coarse at that stage — **not** the spot size. Tightening them cannot sharpen a given
+> grain's position: the refiner never reads these values, and applying `500 / 500 / 0.5`
+> produced **bit-identical** refiner output. What it actually does is drop candidates
+> whose position the coarse search placed least well, which on a sample wider than the
+> beam manufactures an apparent improvement by deleting the off-axis grains.
+> `Rsample`/`Hbeam` remain untouchable for the separate reason in hard rule 9.
+>
+> **Open:** what the margins *should* be is not settled here. The canonical
+> `FF_HEDM/Example/Parameters.txt` ships `MarginRadial/Eta/Radius 500`, `MarginOme 0.5`
+> with `Rsample 2000`, while beamline templates in circulation carry `1500 / 1500 / 1.5`.
+> Both are defensible depending on how much of the position offset the indexer's own
+> position search (`StepSizePos 100`) already absorbs, which has not been measured. Do not
+> quote a recommended value from this file — start from the example and leave it alone.
 
 ### 2e. Which candidate becomes "the grain" — and the two modes disagree
 
-**In `--mode spot_aware` (what `midas-pipeline --scan-mode ff` runs), the grain IS one
-candidate.** `midas_process_grains/pipeline.py:416-417` picks
+> **Superseded as a description of the default, 2026-08.** `--pg-mode` now
+> defaults to `c_parity` and `spot_aware` has been removed from the choice list
+> (README rule 10c). The finding below stands as the record of how `spot_aware`
+> behaved and why it was retired — it is no longer what a pipeline run does.
+
+**In `--mode spot_aware` (at the time, what `midas-pipeline --scan-mode ff` ran), the
+grain IS one candidate.** `midas_process_grains/pipeline.py:416-417` picks
 `rep_pos = argmin(ias[members])` — the member with the smallest **internal-angle**
 residual, `OrientPosFit.bin` **column 24** — and then copies that one candidate's
 `position`, `orient_mat`, `lattice`, `grain_radius` and `confidence` straight into the
@@ -228,12 +259,18 @@ fp32 refiner was not moving position at all so the candidates stayed scattered a
 indexer's coarse position grid (§3c). With both fixed the run is bit-reproducible and the
 candidate spread is 3–5× tighter (§2d).
 
-If you want the position tighter still, tighten `MarginRadius` / `MarginRadial` /
-`MarginEta` from 500 µm (2.5 px) toward ~1 px so `Completeness` regains discriminating
-power, and re-check the candidate spread by reading `Results/OrientPosFit.bin` (cols 11-13
-are position; col 26 > 0 selects the alive candidates). Do **not** reach for
-`Rsample`/`Hbeam` — shrinking the envelope narrows the spread only by clamping candidates
-against the bound, replacing an honest ambiguity with a fabricated pile-up (hard rule 9).
+> **Correction, 2026-08-19.** This paragraph originally advised tightening
+> `MarginRadius` / `MarginRadial` / `MarginEta` toward ~1 px "so `Completeness` regains
+> discriminating power". **Withdrawn** — see the correction in §2d. The margins cover the
+> grain position the indexer does not yet know, so shrinking them removes real off-axis
+> candidates rather than sharpening the survivors, and it cannot move `DiffPos` at all
+> (the refiner never reads them; `500 / 500 / 0.5` gave bit-identical refiner output).
+
+To inspect the residual candidate spread, read `Results/OrientPosFit.bin` directly (cols
+11-13 are position; col 26 > 0 selects the alive candidates) and quote that spread as the
+honest position uncertainty. Do **not** reach for `Rsample`/`Hbeam` either — shrinking the
+envelope narrows the spread only by clamping candidates against the bound, replacing an
+honest ambiguity with a fabricated pile-up (hard rule 9).
 
 ---
 
@@ -1727,3 +1764,213 @@ decision.
 dominates — the earlier all-python chain spent 2420 s in indexing on GPU
 against the C's 425 s. If python-stack throughput matters, this is where the
 work is.
+
+---
+
+## 8. `bt_20id_jul26b` — 20-ID HT-HEDM, Varex (2026-08-14 → 08-19)
+
+First campaign on a detector other than the 1-ID GE. Everything here was found
+while getting one layer of ti7al to reconstruct at all.
+
+### 8.0 What this campaign established
+
+| # | Finding | Status | Where |
+|---|---|---|---|
+| 1 | `RhoD 2000000` generated 745 rings and overran the indexer's 500-ring table — **0 of 4569 seeds indexed, exit 0** | ROOT-CAUSED, code FIXED 2026-08-16 | §8a |
+| 2 | The overflow is **material-dependent** — cubic nf709 made 70 rings from the same value and reconstructed fine | ESTABLISHED | §8a |
+| 3 | `grain-tx` read `OmegaFirstFile`/`NrFilesPerSweep` and so mis-modelled any standard FF file — 5 matched spots of 12 355, `Wedge` railed at +5.0, `rc=0` | FIXED 0.1.7 | §8c |
+| 4 | `tx`/`Wedge` from grains: 208 → 226 grains and grain-Z scatter **halved** | VERIFIED | §8d |
+| 5 | Grain Z is under-resolved by ~2.6× even after that; the beam is 100 µm and Z scatters 76 µm | ESTABLISHED — envelope §3 | §8d |
+| 6 | `Lsd` is degenerate with the lattice and λ; fixing `a` reports an `Lsd` that is a restatement of the assumption | ESTABLISHED | §8e |
+| 7 | A wrong `ImTransOpt` mirrors the geometry and scores a **better** calibrant strain | ESTABLISHED, gate added | §8f |
+| 8 | Distortion harmonics were "refined" with zero gradient in 0.1.8 — never moved | FIXED | §8g |
+| 9 | The calibration is **not bit-reproducible**: ±15 µm in `Lsd` across identical runs | ESTABLISHED — retraction, §8h |
+| 10 | Four hypotheses of mine that were wrong, and what killed each | RETRACTED | §8h |
+
+### 8a. The zero-grain run — evidence chain
+
+Symptom: `midas-pipeline` completed, `process-grains` died on
+`TypeError: ufunc 'invert'` at `c_parity_emit.py`. That traceback is downstream
+noise; it only fires because the grain list is empty.
+
+The signal was in `midas_state.h5`: `n_seeds_attempted 4569, n_seeds_indexed 0`,
+and the indexer finished in **0.107 s**. A real search over 4569 seeds takes
+tens of seconds, so the loop never ran.
+
+**Isolating control, both directions.** Same binned inputs throughout —
+identical `Spots.bin`, `Data.bin`, `nData.bin`, `SpotsToIndex.csv`:
+
+| backend | `hkls.csv` | seeds indexed | completeness | wall |
+|---|---|---|---|---|
+| c-omp | 745 rings | **0** / 4569 | — | 0.107 s |
+| python | 745 rings | 3500 / 4569 | 0.771 | ~19 min |
+| c-omp | capped < 500 | 3497 / 4569 | 0.771 | 47.6 s |
+
+The python backend agreeing with the ring-capped C run to **three seeds** and to
+identical completeness places the fault in the C binary's fixed-size arrays, not
+in the data, geometry or parameters.
+
+**Mechanism**, read from `midas_index/c_src/IndexerUnified.c`: `RingHKL[Rnr]`
+and `RingTtheta[Rnr]` were written with no bounds check into arrays declared
+`MAX_N_RINGS = 500`. Writing ring 745 lands 5880 bytes past `RingHKL`, through
+`RingTtheta`, and into `pixelsize`, `BeamSize`, `numScans` and the `data` /
+`ndata` **bin pointers** declared immediately after. Every subsequent bin lookup
+read garbage.
+
+**Fix and verification.** Out-of-range rows are now skipped and counted, with a
+warning naming the highest ring seen; a `RingNumbers` value out of range is
+fatal, because that ring was *asked for*. Re-running the original parameter file
+unchanged, `RhoD 2000000` and all:
+
+```
+hkls max ring: 745
+indexing(FF): 3122 / 4512 seeds
+%NumGrains 196
+```
+
+The overflow is now inert. Regression tests in
+`midas_index/tests/test_ring_bounds.py`; two of the four fail against the
+pre-fix binary, which is what makes them tests rather than decoration.
+
+**Material dependence.** nf709 (cubic, SG 225) generated only **70** rings from
+the same `RhoD 2000000` and reconstructed to 8060 grains. A low-symmetry cell
+generates far more distinct rings than a high-symmetry one at the same cap, so
+"it worked on my other sample" is not evidence the value is right.
+
+### 8b. A confounded sweep that nearly closed the investigation
+
+Before finding the mechanism I swept nine indexer parameters — distortion off,
+`tx` off, Friedel pairs off, completeness down to 0.1, `MaxRingRad` at the
+physical value — and **all nine returned zero**. That reads as "the geometry and
+parameters are exonerated, look elsewhere."
+
+It was confounded. Every variant reused the already-generated 745-ring
+`hkls.csv`, including the one that set `MaxRingRad` correctly. The cap only has
+an effect at the point `hkls.csv` is *written*. A parameter sweep that does not
+regenerate the artefact the parameter controls tests nothing.
+
+### 8c. `grain-tx` mis-read the ω scan on every standard FF file
+
+`refine_geometry_from_grains` took the ω origin from `OmegaFirstFile` and the
+frame count from `NrFilesPerSweep`. Every MIDAS FF parameter file writes
+`OmegaStart`, and `NrFilesPerSweep` counts **files** — legitimately 1 on a
+one-file-per-sweep scan. The forward model therefore predicted a single frame at
+ω = 0 against a full 360° dataset.
+
+Nothing raised. On ti7al: **5 matched spots of 12 355**, and the solver
+converged with `rc=0` onto `Wedge = 5.0` — exactly its bound. Reading the origin
+by alias and deriving the frame count from `OmegaRange`/`OmegaStep` takes
+matching to **5710**.
+
+The same failure had been reported independently on ruby and nf709 as "Wedge is
+always 5.0". Both were the pre-fix build.
+
+### 8d. `tx` and `Wedge` — the measurement
+
+Profiled before believing: both are clean interior parabolas with the solver's
+answer on the grid minimum, contrast 3.9 in `tx` and 0.36 in `Wedge`. Fed back
+and reconstructed from scratch:
+
+| | tx = 0 | tx, Wedge refined |
+|---|---|---|
+| grains | 208 | 226 |
+| grain-Z scatter (sd) | 152.6 µm | **76.4 µm** |
+| within ±50 µm of the beam plane | 28.4 % | 43.8 % |
+| X / Y scatter | 271 / 265 µm | 273 / 272 µm |
+| completeness (median) | 0.580 | 0.630 |
+
+Z halving while X and Y stand still is what distinguishes a geometry correction
+from a fit absorbing error.
+
+**Grain Z remains under-resolved.** The layer step was measured from the raw
+files rather than taken from the folder name — `samY` advances 0.075 mm per
+scan, confirming BH100/OL25, so layer 1 is a 100 µm slab. A uniform slab gives
+sd 29 µm; observed is 153 µm before and 76 after. The distribution is peaked at
+the beam and nowhere near the ±500 µm `Hbeam` bound, so this is resolution, not
+the rule-9 bounding-box artefact.
+
+**Beyond `tx`/`Wedge` there is nothing to win on this data.** Thawing `Lsd`,
+`BC_y`, `ty`, `tz` as well moved the residual floor 307.2 → 306.9 µm; `BC_y`
+shifted 0.066 px, `Lsd` 98 ppm. Profiling `BC_y` gives a well-defined minimum
+(contrast 1.97) sitting **at the powder value**, so the grains independently
+confirm the CeO2 beam centre to 0.07 px.
+
+### 8e. `Lsd` is degenerate with the lattice and the wavelength
+
+Asked whether `Lsd` could be recovered by fixing a known cell. It can be
+*reported*, not measured. Sweeping the pinned lattice on nf709 (9077 grains):
+
+| assumed `a` (Å) | fitted `Lsd` (µm) | final cost |
+|---|---|---|
+| 3.5960 | 895 241 | 1.0666e9 |
+| 3.5990 | 896 006 | 1.0663e9 |
+| 3.6020 | 896 771 | 1.0661e9 |
+
+`Lsd` tracks the assumption **linearly**, ~249 µm per mÅ, while the cost is flat
+to 0.05 %. The ring radius depends on `Lsd·λ/a`; any two of the three fix the
+third. λ here is asserted at 0.19680 Å and never measured — the GUI seed file
+for the same beamtime says 0.1958 Å, a 0.5 % difference worth −4480 µm in `Lsd`,
+nine times the effect being chased. Breaking the degeneracy needs several
+distances with known relative travel (`--mode multi --lsd-offsets`).
+
+Separately: the grains refine to `a = 3.59612` (sd 0.00187) at the powder `Lsd`,
+against an expected 3.599 — an 800 µε inconsistency that this fit cannot
+attribute between cell, λ and `Lsd`. Open.
+
+### 8f. A wrong detector flip scores a *better* strain
+
+Same CeO2 exposure, only `ImTransOpt` differing:
+
+| `ImTransOpt` | BC_y (px) | BC_z (px) | strain |
+|---|---|---|---|
+| 2 — correct | 1450.86 | 1467.46 | 58.2 µε |
+| omitted | 1450.90 | **1411.59** | 55.6 µε |
+| 1 — wrong axis | **1427.98** | **1411.62** | **47.2 µε** |
+
+Every wrong variant beat the correct one on strain, and each affected coordinate
+lands exactly on `N-1 − BC`. Strain would have selected the worst of the three.
+A BC-mirror check is now a gate in `--mode ff` for this reason.
+
+The route in was a reading trap: `CalibrationParams` has no `ImTransOpt`
+attribute — the key lands in `.extra` — so `getattr(v1, "ImTransOpt", None)`
+returns nothing and the caller calibrates with no transform at all.
+
+### 8g. Distortion refined with no gradient
+
+`midas_distortion.v2_coeffs_from_named` fills a numpy array via `float(v)`,
+detaching every tensor. Thawed harmonics therefore received **zero gradient**
+and sat at their initial values while being reported as refined. Reported from
+the beamline as "only Lsd, BC_y, tx, ty, tz were refined" — correct observation,
+and the cause was ours.
+
+Now assembled in torch using `midas_distortion`'s own index tables: ordering
+identical to the numpy path, 15/15 coefficients receiving gradient.
+
+Once they *do* move, they should still not be refined from grains: on the ruby
+layer (6 grains) `iso_R4` and `iso_R6` both ran to +0.05 — their bound — for a
+0.08 % cost improvement. The distortion is a detector-wide field; the calibrant
+samples every azimuth and a handful of grains does not.
+
+### 8h. RETRACTED and corrected — do not resurrect
+
+| Claim | What killed it |
+|---|---|
+| "The zarr's all-zero `exchange/dark` is a real defect — the dark is not being subtracted" | Raw frame mean ~1850 vs zarr ~0.6: subtraction **had** happened at zip time. The zarr array is a cosmetic placeholder. Withdrawn the same session, before it reached the handbook |
+| "The binned files are in PF layout in an FF run — 10-col `Spots.bin`, int64 `Data.bin` pairs" | Read `midas_transforms/bin_data/core.py`: both are **deliberate**, "the unified midas_indexer always expects 10-col Spots.bin even in FF mode". A real difference from the legacy files, and not the fault |
+| "The calibration reproduces bit-identically" | Asserted on two runs that agreed exactly (`Lsd 895409.4747` twice). A third gave 895423.8443 and 58.2 µε against 61.3. Even iteration-0 fit counts differ (1136 vs 1133), so the peak fitting is thread-dependent. Spread ~15 µm in `Lsd`, ~3 µε — inside tolerance, but it is not reproducible and was reported as such in the delivered write-up |
+| "The failure was caused by `tx = 0`" (reported from the beamline) | The working file also has `tx 0` and gives 208 grains. The two files differ in `RhoD` *and* `tx`; only `RhoD` is causal |
+| "`midas-transforms --help` exits 2 because of the preflight wiring" | It exits 2 with the pre-change binary too. Pre-existing and unrelated — still open |
+
+### 8i. Measurement ledger — 20-ID
+
+| What | How it was established | Handbook § |
+|---|---|---|
+| `RhoD` = 309 538 µm | corner 2063.585 px × 150 µm; `--mode ff` resolves 309 552 internally by the same definition | 6d, rule 15 |
+| Dark lives in `/exchange/bright` | `/exchange/dark` and `/exchange/data` in the dark file are all zeros; `/exchange/bright` has mean 1950 | 3d |
+| Layer step 0.075 mm ⇒ BH100/OL25 | `measurement/instrument/SMS/samY` across files 002569–002574 | 5h, envelope |
+| Energy **not** in the files | full `visit()` of the calibrant HDF5: no energy, wavelength or mono field. 63 keV is from the filename and the parameter file | 4 |
+| 1441 of 1442 frames used | `nrFramesDone: 1441` in the peakfit log; raw `exchange/data` is (1442, 2880, 2880) | 3e |
+| Calibration repeatability ±15 µm | three identical runs, §8h | 5 |
+| ω zero-point differs by one 0.25° step from the legacy-C run | `[−179.75, 180]` vs `[−180, 180]` on the same data; frame accounting correct in both. **Open** | 11 |
+
+---

@@ -112,6 +112,46 @@ correction is purely isotropic, so deviatoric strain is unchanged: it fixes bias
 scatter. Report the stress impact as `eps_iso × 3K` — it is usually the headline number
 and often hundreds of MPa.
 
+## Strain pegged at its bound for every grain
+
+symptom: strain.all_railed
+
+**Test.** Read `RMSErrorStrain` (Grains.csv col 42) and the largest `|eKen|`
+(cols 33–41). The signature is unmistakable and admits no partial version:
+**every** grain sits at exactly `1.000e+04` µε — the ±0.01 Kenesei bound — and
+`RMSErrorStrain` lands around `1e36`. Then check the run directory for
+`IDsHash.csv`:
+
+```bash
+ls -la <layer_dir>/IDsHash.csv
+```
+
+Absent is the whole diagnosis. Present, and this entry does not apply — look at
+*Reference-lattice or wavelength scale error* instead, which is the physical
+version of a strain problem.
+
+**Cause.** `IDsHash.csv` carries the reference d-spacing d₀ per ring, and it is
+the only source process-grains has for the Kenesei gauge
+`ε = (d_obs − d₀)/d₀`. A missing file used to be answered with a fabricated
+`d₀ = 0`, which does not degrade the strain — it destroys it, by dividing by
+zero. Measured on both datasetA and shade_LSHR: 100 % of grains railed, in runs
+whose grain count, positions, orientations, sizes and completeness were **all
+correct and inside their acceptance bands**. Nothing warned.
+
+The file was written by `fit_setup(write=True)` but not by
+`Pipeline.dump()` — and `dump()` is the path `midas-pipeline run --scan-mode ff`
+takes. The two writers had silently diverged.
+
+**Lever.** Re-run the transforms stage (`--resume from --from transforms`) with
+`midas-transforms` ≥ the version whose `Pipeline.dump()` calls
+`write_ring_tables`, then re-run process-grains. Verify before trusting
+anything: `IDsHash.csv` present, its fourth column a real d-spacing per ring
+(for FCC Ni: 2.0785, 1.8000, 1.2728, 1.0854, 1.0392 Å), and `RMSErrorStrain`
+back in the hundreds of µε with **0 %** of grains at the bound.
+
+Current versions raise `FileNotFoundError` naming the file rather than
+fabricating d₀, so this can only be met on output produced by an older tree.
+
 ## Two populations in completeness or spot count
 
 symptom: split.bimodal
@@ -128,7 +168,127 @@ indicate a discrete algorithmic branch.
 **Cause.** Spatial split: illumination coverage. Non-spatial with fixed modes: a solver
 branch, most often the Friedel-pair position path succeeding versus falling back.
 
-**Lever.** For the footprint case, nothing to fix — report it as a property of the
-scan. For the branch case, re-run a subset with `UseFriedelPairs 0`; if the split
+**Lever.** For the footprint case, see the next section before writing "nothing to fix" —
+a beam narrower than the sample does not merely limit coverage, it manufactures grains.
+For the branch case, re-run a subset with `UseFriedelPairs 0`; if the split
 collapses, the Friedel path is the branch. Expect the bad branch to also carry inflated
 |Z|, internal angle and strain error, and verify they co-move before blaming one cause.
+
+## Most grains do not fit, and the good ones are all near the rotation axis
+
+symptom: split.illumination_radial
+coord: r = sqrt(X² + Y²) from `Grains.csv`
+
+The horizontal analogue of the `Hbeam` problem, and a different animal. `Hbeam` bounds Z,
+which does not change with ω. **A beam narrower than the sample is ω-dependent**: the beam
+is fixed in the lab while the sample rotates, so a grain at radial offset *r* is only lit
+while `|X·sin ω + Y·cos ω| < hw`. Its *achievable* completeness is geometric:
+
+```
+f(r) = 1                        r <= hw
+f(r) = (2/pi)*arcsin(hw/r)      r >  hw
+```
+
+With a 100 µm beam (hw = 50 µm) on a 1 mm rod: r=100 → 33 %, r=250 → 13 %, r=500 → 6 %.
+
+**This collides with `MinMatchesToAcceptFrac` (default 0.5).** A grain that can physically
+produce only 13 % of its reflections cannot reach the bar on real spots — so the only
+candidates that clear it at large *r* are ones padded out with coincidental matches. The
+result is not "fewer grains", it is **fabricated grains**, and the population median
+`DiffPos` then describes those artifacts rather than the instrument.
+
+**Test 1 — free, `Grains.csv` only.** Bin per-grain `DiffPos` by *r*. Measured on a 20-ID
+alumina rod (1 mm dia, 100 µm beam): good grains (`DiffPos` < 150 µm) sat at r p50 = 44 µm,
+p90 = 60 µm against a 50 µm beam half-width, and there were **zero** good grains beyond
+r = 100 µm, while `DiffPos` climbed 544 → 783 µm across the bins.
+
+**Test 2 — decisive, per grain, with a built-in null.** For each grain compute the ω arcs
+where it was actually lit, then ask what fraction of its assigned spots fall inside them.
+The arcs' **duty cycle is exactly the chance rate**, so the comparison needs no separate
+null:
+
+* `obs >> duty` → the spots track the illumination; they are that grain's real
+  reflections, and the ones it is missing are missing because it left the beam.
+* `obs ≈ duty` → the spots are spread independently of when the grain was lit; they are
+  coincidences and the "grain" is an artifact.
+
+On that alumina layer the informative grains (r > 75 µm) gave enrichment `obs/duty` p50 =
+**1.23** with 40 % consistent with pure chance — i.e. a grain lit for 8.8 % of the rotation
+had 85 % of its assigned spots recorded while it was **outside the beam**.
+
+**Cause.** Not the instrument, not the geometry, not the peak search — the matched spots
+are real, strong diffraction (median SNR 51 on the raw frames), they simply belong to
+other grains.
+
+**Lever.** There is no parameter that fixes this; the data under-determines those grains.
+Report the near-axis subset (r ≲ hw) as the reconstruction and say so explicitly. Widening
+the matching margins is *not* the cure and tightening them is worse — see rule 9 and the
+trap table. To reconstruct the full cross-section you need a **translation scan**
+(scanning 3DXRD / pf-HEDM), not a re-run of the same data.
+
+**Do not use `Confidence` to find the good grains.** On the same layer it was flat at
+~0.72 from r = 0 to 600 µm and a grain with `Confidence` 1.000 carried `DiffPos` 688 µm.
+It is measuring the chance floor. `DiffPos` separates the populations; `Confidence`
+does not.
+
+## Zero seeds indexed, run exits 0
+
+symptom: count.zero_indexed
+coord: —
+
+**Test.** Read `n_seeds_indexed` from `<result>/LayerNr_N/midas_state.h5`
+(`stages/indexing/metrics`) and the indexer's wall time. An honest zero on a real
+search takes tens of seconds; **0 seeds in ~0.1 s means the search never ran**.
+Then check the ring count:
+`awk 'NR>1{print $5}' hkls.csv | sort -n | tail -1`. Under 500 and this entry does
+not apply — look instead at the geometry, the ring assignment, or `Completeness`.
+
+**Cause.** `RhoD`/`MaxRingRad` far larger than the detector generated more rings
+than the indexer's fixed `MAX_N_RINGS` (500) table holds. On builds before
+2026-08-16 those rows were written unbounded, through `RingTtheta` and into the
+`data`/`ndata` bin pointers, after which every seed matched nothing. Measured:
+`RhoD 2000000` on a 2880 px detector → 745 rings → 0 of 4569 seeds.
+
+**Lever.** Set `RhoD` to `corner_px × px` (README rule 15, §6d) and regenerate —
+the cap only takes effect when `hkls.csv` is *written*, so changing the parameter
+without re-running `hkl` changes nothing. Upgrade `midas-index` so the condition
+warns instead of corrupting. The downstream `process-grains`
+`TypeError: ufunc 'invert'` is a symptom of the empty grain list, not the cause.
+
+## Refined geometry parameter sitting on a bound
+
+symptom: bound.parameter_railed
+coord: —
+
+**Test.** Compare each refined value against its bounds. `tx`/`Wedge` are bounded
+±5°, the distortion amplitudes ±0.05. A value *at* a limit is the optimiser saying
+it wanted to keep going. Cross-check `matched spots`: a large count with a railed
+parameter means the parameter is unconstrained; a tiny count means the prediction
+is not landing on the data at all, and that is the real fault.
+
+**Cause.** Either the parameter is not constrained by the data (too few grains,
+or a quantity this objective cannot see), or matching has failed upstream so the
+fit is optimising noise.
+
+**Lever.** Refine fewer parameters, or supply more grains. Distortion belongs on
+the powder calibrant, not on a handful of grains. Never report a bound value as a
+measurement — `midas-joint-ff-calibrate` ≥ 0.1.9 names it and exits 1.
+
+## Beam centre mirrored about the detector centre
+
+symptom: systematic.mirrored_beam_centre
+coord: —
+
+**Test.** Compare the refined beam centre with the previous one and with its
+mirror, `N-1 − BC`. Landing within a pixel or two of the mirror rather than of
+the prior value is decisive. **Strain does not diagnose this**: measured on 20-ID
+Varex, the mirrored fit scored 47.2 µε against the correct fit's 58.2 — the wrong
+geometry looked *better*.
+
+**Cause.** The image transform used in calibration does not match the one the
+reconstruction uses. `ImTransOpt 2` (flip-Z) applied in one and not the other
+flips an axis, and the fit follows it happily.
+
+**Lever.** Make `ImTransOpt` identical in both. Read it from the parameter file
+text or `v1.extra` — `CalibrationParams` has no such attribute, so `getattr`
+returns nothing and the calibration silently runs with no transform at all.

@@ -27,7 +27,6 @@ untested path does not get promoted to a recommendation. Written 2026-08-19.
 | `midas-integrate-v2-write-map` | never run |
 | `--mode soft` with any downstream consumer | differentiable path; no `--v1-out` |
 | calibrants other than CeO2 | `LaB6`, `Si`, `Al2O3` are accepted by `make_seed`; untested here |
-| single-panel detector end-to-end | the code path is the multi-panel one minus the panel block; not run start to finish |
 | non-Pilatus geometry | the procedure should transfer; every *number* in the spine is from one detector |
 | the expansion gauge in a real fit | unit-tested only; measured post-hoc, never inside a refinement |
 
@@ -41,6 +40,15 @@ Do not carry these to another dataset without re-measuring:
   published result is positive on a different detector.
 - 66.1 µε held-out — a quality *gate* is <100 µε; 66 is not a target.
 
+
+## Now exercised: single-panel, end to end (2026-08-19)
+
+A second context-free run reduced a **monolithic 2880 x 2880, 150 um, 900 mm**
+CeO2 frame — a different detector class from the one these docs were written on.
+Single-panel path (no panel block), calibrated from scratch: **held-out strain
+4.88 ue**, 16 rings landing at mean -0.021 px / RMS 0.031 px from ideal, ring
+overlay on the crests. It built its own mask (none supplied) and measured its
+effect. That closes the largest gap in this envelope — but it is one dataset.
 
 ## Found by handing this doc set to a context-free model (2026-08-19)
 
@@ -57,5 +65,40 @@ independently. It also found three defects these docs had missed:
    before it could be integrated with. Fixed.
 
 It also could not satisfy the §1 install gate from the released env and had to
-override `PYTHONPATH` at the canonical tree. **Until the queued release lands,
-the gate cannot pass on a stock install** — a real novice would stop there.
+override `PYTHONPATH` at the canonical tree. **That is now fixed**: the release
+landed and the gate — rewritten to probe behaviour rather than version strings
+after two of four numeric floors turned out to be wrong in opposite directions —
+passes 5/5 on a stock install.
+
+A **second** run, on the single-panel dataset above, found two more:
+
+4. **A template's `SubPixelLevel 5` was copied into the written paramstest**, so
+   the calibration output violated the pipeline's own hard rule 1 and had to be
+   sed-patched before integrating. Now clamped to 1 with a warning.
+5. **`ImTransOpt` was not mentioned anywhere in the doc set**, despite being
+   load-bearing and uncheckable after the fact. Now §2.
+
+Five defects across two runs. The rate has not flattened; expect more.
+
+
+## Adversarial eval — the halt conditions, tested (2026-08-19)
+
+The first three runs all used *healthy* data, so the doc set's detection
+machinery was almost entirely unexercised. This run was given the single-panel
+frame with **two faults planted silently** and no hint that anything was wrong.
+
+| planted fault | caught? | how |
+|---|---|---|
+| `ImTransOpt 2` → `0` (frame mirrored) | **yes** | tested every candidate transform: 0.163 px RMS for the right one vs 1.091 / 1.634; corroborated by `make_seed` returning the mirrored `BC_z` |
+| `Wavelength` +1 % (0.19582 → 0.197778 Å) | **yes** | cross-checked against the filename's 63 keV and identified the λ–`Lsd` degeneracy as the reason it cannot be resolved from this data |
+
+**2 of 2** — the first run where detection, rather than procedure, was measured.
+
+The `ImTransOpt` check was caught *because of* §2, which was written after the
+previous run. The wavelength one was **not**: the doc set never mentioned the
+λ–`Lsd` degeneracy, and that run recognised it from general knowledge. A weaker
+run would have absorbed the 1 % into `Lsd`, passed the strain gate, and reported
+a confidently wrong distance. Now hard rule 9, with a DIAGNOSIS entry.
+
+Still untested: H2 (seeded from a bad block), H4 (unresolvable shifts file),
+H5 (dLsd free), H7 (non-powder frame). Each needs its own planted-fault run.

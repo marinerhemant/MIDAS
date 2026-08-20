@@ -25,6 +25,17 @@ No suggestions here. State the consequence and the substitute.
 | Layers per run | one | spine scope gate | No through-thickness stacking within a run. | Match and stitch across runs, which is a separate step. |
 | Powder calibrant sensitivity to `tx` | zero | `manuals/Reconstruction_Reports.md:170`, [`DIAGNOSIS.md`](DIAGNOSIS.md) | A powder standard **cannot constrain `tx`** (rotation about the beam) at all. Refining it against powder is fitting noise. | Hold `tx` fixed during powder calibration, then refine it from the grains in a second pass. |
 
+> **Three different things are called "beam" in the parameters. Do not conflate them.**
+>
+> | key | what it actually is |
+> |---|---|
+> | `Hbeam` / `BeamThickness` | the illuminated **slab height**; a physical prior on Z |
+> | `BeamSize` | a **refinement position constraint**, not a description of the illuminated volume. Like `Rsample`/`Hbeam` it is a deliberately generous bound (hard rule 9), so a value far larger than the real beam is correct, not a bug |
+> | the actual beam **width** on the sample | never a parameter at all — it is an acquisition fact, and it is what caps which grains are reconstructable (§2 and DIAGNOSIS `split.illumination_radial`) |
+>
+> Reading `BeamSize 1000` as "the beam was 1 mm wide" and concluding the illuminated
+> volume is 10× too large is a real trap; it was hit on 2026-08-19.
+
 **Consequence worth stating on any report:** the position spread along the beam is set by
 the illumination geometry. A report that treats it as a reconstruction defect is wrong, and
 one that "improves" it by loosening bounds is making the answer worse. See the
@@ -39,6 +50,8 @@ The only tier where "what could be observed differently" has an answer.
 | **Ring count / `RingThresh`** | per run, measured from the data | rings visible at this energy and distance | detector extent, energy, saturation | **The strain tensor's conditioning.** Below about six rings the tensor is poorly determined and per-grain strain is indicative only. Adding higher-angle *unsaturated* rings is the single largest improvement available. |
 | Azimuthal coverage per ring | per run | set by BC and panel extent | beam centre near a panel edge truncates rings | Only rings with **full azimuthal coverage** are safe defaults. A partially covered ring biases the η-dependent terms. |
 | `Hbeam` / `BeamThickness` | per run | the **true per-layer beam** | physics: grains outside the beam cannot diffract | Constrains Z to the illuminated slab. **Never set to the sample dimension** — a 10-layer 100 µm scan carrying `Hbeam 1000` lets Z roam ±500 µm. |
+| **Beam WIDTH vs sample width** | fixed by the optics for the run | the beam's horizontal extent | slits / focusing | **Caps which grains are reconstructable at all.** Unlike `Hbeam` this is ω-dependent: the beam is fixed in the lab while the sample turns, so a grain at radial offset *r* is lit only a fraction `f(r) = (2/π)·arcsin(hw/r)` of the rotation. Grains beyond `hw` cannot reach `MinMatchesToAcceptFrac` on real spots and are accepted only on coincidences. A beam narrower than the sample means **only the near-axis core is determined** — the rest needs a translation scan. See DIAGNOSIS, `split.illumination_radial`. |
+| `MinMatchesToAcceptFrac` / `Completeness` | per run | — | — | The acceptance bar, as a fraction of a candidate's *predicted* reflections. Default 0.5. Read it together with the row above: it is a bar on **achievable** completeness, and where illumination caps the achievable value below it, the survivors are the padded ones. |
 | Lsd | per run | stage-limited | detector translation range | Angular resolution against ring coverage: further out resolves better and captures fewer rings. |
 | Energy | per run (keV) | source + optics | undulator, monochromator | Which rings are accessible, and penetration through the sample. |
 | ω step and range | per run | — | acquisition time | Peak sampling in ω, and whether Friedel pairs are available for the position path. |
@@ -58,6 +71,8 @@ No configuration helps.
 | d0 for a **non-cubic** or loaded sample, from the diffraction alone | The free-standing equilibrium argument does not close. | `midas_stress.recover_d0` works but needs single-crystal stiffness **and** orientations as external input. Not obtainable from the pattern alone. |
 | Reducing per-grain strain **scatter** by correcting d0 | The d0 correction is purely isotropic. It moves the baseline and leaves deviatoric strain untouched. | It fixes **bias**, and bias is often the headline (hundreds of MPa). Scatter is set by ring coverage and geometry — a §2 question, not a d0 one. |
 | Grain shape | FF recovers centroids, not shapes. | NF-HEDM recovers spatially resolved orientation. Different measurement, different doc set. |
+| Grain **Z** to better than ~2–3× the beam height | The vertical coordinate is the badly-conditioned one for a thin beam: a grain's spots move little in Z as it moves in Z. Measured on 20-ID with a 100 µm beam (layer step 0.075 mm, so BH100/OL25 confirmed from the data, not the folder name): grain-Z scatter 153 µm where a uniform slab gives 29, improving to 76 after refining `tx`/`Wedge` (§5h). Only 28 % of grains sat within ±50 µm of the beam plane, rising to 44 %. | This is not a bounding-box artefact — the distribution is peaked at the beam and nowhere near the ±500 µm `Hbeam` bound, so rule 9 is not in play. X and Y are unaffected (271/265 µm before, 273/272 after), which is exactly how you tell a resolution limit from a fit absorbing error. **Use X and Y; treat Z as indicative.** |
+| `Lsd` independently of the lattice and λ | The ring radius depends on the combination `Lsd·λ/a`, so any two of the three fix the third. Sweeping the assumed cell on nf709 (9077 grains) moved fitted `Lsd` **linearly** — 249 µm per mÅ — while the cost stayed flat to 0.05 %. Fixing `a` therefore *reports* an `Lsd`, but the number is a restatement of your assumption. | Breakable, but only with extra information: several detector distances whose **relative** travel is known (`midas-calibrate-v2 --mode multi --lsd-offsets`) share one `L0` and one λ, which is what makes λ identifiable rather than asserted. A powder standard breaks the `a` half, not the λ half. |
 
 ## 4. Derived limits
 

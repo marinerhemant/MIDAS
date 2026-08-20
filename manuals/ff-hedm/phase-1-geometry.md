@@ -95,6 +95,15 @@ instrument/SMS/E/HR/samRy                             <- per-frame rotation read
 
 ### 3d. The dark — separate file, in `exchange/data`, and the key name is `darkLoc`
 
+> **20-ID Varex:** the dark is in **`/exchange/bright`**. `/exchange/dark` exists
+> in the same file and is all zeros, so pointing at the obvious name leaves the
+> ~1500-count pedestal in the image. Set `darkLoc /exchange/bright`.
+>
+> Separately, `exchange/dark` **inside the zarr** also reads all zero on these
+> datasets, and that one is harmless: the data was already dark-subtracted at zip
+> time (raw frame mean ~1850 → zarr ~0.6). Check the data frames before chasing
+> it — see the halt-condition wording in the spine.
+
 **Use the separate dark file, not the in-file `exchange/data_dark`.** Pair it with its
 scan by acquisition number: the dark is `dark_before_<N-1>` for data file `<N>` —
 `dark_before_000007.ge5.h5` goes with `Au3_cubes_ff_000008.ge5.h5`. Its frames live in
@@ -190,6 +199,76 @@ no consumer to do it for you, so drop it yourself: `data[1:].mean(axis=0)`, dark
 
 ---
 
+### 3f. `ImTransOpt` — the detector flips
+
+A list of codes applied **in order** to every frame, before anything else sees
+it (`midas_peakfit/midas_peakfit/preprocess.py`,
+`apply_image_transformations`):
+
+| code | effect | as indices |
+|---|---|---|
+| 1 | flip horizontal, along Y / the row axis | `image[l, m] := image[l, N-m-1]` |
+| 2 | flip vertical, along Z / the column axis | `image[l, m] := image[N-l-1, m]` |
+| 3 | transpose | `image[l, m] := image[m, l]` |
+
+`ImTransOpt 2` on 20-ID Varex; establish it per detector, not per run.
+
+**It is a convention, like the ω sign, and it belongs in the same category of
+danger.** A wrong flip does not fail. It mirrors the reconstruction, and a
+mirrored microstructure has a perfectly normal grain count, normal completeness
+and normal strain. You cannot see it in `Grains.csv`.
+
+**The rule is that calibration and reconstruction must use the *same* value.**
+A mismatch mirrors the geometry relative to the fit, and then the two disagree
+in a way that no downstream number reveals.
+
+#### Why the calibrant will not save you
+
+A powder pattern is concentric rings. Flipping it about either axis maps rings
+onto rings, so the fit converges just as happily on the mirrored image — the
+ring overlay (§5d) looks *correct*, because it is correct, for the mirrored
+geometry.
+
+Measured on 20-ID CeO2, same exposure, only the transform differing
+(Lab Notebook §8f):
+
+| `ImTransOpt` | BC_y (px) | BC_z (px) | strain | gate |
+|---|---|---|---|---|
+| **2** — correct | 1450.86 | 1467.46 | 58.2 µε | PASS |
+| *omitted* | 1450.90 | **1411.59** = 2879 − 1467.46 | 55.6 µε | PASS |
+| **1** — wrong axis | **1427.98** = 2879 − 1450.86 | **1411.62** | **47.2 µε** | PASS on strain |
+
+Both wrong geometries scored a **better** strain than the correct one, and the
+mirror is exact: each affected coordinate lands on `N-1 − BC`. Strain alone
+would have chosen the worst of the three. This is the concrete reason rule 6's
+gate is necessary but not sufficient, and why the BC-mirror check below is a
+gate in its own right rather than advice.
+
+#### How to establish it, and how to check it
+
+1. **Inherit it.** If a previous reconstruction on this detector worked, take its
+   value. This is the normal case and the only one that needs no thought.
+2. **Check against a prior beam centre.** A refined BC landing within a pixel or
+   two of `N-1 − BC_prior`, rather than near `BC_prior`, is the mirror
+   signature and is decisive. `midas-calibrate-v2 --mode ff` runs this check
+   automatically and **fails the gate** when it fires, precisely because strain
+   will not.
+3. **Use a physically asymmetric feature.** The beamstop shadow, a dead region,
+   or a panel edge sits somewhere known on the real detector. Locate it in the
+   transformed frame and confirm it is where the hardware says it is.
+4. **Otherwise stop and ask.** With no prior geometry and no asymmetric feature,
+   a single powder exposure genuinely cannot tell you, and guessing costs a
+   mirrored dataset that looks fine.
+
+#### The reading trap
+
+`CalibrationParams` does **not** expose `ImTransOpt` as an attribute — the key
+lands in `.extra`. Reading it the obvious way returns nothing and the caller
+then silently calibrates with *no* transform at all, which is how the mirrored
+fit above was produced. Read it from `.extra`, or from the parameter-file text.
+
+---
+
 ## 4. STEP 3 — Energy and distance: the two fields that lie
 
 ### 4a. Energy
@@ -230,8 +309,36 @@ Use `DetZ` as a *seed* only, and expect the fit to move a long way. Differences 
 
 ## 5. STEP 4 — Calibrate on a calibrant
 
-Package: `midas_calibrate_v2` (0.5.2). Entry point `calibrate()` — image + λ + pixel size
+Package: `midas_calibrate_v2`. Entry point `calibrate()` — image + λ + pixel size
 + calibrant name, everything else auto-seeded.
+
+**Prefer the one-call route**, which does §5a–§5g and writes the parameter file:
+
+```bash
+midas-calibrate-v2 <template paramstest> --mode ff \
+  --image <calibrant file> \
+  --dark-group exchange/bright \        # 20-ID Varex; omit or change elsewhere
+  --initial-lsd 900000 \
+  --raw-folder <SAMPLE data folder> \
+  --output calib/ps_calibrated.txt
+```
+
+The positional file is a **template**: thresholds, ring numbers, ω scan, lattice
+and file naming are carried through; geometry, distortion, `px` and **`RhoD`**
+are replaced. It is therefore correct to hand it the very file that was failing.
+It writes a ring overlay every time and exits non-zero above the 100 µε gate.
+
+It also fixes three things that are easy to get wrong by hand and do not raise:
+the generic `--image` HDF5 loader takes the file's *first top-level key* (on a
+`.vrx.h5` that is the `WM` metadata group, not the data); the beam centre must
+be auto-seeded, never guessed; and `RhoD` must be rewritten (§6d).
+
+Omit the template entirely and pass the experiment keys as flags (`--px`,
+`--lattice`, `--space-group`, `--omega-start/--omega-step`, `--ring-thresh`, …)
+when there is no previous reconstruction to inherit from. Note that
+`--ring-to-index` then defaults to the *lowest* ring given, which is often not
+the strongest: on ti7al, ring 1 gave 1630 seeds and 173 grains where ring 3 gave
+4512 and 208.
 
 ### 5a. Look at the raw frame first
 
@@ -352,5 +459,100 @@ order (`iso_R2→p2`, `iso_R4→p5`, `iso_R6→p4`, `a2→p0`, …).
 
 `ff_paramstest_from_auto_result` merges the geometry into an existing FF template,
 carrying thresholds and scan keys through verbatim.
+
+---
+
+### 5h. `tx` and `Wedge` — the two the calibrant cannot see
+
+Run this **after** a first reconstruction, then reconstruct again with the file
+it writes. It is the one geometry step that needs grains rather than powder.
+
+Neither parameter is recoverable from a calibrant, for reasons of symmetry
+rather than precision:
+
+* **`tx`** is a rotation of the detector about the beam. Powder rings are
+  concentric, so rotating them about their own centre changes nothing. `tx` is
+  *structurally* invisible to a calibrant, and `midas-calibrate-v2` therefore
+  seeds it at 0 and never refines it.
+* **`Wedge`** is the departure of the rotation axis from perpendicular. A still
+  image never sees the rotation axis at all.
+
+Both act on single-crystal spots followed across ω, which is what a grain list
+is.
+
+```bash
+midas-joint-ff-calibrate grain-tx \
+  --paramstest <calibrated params> \
+  --layer-dir  <result>/LayerNr_1 \
+  --refine tx,Wedge --max-grains 100 --max-iter 120 \
+  --out ps_txwedge.txt
+```
+
+**Measured, 20-ID ti7al layer 1** — feeding the result back and re-running:
+
+| | before | after |
+|---|---|---|
+| grains | 208 | 226 |
+| grain-Z scatter (sd) | 152.6 µm | **76.4 µm** |
+| completeness (median) | 0.580 | 0.630 |
+| X / Y scatter | 271 / 265 µm | 273 / 272 µm — unchanged |
+
+Z halving while X and Y stand still is the signature of a real geometry
+correction: it tightened the badly-conditioned coordinate and left the
+well-conditioned ones alone. A fit that moved all three would be absorbing
+error.
+
+**`--refine` is a freeze/thaw list**, not a fixed pair. Also available: `Lsd`,
+`BC_y`, `ty`, `tz`, and the distortion harmonics (`iso_R2/R4/R6`, `a1..a6`,
+`phi1..phi6`). Naming any of `BC_y`/`ty`/`tz`/distortion switches the residual
+to a raw-pixel path that recomputes the observations at the trial geometry,
+Stage-4 spline included.
+
+`BC_z` is **refused**: a vertical beam-centre shift is degenerate with a global
+shift of the grain Z positions, which is exactly the coordinate far-field
+determines worst.
+
+**`--fix KEY=VALUE` pins a parameter to a value you know** — a lattice measured
+on a standard, grain positions a focused beam already defines — and holds it
+there while the rest refines. That is different from leaving it out of
+`--refine`, which keeps whatever the parameter file said. A single row
+broadcasts to every grain:
+
+```bash
+  --fix grain_lattice=4.1569,4.1569,4.1569,90,90,90     # LaB6
+```
+
+#### Two checks before believing any of it
+
+**`matched spots` must be a large fraction of the grains' spots.** A handful
+means the predicted pattern is not landing on the data at all — nearly always
+the ω-scan keys.
+
+**No refined value may sit on a bound.** ≥ 0.1.9 names it and exits 1, because
+this has produced plausible-looking wrong answers three times: `Wedge` at +5.0
+from a misread ω key, `iso_R4`/`iso_R6` at +0.05 from six grains.
+
+Conditioning is checked up front and will warn you: `tx` needs ω-coupling
+**across** grains to be separable from each grain's own orientation, so fewer
+than ~5 grains makes it poorly determined; the distortion is a detector-wide
+field and wants ~50+, which is why it belongs on the calibrant.
+
+#### What this cannot give you
+
+`Lsd` is refinable here, but the data determines the **product** `Lsd·λ/a`, not
+`Lsd`. Measured on nf709 (9077 grains) by sweeping the assumed cell:
+
+| assumed `a` (Å) | fitted `Lsd` (µm) | final cost |
+|---|---|---|
+| 3.5960 | 895 241 | 1.0666e9 |
+| 3.5990 | 896 006 | 1.0663e9 |
+| 3.6020 | 896 771 | 1.0661e9 |
+
+`Lsd` tracks the assumed lattice **linearly** — about 249 µm per mÅ — while the
+cost is flat to 0.05 % (Lab Notebook §8e). The fit is not choosing `Lsd`; you are, through the
+lattice and through λ. Breaking that degeneracy needs several detector
+distances with known relative travel (`midas-calibrate-v2 --mode multi
+--lsd-offsets`), which is the only route here that makes λ identifiable rather
+than asserted.
 
 ---

@@ -9,8 +9,10 @@ What this measurement can and cannot determine, and which of those is changeable
 before promising an answer, and before suggesting a different measurement.
 
 > **Not the scope gate.** The scope gate says whether these recipes apply to your data.
-> This says whether the measurement can answer the question. 20-ID HT-HEDM is a different
-> world and is gated in the spine; nothing here describes it.
+> This says whether the measurement can answer the question. §1–§4 below were established
+> at 1-ID; 20-ID HT-HEDM now runs through the same pipeline (spine §3h) but its envelope
+> has not been re-derived, so treat every bound here as 1-ID's until it has been. The one
+> 20-ID limit that IS established is §3's last row.
 
 ---
 
@@ -54,6 +56,7 @@ No configuration helps.
 | Elastic strain per voxel | NF recovers **orientation and position**. Strain needs the lattice-parameter precision a far-field geometry provides. | FF-HEDM recovers per-grain strain tensors. Combine the two rather than pushing NF at it. |
 | Orientation of a voxel the beam did not illuminate | No signal. | Low confidence from a poor fit looks similar in a map and means something else entirely. Check illumination coverage before interpreting a low-confidence region. |
 | Breaking a single-crystal calibrant's orientation degeneracy with more voxels | §1 row 3 — N voxels of one grain carry one orientation's worth of information. | More voxels **do** help when the field contains more than one grain. |
+| **The handedness of a 20-ID orientation map** | The ω sign has never been determined at that beamline (spine hard rule 1), and no measurement in the data can supply it: a global mirror maps a consistent solution to another consistent solution. Confidence, grain statistics, distances and positions are all invariant under it, so nothing downstream flags it. | This is **not** low confidence and **not** a fit failure — the map is right up to a mirror. It is also *not* intrinsic in the physical sense: a beamline determination (known rotation sense, or a sample of known chirality) fixes it permanently and moves this row to §5. |
 
 ## 4. Derived limits
 

@@ -81,11 +81,37 @@ fi
 ### 1a. On an APS beamline host
 
 All APS hosts share `/home/beams*`. conda is **not** on the non-interactive ssh PATH, so
-call the shared env by full path:
+call the env by full path. **There are two, and the choice is not cosmetic:**
 
 ```bash
-/home/beams12/S1IDUSER/opt/envs/midas/bin/python
+/home/beams12/S1IDUSER/opt/envs/midas/bin/python       # production: PyPI-pinned
+/home/beams12/S1IDUSER/opt/envs/midas-dev/bin/python   # dev: editable on MIDAS_canonical
 ```
+
+| you are… | use |
+|---|---|
+| reconstructing a beamtime | `midas` — a pinned, released tree |
+| testing a fix you just made | `midas-dev` — **the only env that sees it** |
+| reproducing what a user got | `midas` |
+
+`rsync … → ~s1iduser/opt/MIDAS_canonical/packages/<pkg>/` reaches **only
+`midas-dev`**. Production imports its own site-packages copies and is untouched
+by any rsync; it changes only on a deliberate `pip install -U`. Deploy is not
+release.
+
+If you are validating a change, confirm the env before you trust the run:
+
+```bash
+<env>/bin/python -c "import midas_pipeline,pathlib; print(pathlib.Path(midas_pipeline.__file__).parent)"
+```
+
+If that path does not contain `MIDAS_canonical`, you are testing the last
+release, not your edits. That mistake cost a full FF validation run on
+2026-08-13: everything looked healthy, but the pipeline used the released
+config and returned 23 738 grains where ~6 180 was expected.
+
+Also `unset PYTHONPATH` in run scripts — a stale `~/opt/midas_overlay` on the
+path shadows the install and reintroduces old code under either env.
 
 GPU prefix: `CUDA_DEVICE_ORDER=PCI_BUS_ID KMP_DUPLICATE_LIB_OK=TRUE`. Pick a GPU by
 **utilisation**, not free memory.

@@ -1310,3 +1310,38 @@ r = 499.8 ± 2 µm with rms down to 0.81 px. This did not appear on `nfdev_jul26
 because the swing there (906 px) separated the two absorbers cleanly; here it is
 only ~500 px. **With more than one absorber, freeze the stationary one to the
 ω-median before tracking the moving one.**
+
+### 8j. The two pipeline blockers closed, and what the real file said (2026-08-19)
+
+`midas_nf_preprocess` had no HDF5 reader and `process_all` began by loading a whole layer,
+so every 20-ID reduction in §7 and §8 above was run by hand-rolled script and the doc set
+gated the data out of the pipeline. Both are now in the package: `process_images/io.py`
+(`FrameSource` / `TiffFrameSource` / `Hdf5FrameSource`, chosen from `extOrig`) and
+`median.py::streaming_temporal_median`. Keys in `PARAMETERS.md` §10f.
+
+**Validated against the real file**, not just synthetic fixtures
+(`~/Desktop/analysis/nfdev_jul26_20id/validate_h5_reader.py`, log on chutoro at
+`~hsharma/nf20id_check/validate.log`). On `NF_Au_cube_0802_000708.h5`:
+
+| check | result |
+|---|---|
+| frames read vs `h5py` at 0 / 1 / 719 / 1439 | **exactly equal**, max\|diff\| 0 |
+| dataset length vs `NrFilesPerDistance` | 1442 in file, **1440** used — the last two duplicate the first two |
+| `PixelScale` on a scan known to be unscaled | quiet at 1, warns at 64. Unique values 0, 2, 4, 8, 12, … max 4092 |
+| streaming vs materialised, 8 real frames end to end | **bit-identical** `SpotsInfo.bin`, 57,243 bits set |
+
+**The subsampled median, measured for the first time.** 60 evenly spaced frames against all
+1440, rows 2070–2530: **0.043 % of pixels differ, max |diff| 4 counts**, and at the
+production threshold the blobs ≥ 4 px are **identical** on five frames spread across the
+sweep (24 vs 24); above-threshold pixel counts rise 0.1–3.8 %. So the shortcut every §7/§8
+reduction relied on did not change what was detected — on **one row band of one distance of
+one scan**. `MedianFrames` therefore still defaults to all frames. A median biased high
+suppresses weak spots silently, which is exactly the failure a sparser or longer-exposure
+scan could produce without raising anything.
+
+**Access changed under us.** `s1iduser` is no longer in `bt20idjul26b-20id-962940` or
+`nfdevjul26-20id-0a26b1`, so **neither 20-ID beamtime is readable from that account any
+more**; `hsharma@chutoro` is in both and is the working route. Also `~/nfdev_recon/` on
+chutoro — including the 13 GB `SpotsInfo.bin` — **is gone**, while
+`/scratch/s1iduser/au0802_recon/` survives. The usual assumption is backwards here: check
+before relying on either.

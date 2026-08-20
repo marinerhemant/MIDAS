@@ -147,3 +147,22 @@ absolute difference 0 over 648 000 bins. Any difference is a bug worth chasing.
 
 **v1** → expect ~1e-7 relative from float32 reduction order. That is not a bug.
 If it exceeds ~1e-5, check that both runs used the same `Map.bin`.
+
+
+## The calibration passes every gate but you doubt the distance
+
+**Test.** Compare λ from three sources: the parameter file, the filename /
+metadata, and the beamline log. Then ask whether the fit could have told you.
+
+**If they disagree** → λ and `Lsd` are degenerate in a single-distance powder
+fit, so the refiner absorbed the error into the distance and the strain gate
+passed anyway. On a planted 1 % wavelength error the right and wrong hypotheses
+differed by only 0.063 vs 0.083 px RMS — the data cannot separate them.
+
+**Lever.** Take λ from the beamline, not the fit. To break the degeneracy you
+need several *exactly known* distances: `midas-calibrate-v2 --lsd-offsets`
+refines one shared `L0` plus the known travel and a shared λ. Merely calibrating
+at several distances with a free `Lsd` per image does **not** work — λ and the
+distances rescale together.
+
+**If they agree** → the distance is as good as the ring fit says.
