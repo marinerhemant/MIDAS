@@ -355,3 +355,108 @@ phase have its own tilts and reported a **1.43 mm** offset at 3.7σ. The tilts w
 absorbing the difference. Sharing them collapsed it to 72 µm. The 1.43 mm figure
 is withdrawn. Same shape as the `R(pixel)` mistake in §5: a quantity that looked
 like a measurement was an artefact of what else was left free.
+
+---
+
+## §12. Bad-pixel sentinels are not always negative — ESTABLISHED
+
+Everything in this doc set had assumed the Pilatus convention: gaps and bad
+pixels marked with `-1` / `-2`, caught by `img[img < 0] = 0`. That assumption is
+false for a whole detector class, and it fails in the dangerous direction.
+
+**What happened.** A survey of `/gdata/dm/1ID` turned up
+`2026/bt_1id_apr26/data/eiger` — CeO2 and LaB6 on an EIGER2 CdTe 16M. Reading a
+frame gave `min 0  max 4294967295`. That is exactly `2**32-1`, the uint32
+maximum, and it covers **1 285 014 of 18 093 576 pixels = 7.102 %**.
+
+**It is the module map, not noise.** Measuring the sentinel bands directly:
+
+```
+horizontal gap bands (row, width): 7 bands, all width 38, at 512/1062/…/3812
+vertical   gap bands (col, width): width 12 at 1028/2068/3108, width 2 at 513/1553/2593/3633
+→ 8 module rows × 512 active px,  4 module cols × 1028 px (each split 513|2|513)
+   8·512 + 7·38 = 4362      4·1028 + 3·12 = 4148
+```
+
+which is the Dectris EIGER2 16M layout exactly. So the sentinel marks physical
+module gaps and flagged pixels — it is a bad-pixel map the detector hands you,
+not something to derive statistically.
+
+**Why the old guard is worse than useless here.** `img[img < 0] = 0` leaves
+4.29e9 in place. A small negative that slips through biases a bin slightly; a
+value nine orders of magnitude above the signal dominates any centroid, radial
+profile or seed it touches. The failure is silent because the array is finite,
+positive and the right shape.
+
+**The averaging trap.** `_read_hdf5` means over frames. Detect the sentinel
+*after* the mean and it is already gone: blend `2**32-1` with three real counts
+of 10 and the result is 1 073 741 831, which equals no sentinel and looks like a
+hot pixel. Detection has to run on the raw integers, before the average. The
+mask is the union over frames — a pixel bad in any frame is bad in the result.
+
+**Regression check before changing the default.** The new `bad_value="auto"`
+only claims the unsigned dtype-max, so it had to be shown not to disturb the
+detectors already in use. On real 1-ID frames:
+
+| detector | dtype | pixels at dtype-max |
+|---|---|---|
+| ge5 ×3, ge3 ×1 | uint16 (max 65535) | **0** |
+| varexC | float32 | rule does not apply |
+| pilatus | int32, min −2 | rule does not apply (signed) |
+| eiger | uint32 | 1 285 014 = 7.102 % |
+
+So the change is inert on GE, Varex and Pilatus and active only where the
+problem exists. Signed and float data are deliberately excluded — there the
+`< 0` convention already applies and `int32` max is a plausible real count.
+
+**Status.** ESTABLISHED for this detector. The *mechanism* (vendors mark bad
+pixels out of band, at either end of the range) is general; the 7.102 % and the
+module geometry are this detector.
+
+---
+
+## §13. The 1-ID energy is a K edge, not the monochromator readback — ESTABLISHED
+
+Rule 9 said "take λ from the beamline". Working out what that means in practice
+across the 1-ID archive sharpened it into something checkable.
+
+**The claim.** 1-ID tunes the monochromator to an absorption K edge and stays
+there. So the energy is the *tabulated K edge of the foil element*, and the
+element is recorded in `~/new_data/<expt>/fastsweep_Emon*.txt`.
+
+**Evidence.** Over 116 beamtimes that hold a calibrant:
+
+- 102 name an element in an Emon file.
+- Of the 82 that also log an energy, **74 (90 %)** sit within 0.3 % of a
+  tabulated foil K edge — edges read from MIDAS's own
+  `midas_pdf/midas_pdf/data/fluor_edges.json`, not a typed list.
+- Where the metadata names the element, it is the right one in **68 of 80**.
+- The elements in use are exactly the ones that make the canonical 1-ID
+  energies: Re 71.676 (44 beamtimes), Tb 51.996 (13), Yb 61.332 (11),
+  Au 80.725 (9), Ho 55.618 (6), Hf 65.351 (5), Bi 90.526 (5), Ir 76.111 (4).
+
+**The readback is biased low.** `fastpar_*.par` field 10 is the monochromator's
+own energy. Against the tabulated edge it sits a median **−0.040 %**
+(n = 68, range −0.18 % to +0.10 %). Small, but systematic and it goes straight
+into `Lsd`.
+
+**`exp_setup.yml`'s `EDGE:` is stale.** 18 beamtimes have both it and an Emon
+element; they **disagree in 9**. In those 9 the Emon element matches the logged
+energy 7 times and the yml value **0** times (2 were off-edge). It reads
+`EDGE: Re` on runs plainly at the Yb, Tb, Pt or Ta edge.
+
+**Not every run is on an edge.** 8 of the 82 are at round settings — 95, 100,
+100.2 keV — where no foil edge is within 0.3 %. There the readback is the only
+source and should be carried with ±0.1 %, not quoted as exact.
+
+**Two false leads, recorded so they are not re-run.** (i) The element token in
+the `.par`/Emon row is *not* the edge on off-edge runs: `bt_1id_jul26` names
+Pb but ran at 95 keV, and Pb K is 88.004. (ii) A first pass took energy from
+field 10 of *every* `.par` file and got nonsense (16867, 5147, 27) — only the
+`fastpar_*` layout puts energy there; `per_frame_waxs_*.par` and `waxs_*.par`
+put a frame counter in the same column.
+
+**Status.** ESTABLISHED as a description of the archive. It does not make the
+energy a *measurement* of any given exposure — that still needs several known
+distances (rule 9), and the multi-distance sets that could check it are listed
+in the inventory.

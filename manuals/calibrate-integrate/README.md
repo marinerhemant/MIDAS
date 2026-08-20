@@ -59,8 +59,9 @@ python -c "import midas_integrate_v2 as a, midas_calibrate_v2 as b; print(a.__ve
 after you set `PATH`. Outside APS, activate any environment with the packages
 installed — nothing below depends on this path.
 
-**The gate is behavioural, not a version number.** Four defects produce
-plausible wrong answers rather than errors. Run:
+**The gate is behavioural, not a version number.** Most of these defects produce
+plausible wrong answers rather than errors; the last one produces a hard failure
+on a whole detector class. Run:
 
 ```bash
 python manuals/calibrate-integrate/floorcheck.py
@@ -75,6 +76,8 @@ It probes the behaviour each floor guarantees:
 | integrate v1 sizes the map buffer, always warns | the map truncates at fine `RBinSize`; normalised profile still looks fine |
 | calibrate v1 parses `FixPanelID` | the anchored panel is silently 0 |
 | integrate-v2 one-shot takes `--mask` / `--device` | masked pixels enter the profile as raw values |
+| `read_image` flags the high (unsigned dtype-max) sentinel | 7 % of an EIGER frame enters the fit as 4.29e9, silently |
+| importing MIDAS registers the HDF5 bitshuffle filter | bitshuffle/LZ4 HDF5 (EIGER, ESRF) will not open at all |
 
 **Exit non-zero means stop.** These are not conveniences.
 
@@ -102,8 +105,15 @@ print(a.shape, a.dtype, 'min', a.min(), 'max', a.max(), 'median', np.median(a))
 - **Calibrant vs sample**: a calibrant frame has continuous, azimuthally smooth
   rings; a sample has spots or texture. If unsure, integrate one frame (§5) and
   look at I(η) on a strong ring — flat means powder.
-- **Negative values** (`-1`, `-2`) are gap / bad-pixel sentinels, not counts.
-  Clip them to 0 before calibrating; do **not** feed them to a fitter.
+- **Out-of-band values are gap / bad-pixel sentinels, not counts** — and the
+  sign is a vendor convention, not a rule. Pilatus writes them **low** (`-1`
+  gap, `-2` overflow), which `img[img < 0] = 0` catches. Dectris EIGER writes
+  them **high**, as the largest representable unsigned value (`2**32-1` for
+  uint32), where every `< 0` guard fails open and a fitter is handed 4.29e9 as
+  a photon count. Measured on a real EIGER2 16M frame: **7.10 % of the
+  detector**. `read_image` flags the unsigned dtype-max by default and warns;
+  take the mask from it rather than writing your own threshold —
+  Lab Notebook §12.
 - **A mask** covering gaps and bad pixels: find it, or build one. If the facility
   has no bad-pixel map, a workable recipe is the ratio of each pixel to the
   azimuthal median at its own radius — smooth it, call the low tail a shadow,
@@ -161,8 +171,9 @@ The CLI does not expose multi-panel refinement, so a tiled detector uses the
 Python API:
 
 ```python
-import numpy as np, tifffile
+import numpy as np
 from midas_calibrate.params import CalibrationParams
+from midas_calibrate_v2.io.readers import read_image
 from midas_calibrate_v2.seed.auto_seed import make_seed
 from midas_calibrate_v2.compat.from_v1 import (
     spec_from_v1_params, add_panel_parameters,
@@ -171,9 +182,13 @@ from midas_calibrate_v2.compat.to_v1 import write_v1_paramstest
 from midas_calibrate_v2.forward.panels import PanelLayout
 from midas_calibrate_v2.pipelines.four_stage import autocalibrate_four_stage
 
-img = tifffile.imread(FRAME).astype(np.float64)
+# read_image knows BOTH sentinel conventions and returns the mask.  Do not
+# substitute `img[img < 0] = 0`: it is blind to the EIGER high sentinel (§2).
+img, bad = read_image(FRAME, return_mask=True)   # sentinels already zeroed
+img[img < 0] = 0.0                # belt and braces for a low-sentinel file
 seed = make_seed(img, wavelength_A=LAMBDA, px_um=PX, calibrant="CeO2")
-img[img < 0] = 0.0                       # gap sentinels are not counts
+# NB seed AFTER cleaning, not before — an earlier draft of this recipe fed
+# make_seed the raw frame, sentinels and all.
 
 v1 = CalibrationParams.from_file(TEMPLATE)   # thresholds, lattice, detector size
 v1.BC_y, v1.BC_z, v1.Lsd = seed.BC_y, seed.BC_z, seed.Lsd_um
@@ -328,8 +343,12 @@ midas-integrate-v2 paramstest_v2.txt --image FRAME.tiff \
 ```
 
 **`--mask` is not optional on a detector with gaps.** Without it every masked
-pixel — including the `-1` gap sentinels — enters the profile as a raw value.
-Measured on the reference frame: **1775 of 1800 bins change, by up to 25 %.**
+pixel — including the sentinels, `-1` on a Pilatus or `2**32-1` on an EIGER —
+enters the profile as a raw value. Measured on the reference frame: **1775 of
+1800 bins change, by up to 25 %.** Write the mask from the reader rather than
+inventing a threshold: `read_image(..., return_mask=True)`, then
+`tifffile.imwrite("mask.tif", mask.astype(np.uint8))` — the CLI reads it as
+`tifffile.imread(...).astype(bool)`, so **1 = masked**.
 
 `--v1-out` writes `lineout.bin`, `lineout_simple_mean.bin` and `Int2D.bin` —
 the three files the beamline chain reads — beside the CSV. Without it, CSV only.
@@ -437,8 +456,15 @@ manufacture a false discrepancy (Lab Notebook §3).
 2. **Never seed the calibration from an existing parameter block.** `make_seed`
    works from the image. A prior answer's errors are inherited silently.
 
-3. **Clip negative sentinels before calibrating.** `-1` / `-2` are gaps and bad
-   pixels, not counts.
+3. **Remove the sentinels before calibrating, and do not assume they are
+   negative.** `-1` / `-2` (Pilatus) and `2**32-1` (EIGER, and any unsigned
+   dtype-max) are gaps and bad pixels, not counts. `img[img < 0] = 0` catches
+   only the first kind and fails **open** on the second, which is the more
+   dangerous direction: the fitter gets 4.29e9 instead of a small negative.
+   Use `read_image(..., return_mask=True)`, which handles both and returns the
+   mask. Verified across the 1-ID archive: GE uint16 frames carry **zero**
+   pixels at 65535, so this costs nothing on the detectors that never had the
+   problem. (Lab Notebook §12.)
 
 4. **Fix δLsd to 0 and move the modules.** A module is misplaced *in the
    detector plane*, giving a constant ΔR; a per-panel δLsd gives ΔR ∝ R. Fitting
@@ -471,8 +497,23 @@ manufacture a false discrepancy (Lab Notebook §3).
    looks clean.
 
    So take λ from the beamline (monochromator/undulator), never from the fit,
-   and cross-check it against the filename and the metadata. To break the
-   degeneracy you need **several exactly-known distances** —
+   and cross-check it against the filename and the metadata.
+
+   **"From the beamline" is more specific than it sounds.** At 1-ID the
+   monochromator is tuned to an absorption **K edge** and left there, so the
+   number to use is the *tabulated edge energy of the foil element* — read the
+   element from `~/new_data/<expt>/fastsweep_Emon*.txt` and look the edge up in
+   MIDAS's own table, `midas_pdf/midas_pdf/data/fluor_edges.json`. Measured over
+   116 beamtimes (Lab Notebook §13): 74 of the 82 with a logged energy sit
+   within 0.3 % of a foil K edge; the monochromator readback in
+   `fastpar_*.par` field 10 runs a median **0.040 % below** the tabulated edge;
+   and `exp_setup.yml`'s `EDGE:` key is **stale** — where it disagrees with the
+   Emon element (9 of 18 beamtimes) the Emon element is right 7 times and the
+   yml value never. Some beamtimes are deliberately off-edge at a round setting
+   (95, 100 keV); there the readback is all there is, and it carries ±0.1 %.
+
+   To break the degeneracy with a measurement rather than a claim about the
+   monochromator, you need **several exactly-known distances** —
    `midas-calibrate-v2 --lsd-offsets`, which refines one shared `L0` plus known
    offsets and a shared λ. Measured on a planted 1 % error: the two hypotheses
    differed by 0.063 vs 0.083 px RMS, i.e. barely distinguishable.
@@ -532,6 +573,10 @@ manufacture a false discrepancy (Lab Notebook §3).
 | wrong calibration block active in the parameter file | every ring offset, uniformly | §6 overlay |
 | wrong λ | absorbed into `Lsd`; **strain gate passes**, distance wrong by the same fraction | rule 9 — take λ from the beamline, cross-check the filename |
 | integrating without `--mask` | bins biased low near gaps; no error, no warning | pass `--mask` (§5a) |
+| a high bad-pixel sentinel (`2**32-1`, EIGER) | `img[img < 0] = 0` passes it straight through; 7 % of the detector enters the fit as 4.29e9 | `read_image(..., return_mask=True)`; hard rule 3 |
+| energy taken from the monochromator readback | ~0.04 % low at 1-ID, straight into `Lsd`, gate still passes | use the tabulated K edge of the `fastsweep_Emon` element; rule 9 |
+| `exp_setup.yml` `EDGE:` read as the running edge | it is stale — wrong in 9 of 18 beamtimes checked | take the element from `fastsweep_Emon*.txt`; rule 9 |
+| `hdf5plugin` declared but not imported | bitshuffle/LZ4 HDF5 (EIGER, ESRF) fails with `can't open directory (/usr/local/lib/plugin)` | importing the MIDAS package registers it; DIAGNOSIS |
 | a written paramstest inheriting the template's `PanelShiftsFile` | new geometry silently uses the *previous* calibration's panel shifts | `midas-calibrate-v2 ≥ 0.8.1`; check the line before reusing the file |
 | `RhoD` inherited from a template and far too large | radial distortion terms rail; strain still looks reasonable | rule 12; RhoD gate |
 | harmonics refined on a narrow azimuthal wedge | coefficients on their bounds, loop oscillates, "best iterate" is luck | rule 11; azimuth gate; H10 |

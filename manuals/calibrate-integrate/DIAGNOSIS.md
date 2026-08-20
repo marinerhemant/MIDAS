@@ -243,3 +243,60 @@ at several distances with a free `Lsd` per image does **not** work — λ and th
 distances rescale together.
 
 **If they agree** → the distance is as good as the ring fit says.
+
+---
+
+## Reading a frame fails with `can't open directory (/usr/local/lib/plugin)`
+
+**Test.** Open the file with `h5py` and read the dataset's filter pipeline
+rather than its data:
+
+```python
+import h5py
+with h5py.File(path) as f:
+    plist = f["exchange/data"].id.get_create_plist()
+    for i in range(plist.get_nfilters()):
+        print(plist.get_filter(i)[0], plist.get_filter(i)[3])
+```
+
+**If a filter id is printed** (32008 bitshuffle, 32004 LZ4, 32015 zstd) → the
+dataset is compressed with a plugin filter and HDF5 cannot find the plugin. It
+is looking in its compiled-in default, `/usr/local/lib/plugin`, because nothing
+told it otherwise. This is an EIGER / Dectris / ESRF file.
+
+**Lever.** `hdf5plugin` ships the plugin binaries but registers them **only when
+imported** — having it in `pyproject.toml` does nothing at runtime. Every MIDAS
+package whose library code reads HDF5 imports it in its `__init__.py`, so
+`import midas_calibrate_v2` (or any sibling) is enough. Check with
+`h5py.h5z.filter_avail(32008)`. If you have written a new package that reads
+HDF5, it needs the same guarded import.
+
+**If no filter is printed** → the failure is not compression; look at the
+dataset path (`data_loc`) instead.
+
+---
+
+## A whole detector, or a fixed fraction of it, reads as ~4.29e9
+
+**Test.** Ask whether the extreme value is exactly the dtype maximum, and how
+much of the frame it covers:
+
+```python
+import numpy as np
+print(a.dtype, np.iinfo(a.dtype).max, (a == np.iinfo(a.dtype).max).mean())
+```
+
+**If it is exactly `2**32-1` (or `2**16-1`)** → these are bad-pixel sentinels
+written at the *top* of the range, the Dectris EIGER convention. They are not
+counts. On a real EIGER2 16M frame they are 7.10 % of the detector and map out
+the module gaps. Every `img[img < 0] = 0` guard in the wild fails open on them,
+so the symptom is often not this obvious — it shows up downstream as a beam
+centre pulled toward a module gap, or a seed distance that will not converge.
+
+**Lever.** `read_image(..., return_mask=True)` flags the unsigned dtype-max by
+default, zeroes it, warns, and hands back the mask; write that mask out for
+`--mask`. Do not build the mask statistically when the detector already tells
+you — the §2 azimuthal-median recipe is for detectors with no bad-pixel map.
+
+**If the extreme value is not the dtype max** → it is a real count or a
+saturation, not a sentinel; check the detector's saturation level instead.

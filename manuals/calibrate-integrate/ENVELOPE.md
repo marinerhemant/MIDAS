@@ -161,3 +161,36 @@ H8 (calibrants disagreeing at the floor) is **not** yet met either way: on the o
 frame measured, the phases differ 1.51× at 45.6 / 69.0 µε, which is above the
 threshold — but the absolute residual is not demonstrably at the floor, so the
 gate's precondition is unproven.
+
+## Detector classes: frames read vs calibration run (2026-08-20)
+
+A survey of `/gdata/dm/1ID` read frames on five detector classes with the MIDAS
+reader. **Reading a frame is not calibrating one** — this table exists so the
+second is never inferred from the first.
+
+| detector | frames read | calibration run here |
+|---|---|---|
+| GE 2048², single panel (`ge5`, `ge`, standalone `ge3`) | yes | no |
+| GE Hydra quad (`ge1`–`ge4`), beam centre off panel | yes | no — but §6bis/§8 cover this geometry |
+| Pilatus 2M tiled, 1679 × 1475, `-1`/`-2` sentinels | yes | yes — the reference dataset |
+| Varex 2880², single panel | yes | yes — the 2026-08-19 single-panel run |
+| **EIGER2 CdTe 16M**, 4362 × 4148, `2**32-1` sentinel | yes | **no** |
+
+The EIGER is the gap that matters. What is established for it: the frames read
+(after the `hdf5plugin` import fix), the rings are sharp and plentiful, the
+sentinel is 7.102 % and maps the module layout, and the mask round-trips through
+`--mask`. What is **not** established: nothing has been calibrated on it, and
+three things would have to be settled first —
+
+- **pixel size.** The file records 62 µm; the measured module geometry says
+  EIGER2 16M, i.e. 75 µm. Decided as 75 on the geometry, *not confirmed by the
+  beamline*. A 21 % error in `Lsd` rides on it.
+- **beam centre off the panel**, so rule 11 and the azimuth gate apply.
+- **no dark**, and the bundled `data_dark` / `data_white` are all zeros.
+
+## Also not exercised
+
+| path | why it is not covered |
+|---|---|
+| calibrating any EIGER / photon-counting frame | frames read only; see above |
+| the K-edge energy rule (rule 9) as an input to a fit | the edge assignment is established across the archive (Lab Notebook §13), but no calibration has yet been run with the edge value substituted for the readback, so the ~0.04 % `Lsd` shift it implies is predicted, not measured |
