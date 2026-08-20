@@ -52,17 +52,29 @@ python -c "import midas_integrate_v2 as a, midas_calibrate_v2 as b; print(a.__ve
 `conda deactivate` is required: an active `midas_env` shadows the shared env's
 `bin` even after you set `PATH`.
 
-**Version floors, and why each exists.** Every one of these keeps out a version
-that produces a *plausible wrong answer* rather than an error:
+**The gate is behavioural, not a version number.** Four defects produce
+plausible wrong answers rather than errors. Run:
 
-| package | floor | below it |
-|---|---|---|
-| `midas-integrate-v2` | 0.9.0 | per-panel shifts are silently discarded — a tiled detector integrates with its panel calibration dropped |
-| `midas-calibrate-v2` | 0.8.0 | refined panel shifts are never written to disk, so nothing downstream can consume them |
-| `midas-integrate` | 0.5.0 | the map buffer truncates at fine `RBinSize` and warns only under `verbose=True` |
-| `midas-calibrate` | 0.3.1 | `FixPanelID` is never parsed; the anchored panel is silently 0 |
+```bash
+python manuals/calibrate-integrate/floorcheck.py
+```
 
-If any floor is unmet, **stop**. These are not conveniences.
+It probes the behaviour each floor guarantees:
+
+| probe | if it fails |
+|---|---|
+| integrate-v2 applies per-panel shifts | a tiled detector integrates with its panel calibration silently discarded |
+| calibrate-v2 writes the panelshifts sidecar | refined shifts never reach disk |
+| integrate v1 sizes the map buffer, always warns | the map truncates at fine `RBinSize`; normalised profile still looks fine |
+| calibrate v1 parses `FixPanelID` | the anchored panel is silently 0 |
+| integrate-v2 one-shot takes `--mask` / `--device` | masked pixels enter the profile as raw values |
+
+**Exit non-zero means stop.** These are not conveniences.
+
+Version *numbers* are deliberately not quoted here. An earlier draft did, and
+got two of four wrong in opposite directions — one floor was ahead of any
+released version and blocked forever, the other was behind the current version
+and passed without the fix present. A behavioural probe cannot rot that way.
 
 ---
 
@@ -182,8 +194,12 @@ entirely; everything else is identical.
 
 ```bash
 midas-integrate-v2 paramstest_v2.txt --image FRAME.tiff \
-    --mode subpixel -K 2 --device cpu --v1-out ./out
+    --mode subpixel -K 2 --device cpu --mask mask.tif --v1-out ./out
 ```
+
+**`--mask` is not optional on a detector with gaps.** Without it every masked
+pixel — including the `-1` gap sentinels — enters the profile as a raw value.
+Measured on the reference frame: **1775 of 1800 bins change, by up to 25 %.**
 
 `--v1-out` writes `lineout.bin`, `lineout_simple_mean.bin` and `Int2D.bin` —
 the three files the beamline chain reads — beside the CSV. Without it, CSV only.
@@ -310,3 +326,5 @@ manufacture a false discrepancy (Lab Notebook §3).
 | `SubPixelCardinalWidth` default differed 5.0 vs 10.0 | two codes build different maps from one file | both ≥ the floors in §1 |
 | `FixPanelID` never parsed | anchored panel silently 0 | `midas-calibrate` ≥ 0.3.1 |
 | wrong calibration block active in the parameter file | every ring offset, uniformly | §6 overlay |
+| integrating without `--mask` | bins biased low near gaps; no error, no warning | pass `--mask` (§5a) |
+| a written paramstest inheriting the template's `PanelShiftsFile` | new geometry silently uses the *previous* calibration's panel shifts | `midas-calibrate-v2 ≥ 0.8.1`; check the line before reusing the file |

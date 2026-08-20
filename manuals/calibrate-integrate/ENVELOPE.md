@@ -23,6 +23,7 @@ untested path does not get promoted to a recommendation. Written 2026-08-19.
 | **one experiment** (several distances or detectors) | never run. `--lsd-offsets` linked-distance mode exists in `midas-calibrate-v2` but was not used here |
 | batch on GPU | `midas-integrate-v2-batch` has no `--device`; only the one-shot and server take one |
 | batch → v1 binaries | batch writes CSV/HDF5 only; loop the one-shot if the chain needs `lineout.bin` |
+| `--mode soft` with a mask | the soft geometry takes no mask argument |
 | `midas-integrate-v2-write-map` | never run |
 | `--mode soft` with any downstream consumer | differentiable path; no `--v1-out` |
 | calibrants other than CeO2 | `LaB6`, `Si`, `Al2O3` are accepted by `make_seed`; untested here |
@@ -39,3 +40,22 @@ Do not carry these to another dataset without re-measuring:
 - the aliasing verdict in Lab Notebook §4 — **negative on this frame**; the
   published result is positive on a different detector.
 - 66.1 µε held-out — a quality *gate* is <100 µε; 66 is not a target.
+
+
+## Found by handing this doc set to a context-free model (2026-08-19)
+
+A model with no project context reduced the reference dataset from these docs
+alone, on ANL Argo. It reached a calibration passing the gate (62.85 µε
+held-out) and produced integrated patterns, and it caught halt condition H1
+independently. It also found three defects these docs had missed:
+
+1. **No `--mask` on the v2 one-shot** — 202 550 masked pixels entered the
+   profile. Now fixed and required by §5a.
+2. **A written paramstest inherited the template's `PanelShiftsFile`**, pointing
+   the new geometry at the previous calibration's shifts. Fixed.
+3. **`RBinSize`/`EtaBinSize` were not emitted**, so the file needed hand-patching
+   before it could be integrated with. Fixed.
+
+It also could not satisfy the §1 install gate from the released env and had to
+override `PYTHONPATH` at the canonical tree. **Until the queued release lands,
+the gate cannot pass on a stock install** — a real novice would stop there.
