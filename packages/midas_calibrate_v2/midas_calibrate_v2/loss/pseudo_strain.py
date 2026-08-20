@@ -22,7 +22,7 @@ def pseudo_strain_residual(
     *,
     rho_d: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    panel_layout=None, panel_idx=None,
+    panel_layout=None, panel_idx=None, fix_panel_id: int = 0,
     ring_idx: Optional[torch.Tensor] = None,
     ring_d_spacing_A: Optional[torch.Tensor] = None,
     lattice: str = "cartesian",
@@ -92,6 +92,10 @@ def pseudo_strain_residual(
         delta_theta=p.get("panel_delta_theta"),
         delta_lsd_panel=p.get("panel_delta_lsd"),
         delta_p2_panel=p.get("panel_delta_p2"),
+        # Without this the forward always anchors panel 0, whatever
+        # FixPanelID / spec.fix_panel_id says: the value reached the spec and
+        # then died one call short of the model that uses it.
+        fix_panel_id=fix_panel_id,
         lattice=lattice,
         apothem=apothem,
         orientation_deg=orientation_deg,

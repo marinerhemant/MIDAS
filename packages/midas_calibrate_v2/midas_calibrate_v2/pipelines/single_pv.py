@@ -465,6 +465,7 @@ def autocalibrate_pv(
                 unpacked_now,
                 rho_d=fits_ds.rho_d, weights=fits_ds.weights,
                 panel_layout=panel_layout, panel_idx=fits_ds.panel_idx,
+                fix_panel_id=getattr(spec, "fix_panel_id", 0),
                 ring_idx=fits_ds.ring_idx,
                 ring_d_spacing_A=fits_ds.ring_d_spacing_A,
             )
@@ -586,6 +587,7 @@ def autocalibrate_pv(
                         panel_layout=panel_layout,
                         panel_idx=fits_ds.panel_idx,
                         delta_yz=p_eff.get("panel_delta_yz"),
+                        fix_panel_id=getattr(spec, "fix_panel_id", 0),
                         delta_theta=p_eff.get("panel_delta_theta"),
                         delta_lsd_panel=p_eff.get("panel_delta_lsd"),
                         delta_p2_panel=p_eff.get("panel_delta_p2"),
@@ -627,6 +629,7 @@ def autocalibrate_pv(
                     unpacked_now,
                     rho_d=fits_ds.rho_d, weights=fits_ds.weights,
                     panel_layout=panel_layout, panel_idx=fits_ds.panel_idx,
+                    fix_panel_id=getattr(spec, "fix_panel_id", 0),
                     ring_idx=fits_ds.ring_idx,
                     ring_d_spacing_A=fits_ds.ring_d_spacing_A,
                 )
@@ -682,6 +685,7 @@ def autocalibrate_pv(
                 full_fits_ds.ring_two_theta_deg, u,
                 rho_d=full_fits_ds.rho_d, weights=full_fits_ds.weights,
                 panel_layout=panel_layout, panel_idx=full_fits_ds.panel_idx,
+                fix_panel_id=getattr(spec, "fix_panel_id", 0),
                 ring_idx=full_fits_ds.ring_idx,
                 ring_d_spacing_A=full_fits_ds.ring_d_spacing_A,
             )
@@ -777,6 +781,7 @@ def autocalibrate_pv(
                 rho_d=fits_final.rho_d,
                 panel_layout=panel_layout, panel_idx=fits_final.panel_idx,
                 delta_yz=unpacked.get("panel_delta_yz"),
+                fix_panel_id=getattr(spec, "fix_panel_id", 0),
                 delta_theta=unpacked.get("panel_delta_theta"),
             )
             R_obs = out.R_px.cpu().numpy()
