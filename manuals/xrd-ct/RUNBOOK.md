@@ -140,9 +140,18 @@ back-projected when it must not be.
 ### ★ CeO₂ is HIGH-contrast data — the opposite regime from the DAC Ti
 
 **peak/background 22–137**, against **0.005–0.17** on the Ti scan. Three to four orders of
-magnitude apart. So `ENVELOPE.md` §0 puts this dataset firmly in "texture attemptable", and none
-of the low-contrast area-vs-centroid pessimism applies here. **Measure your own contrast; do not
-inherit a regime.**
+magnitude apart, so none of the low-contrast area-vs-centroid pessimism applies here. **Measure
+your own contrast; do not inherit a regime.**
+
+**But contrast is only gate one.** This dataset passes it comfortably and still fails the
+**grain-count** gate (`ENVELOPE.md` §0a) — which is exactly what makes it a useful worked example.
+High contrast does **not** imply the azimuthal pattern is usable.
+
+### ★ Read 111 (+0.219) and 222 (+0.265) as NO SIGNAL, not as amplitude variation
+
+The planted-truth control puts the no-signal baseline at **+0.02 … +0.24** (rising with window
+width) against **+0.99** for genuine amplitude modulation. Both of these sit in the baseline band.
+See `phase-2-extract.md` §2.5 for the three-band reading.
 
 ### ★ The −0.72 anti-correlation reproduces, and it is NOT window truncation
 
@@ -155,8 +164,9 @@ explanation was tested and **excluded**:
   −0.803 → −0.641, 311 moves −0.737 → −0.660. Truncation would be killed by widening; this is
   not.
 
-So peak *movement* remains the live diagnosis, now on firmer ground than when it was a single
-number.
+So the movement is **real**. But it is **not** the cause of the azimuthal *area* structure —
+a window wider than ~2× FWHM has an area invariant to sub-pixel movement (`phase-2-extract.md`
+§2.5). Two separate phenomena, and only one of them threatens a texture fit.
 
 ### ★ But the pattern across hkl is unexplained — do not invent a story
 
@@ -165,8 +175,11 @@ further, **is wrong**: **311 (−0.707) and 222 (+0.265) are adjacent in R and o
 It is not a smooth function of R, and it does not track the standard cubic orientation factor
 either (200 and 400 both have Γ = 0 yet read −0.024 and −0.610).
 
-**Recorded as an open question, not a finding.** The next step is peak-fitted areas
-(`LAB_NOTEBOOK.md` §5b), which is what actually settles movement-versus-amplitude.
+**Resolved 2026-08-20, and not the way this section expected** — see `LAB_NOTEBOOK.md`
+`LAB_NOTEBOOK.md` §5b-ter (provisional). Peak-fitted areas were **not** the answer: a window wider than ~2× FWHM has
+an area invariant to sub-pixel movement, so movement cannot be what put structure into these areas.
+The cause is **finite crystallite counting** — a sample limitation, not an analysis defect. The
+hkl pattern of the half-correlation remains unexplained.
 
 ### ★ 331 and 420 are unusable at this geometry
 
@@ -191,18 +204,25 @@ Use `strain_from_centroid` with `reference_d` unset → **relative** strain, med
 That is right here: the distance is confirmed, but ω is undetermined, so the map is
 mirror-ambiguous and an absolute scale would imply more certainty than exists.
 
-## 7. Texture (phase 4) — attemptable here, and untried
+## 7. Texture (phase 4) — NOT attemptable, and now for a known reason
 
-At peak/bg 22–137 the contrast gate passes comfortably. But:
+At peak/bg 22–137 the **contrast** gate passes comfortably. The **grain-count** gate does not:
 
-* the **powder null on this very dataset is REFUTED** (`LAB_NOTEBOOK.md` §5b) — spurious
-  structured texture on a sample that should have none, residual flat in `L`, absorption
-  excluded at 0.000 %;
-* **do not run real-sample texture on a pipeline whose powder null fails.** Fix the null first.
-  The fix is peak-fitted areas, and it has not been run.
+* the powder null on this dataset is **REFUTED** (`LAB_NOTEBOOK.md` §5b) — spurious structured
+  texture on a sample that should have none, residual flat in `L`;
+* the cause is **UNIDENTIFIED**. Grain counting was proposed and **refuted** — the supporting
+  chord-exponent argument turned out to be an artefact of the analysis (`LAB_NOTEBOOK.md` §5b-ter). What survives is
+  that the floor is real and not a sampling artefact;
+* **more ω helps but does not clearly finish the job.** Averaging removes the bulk; a fitted
+  ω-locked component of ~0.87 % remains. Note the floor is an **extrapolation** — the curve is
+  still falling at N_ω = 256 (ring 111 reaches 0.664 %, ~8 % above the fitted asymptote), so
+  treat 0.87 % as a fitted value, not an observed plateau.
 
-So the honest status: CeO₂ is the **null**, not the demo. It is the right dataset to fix the
-pipeline against, and the wrong one to demonstrate texture on.
+So the honest status, **updated 2026-08-20**: CeO₂ is neither the demo *nor* a pipeline
+test. Its spurious texture is **grain-count statistics** (`LAB_NOTEBOOK.md` §5b-ter, provisional),
+i.e. a property of the sample, so there is no pipeline defect here to fix against. Use it to
+calibrate the *gates* — it is an excellent worked example of high contrast failing the grain-count
+gate — not to validate a texture method.
 
 ## 8. Report (phase 5)
 

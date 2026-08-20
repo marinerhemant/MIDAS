@@ -3,13 +3,14 @@
 > Part of the **XRD-CT doc set**. Spine: [`README.md`](README.md).
 
 **Read §5 before re-investigating anything.** It records **four** results as refuted or
-invalid, **one as downgraded**, and **three** inferences as withdrawn — each with the
-measurement that killed it. None died of new physics. They died of a windowed sum that was
-mostly background, a degrees-of-freedom mismatch that made a comparison meaningless, a plant
-script that accepted a random seed and never used it, a positive control whose forward model was
-gentler than reality, and an inference that was simply backwards.
+invalid, **one as downgraded**, **one superseded with its cause since identified**, and **three**
+inferences as withdrawn — each with the measurement that killed it. None died of new physics.
+They died of a windowed sum that was mostly background, a degrees-of-freedom mismatch that made a
+comparison meaningless, a plant script that accepted a random seed and never used it, a positive
+control whose forward model was gentler than reality, a fix aimed at a mechanism that could not
+produce the symptom, and an inference that was simply backwards.
 
-**Last checked:** 2026-08-18 · **Owner:** MIDAS maintainers
+**Last checked:** 2026-08-20 · **Owner:** MIDAS maintainers
 
 ---
 
@@ -146,6 +147,12 @@ Spurious structured "texture" on a sample that should have none, median rising 0
 with `L`. The residual was **flat in `L`**, so truncation is not the cause. Absorption was
 excluded quantitatively (predicted effect 0.000 %).
 
+> **★ SUPERSEDED 2026-08-20 by §5b-ter.** The text below records what was believed until then:
+> that peak movement was the leading suspect and peak-fitted areas were the fix. **Both are
+> wrong.** Movement is real, but a window wider than ~2× FWHM has an area that is *invariant* to
+> sub-pixel movement, so it cannot be the cause — and peak-fitting therefore cannot be the fix.
+> Kept here because the reasoning is instructive, not because it is current.
+
 **Leading suspect, diagnosed but NOT proven: the peak is moving inside a fixed radial
 window.** The two radial halves of every ring were **anti-correlated at −0.72**, which is the
 direct signature of movement rather than of an amplitude change. The fix is peak-fitted
@@ -183,8 +190,11 @@ recorded as an open question rather than a finding.**
 **4. ★ CeO₂ is HIGH-contrast data: peak/bg 22–137**, against 0.005–0.17 on the DAC Ti scan —
 three to four orders of magnitude apart. So none of the low-contrast area-vs-centroid pessimism in
 §1 applies here, and the texture gate in `ENVELOPE.md` §0 passes comfortably. The CeO₂ null is
-therefore **not** an SNR problem; it is a pipeline problem, which is exactly what makes it the
-right dataset to fix against.
+therefore **not** an SNR problem.
+
+*(This paragraph originally continued "…it is a pipeline problem, which is exactly what makes it
+the right dataset to fix against." **That conclusion is withdrawn** — see §5b-ter. It is a
+*sample* problem, and CeO₂ is the **wrong** dataset to fix a pipeline against.)*
 
 **5. ★ (331) and (420) are unusable at this geometry — a NEW gate.** They sit **26.7 px apart**,
 closer than the windows they want. `ring_windows` correctly narrows both to half=12 on its gap
@@ -192,6 +202,227 @@ rule, but their apparent FWHM comes out at **29 px** against 2–4 px for every 
 the neighbour inside the window. `count_maxima` still calls each a singlet, because within its own
 narrowed window each *is* one. **A ring-centre gap check is a separate test from a within-window
 multiplet test, and this dataset shows you need both.** Added to the spine's halt conditions.
+
+### 5b-ter. CeO₂ — final state after four adversarial lenses
+
+> **The RANDOM component is crystallite counting — now positively CONFIRMED. The FLOOR is a
+> mixture, and at least a quarter of it is our own integrator.**
+
+> **Status after adversarial verification (statistics + independent-reproduction lenses),
+> 2026-08-20: the floor EXISTS, the CAUSE does not, and it is an EXTRAPOLATION not an observed
+> plateau.**
+>
+> **Survives, independently reproduced from raw data with a from-scratch implementation:**
+> random **3.741 %** (claimed 3.73), systematic **0.867 %** (claimed 0.900, agreement 4 %),
+> per-frame RMS median **3.76 %** (claimed 3.7), Poisson excess **3.36×** (claimed 3.5),
+> ω-half reproducibility **+0.822** (claimed +0.849) — and all six are insensitive to a
+> structurally different background (≤1.2 % change). The floor is also **not** a sampling
+> artefact: a pure-random null on the exact draw scheme yields ≤0.35 % against ~0.9 % observed.
+>
+> **Died:** the attribution to grain counting (chord exponent, both lenses), and the claim that
+> the curve *plateaus*.
+> Evidence: `~/Desktop/analysis/11idc_ceo2_dt/peakfit/RESULTS_ceo2_{peakfit,area_origin,sqrtn,floor}.md`.
+
+**The structure is finite crystallite counting, at two levels:**
+
+| component | size | behaviour |
+|---|---|---|
+| random per ω | **3.73 %** | averages down with N_ω — grain count *per frame* |
+| **ω-locked floor** | **0.90 %** | **never** averages down — grain count *for the whole scan*; it **is** the ω-average's own residual |
+
+Four of nine rings have an ω-locked component above 1.0 %.
+
+**⛔ The positive evidence is WITHDRAWN (adversarial verification, 2026-08-20).** It was: "the
+floor's amplitude scales as chord^(−0.572) against −0.50 predicted by 1/√N_grains". Three
+independent kills:
+
+1. **The exponent is manufactured by the analysis.** The amplitude was measured on
+   `specific = pattern_t − mean_over_translations`. Subtracting the across-translation mean makes
+   the residual largest at the *extreme* translations, which are also the *shortest* chords — so
+   amplitude and chord anti-correlate **by arithmetic**, for any η pattern varying smoothly with
+   position and with **zero** chord dependence. A simulated null with true exponent 0, calibrated
+   to the observed corr = −0.877, returns median **−0.628** and
+   **P(null ≤ −0.572) = 0.67**.
+2. **It is a readout of an unfitted nuisance parameter.** The capillary radius was hard-coded at
+   0.45 mm. Sweeping it: R = 0.42 → −0.303, 0.45 → −0.572, 0.48 → −0.785, 0.55 → −1.278. An 11 %
+   change in an *assumed* constant moves the exponent by ±0.35, five times the gap being called
+   "consistent with −0.50".
+3. **The exponent cannot discriminate anyway.** Photon shot noise also gives chord^(−0.5);
+   additive read/background noise gives chord^(−1.0). The measured −0.6 ± 0.13 sits in the
+   mixture zone §4 of `RESULTS_ceo2_area_origin.md` had already fitted.
+
+### ★ CONFIRMED on an axis nobody in the chain tested: η-bin-width scaling
+
+The artifact lens ran the one clean positive test for a counting process — sweep the azimuthal
+bin width and watch the relative RMS. A counting process gives slope **−0.5**; a smooth systematic
+gives **0.00**.
+
+**Measured over 45° → 2°, on 9 of 9 rings: slope −0.520 (range −0.447 … −0.538)**, with the noise
+floor 20–60× below, and lag-1 η autocorrelation ≈ 0 (white) at every binning. Implied crystallite
+size ~3 µm at 100 % packing (N_eff = 816 per 10° bin per ω on (111)) — self-consistent.
+
+**So the ω-random ≈3.7 % bulk IS finite-crystallite counting statistics.** That part is
+established, and on better evidence than the chord argument ever was. Every number in
+`RESULTS_ceo2_*.md` was taken at one fixed 10° binning; the scaling axis was free the whole time.
+
+### ★ But at least 25 % of the FLOOR is the integrator itself
+
+`integrate_hard` returns `sums / counts` — a **mean over whichever pixels land in each (R, η)
+bin** — so each bin reports intensity at the mean R of *its own* pixel set, and that effective R
+jitters with the pixel lattice. Pushing a **perfectly uniform, perfectly noiseless** synthetic
+image through the identical reducer and extraction manufactures **0.19–0.44 % azimuthal area RMS
+from a sample with zero azimuthal structure and zero noise** — fixed in the detector frame, i.e.
+ω-locked and translation-invariant.
+
+That artifact correlates **+0.50** (up to +0.72) with the measured translation-shared floor,
+**explaining ~25 % of its variance**. Its own ring-to-ring correlation is **+0.035** — so it
+passes straight through observables D (−0.011) and R (+0.089), the very tests used to "exclude
+flat-field / detector response". **The "unexplained ~1/3 translation-invariant residue" is, in
+substantial part, the integrator.**
+
+### ★ Process failure: not one measurement in the chain touched a raw frame
+
+Every number — `area_origin`, `poisson_null`, `sqrtn`, `floor_frame`, `floor_absorption` — was
+read from `cake_cache*.h5`, a pre-integrated product of someone else's script. **That is how a
+0.2–0.4 % integrator artefact went unnoticed through five analyses.** Raw data before models is a
+standing rule and it was not followed.
+
+*(Two worries that died: the `np.clip` hypothesis — identical to 3 d.p. with clipping off — and
+"the background estimator manufactures it" — a background built from the 361-ω average, with 19×
+smaller noise, leaves the RMS unchanged. The `p0..p14` vs `iso_R2/a1/phi1` key naming is the same
+15 numbers permuted, so that worry was unfounded too.)*
+
+**A fourth kill, from the physics lens, is the most damaging:** the same model-free exponent
+applied to the **random** component — the one this entry says *is* crystallite counting — returns
+**−0.813**, identical to the floor's. **A test that gives the same answer for the component you
+believe is grain counting and for the component you are trying to identify carries no
+information.**
+
+And the chord model is **empirically false**: the assumed cylinder (r = 0.45 mm, centre 0.713 mm)
+predicts **zero** illuminated volume at hxz = 0.2 and 1.2, where the data carry **18 %** and
+**28 %** of the peak ring intensity. Using the *measured* illuminated-volume proxy instead (the
+ω-averaged net ring area) moves the exponent to **−0.805** (jackknife −0.818 ± 0.235).
+
+**So grain counting is now an unsupported hypothesis, not an identification.**
+
+### ★ The leading candidate is interpolation error in our own `background_from_ring_free`
+
+Proposed by the physics lens, and it fits **every** observable — which grain counting does not:
+
+| observable | measured | background-interpolation predicts | grain counting predicts |
+|---|---|---|---|
+| amplitude vs illuminated volume | **−0.81** | −1.0 (constant *absolute* error ÷ signal) | −0.5 |
+| harmonic content P1 | **0.297** | ≈0.25 (white — percentile estimator ~independent per η bin) | no prediction |
+| across rings R | **+0.089** | uncorrelated | uncorrelated |
+| ω-locked? | yes | yes — the background field is fixed at a given translation | yes |
+| translation-specific? | yes | yes — the scatter field moves with the sample | yes |
+| **corr(floor, 1/S)** | **+0.859** | high | — |
+| **corr(floor, 1/√multiplicity)** | **+0.601** | — | this is the grain-counting prediction, and it fits *worse* |
+
+The two **weakest** rings (222 at S = 4463, 400 at S = 4372) carry the two **largest** floors
+(1.544 %, 1.591 %); the brightest (111, S = 41725) carries nearly the smallest (0.663 %).
+**Crystallite counting has no mechanism to make the floor track |F|².** A constant absolute
+background error does exactly that. Across all 81 (ring, translation) points the
+constant-additive model fits **1.65× better** than √S.
+
+**This matters beyond CeO₂: `background_from_ring_free` is shipped package code.** If its
+interpolation error is the dominant systematic on low-signal rings, that is a property of the
+*extraction*, not of any sample.
+
+### ★ Two of the six "exclusions" do NOT hold
+
+* **Background model was never actually excluded.** Observable B is a 3×3 *parameter-sensitivity*
+  sweep, not a model-**correctness** test: an η-structured error common to all nine settings scores
+  0 % spread and reads as "excluded". It was also run on the wrong quantity (12 ω frames, so
+  random-dominated rather than the floor). **And ring 222 measured 0.3084 — above its own
+  registered 0.30 fire threshold** — while only the 9.6 % median was reported. That is a
+  preregistration violation: a ring fired and the median hid it. 222 has the second-largest floor
+  and the steepest model-free exponent (−1.190, exactly additive).
+* **Flat-field was only partly excluded.** R = +0.089 is the *across-ring* η correlation, and
+  different rings sit at different radii sampling entirely different pixels — so a pixel-level
+  gain or defect structure gives R ≈ 0 **by construction**. R excludes only a detector response
+  that is smooth in η and common to all radii.
+
+### Attacks that FAILED — these exclusions stand
+
+* **Peak movement is PRESENT — the earlier wording "excluded" was too strong.**
+  `ceo2_area_origin_result.json` stores `half_corr` = −0.610, −0.631, −0.831, −0.967, −0.685,
+  −0.879, −0.934, −0.958, −0.959 on **all nine rings**, and the planted-truth control calibrates
+  ~0.25–0.55 px of azimuthal ring-radius movement at −0.88. **Neither results file quoted those
+  numbers.** What is excluded is movement *as the cause of the area RMS*, not movement itself. A
+  real ring displacement exists: the ω-averaged radial
+  centroid carries a cos η modulation with **common phase across all nine rings**, 0.45 px at
+  −96° (hxz 0.30) through ~0 at hxz ≈ 0.75 to 0.29 px at +99° (hxz 1.10) — a clean 180° flip. But
+  re-integrating with the window **tracking** the centroid changes the translation-specific
+  amplitude by **0.0 %**. Movement stays excluded for the floor.
+* **Shot noise and absorption** are genuinely negligible: Poisson 0.50–1.76 % ÷ √361 =
+  0.026–0.093 %; CeO₂ at 106.9 keV attenuates only 5–9 % more at centre than at edge, and with the
+  wrong sign.
+* **The control I skipped, run by the refuter, passed.** H was measured on the *full* pattern; the
+  *translation-specific* part's reproducibility was never checked. It is **H_spec = +0.840**. The
+  specific part is real.
+
+**Everything else excluded, each by a test that could have come back the other way:**
+
+| candidate | how it died |
+|---|---|
+| **peak movement** | on *mechanism*: a window > 2× FWHM has an area invariant to sub-pixel movement. Measured inflation from a planted 0.26 px shift: **1.00×** from 2.3× to 16.3× FWHM (1.37× only at 1.7×). CeO₂ windows were 8–16× FWHM |
+| **residual geometry** | η pattern between the two caches correlates **+0.972**, RMS change 4.3 % |
+| **background model** | RMS spread **9.6 %** across a 3 × 3 (block_bins × percentile) grid |
+| **flat-field / detector response** | ring-to-ring η correlation **+0.089** |
+| **photon shot noise** | a real **3.5×** excess above the Poisson prediction (range 2.4–8.1) |
+| **capillary absorption** | **0 of 3** predictions, with the decisive one *inverted*: amplitude correlates with chord at **−0.877**, i.e. largest where there is *least* material |
+
+**Why the absorption inversion is the answer.** Least material = fewest crystallites = largest
+counting fluctuation. That is what pointed at grain counting, and the chord exponent then
+confirmed it quantitatively.
+
+**Consequence — now UNSUPPORTED, since the evidence for it was withdrawn above.** The reading was:
+the CeO₂ null was never an analysis defect but a **sample limitation** — too few crystallites in the illuminated volume — and no change to
+background modelling, peak fitting, geometry or harmonic truncation can fix it. The levers are
+physical: finer powder, larger gauge volume, or more ω (and more ω removes only the 3.73 %, never
+the 0.90 % floor). **So CeO₂ is the wrong null for a texture pipeline.**
+
+**What is NOT settled:**
+* **~1/3 of the floor is translation-invariant and unexplained.** Read against the reproducibility
+  ceiling (ω-half correlation **+0.849**), the between-translation correlation of **+0.272** gives
+  a translation-invariant fraction of **0.32**. Grain counting accounts for the translation-
+  *specific* two-thirds. The residue is ~0.3 % absolute — small but real.
+* **Detector gain unmeasured.** The additive noise term fitted `k = 2.36` against Poisson's 1.0,
+  close to the **2.23** gain recorded in `known-limits.md` for an integrating sCMOS. Only one Air
+  frame exists and there are no repeat exposures, so a photon-transfer measurement needs new data.
+* **No independent grain-size measurement.** The identification rests on the chord exponent plus
+  the exclusion of everything else.
+
+**⛔ "Plateaus from N ≈ 64" is REFUTED (reproduction lens).** With 40 draws per point instead of
+1, the curve is **monotone and still falling at the largest N**: ring 111 drops a further 9.5 %
+from N=64→128 and 5.7 % from 128→256, reaching **0.664 %** where a single draw had read 0.762 %.
+My own N=128 → N=256 points went *up*, which is single-draw scatter, not a plateau. At N=256 the
+measurement is still 8 % above the fitted asymptote — and since N=256 of 361 shares ~71 % of its
+frames between draws, that point cannot independently test the floor anyway.
+
+**The floor is therefore a two-parameter EXTRAPOLATION**, not something the data settle onto. It
+survives as a fitted quantity with a real value; it has not been observed directly.
+
+**⛔ The registered slope threshold is background-fragile.** The "§5 REFUTED" verdict fired on
+median slope −0.235 against a −0.25 line. Independent backgrounds give **−0.267** and **−0.245** —
+straddling it. The refutation verdict flips with a defensible background choice; the substantive
+finding (a non-zero ω-locked component) does not.
+
+**★ The exact Poisson null was available and was thrown away.** `FrameReducer` computes and
+propagates a closed-form Poisson variance; `build_cache.py` stores only `intensity` and discards
+it. Worse, the cake holds the **per-bin mean** (`Σw·I/Σw`), not a sum — so `sqrt(Σ cake values)` is
+**not** `sqrt(N_photons)`; it is off by `sqrt(gain/n_pix)`. Measured directly from ring-free
+high-frequency scatter, `var/I` = 0.59–1.12 over I = 54–389, i.e. it lands near 1 only because the
+Varex ADU gain (~100–200 at 105 keV) nearly cancels n_pix (70–200). **The 3.4× excess stands to
+about +35 %/−0 %, but the gain reasoning in `RESULTS_ceo2_area_origin.md` §4 (k = 2.36 ≈ 2.23) is
+not the operative factor.** Re-cache with the propagated variance and the null becomes exact.
+
+**A method lesson worth more than the result.** The 1/√N_ω sweep was *registered as a hypothesis
+and refuted* (slope −0.235 against a −0.25 refute line), yet it produced the key number — because
+the registration pre-committed to fitting `RMS² = sys² + rand²/N` **regardless of slope**, since
+separating the ω-locked residue was the actual point. Write registrations that stay informative
+under their own refutation.
 
 ### 5c. Ti axial uniaxial ODF — **REFUTED**
 
@@ -347,6 +578,7 @@ Stated so absence is not mistaken for a negative result:
 * **No XRD-CT texture dataset has yet produced a positive per-voxel ODF result here.** One
   scan was refuted, one null was itself refuted, one is parked. The operator is validated
   three ways; the *application* has no positive real-data result.
-* CeO₂ with **peak-fitted areas** — the test of the peak-movement diagnosis (§5b).
+* ~~CeO₂ with peak-fitted areas~~ — **no longer worth doing**: peak movement was excluded as
+  the cause on mechanism (§5b-ter), so peak-fitting cannot fix the area structure.
 * U₃O₈ re-integration, regressed against the 2023 output.
 * A **free-axis** (non-axial) fibre fit. The forward model supports it; it has not been run.

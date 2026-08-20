@@ -67,6 +67,22 @@ centroid is robust and the area is not.
 **Do not use `rings.rolling_baseline` here.** It is for ring *finding*, where the flank bias
 does not matter.
 
+### ★ This estimator has its own error floor, and on weak rings it may dominate
+
+Interpolating a low percentile *across* the peak leaves a residual whose **absolute** size is set
+by the background field's curvature (detector + air + cell) — **not** by how much sample is in the
+beam. So as a *fraction* of a ring's area it grows as `1/intensity`, and it is ω-locked,
+translation-specific and roughly white in η.
+
+On the 11-ID-C CeO₂ scan this is the leading explanation for a 0.9 % azimuthal floor that survives
+any amount of ω averaging: the two **weakest** rings carry the two **largest** floors, and
+`corr(floor, 1/ring intensity) = +0.859`. It was mistaken for a sample property for two days.
+
+**Two consequences.** A parameter sweep over `block_bins` and `percentile` tests *sensitivity*,
+**not correctness** — an η-structured error common to every setting scores zero spread and looks
+excluded. And any azimuthal floor should be checked against `1/intensity` across rings before it
+is attributed to the sample.
+
 ## 2.3 Vet for singlets
 
 ```python
@@ -115,19 +131,42 @@ texture.
 c = radial_half_correlation(net[lo:hi])
 ```
 
-**The sign is the discriminator:**
+**Three bands, calibrated against planted truth** — not two. A *small* positive is the **null
+baseline**, not amplitude variation:
 
 | value | meaning |
 |---|---|
-| strongly **negative** | the peak is **moving** — intensity leaves one radial half as it enters the other. Azimuthal "texture" from a fixed window is largely truncation |
-| **positive** | the **amplitude** is changing while the position holds — what a genuine pole figure looks like |
-| near zero | neither dominates, or the ring is noise |
+| **≲ −0.4** | the peak is **moving** — intensity leaves one radial half as it enters the other |
+| **−0.4 … +0.3** | **no coherent azimuthal signal.** The baseline drifts upward with window width |
+| **≳ +0.5** | the **amplitude** is genuinely changing while the position holds |
 
-Measured **−0.72** on the 11-ID-C CeO₂ scan — a standard that should have no texture at all —
-which is what identified peak movement as the cause of a spurious structured ODF.
+Calibration on synthetics with Poisson noise, where the truth is known
+(`~/Desktop/analysis/11idc_ceo2_dt/peakfit/control_subpixel.py`):
 
-Verified on synthetics with Poisson noise: a 6-px azimuthal shift gives −0.40, a 40 %
-amplitude modulation gives +0.59. The separation is by sign, with a wide margin.
+| planted | half-correlation |
+|---|---|
+| pure sub-pixel **shift** | **−0.98 … −0.99** |
+| pure **amplitude** modulation (20 %) | **+0.99** |
+| **neither** | **+0.02 … +0.24** ← the baseline |
+
+The same control recovers planted sub-pixel shifts at **0.014 px RMSE** down to 0.05 px, so the
+statistic is calibrated in position as well as in sign.
+
+Measured **−0.72** on the 11-ID-C CeO₂ scan, reproduced independently at −0.61 to −0.74 on five
+rings. **Read CeO₂ (111) at +0.219 and (222) at +0.265 as *no signal*** — they sit inside the
+baseline band, not in the amplitude band.
+
+### ★ What a negative value does NOT mean
+
+**It does not mean the windowed AREA is corrupted.** Movement and area corruption are separate
+questions, and at any sensible window width the area is *immune*: a planted 0.26 px shift inflates
+the area RMS by **1.00×** from 2.3× FWHM out to 16.3× (only 1.37× at 1.7× FWHM), while the
+half-correlation reads −0.98 at *every* width. A window wider than ~2× FWHM captures all the
+intensity wherever the peak sits inside it, so the sum is invariant while the *distribution within*
+the window is not.
+
+So: **do not reach for peak-fitting on the strength of a negative half-correlation alone.** That
+inference was made on CeO₂ and refuted on mechanism (`LAB_NOTEBOOK.md` §5b-ter).
 
 **Why this and not an edge-occupancy test.** An earlier version compared the window's edge level
 against a fraction of the peak. That cannot work at realistic contrast: at 26 % contrast on a

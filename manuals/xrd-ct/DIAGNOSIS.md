@@ -125,14 +125,19 @@ And read the movement as the signal it is — that is your strain.
 **Test.** Sweep `L`. If the residual is **flat in `L`**, truncation is not the cause. Then
 predict the absorption effect quantitatively before invoking it.
 
-**Cause — diagnosed, NOT proven.** On the 11-ID-C CeO₂ scan the residual was flat from L=6 to
-L=10, absorption was excluded (predicted 0.000 %), and the two radial halves were
-anti-correlated at −0.72. **Leading suspect: peak movement in a fixed radial window** (see
-the entry above). The fix — peak-fitted areas — has **not yet been run**, so this remains a
-diagnosis rather than a conclusion.
+**Cause — identified 2026-08-20, provisional.** On the 11-ID-C CeO₂ scan it is **finite
+crystallite counting**: a 3.7 % random-per-ω component plus a 0.9 % ω-locked floor whose amplitude
+scales as chord^(−0.572) against the 1/√N_grains prediction of −0.50. Residual geometry, background
+model, flat-field, shot noise, capillary absorption **and peak movement** were each excluded by a
+test that could have come back the other way (`LAB_NOTEBOOK.md` §5b-ter).
 
-**Lever.** Do not proceed to real-sample texture on a pipeline whose powder null fails. Fix
-the null first, or restrict the claim to strain.
+**Peak movement was the earlier suspect and is wrong** — a window wider than ~2× FWHM has an area
+invariant to sub-pixel movement, so peak-fitting cannot fix an area structure.
+
+**Lever.** Check the grain-count gate (`ENVELOPE.md` §0a) before blaming the pipeline. If the
+powder null fails for *counting* reasons, there is nothing in the analysis to fix — the levers are
+finer powder, a larger gauge volume, or more ω (and more ω removes only the random part, never the
+ω-locked floor). If it fails for any other reason, fix that before real-sample texture.
 
 ---
 

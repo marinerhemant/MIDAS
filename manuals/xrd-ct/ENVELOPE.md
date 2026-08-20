@@ -14,7 +14,47 @@ before promising an answer, and before suggesting a different measurement.
 
 ---
 
-## 0. The number that decides everything: peak-to-background
+## 0. TWO independent gates — contrast, and an ω-locked floor
+
+**Contrast decides whether the *peak* is measurable. A separate question decides whether the
+*azimuthal pattern* means anything: is there structure that more frames will not remove?** Passing
+the first gate does not get you the second.
+
+The measured counter-example is unambiguous: **CeO₂ at 11-ID-C has peak/background 22–137** —
+excellent by any standard — **and still carries a 3.7 % random + 0.9 % ω-locked azimuthal floor on
+every ring**, so its per-voxel "texture" is not interpretable. **The leading candidate for the
+floor is interpolation error in the background estimator itself** — not the sample
+(`LAB_NOTEBOOK.md` §5b-ter). Grain counting was proposed and refuted by three lenses.
+
+### 0a. Gate two: is there structure a texture fit could mistake for texture?
+
+Two cheap measurements, both worth making before any texture claim:
+
+**Poisson excess.** Compare the measured per-frame azimuthal RMS against `sqrt(Σ raw counts in
+window) / area`. A ratio near 1 means the "structure" is shot noise and there is nothing to
+explain. CeO₂ measured **3.5×** (range 2.4–8.1), so its structure is real — and still not texture.
+
+**Does it average down?** Sweep N_ω and fit
+
+```
+RMS(N)² = systematic² + random²/N
+```
+
+`random` is the part more frames will remove; **`systematic` is a floor that no amount of ω can
+touch**, and it is the component a texture fit can genuinely mistake for texture. **Do NOT try to identify the floor's cause from how its amplitude scales with the illuminated
+chord.** That was attempted and refuted: the exponent is dominated by an unfitted capillary
+radius (±11 % moves it by ±0.35) and, worse, is manufactured by subtracting an across-position
+mean. Shot noise and grain counting predict the *same* exponent anyway.
+
+**Two things to get right in that fit**, both learned the hard way:
+* **Weight it.** `curve_fit` with no `sigma=` on points spanning 6 % → 0.6 % pins `random` to the
+  large low-N values and leaves `systematic` to residual scatter — understating its uncertainty by
+  ~4×. Bootstrap the error; do not quote the covariance.
+* **Simulate the sampling before believing a floor.** Overlapping random draws at large N *could*
+  manufacture one. On the CeO₂ scheme they do not — a pure-random null gives at most 0.35 %
+  against an observed 0.9 % — but that had to be checked, not assumed.
+
+### 0b. Gate one: peak-to-background
 
 Measure it in phase 2, per ring, before promising anything.
 

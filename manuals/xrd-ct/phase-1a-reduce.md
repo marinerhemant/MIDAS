@@ -131,6 +131,45 @@ workers.
 Write the geometry, the R/η/translation axes and the binning **into the file as datasets and
 attrs**, so a cake is self-describing and its provenance travels with it.
 
+**★ Cache the VARIANCE too.** `FrameReducer` returns `ReducedFrame.variance` alongside
+`.intensity` — a closed-form Poisson variance propagated through the integration. Storing only the
+intensity throws it away, and every later noise question then needs an *approximation*. Two traps
+that follow from discarding it, both measured on the CeO₂ cache:
+
+* the cake holds the **per-bin mean** (`Σw·I/Σw`), **not a sum** — so `sqrt(Σ cake values)` is
+  **not** `sqrt(N_photons)`, it is off by `sqrt(gain / n_pix)`;
+* on that dataset the two factors nearly cancel by coincidence (Varex ~100–200 ADU/photon at
+  105 keV against 70–200 pixels per bin), so the approximation landed within ~35 % and *looked*
+  fine. Do not rely on that cancelling.
+
+### ★ The hard-binning integrator has its own azimuthal artefact
+
+`integrate_hard` returns `sums / counts` — the **mean over whichever pixels land in each (R, η)
+bin**. Each bin therefore reports intensity at the mean R of *its own* pixel set, and that
+effective R jitters with the pixel lattice.
+
+**Measured:** a perfectly uniform, perfectly noiseless synthetic image pushed through the reducer
+comes out with **0.19–0.44 % azimuthal area RMS** — structure from a sample that has none. It is
+fixed in the **detector** frame, so it is ω-locked and translation-invariant, and its ring-to-ring
+correlation is only **+0.035** — meaning it passes straight through the usual "is it common across
+rings?" flat-field test.
+
+On the CeO₂ scan it accounts for ~25 % of the variance of an ω-locked floor that five analyses
+attributed to the sample. **If you are chasing an azimuthal signal below ~0.5 %, push a uniform
+synthetic through your own reducer first and measure what it invents.**
+
+### ★ Test a counting process by sweeping the η BIN WIDTH
+
+The clean positive test, and it costs nothing once the cake is built: relative azimuthal RMS
+against azimuthal bin width. **A counting process scales as −0.5; a smooth systematic gives 0.00.**
+
+On CeO₂, 45° → 2°: slope **−0.520** (range −0.447…−0.538) on 9 of 9 rings, noise floor 20–60×
+below, lag-1 η autocorrelation ≈ 0. That is what established the random component as crystallite
+counting — after a chord-length argument had been tried and refuted by three lenses.
+
+**Cache fine in η and rebin down**, so this axis stays available. Every earlier number in this
+project was taken at one fixed 10° binning and the scaling axis was free the whole time.
+
 ### Parallelism: pin threads BEFORE importing numpy
 
 ```python

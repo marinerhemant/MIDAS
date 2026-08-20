@@ -39,7 +39,7 @@ working (R, η) bin size, or not. **Check it in phase 0 before any recipe here a
 | `DIAGNOSIS.md` | symptom → discriminating test → cause → lever | **when something looks wrong** |
 | `BEAMLINES.md` | per-beamline reach, formats, conventions that cannot be recovered later | **before touching a new beamline's data** |
 | `RUNBOOK.md` | a from-scratch run worked end-to-end on real 11-ID-C CeO₂ | on resume, or as the shape of a run |
-| `LAB_NOTEBOOK.md` | evidence, the ledger, **four refuted results, one DOWNGRADED, three withdrawn inferences** | before re-investigating |
+| `LAB_NOTEBOOK.md` | evidence, the ledger, **four refuted, one DOWNGRADED, one SUPERSEDED (cause since found), three withdrawn** | before re-investigating |
 
 ## STOP — read this before touching anything
 

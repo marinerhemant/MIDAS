@@ -35,7 +35,15 @@ Sample material: <e.g. CeO2 / hcp Ti / unknown — tell me from the data>
 Goal:            phase map | per-voxel strain | per-voxel texture (ODF)
 ```
 
-## Six things to know before you start
+## Seven things to know before you start
+
+0. **Contrast is only the FIRST gate; grain count is the second and independent one.** A scan
+   can have superb peak-to-background and still be unable to support an azimuthal texture
+   measurement. Measured counter-example: 11-ID-C CeO₂ at **peak/bg 22–137** carries a
+   **3.7 % random + 0.9 % ω-locked** floor from finite crystallite counting, so its per-voxel
+   "texture" is grain-count noise (`LAB_NOTEBOOK.md` §5b-ter, *provisional*). Check
+   `ENVELOPE.md` §0a — a Poisson-excess test and an `RMS² = sys² + rand²/N` sweep — before
+   promising a texture map from any dataset.
 
 1. **Area is a difference; centroid is a ratio — and that decides the deliverable.** Every
    azimuthal quantity is one or the other. Measured at 2 % peak-to-background with no planted
@@ -101,10 +109,12 @@ first entry is the most dangerous symptom in the technique: **a per-voxel textur
 structured and plausible**, which is exactly what low-contrast extraction error produces.
 
 Before re-investigating anything, read **`manuals/xrd-ct/LAB_NOTEBOOK.md`** §5 — **four**
-results are recorded there as refuted, retracted or invalid, and **three** inferences as
-withdrawn. None died of new physics. They died of a windowed sum that was 60–85 % background, a
-degrees-of-freedom mismatch that made a comparison meaningless, a plant script that accepted a
-random seed and never used it, and an inference that was simply backwards.
+results are recorded there as refuted or invalid, **one downgraded**, **one superseded once its
+cause was found**, and **three** inferences as withdrawn. None died of new physics. They died of a
+windowed sum that was 60–85 % background, a degrees-of-freedom mismatch that made a comparison
+meaningless, a plant script that accepted a random seed and never used it, a positive control
+whose forward model was gentler than reality, a fix aimed at a mechanism that could not produce
+the symptom, and an inference that was simply backwards.
 
 ## Read the envelope before promising an answer
 
