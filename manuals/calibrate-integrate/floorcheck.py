@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import inspect
 import sys
+import warnings
 
 
 def _ok(name: str, passed: bool, why: str) -> bool:
@@ -101,6 +102,62 @@ def check_mask_and_device() -> bool:
         return _ok("integrate-v2 one-shot accepts --mask and --device", False, repr(e))
 
 
+def check_high_sentinel() -> bool:
+    """read_image must flag the unsigned dtype-max bad-pixel sentinel.
+
+    The EIGER convention marks gaps with 2**32-1 rather than a negative value,
+    so every ``img[img < 0] = 0`` guard fails open and the fitter is handed
+    4.29e9 as a count.  An older reader returns it silently — no error, a
+    finite positive array of the right shape.  Lab Notebook §12.
+    """
+    label = "calibrate-v2 read_image flags the high bad-pixel sentinel"
+    try:
+        import tempfile, os
+        import numpy as np
+        import h5py
+        from midas_calibrate_v2.io.readers import read_image
+
+        a = np.full((2, 6, 6), 7, dtype=np.uint32)
+        a[0, 1, 2] = np.iinfo(np.uint32).max      # bad in ONE frame of two
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, "floorcheck_sentinel.h5")
+        with h5py.File(p, "w") as f:
+            f.create_dataset("exchange/data", data=a)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            img, mask = read_image(p, return_mask=True)
+        os.remove(p)
+        os.rmdir(d)
+
+        good = bool(img.max() <= 7.0 and mask[1, 2] and mask.sum() == 1)
+        return _ok(label, good,
+                   "the sentinel survives as a count (or leaks through the "
+                   "frame average) — 7.1% of an EIGER frame enters the fit "
+                   "as 4.29e9")
+    except Exception as e:                                   # pragma: no cover
+        return _ok(label, False, repr(e))
+
+
+def check_hdf5_filter_plugins() -> bool:
+    """Importing a MIDAS package must register the HDF5 filter plugins.
+
+    Declaring hdf5plugin as a dependency installs the binaries but does not
+    register them; only importing it sets the plugin search path.  Without it
+    every bitshuffle/LZ4 dataset (EIGER, Dectris, ESRF) fails to read.
+    """
+    label = "importing MIDAS registers the HDF5 bitshuffle filter"
+    try:
+        import midas_calibrate_v2  # noqa: F401  - the import IS the probe
+        import h5py
+        return _ok(label, bool(h5py.h5z.filter_avail(32008)),
+                   "bitshuffle-compressed HDF5 will fail with "
+                   "\"can't open directory (/usr/local/lib/plugin)\"; "
+                   "pip install hdf5plugin")
+    except Exception as e:                                   # pragma: no cover
+        return _ok(label, False, repr(e))
+
+
 def main() -> int:
     print("Install gate — behavioural probes, not version strings\n")
     results = [
@@ -109,6 +166,8 @@ def main() -> int:
         check_map_buffer(),
         check_fixpanelid(),
         check_mask_and_device(),
+        check_high_sentinel(),
+        check_hdf5_filter_plugins(),
     ]
     print()
     if all(results):
