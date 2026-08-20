@@ -79,8 +79,31 @@ def _load_image(path: Path, *, NY: int, NZ: int,
     return arr.reshape(NZ, NY).astype(np.float64)
 
 
+#: Help text for ``--mask``, shared by every entry point that builds a
+#: binning geometry. One string so the four CLIs cannot describe it
+#: differently.
+_MASK_HELP = ("Binary mask (1 = exclude), same shape as the image. Masked "
+              "pixels are dropped from the binning geometry. Without it, gap "
+              "sentinels and dead pixels enter the profile as raw values.")
+
+
+def _load_mask(args, spec):
+    """Read ``--mask`` into a bool array, or ``None`` when not given.
+
+    Every geometry-building entry point needs this, not just ``integrate``:
+    ``--mask`` was added to ``integrate_main`` alone while ``write_map_main``,
+    ``server_main`` and ``pdf_main`` were changed to pass a ``mask`` they never
+    bound, which is a NameError the moment those paths run.
+    """
+    path = getattr(args, "mask", None)
+    if path is None:
+        return None
+    return _load_image(path, NY=spec.NrPixelsY, NZ=spec.NrPixelsZ,
+                       raw_dtype=None).astype(bool)
+
+
 def _build_geometry_and_integrate(spec, image, *, mode: str, K: int,
-                                  want_geom: bool = False):
+                                  want_geom: bool = False, mask=None):
     """Integrate one frame. Returns the 1-D profile, or
     ``(profile, cake, geom, integrate_fn)`` when ``want_geom``.
 
@@ -92,25 +115,25 @@ def _build_geometry_and_integrate(spec, image, *, mode: str, K: int,
     img_t = torch.from_numpy(image).to(spec.device())
     fn = None
     if mode == "hard":
-        geom, fn = HardBinGeometry.from_spec(spec), integrate_hard
+        geom, fn = HardBinGeometry.from_spec(spec, mask=mask), integrate_hard
         int2d = integrate_hard(img_t, geom, normalize=True)
         prof = int2d.sum(dim=0) / (
             (int2d > 0).to(int2d.dtype).sum(dim=0).clamp(min=1)
         )
     elif mode == "subpixel":
-        geom, fn = SubpixelBinGeometry.from_spec(spec, K=K), integrate_subpixel
+        geom, fn = SubpixelBinGeometry.from_spec(spec, K=K, mask=mask), integrate_subpixel
         int2d = integrate_subpixel(img_t, geom, normalize=True)
         prof = int2d.sum(dim=0) / (
             (int2d > 0).to(int2d.dtype).sum(dim=0).clamp(min=1)
         )
     elif mode == "polygon":
-        geom, fn = PolygonBinGeometry.from_spec(spec), integrate_polygon
+        geom, fn = PolygonBinGeometry.from_spec(spec, mask=mask), integrate_polygon
         int2d = integrate_polygon(img_t, geom, normalize=True)
         prof = int2d.sum(dim=0) / (
             (int2d > 0).to(int2d.dtype).sum(dim=0).clamp(min=1)
         )
     elif mode == "soft":
-        geom = SoftBinGeometry.from_spec(spec)
+        geom = SoftBinGeometry.from_spec(spec)   # soft path takes no mask
         int2d = integrate_soft(img_t, geom)
         prof = profile_1d_diff(int2d, spec)
     else:
@@ -153,6 +176,7 @@ def integrate_main(argv=None) -> int:
     p.add_argument("--device", default="cpu",
                    help="cpu | cuda | cuda:1 — the geometry and the kernels "
                         "run wherever the spec tensors live")
+    p.add_argument("--mask", type=Path, default=None, help=_MASK_HELP)
     p.add_argument("--no-trans-opt", action="store_true",
                    help="Skip ImTransOpt forward-application "
                         "(image is already in post-transform coords)")
@@ -178,8 +202,11 @@ def integrate_main(argv=None) -> int:
         spec.TransOpt = []
         spec.NrTransOpt = 0
 
+    mask_arr = _load_mask(args, spec)
+
     prof, cake, geom, integ_fn = _build_geometry_and_integrate(
         spec, image, mode=args.mode, K=args.subpixel_K, want_geom=True,
+        mask=mask_arr,
     )
 
     if args.v1_out is not None:
@@ -225,14 +252,16 @@ def write_map_main(argv=None) -> int:
                    help="Subpixel oversampling K (only when --mode=subpixel)")
     p.add_argument("--no-header", action="store_true",
                    help="Skip the v3 header (legacy header-less Map.bin)")
+    p.add_argument("--mask", type=Path, default=None, help=_MASK_HELP)
     p.add_argument("-V", "--version", action="version",
                    version=f"midas-integrate-v2 {__version__}")
     args = p.parse_args(argv)
 
     spec = spec_from_v1_paramstest(args.params, requires_grad=False)
     spec.validate()
+    mask = _load_mask(args, spec)
     if args.mode == "hard":
-        geom = HardBinGeometry.from_spec(spec)
+        geom = HardBinGeometry.from_spec(spec, mask=mask)
     else:
         geom = SubpixelBinGeometry.from_spec(spec, K=args.subpixel_K)
 
@@ -266,6 +295,7 @@ def server_main(argv=None) -> int:
     p.add_argument("--host", default="0.0.0.0")
     p.add_argument("--device", default="cpu",
                    help="cpu | cuda | cuda:1")
+    p.add_argument("--mask", type=Path, default=None, help=_MASK_HELP)
     p.add_argument("--out", type=Path, default=Path("."),
                    help="Where the v1 output files are written on shutdown")
     p.add_argument("--no-2d", action="store_true", help="Skip Int2D.bin")
@@ -280,8 +310,9 @@ def server_main(argv=None) -> int:
     spec = spec_from_v1_paramstest(args.params, requires_grad=False,
                                    device=torch.device(args.device))
     spec.validate()
+    mask = _load_mask(args, spec)
     if args.mode == "hard":
-        geom, fn = HardBinGeometry.from_spec(spec), integrate_hard
+        geom, fn = HardBinGeometry.from_spec(spec, mask=mask), integrate_hard
     else:
         geom, fn = SubpixelBinGeometry.from_spec(spec, K=args.subpixel_K), integrate_subpixel
 
@@ -566,12 +597,14 @@ def pdf_main(argv=None) -> int:
                    help="Comma-separated list: 'dat,gr,fxye'")
     p.add_argument("--window", type=str, default="lorch",
                    choices=["lorch", "rect"])
+    p.add_argument("--mask", type=Path, default=None, help=_MASK_HELP)
     p.add_argument("-V", "--version", action="version",
                    version=f"midas-integrate-v2 {__version__}")
     args = p.parse_args(argv)
 
     spec = spec_from_v1_paramstest(args.params, requires_grad=False)
     spec.validate()
+    mask = _load_mask(args, spec)
     image = _load_image(args.image, NY=spec.NrPixelsY, NZ=spec.NrPixelsZ,
                           raw_dtype=args.raw_dtype)
     img_t = torch.as_tensor(image, dtype=torch.float64)
@@ -639,7 +672,7 @@ def pdf_main(argv=None) -> int:
             PolygonBinGeometry, integrate_polygon_with_variance,
         )
         from .io import write_dat
-        geom = PolygonBinGeometry.from_spec(spec)
+        geom = PolygonBinGeometry.from_spec(spec, mask=mask)
         mean2d, sig2d = integrate_polygon_with_variance(img_t, geom)
         valid = torch.isfinite(mean2d)
         n_valid = valid.sum(dim=0).clamp(min=1)
@@ -666,7 +699,7 @@ def pdf_main(argv=None) -> int:
         from .binning import (
             PolygonBinGeometry, integrate_polygon_with_variance,
         )
-        geom = PolygonBinGeometry.from_spec(spec)
+        geom = PolygonBinGeometry.from_spec(spec, mask=mask)
         mean2d, sig2d = integrate_polygon_with_variance(img_t, geom)
         valid = torch.isfinite(mean2d)
         n_valid = valid.sum(dim=0).clamp(min=1)
