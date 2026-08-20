@@ -94,3 +94,103 @@ def test_single_panel_leaves_no_panelshifts_line(tmp_path):
     # Documented rather than silently dropped: dropping it would discard a
     # legitimate hand-maintained shifts file on a single-panel rerun.
     assert "panel_shifts.txt" in out.read_text()
+
+
+# ── 3. a dangerous SubPixelLevel must not be propagated ──────────────────
+def test_subpixellevel_above_one_is_clamped(tmp_path):
+    """Found by a context-free run on 2026-08-19: a template carrying
+    `SubPixelLevel 5` produced a calibration file that violated the pipeline's
+    own hard rule 1, and the run had to sed-patch it before integrating."""
+    import warnings as _w
+    from midas_calibrate_v2.compat.to_v1 import SubPixelLevelClampedWarning
+
+    t = _template()
+    t.extra["SubPixelLevel"] = "5"
+    out = tmp_path / "paramstest_v2.txt"
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        write_v1_paramstest({"Lsd": torch.tensor(1e6)}, t, out)
+    assert any(issubclass(c.category, SubPixelLevelClampedWarning) for c in caught)
+    assert "SubPixelLevel 1" in out.read_text()
+    assert "SubPixelLevel 5" not in out.read_text()
+
+
+def test_subpixellevel_one_passes_through_silently(tmp_path):
+    import warnings as _w
+    from midas_calibrate_v2.compat.to_v1 import SubPixelLevelClampedWarning
+
+    t = _template()
+    t.extra["SubPixelLevel"] = "1"
+    out = tmp_path / "paramstest_v2.txt"
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        write_v1_paramstest({"Lsd": torch.tensor(1e6)}, t, out)
+    assert not any(issubclass(c.category, SubPixelLevelClampedWarning) for c in caught)
+    assert "SubPixelLevel 1" in out.read_text()
+
+
+def test_absent_subpixellevel_is_not_invented(tmp_path):
+    out = tmp_path / "paramstest_v2.txt"
+    write_v1_paramstest({"Lsd": torch.tensor(1e6)}, _template(), out)
+    assert "SubPixelLevel" not in out.read_text()
+
+
+# ── 4. input-locating keys must not ride into a geometry file ────────────
+def test_data_location_keys_are_dropped(tmp_path):
+    """Fourth instance of "template extras ride through" in three days, so it
+    is handled as a class rather than one key at a time. Found by a
+    context-free run whose written paramstest still pointed `MaskFile` at a
+    path on another machine, in the wrong orientation."""
+    import warnings as _w
+    from midas_calibrate_v2.compat.to_v1 import (
+        DATA_LOCATION_KEYS, DataLocationKeysDroppedWarning,
+    )
+
+    t = _template()
+    t.extra.update({
+        "Folder": "/scratch/somebody/cali", "FileStem": "ceria_000059",
+        "StartNr": "59", "EndNr": "59", "Ext": ".tiff", "Padding": "6",
+        "Dark": "dark.tif", "MaskFile": "/scratch/gone/mask.tif",
+    })
+    out = tmp_path / "paramstest_v2.txt"
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        write_v1_paramstest({"Lsd": torch.tensor(1e6)}, t, out)
+
+    text = out.read_text()
+    for k in DATA_LOCATION_KEYS:
+        assert f"\n{k} " not in f"\n{text}", f"{k} survived into the geometry file"
+    assert any(issubclass(c.category, DataLocationKeysDroppedWarning)
+               for c in caught), "dropping keys must not be silent"
+
+
+def test_instrument_description_is_kept(tmp_path):
+    """The converse: dropping too much would be its own silent corruption.
+    Panel layout and ImTransOpt describe the DETECTOR and must survive —
+    ImTransOpt especially, since a wrong one mirrors the beam centre."""
+    t = _template()
+    t.extra.update({
+        "NPanelsY": "6", "NPanelsZ": "8", "PanelSizeY": "243",
+        "PanelGapsY": "1 7 1 7 1", "ImTransOpt": "2", "DataType": "6",
+        "RMin": "10", "RMax": "1200",
+    })
+    out = tmp_path / "paramstest_v2.txt"
+    write_v1_paramstest({"Lsd": torch.tensor(1e6)}, t, out)
+    text = out.read_text()
+    for k in ("NPanelsY", "NPanelsZ", "PanelSizeY", "PanelGapsY",
+              "ImTransOpt", "DataType", "RMin", "RMax"):
+        assert k in text, f"{k} describes the instrument and must be kept"
+
+
+def test_no_warning_when_there_is_nothing_to_drop(tmp_path):
+    import warnings as _w
+    from midas_calibrate_v2.compat.to_v1 import DataLocationKeysDroppedWarning
+
+    t = _template()
+    t.extra["ImTransOpt"] = "2"
+    out = tmp_path / "paramstest_v2.txt"
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        write_v1_paramstest({"Lsd": torch.tensor(1e6)}, t, out)
+    assert not any(issubclass(c.category, DataLocationKeysDroppedWarning)
+                   for c in caught)

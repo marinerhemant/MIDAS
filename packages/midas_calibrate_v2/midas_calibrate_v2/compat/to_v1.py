@@ -4,6 +4,7 @@ Downstream MIDAS HEDM tools consume the v1 format; v2 exports here.
 """
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -24,6 +25,38 @@ _V2_TO_V1_DISTORTION = {
     "a5": "p11", "phi5": "p12",
     "a6": "p13", "phi6": "p14",
 }
+
+
+#: Keys that name WHERE the calibration's input data lived. A written
+#: paramstest describes an *instrument*, not a dataset: carrying these forward
+#: points every downstream consumer at the calibrant frame, in a directory that
+#: usually does not exist on the machine reading the file. Four separate
+#: instances of this class of bug were found in three days
+#: (PanelShiftsFile, SubPixelLevel, and these), so it is handled as a class.
+#:
+#: Detector description (NPanels*, PanelSize*, PanelGaps*, ImTransOpt, px,
+#: DataType) and binning/integration settings (RMin, RMax, Eta*, tol*) are
+#: deliberately NOT here — those describe the instrument and are wanted.
+DATA_LOCATION_KEYS = frozenset({
+    "Folder", "FileStem", "StartNr", "EndNr", "Ext", "Padding", "Dark",
+    "MaskFile",
+})
+
+
+class DataLocationKeysDroppedWarning(UserWarning):
+    """Input-locating keys were removed from a written paramstest.
+
+    They described the calibration's own input frames. Left in, they send
+    downstream tools looking for a file that is not there.
+    """
+
+
+class SubPixelLevelClampedWarning(UserWarning):
+    """A template's ``SubPixelLevel > 1`` was rewritten to 1 on output.
+
+    Above 1 the CUDA integrator reads the wrong pixel. Propagating the
+    template's value would ship a calibration that is broken downstream.
+    """
 
 
 def unpacked_to_v1_params(
@@ -74,6 +107,37 @@ def write_v1_paramstest(
             ``<paramstest stem>_panelshifts.txt``.
     """
     out = unpacked_to_v1_params(unpacked, template)
+
+    # A template's SubPixelLevel rides through CalibrationParams.extra into the
+    # written file. Above 1 the CUDA integrator truncates the fractional
+    # sub-pixel coordinate and reads the neighbouring pixel (measured 24x on
+    # in-band bins), so emitting the template's value hands downstream a known
+    # broken setting. Clamp it, loudly, rather than propagate it.
+    dropped = sorted(DATA_LOCATION_KEYS & set(out.extra))
+    if dropped:
+        warnings.warn(
+            f"dropping input-locating keys from the written paramstest: "
+            f"{', '.join(dropped)}. They described the calibration's own input "
+            f"frames; a geometry file should not claim to locate data.",
+            DataLocationKeysDroppedWarning, stacklevel=2,
+        )
+        for k in dropped:
+            out.extra.pop(k, None)
+
+    spl = out.extra.get("SubPixelLevel")
+    if spl is not None:
+        try:
+            bad = int(float(str(spl).split()[0])) > 1
+        except (TypeError, ValueError):
+            bad = False
+        if bad:
+            warnings.warn(
+                f"template SubPixelLevel={spl} is unusable in the CUDA "
+                f"integrator (it truncates the sub-pixel coordinate); writing "
+                f"SubPixelLevel 1 instead",
+                SubPixelLevelClampedWarning, stacklevel=2,
+            )
+            out.extra["SubPixelLevel"] = "1"
 
     path = Path(path)
     out.write(path)
@@ -294,5 +358,7 @@ def write_panel_shifts_file(
     Path(path).write_text("\n".join(lines) + "\n")
 
 
-__all__ = ["unpacked_to_v1_params", "write_v1_paramstest", "write_ff_paramstest",
+__all__ = ["DATA_LOCATION_KEYS", "DataLocationKeysDroppedWarning",
+           "SubPixelLevelClampedWarning",
+           "unpacked_to_v1_params", "write_v1_paramstest", "write_ff_paramstest",
            "ff_paramstest_from_auto_result", "write_panel_shifts_file"]
