@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-integrate-v2"
-version = "0.5.1"
+version = "0.6.0"
 description = "Differentiable, autodiff-aware radial integration for area X-ray detectors. Joint refinement counterpart to midas-integrate."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -58,6 +58,11 @@ dev = [
     "pytest-cov>=4.0",
 ]
 edf = ["fabio>=0.14"]
+# The MIDAS .zarr.zip layout is zarr-format 2. Every downstream consumer
+# (midas_zipper, midas_pipeline, midas_ff_pipeline, midas_peakfit,
+# midas_transforms) and the GSAS-II "MIDAS zarr" reader pin zarr<3, and
+# zarr 3 removed zarr.hierarchy / zarr.copy_all outright.
+zarr = ["zarr>=2.16,<3"]
 gui = ["streamlit>=1.32"]
 aps-dm = ["requests"]
 milk = []

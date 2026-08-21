@@ -24,7 +24,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 
 from .spec import IntegrationSpec, DISTORTION_NAMES
 from .compat import (

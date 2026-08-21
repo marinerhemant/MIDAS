@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "midas-index"
-version = "0.7.7"
+version = "0.7.8"
 description = "Pure-Python/PyTorch FF-HEDM indexer (drop-in replacement for IndexerOMP/IndexerGPU)"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "midas-params>=0.9.0",  # preflight: CLI errors + path checks
+    "midas-params>=0.11.0",  # MarginOmega alias; preflight CLI errors + path checks
     "numpy>=1.22",
     "torch>=2.0",
     "midas-diffract>=0.1.0",         # uses HEDMForwardModel.calc_bragg_geometry

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.10.1"
+version = "0.10.2"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -43,11 +43,14 @@ dependencies = [
     "midas-transforms>=0.8.6",
     "midas-propagate>=0.1.1",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
     "midas-uq>=0.1.1",             # refiner-anchored bootstrap UQ (per-grain trust_score_anchored)
-    "midas-process-grains>=0.9.0", # >=0.6.1 GrainRadius from the right SpotID space (5.5x low);
+    "midas-process-grains>=0.10.0", # >=0.6.1 GrainRadius from the right SpotID space (5.5x low);
                                    # >=0.7.0 reads Completeness as an alias for ConfidenceTol -- below it the
                                    # grain-selection keys are parsed and DISCARDED (23710 vs 6132 grains);
                                    # >=0.9.0 'spot_aware' is DISABLED and the default is c_parity. Below it
-                                   # the default mode traded -11.6 pp of EBSD precision for +0.1 pp of recall
+                                   # the default mode traded -11.6 pp of EBSD precision for +0.1 pp of recall;
+                                   # >=0.9.2 c_parity writes processgrains_diagnostics.h5 -- below it a
+                                   # DEFAULT run produces no residual sidecar and every downstream
+                                   # diagnostic silently degrades to descriptive-only
                                    # and placed 4.1% of its grains outside the physical sample.
     "midas-fit-grain>=0.7.0",      # >=0.6.0 refiner returns its seed positions; >=0.7.0 adds c_recipe
     "midas-tomo>=0.1.0",           # gridrec CT engine; installs Python-only when FFTW/OpenMP are absent

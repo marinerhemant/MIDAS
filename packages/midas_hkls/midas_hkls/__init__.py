@@ -40,7 +40,7 @@ from .point_group import (
 from .space_group import SpaceGroup, list_space_groups
 from .symops import SymOp
 
-__version__ = "0.7.3"
+__version__ = "0.8.0"
 
 __all__ = [
     "CLASSICAL_ELECTRON_RADIUS_A",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dfxm"
-version = "0.6.2"
+version = "0.6.3"
 description = "Differentiable forward + inverse for Dark-Field X-ray Microscopy (DFXM): deformation-gradient field imaging through a magnifying objective, and per-dislocation defect-type discrimination, on top of midas-stress / midas-hkls / midas-defect."
 readme = "README.md"
 license = "BSD-3-Clause"
