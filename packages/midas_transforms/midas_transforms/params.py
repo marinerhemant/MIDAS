@@ -75,6 +75,7 @@ class ParamsTest:
     Wedge: float = 0.0
     MargABC: float = 0.0
     MargABG: float = 0.0
+    MargStrain: float = 0.0   # 0 => C default (0.01 = 10000 ue)
     MinMatchesToAcceptFrac: float = 0.0
 
     # Refined fit geometry (FitSetupZarr post-refine values; default to the
@@ -178,7 +179,7 @@ _FLOAT_KEYS = {
     "EtaBinSize", "OmeBinSize",
     "MaxRingRad", "Rsample", "Hbeam", "BeamSize",
     "ExcludePoleAngle", "Wedge",
-    "MargABC", "MargABG", "MinMatchesToAcceptFrac",
+    "MargABC", "MargABG", "MargStrain", "MinMatchesToAcceptFrac",
     "LsdFit", "YBCFit", "ZBCFit", "txFit", "tyFit", "tzFit",
     "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7",
     "p8", "p9", "p10", "p11", "p12", "p13", "p14",
@@ -382,6 +383,10 @@ def write_paramstest(p: ParamsTest, path: Union[str, Path]) -> None:
         fp.write(f"MarginOme {f6(p.MarginOme)};\n")
         fp.write(f"MargABC {f6(p.MargABC)};\n")
         fp.write(f"MargABG {f6(p.MargABG)};\n")
+        if p.MargStrain > 0:
+            # Not part of the C FitSetup key list; emitted only when the user
+            # set it, so existing files stay byte-identical to the C writer.
+            fp.write(f"MargStrain {f6(p.MargStrain)};\n")
         fp.write(
             f"MarginRadial {f6(p.MarginRadial if p.MarginRadial else p.MarginRad)};\n"
         )
@@ -462,7 +467,7 @@ OPTIONAL_FITSETUP_KEYS_FLOAT = (
     "MarginRadius", "MarginRadial", "MarginEta", "MarginOme",
     "EtaBinSize", "OmeBinSize",
     "StepSizeOrient", "StepSizePos",
-    "MargABG", "MargABC",
+    "MargABG", "MargABC", "MargStrain",
     "tolTilts", "tolBC", "tolLsd",
     "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7",
     "p8", "p9", "p10", "p11", "p12", "p13", "p14",
@@ -542,6 +547,7 @@ class ZarrParams:
     StepSizePos: float = 5.0
     MargABG: float = 2.0
     MargABC: float = 2.0
+    MargStrain: float = 0.0
 
     # tolerances (NLopt-era; carried through for paramstest.txt parity)
     tolTilts: float = 1.0
@@ -668,6 +674,7 @@ class ZarrParams:
         pt.MarginRadial = self.MarginRadial
         pt.MargABC = self.MargABC
         pt.MargABG = self.MargABG
+        pt.MargStrain = self.MargStrain
         pt.MinMatchesToAcceptFrac = self.MinMatchesToAcceptFrac
         pt.EtaBinSize = self.EtaBinSize
         pt.OmeBinSize = self.OmeBinSize

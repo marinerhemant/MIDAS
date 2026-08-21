@@ -78,3 +78,21 @@ def test_zarr_params_required_keys_missing(tmp_path: Path):
     # Should mention each required key
     for k in REQUIRED_FITSETUP_KEYS:
         assert k in msg, f"missing required-key {k!r} in error message: {msg}"
+
+
+def test_margstrain_roundtrips_to_paramstest(tmp_path: Path, tiny_paramstest):
+    """MargStrain must reach the C refiner, which reads paramstest.
+
+    The strain search box used to be a compiled-in +-0.01. It is now the
+    `MargStrain` key, so it has to survive write -> read like MargABC does.
+    """
+    tiny_paramstest.MargStrain = 0.025
+    f = tmp_path / "paramstest.txt"
+    write_paramstest(tiny_paramstest, f)
+    assert "MargStrain" in f.read_text()
+    assert read_paramstest(f).MargStrain == 0.025
+
+
+def test_margstrain_defaults_to_zero_meaning_c_default(tiny_paramstest):
+    """0 is the 'unset' sentinel: the C side falls back to 0.01 (10000 ue)."""
+    assert tiny_paramstest.MargStrain == 0.0
