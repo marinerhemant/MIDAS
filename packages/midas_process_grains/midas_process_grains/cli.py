@@ -131,7 +131,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-h5", action="store_true",
                    help="Skip writing data_consolidated.h5.")
     p.add_argument("--no-diagnostics-h5", action="store_true",
-                   help="Skip writing processgrains_diagnostics.h5.")
+                   help="Skip writing processgrains_diagnostics.h5 (the "
+                        "signed per-spot residual sidecar every downstream "
+                        "diagnostic reads). Honoured by every mode except "
+                        "'physics', which never builds the residual table.")
     p.add_argument("--max-seeds", type=int, default=None,
                    help="Process only the first N alive seeds (smoke / dev).")
     p.add_argument("--nnls-volume", action="store_true",
@@ -218,6 +221,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             # by the pipeline and then ignored, and only an explicit
             # --min-nr-spots on the command line had any effect.
             min_nr_spots=args.min_nr_spots,
+            write_diagnostics=not args.no_diagnostics_h5,
             device=device_str,
         )
         return 0

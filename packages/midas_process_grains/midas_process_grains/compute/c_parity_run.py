@@ -94,14 +94,32 @@ def run_c_parity_clustering(
     tests; the convenience wrapper ``run_c_parity_pipeline_from_disk``
     reads from the run directory.
     """
-    # ProcessKey.bin can be one row short of OPF due to C pwrite alignment.
-    # Truncate everything to the common safe length; the dropped trailing
-    # seed (if any) gets NrIDsPerID=0 anyway and contributes nothing.
+    # Safety net for a genuinely mismatched set of inputs. This used to fire
+    # on EVERY run because FitBest.bin / ProcessKey.bin were read one seed
+    # short of OrientPosFit.bin — the C writer pwrites only nSpotsComp
+    # records at a full-slot stride, so the last seed leaves a partial slot
+    # that the readers truncated away (see io.binary.TailPaddedBinary).
+    #
+    # The old rationale here — "the dropped trailing seed gets NrIDsPerID=0
+    # anyway and contributes nothing" — was WRONG. Measured on the 56,125-seed
+    # Ni FF layer: the dropped seed was 56,124 / SpotID 245283 with
+    # NrIDsPerID=87, keep_flag set and completeness 0.777, i.e. an ordinary
+    # live candidate silently deleted from the grain list. The readers now
+    # zero-pad instead, so this branch should no longer trigger; if it does,
+    # the inputs really are inconsistent and dropping LIVE seeds is worth
+    # shouting about rather than mentioning.
     n_seeds = min(opf.shape[0], process_key.shape[0], key.shape[0])
     if not (n_seeds == opf.shape[0] == process_key.shape[0] == key.shape[0]):
-        print(f"[c-parity] truncating to common length {n_seeds:,} "
-              f"(OPF={opf.shape[0]}, PK={process_key.shape[0]}, "
+        n_dropped_alive = int((key[n_seeds:, 0] != 0).sum()) if key.shape[0] > n_seeds else 0
+        print(f"[c-parity] WARNING: input row counts disagree — truncating to "
+              f"{n_seeds:,} (OPF={opf.shape[0]}, PK={process_key.shape[0]}, "
               f"Key={key.shape[0]})", flush=True)
+        if n_dropped_alive:
+            print(f"[c-parity] WARNING: {n_dropped_alive} of the discarded "
+                  f"trailing seeds are ALIVE (keep_flag set) and will not "
+                  f"appear in Grains.csv. This is silent data loss — check "
+                  f"that the refiner wrote all of FitBest/ProcessKey/"
+                  f"OrientPosFit/Key from the SAME invocation.", flush=True)
         opf = opf[:n_seeds]
         process_key = process_key[:n_seeds]
         key = key[:n_seeds]
@@ -181,6 +199,7 @@ def run_c_parity_pipeline_from_disk(
     confidence_min: Optional[float] = None,
     min_nr_spots: Optional[int] = None,
     write_spot_matrix: bool = True,
+    write_diagnostics: bool = True,
     device: str = "cpu",
     paramstest: Optional[Union[str, Path]] = None,
 ) -> CParityResult:
@@ -190,6 +209,13 @@ def run_c_parity_pipeline_from_disk(
     runs Stage 1 + Pass A + confidence filter; writes Grains.csv,
     GrainIDsKey.csv, and (if FitBest available) SpotMatrix.csv to
     ``out_dir`` in C ProcessGrains format.
+
+    ``write_diagnostics`` additionally emits
+    ``out_dir/processgrains_diagnostics.h5`` with the signed per-spot
+    residual decomposition (``/residuals``), the same schema the spot-aware
+    and ``legacy`` modes write. It costs no extra FitBest I/O — the rows are
+    already in RAM for the strain solve — but holds ~11 float64 per matched
+    spot until the table is assembled; pass ``False`` on a memory-tight run.
 
     ``paramstest`` names the parameter file to read; it defaults to
     ``run_dir/"paramstest.txt"``. Pass the file the caller was actually
@@ -203,7 +229,8 @@ def run_c_parity_pipeline_from_disk(
     Returns the :class:`CParityResult` for callers that want to inspect
     the kept grains in memory.
     """
-    from ..io.binary import read_orient_pos_fit, read_process_key, read_key, read_fit_best
+    from ..io.binary import (materialize, read_fit_best, read_key,
+                             read_orient_pos_fit, read_process_key)
     from ..io.ids_hash import load_ids_hash
     from ..params import read_paramstest_pg
     from .c_parity_emit import (
@@ -248,7 +275,12 @@ def run_c_parity_pipeline_from_disk(
     opf = np.array(read_orient_pos_fit(rd))
     key = np.array(read_key(rd))
     print(f"[c-parity] loading ProcessKey into RAM …", flush=True)
-    pk = np.array(read_process_key(rd), copy=True)
+    # materialize(), not np.array(): read_process_key may return a per-seed
+    # view when the C writer left a short final slot, and that view refuses
+    # np.asarray so a 49 GB FitBest can never be copied by accident. The
+    # ProcessKey full load IS intended here (~1.1 GB int32 at 56 k seeds) --
+    # the clustering indexes it randomly across seeds.
+    pk = materialize(read_process_key(rd))
     print(f"[c-parity] inputs loaded  [{time.time()-t0:.1f}s]", flush=True)
 
     res = run_c_parity_clustering(
@@ -295,6 +327,7 @@ def run_c_parity_pipeline_from_disk(
         distance_um=float(params.Lsd),
         wavelength_a=float(params.Wavelength),
         ids_hash=ids_hash,
+        collect_residuals=write_diagnostics,
     )
 
     write_grains_csv(
@@ -318,15 +351,110 @@ def run_c_parity_pipeline_from_disk(
         iaeif = rd / "InputAllExtraInfoFittingAll.csv"
         if iaeif.exists():
             im = load_input_extra_info_matrix(iaeif)
+            # SpotDiagnostics gives the un-found expected spots (the
+            # completeness deficit); FitBestFinal gives the post-fit
+            # prediction. Both optional — an older run has neither, and the
+            # corresponding columns stay NaN rather than 0.0.
+            sd = None
+            try:
+                from ..io.spot_diag import load_spot_diag
+                sd = load_spot_diag(rd)
+            except FileNotFoundError:
+                print("[c-parity] no SpotDiagnostics.bin — SpotMatrix will "
+                      "carry no un-found-expected rows", flush=True)
+            fbf = None
+            try:
+                from ..io.binary import read_fit_best_final
+                fbf = read_fit_best_final(rd)
+            except FileNotFoundError:
+                print("[c-parity] no FitBestFinal.bin — SpotMatrix post-fit "
+                      "columns stay NaN", flush=True)
             write_spot_matrix_csv(
                 out_path=out_dir / "SpotMatrix.csv",
                 kept_grains=res.kept_grains, fb=fb, input_matrix=im,
-                spot_cache=spot_cache,
+                spot_cache=spot_cache, spot_diag=sd, fb_final=fbf,
             )
         else:
             print(f"[c-parity] no InputAllExtraInfoFittingAll.csv — "
                   f"skipping SpotMatrix.csv", flush=True)
 
+    if write_diagnostics:
+        write_residual_diagnostics(
+            out_path=out_dir / "processgrains_diagnostics.h5",
+            kept_grains=res.kept_grains,
+            spot_cache=spot_cache,
+        )
+
     print(f"[c-parity] DONE: {len(res.kept_grains):,} grains → {out_dir}",
           flush=True)
     return res
+
+
+def write_residual_diagnostics(
+    *,
+    out_path: Path,
+    kept_grains: List[CParityKeptGrain],
+    spot_cache: Optional[list],
+) -> Optional[Path]:
+    """Aggregate the per-grain residual blocks and write the sidecar.
+
+    ``spot_cache`` is the list returned by
+    :func:`c_parity_emit.gather_per_grain_spot_data` with
+    ``collect_residuals=True``; each entry carries a ``"resid"`` block whose
+    ``grain_idx`` column is the index into ``kept_grains``, i.e. **Grains.csv
+    row order** — the same convention the spot-aware path uses, so the
+    per-grain arrays line up with the CSV row-for-row in either mode.
+
+    Returns the path written, or ``None`` when there were no residual rows
+    (no FitBest, or diagnostics were not collected).
+    """
+    from ..io.consolidated import write_diagnostics_arrays
+    from .residual_decomposition import (
+        SPOT_RESIDUAL_COLS,
+        decompose_residuals,
+        summarize_residuals,
+    )
+
+    n_grains = len(kept_grains)
+    blocks = []
+    if spot_cache is not None:
+        for cache in spot_cache:
+            if cache is None:
+                continue
+            blk = cache.get("resid")
+            if blk is not None and len(blk):
+                blocks.append(blk)
+    if not blocks:
+        print("[c-parity] no per-spot residuals available "
+              "(no FitBest.bin?) — skipping processgrains_diagnostics.h5",
+              flush=True)
+        return None
+
+    tbl = np.concatenate(blocks, axis=0)
+    resid_diag = decompose_residuals(tbl, n_grains)
+    print(summarize_residuals(resid_diag), flush=True)
+
+    # cluster_sizes is the ONLY per-grain integer diagnostic c_parity
+    # measures: the number of seeds Stage 1 + Pass A merged into this grain.
+    # The spot-aware pipeline's other counters (n_resolved_hkls,
+    # n_majority_hkls, n_residual_tie_hkls, n_forward_sim_hkls) describe
+    # per-hkl conflict resolution that c_parity does not perform, so they are
+    # omitted rather than written as zeros a reader would take for measured.
+    cluster_sizes = np.array(
+        [len(g.member_positions) for g in kept_grains], dtype=np.int32,
+    )
+    write_diagnostics_arrays(
+        out_path,
+        diagnostics={
+            "cluster_sizes": cluster_sizes,
+            "residuals": resid_diag,
+            "residuals_spot_table": tbl,
+        },
+        n_grains=n_grains,
+        mode="c_parity",
+        int_keys=("cluster_sizes",),
+    )
+    print(f"[c-parity] diagnostics: {tbl.shape[0]:,} spot residuals over "
+          f"{n_grains:,} grains → {out_path}  "
+          f"(columns: {','.join(SPOT_RESIDUAL_COLS)})", flush=True)
+    return out_path

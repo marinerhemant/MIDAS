@@ -162,6 +162,15 @@ class ProcessGrainsResult:
                           else np.ones(n, dtype=np.int32),
             "eul_rad": eul,
         }
+        # Pre/post error triples (Grains.csv cols 47-52) when the run carries
+        # them. The spot-aware/legacy pipeline does not compute them — only
+        # the c-omp refiner does, via the widened OrientPosFit.bin — so they
+        # are left absent here and the writer fills NaN. Not 0.0: a reader
+        # cannot tell a measured zero from a missing measurement.
+        for key in ("diff_pre_3", "diff_post_3"):
+            trip = (self.diagnostics or {}).get(key)
+            if trip is not None:
+                grains[key] = np.asarray(trip, dtype=np.float64).reshape(n, 3)
         write_grains_csv(
             d / "Grains.csv", grains,
             sg_nr=self.sg_nr, lattice=self.lattice_reference,
@@ -175,7 +184,24 @@ class ProcessGrainsResult:
         if h5:
             write_consolidated_h5(d / "data_consolidated.h5", self)
         if diagnostics_h5:
-            write_diagnostics_h5(d / "processgrains_diagnostics.h5", self)
+            # Never overwrite a populated sidecar with an empty one. A
+            # ``c_parity`` result is rebuilt from Grains.csv (see
+            # ``pipeline._result_from_grains_csv``) and so carries no
+            # ``residuals`` key — but c_parity has already written the real
+            # sidecar itself. Writing here would silently replace a file full
+            # of per-spot residuals with zero-length arrays, and the run would
+            # still report success.
+            diag_path = d / "processgrains_diagnostics.h5"
+            has_residuals = "residuals" in (self.diagnostics or {})
+            if has_residuals or not diag_path.exists():
+                write_diagnostics_h5(diag_path, self)
+            else:
+                print(
+                    f"[pg] {diag_path.name} already exists and this result "
+                    f"carries no residuals (mode={self.mode}) — keeping the "
+                    f"existing sidecar rather than blanking it.",
+                    flush=True,
+                )
 
         return d
 

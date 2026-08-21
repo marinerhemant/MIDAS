@@ -4,6 +4,192 @@ All notable changes to midas-process-grains. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] – 2026-08-21
+
+### Closed open question — the post-fit spot loss is a GATE-BOUNDARY effect
+
+- 0.03 % of matched spots (66 of 201,657 on the reference layer, across 50 of
+  1,988 seeds) have no post-fit match in `FitBestFinal.bin`. **Explained, not a
+  defect**: they sit at the boundaries of the forward model's own generation
+  gates, so when the fit moves orientation and lattice the reflection stops
+  being generated and the observed spot has no candidate left.
+  - within 2x `MinEta` of the eta pole: **33.3 %** of lost vs **1.2 %** of kept
+    (28x enrichment); at |omega| > 170 deg: **34.8 %** vs **5.9 %** (5.9x).
+  - Not the matching caps: 0 % of lost spots are near the 1.0 deg
+    internal-angle cap or the 5 deg omega window.
+  - Not "the fit discards bad spots": their median pre-fit `DiffLen` is
+    *lower* than the population (571.8 vs 593.9 um). The one elevated
+    statistic is the omega residual (0.314 vs 0.131 deg), which is the tell —
+    those are the spots nearest the omega boundary.
+
+### Added
+
+- **Reads the 33-column `OrientPosFit.bin`** written by midas-fit-grain
+  >= 0.9.0, which appends the same-estimator pre/post error triples (cols
+  27-29 pre pos/ome/angle, 30-32 post) while leaving cols 22-24 untouched.
+  Width is **sniffed**, not assumed: `Key.bin`'s seed count is authoritative
+  when present, arithmetic decides when only one width divides the file, and
+  a SpId-sentinel content check breaks the genuine tie (any multiple of 297
+  doubles divides by both 27 and 33 — 11x27 == 9x33). A file matching
+  neither is rejected rather than guessed at, because a wrong width shifts
+  every column with no exception anywhere.
+  `ORIENT_POS_FIT_LAYOUT` gains the six names; asking for them on a 27-wide
+  file raises `IndexError`, which is the intent.
+  - **Cols 22-24 are documented as the historical MIXTURE they are** (22
+    post-fit, 23/24 pre-fit). Prefer 27-32 for any before/after comparison.
+- **`read_fit_best_final`** for `Output/FitBestFinal.bin` — the post-fit
+  per-spot records, same layout/stride/tail behaviour as `FitBest.bin`.
+  The two are **not row-aligned** (the post-fit matcher can select a
+  different spot set), so join on SpotID, never by row index.
+- **`io/spot_diag.py`** — canonical reader for `SpotDiagnostics.bin`, the only
+  artifact recording expected spots that were **not found**. Version-aware
+  (v1 vs v2, see below), with `unmatched()`, `completeness()` and
+  `completeness_by_ring()`. On the reference FF layer: 55,593 voxels,
+  6,384,978 predicted spots, **654,736 un-found**, mean completeness 0.8975,
+  and per-ring completeness 1:0.972 2:0.927 3:0.905 4:0.901 **5:0.779** —
+  the outer ring is where spots are lost, which nothing previously exposed.
+  - v1 files carry a defect: col 5 is `theorGx` on matched rows but a real
+    theoretical-spot id on unmatched ones (measured col5==col6 on
+    41,118/41,118 matched rows). `SpotDiag.col5_is_theor_spot_id` reports
+    whether it is trustworthy; `summary()` warns on v1.
+
+### Changed
+
+- 23 new tests (`test_spot_diag.py`, `test_orient_pos_fit_width.py`); suite
+  364 -> **388**.
+
+## [0.9.3] – 2026-08-21
+
+### Fixed
+
+- **The LAST seed was silently deleted from every c-omp run.**
+  `FitUnified.c` pwrites only `nSpotsComp` records per seed at a full-slot
+  stride (`:2297` FitBest.bin, `:2136` ProcessKey.bin), so both files end
+  mid-slot. `read_fit_best` and `read_process_key` floor-divided by the
+  stride and truncated the remainder — dropping the final seed, silently, on
+  every run. Their docstrings described this as tolerated slack, and the
+  `c_parity_run` truncation guard rationalised it as *"the dropped trailing
+  seed gets NrIDsPerID=0 anyway and contributes nothing"*, which was false.
+  - Measured on a fresh 56,125-seed Ni FF layer: FitBest.bin = 56,124 full
+    slots **+ 87 rows**, ProcessKey.bin = 56,124 **+ 87 ints** — the same
+    seed 56,124, `nSpotsComp = 87`. That seed is **alive**: SpotID 245283,
+    `keep_flag` set, completeness 0.777, meanRadius 27.3 µm, while
+    `OrientPosFit.bin` and `Key.bin` both saw it at 56,125 rows.
+  - The short final slot is now zero-padded and returned
+    (`io.binary.TailPaddedBinary`), matching what
+    `midas_fit_grain.io_binary.read_fit_best` has always done for its
+    materialising path. All four readers now agree at 56,125 seeds and the
+    `c_parity_run` "truncating to common length" branch no longer fires.
+  - After the fix that seed is a grain: `Grains.csv` ID 245283, DiffPos
+    404.402644, radius 27.346476, confidence 0.776786 — each matching
+    `OrientPosFit` cols 22/25/26 — with **87** SpotMatrix rows = its
+    `nSpotsComp`, and it obeys the per-spot/per-grain identities to 1.4e-16.
+  - Full slots stay zero-copy memmap views; only the final short slot is
+    materialised (≤880 KB FitBest, ≤20 KB ProcessKey). The view **refuses**
+    whole-file `np.asarray` rather than silently truncating or copying 49 GB
+    — use `io.binary.materialize()` where a full load is genuinely intended
+    (ProcessKey clustering is; FitBest never is). That guard immediately
+    caught one such call site in `c_parity_run`.
+  - Integrity check tightened: a trailing remainder that is not a whole
+    number of records is now rejected as torn. The previous
+    `size > n_full*slot + slot` check was unreachable — `divmod` guarantees
+    the remainder is below one slot.
+  - 12 new tests (`tests/test_tail_padded_binary.py`); suite 355 → 367. No
+    existing fixture could have caught this: `conftest.tiny_run_dir` writes
+    "the full MAX_N_HKLS=5000 slots zero-padded", i.e. always an exact
+    multiple.
+
+## [0.9.2] – 2026-08-21
+
+### Added
+
+- **`c_parity` now writes the residual sidecar.** The signed per-spot residual
+  decomposition added in 0.6.0 was only ever wired into `pipeline.run`, so the
+  *default* mode — the one `midas-pipeline` and `midas-ff-pipeline` run —
+  returned from `run_c_parity_pipeline_from_disk` without producing
+  `processgrains_diagnostics.h5` at all. Nothing errored; `Grains.csv` was
+  correct and every downstream diagnostic silently degraded to descriptive-only
+  (documented as a standing limitation in `manuals/ff-hedm/phase-3-run.md`).
+  `c_parity` now emits the same `/residuals` schema as the spot-aware and
+  `paper_claim` paths.
+  - Costs **no extra FitBest I/O**: `gather_per_grain_spot_data` already holds
+    the full `(5000, 22)` seed block for the Kenesei strain solve, and the
+    decomposition reads cols 1,2,3 / 7,8,9 / 19 of the same array. Measured on
+    the from-scratch Ni FF layer (24,090 grains, 49.4 GB FitBest): gather
+    38.1 s, the memmap read still dominating.
+  - `compute/residual_decomposition.build_spot_residual_block` is the new
+    vectorised core; `build_spot_residual_row` is now a wrapper over it, so the
+    `c_parity` and spot-aware callers cannot drift (guarded by a
+    scalar-vs-block equality test).
+  - `io/consolidated.write_diagnostics_arrays` is the one implementation of the
+    sidecar schema; `write_diagnostics_h5` is a thin adapter for callers that
+    have a `ProcessGrainsResult`.
+  - `c_parity` writes `/diagnostics/cluster_sizes` (seeds merged per grain) and
+    **omits** `n_resolved_hkls` / `n_majority_hkls` / `n_residual_tie_hkls` /
+    `n_forward_sim_hkls` rather than zero-filling them — those describe per-hkl
+    conflict resolution `c_parity` does not perform, and a zero is
+    indistinguishable from a measurement.
+  - `--no-diagnostics-h5` is now honoured by `c_parity` (it was accepted and
+    ignored). `mode="physics"` still has no residuals — `v4_pipeline` never
+    reads FitBest, so there is no obs-vs-predicted table to decompose.
+  - Validated on a **from-scratch** Ni FF run (`ff_refiner_prepost`,
+    2026-08-21: raw .cbf → zip_convert → peakfit → transforms → index →
+    refine, current binaries), 2,390,948 spot residuals over 24,090 grains.
+    Per-grain means reproduce `Grains.csv` `DiffOme`/`DiffAngle` to **1.4e-15
+    / 1.2e-15** over all 55,593 written seeds, 0 exceptions; the
+    radial/tangential rotation is orthonormal to 3.5e-7.
+    `utils/midas_ff_report.py` renders its full figure set (including
+    `residuals.png`) on a default run. 7 new tests
+    (`tests/test_c_parity_residuals.py`).
+  - **Earlier numbers in this entry were withdrawn.** They were measured on
+    a `datasetA` recon (`.../nb_ni_recon/LayerNr_1`), which is a *mixture* of runs:
+    `GrainRadius == 1.0000` on all 24,318 grains (the signature of a build
+    predating the `meanRadius` fix), a `paramstest.txt` whose `OutputFolder`
+    does not match where its own `FitBest.bin` sits, and May file dates that
+    predate commit `06dd3241` (2026-08-07) — the very refiner staging the
+    numbers described. Do not re-cite anything measured there.
+
+### Fixed
+
+- **`result.write(diagnostics_h5=True)` no longer blanks a populated sidecar.**
+  A `c_parity` result is rebuilt from `Grains.csv` and so carries no
+  `diagnostics`; writing it over the sidecar c_parity had just written would
+  have replaced 2.4 M rows of residuals with zero-length arrays, and the run
+  would still have reported success.
+
+### Known upstream behaviour (not introduced here, not fixed here) — ESTABLISHED
+
+- **The per-spot residuals in `FitBest.bin` are evaluated at the INDEXER SEED,
+  before any fitting**, as are `Grains.csv` `DiffOme` and `DiffAngle`. Only
+  `DiffPos` is post-fit. So the `/residuals` sidecar describes the seed
+  geometry on c-omp runs, and `DiffPos` cannot be re-derived from it.
+  - Mechanism: `SpotsComp` (→ FitBest.bin) is filled only inside
+    `CalcAngleErrors`, whose unconditional call sites (`FitUnified.c:1804`,
+    `:1828`) both pass `Ini = ConcatPosEulLatc(Pos0, Euler0, LatCin)` = the
+    seed. The post-fit re-match at `:1939` is inside the `MIDAS_FG_REMATCH`
+    macro, gated on `getenv(...)` and off by default. `ErrorFin[0]`
+    (`:2036-2040`) is `FitErrors12D(FinalResult)/nSpotsComp`, whereas
+    `ErrorFin[1]/[2]` are carried over from the pass-2 seed evaluation.
+  - Measured over **all 55,593** written seeds of the from-scratch run:
+    mean(per-spot ω residual)/`DiffOme` and mean(per-spot IA)/`DiffAngle` are
+    both exactly 1 (~6 ulp); mean(per-spot `DiffLen`)/`DiffPos` = **1.7111**
+    (p05 1.315, p95 2.213); mean(`DiffLen`)/`IniErr` = 1.0000 and
+    `DiffPos`/`FinalErr` = 1.0000, both to the log's print precision.
+    `FinalErr > IniErr` in **0/55,593** grains — the 1.71× *is* the
+    improvement refinement achieves.
+  - Convention-free confirmation: `hypot(YExp, ZExp)` is the theoretical ring
+    radius, a pure function of the lattice used to build the theoretical
+    spots. Across 257,700 spots from 2,500 grains whose *refined* `a` spans
+    4.3e-3 relative, its per-ring spread is **3e-16** (3 distinct floats per
+    ring) where refined-`a` spread would move ring 1 by ~416 µm; and those
+    radii match `hkls.csv`, generated at the seed `LatticeParameter`, to
+    <5e-07 µm.
+  - **ESTABLISHED** — mechanism lens survived a dedicated refutation attempt
+    (which also killed the competing `FitErrors12D` id-pairing explanation:
+    worth 0.0%), and an independent reproduction lens reproduced every
+    number from raw files with 0 exceptions. Residual gap: the env-var state
+    is inferred from the absence of its output lines, not directly asserted.
+
 ## [0.6.0] – 2026-07-16
 
 ### Added

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import math
+
 import numpy as np
 
 from midas_process_grains.io.csv import (
+    GRAINS_CSV_NCOLS,
     write_grain_ids_key_csv,
     write_grains_csv,
     write_spot_matrix_csv,
@@ -14,9 +17,10 @@ from midas_process_grains.io.csv import (
 
 
 def test_write_grains_csv_writes_headers_and_rows(tmp_path: Path):
-    """Grains.csv emits the full 47-col legacy schema (ID + OM(9) + XYZ(3) +
-    lattice(6) + Diff{Pos,Ome,Angle}(3) + Radius + Conf + eFab(9) + eKen(9) +
-    RMSErrorStrain + PhaseNr + Eul(3) = 47)."""
+    """Grains.csv emits the full schema: ID + OM(9) + XYZ(3) + lattice(6) +
+    Diff{Pos,Ome,Angle}(3) + Radius + Conf + eFab(9) + eKen(9) +
+    RMSErrorStrain + PhaseNr + Eul(3) = 47, plus the pre/post error triples
+    at 47-52 = 53."""
     n = 2
     grains = {
         "ids": np.array([1, 2], dtype=np.int32),
@@ -47,13 +51,20 @@ def test_write_grains_csv_writes_headers_and_rows(tmp_path: Path):
     body = [l for l in txt.splitlines() if l and not l.startswith("%")]
     assert len(body) == 2
     fields = body[0].split("\t")
-    assert len(fields) == 47, f"expected 47 cols, got {len(fields)}"
+    assert len(fields) == GRAINS_CSV_NCOLS, (
+        f"expected {GRAINS_CSV_NCOLS} cols, got {len(fields)}")
     assert int(fields[0]) == 1
     np.testing.assert_allclose([float(x) for x in fields[1:10]], np.eye(3).reshape(-1))
     # DiffPos/Ome/Angle at cols 19/20/21
     np.testing.assert_allclose(float(fields[19]), 125.0)
     np.testing.assert_allclose(float(fields[20]), 0.07)
     np.testing.assert_allclose(float(fields[21]), 0.08)
+    # Not supplied by this caller -> NaN, never 0.0, which a reader could not
+    # tell from a measured zero.
+    for c in range(47, GRAINS_CSV_NCOLS):
+        assert math.isnan(float(fields[c])), f"col {c} should be NaN, got {fields[c]}"
+    for col in ("DiffPosPre", "DiffAnglePre", "DiffPosPost", "DiffAnglePost"):
+        assert col in txt, f"missing new column: {col}"
 
 
 def test_write_spot_matrix_csv(tmp_path: Path):

@@ -7,9 +7,12 @@ grain-output files.
 
 from .binary import (
     BinaryInputs,
+    TailPaddedBinary,
+    materialize,
     read_index_best,
     read_index_best_full,
     read_fit_best,
+    read_fit_best_final,
     read_orient_pos_fit,
     read_key,
     read_process_key,
@@ -22,12 +25,22 @@ from .csv import (
 )
 from .hkls import HklTable, load_hkl_table
 from .ids_hash import IDsHash, load_ids_hash
+from .spot_diag import (
+    PF_SPOT_MATRIX_COLS,
+    SPOT_DIAG_COLS,
+    SpotDiag,
+    load_spot_diag,
+    write_pf_spot_matrix,
+)
 
 __all__ = [
     "BinaryInputs",
+    "TailPaddedBinary",
+    "materialize",
     "read_index_best",
     "read_index_best_full",
     "read_fit_best",
+    "read_fit_best_final",
     "read_orient_pos_fit",
     "read_key",
     "read_process_key",
@@ -39,4 +52,9 @@ __all__ = [
     "load_hkl_table",
     "IDsHash",
     "load_ids_hash",
+    "SpotDiag",
+    "load_spot_diag",
+    "SPOT_DIAG_COLS",
+    "PF_SPOT_MATRIX_COLS",
+    "write_pf_spot_matrix",
 ]

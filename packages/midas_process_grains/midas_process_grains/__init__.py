@@ -27,6 +27,13 @@ Operating modes (`mode=` kwarg):
                         diagnosed — it is disabled on its output, not on a root
                         cause, so do not re-enable it on one dataset looking
                         better. Use ``"c_parity"``.
+
+Every mode that reads ``FitBest.bin`` also writes the signed per-spot residual
+sidecar ``processgrains_diagnostics.h5:/residuals`` — ``c_parity`` included as
+of 0.9.2, which closed the gap where the *default* mode produced none.
+``"legacy"`` never reads FitBest so its residuals are empty by design, and the
+CLI-only ``mode="physics"`` (``v4_pipeline``) writes none at all. See the
+README for the schema and the per-mode table.
 """
 
 from __future__ import annotations
@@ -41,7 +48,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.9.1"
+__version__ = "0.10.0"
 
 from .params import ProcessGrainsParams, read_paramstest_pg
 

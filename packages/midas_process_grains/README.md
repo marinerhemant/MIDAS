@@ -13,7 +13,7 @@ Worked-example Jupyter notebooks live in `notebooks/`. They are **not shipped wi
 
 The package has one shippable mode: **`c_parity`**, which mirrors
 `FF_HEDM/src/ProcessGrains.c` exactly. The Stage 1 cluster-build, the Pass A
-position+orientation dedup, the confidence cut, and the 47-column
+position+orientation dedup, the confidence cut, and the 53-column
 `Grains.csv` / 12-column `SpotMatrix.csv` / `GrainIDsKey.csv` writers all
 follow the C source line-for-line.
 
@@ -120,16 +120,23 @@ The pipeline reads the standard MIDAS run-directory layout:
 
 ```
 <out_dir>/
-  Grains.csv                      # 47 columns, C ProcessGrains layout
+  Grains.csv                      # 53 columns (47 legacy + pre/post error triples at 47-52)
   GrainIDsKey.csv                 # one line per kept grain
-  SpotMatrix.csv                  # 12 columns, C ProcessGrains layout
+  SpotMatrix.csv                  # 28 columns, and one row per UN-FOUND expected spot
   processgrains_diagnostics.h5    # aux diagnostics (skip with --no-diagnostics)
 ```
 
 ### `processgrains_diagnostics.h5:/residuals` (v0.6.0+)
 
 Signed per-spot residual decomposition, collected during the FitBest pass —
-this is what `Grains.csv` `DiffPos`/`DiffOme` aggregate, now decomposable:
+this is what `Grains.csv` `DiffPos`/`DiffOme` aggregate, now decomposable.
+
+**Written by every mode that reads FitBest**, `c_parity` (the default)
+included, with one schema — see the mode table below. These are the residuals
+of each grain's **representative seed's** refined fit (obs vs the refiner's own
+prediction), not a re-fit over the merged cluster's pooled spots; the
+convention is the same in every mode, so the numbers are comparable across
+them.
 
 * `residuals/spot_table` — gzip float32, one row per resolved grain-spot
   claim; column layout = `SPOT_RESIDUAL_COLS` in
@@ -153,7 +160,27 @@ this is what `Grains.csv` `DiffPos`/`DiffOme` aggregate, now decomposable:
   `overall_mad_{drad,dtan}_um`, `overall_mad_dome_deg`,
   `overall_med_internal_angle_deg`.
 
-`mode="legacy"` (no FitBest pass) emits empty `/residuals` by design.
+Per-mode coverage:
+
+| mode | `/residuals` | `/diagnostics` per-grain counters |
+|---|---|---|
+| `c_parity` (default) | **yes** (v0.9.2+) | `cluster_sizes` only |
+| `adaptive` | yes | all five |
+| `paper_claim` | yes | all five |
+| `legacy` | empty by design — that path never reads FitBest | all five |
+| `physics` | **no** — `v4_pipeline` never reads FitBest, so there is no obs-vs-predicted table to decompose | n/a |
+
+`c_parity` writes only the counter it actually measures (`cluster_sizes` = the
+number of seeds Stage 1 + Pass A merged into the grain). The spot-aware
+counters `n_resolved_hkls` / `n_majority_hkls` / `n_residual_tie_hkls` /
+`n_forward_sim_hkls` describe per-hkl conflict resolution `c_parity` does not
+perform, so they are **absent** rather than zero-filled — a reader must not
+mistake "not computed" for "measured zero".
+
+Skip the sidecar with `--no-diagnostics-h5` (honoured by every mode). It costs
+no extra FitBest I/O — the rows are already in RAM for the strain solve — but
+holds ~11 float64 per matched spot until the table is assembled (≈190 MB at
+22 k grains × 100 spots).
 
 ## Implementation notes
 

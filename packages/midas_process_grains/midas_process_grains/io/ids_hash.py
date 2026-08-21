@@ -61,6 +61,24 @@ class IDsHash:
             return 0.0
         return float(self.d_spacings[idx])
 
+    def ring_for_spot_ids(self, spot_ids: np.ndarray) -> np.ndarray:
+        """Vectorised ring lookup; returns ``-1`` for out-of-range SpotIDs.
+
+        Same semantics as :meth:`ring_for_spot_id`, element-wise. The
+        sentinel is ``-1`` rather than ``0`` because ring 0 is a real
+        (2θ = 0 background) ring number in the MIDAS convention.
+        """
+        ids = np.asarray(spot_ids, dtype=np.int64)
+        out = np.full(ids.shape, -1, dtype=np.int64)
+        idx = np.searchsorted(self.id_starts, ids, side="right") - 1
+        valid = (idx >= 0) & (idx < self.ring_nrs.size)
+        if valid.any():
+            v = idx[valid]
+            in_range = ids[valid] < self.id_ends[v]
+            sub = np.where(valid)[0][in_range]
+            out[sub] = self.ring_nrs[idx[sub]]
+        return out
+
     def d_for_spot_ids(self, spot_ids: np.ndarray) -> np.ndarray:
         """Vectorised lookup; returns ``0.0`` for out-of-range SpotIDs."""
         out = np.zeros(spot_ids.shape, dtype=np.float64)

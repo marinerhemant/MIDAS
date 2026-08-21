@@ -15,12 +15,23 @@ Two outputs:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Mapping, Union
 
 import numpy as np
 
 if TYPE_CHECKING:
     from ..result import ProcessGrainsResult
+
+# Integer per-grain diagnostic arrays written by the spot-aware / legacy
+# pipeline. ``c_parity`` supplies only the subset it actually measures — see
+# write_diagnostics_h5's ``int_keys`` note.
+_SPOT_AWARE_INT_KEYS = (
+    "cluster_sizes",
+    "n_resolved_hkls",
+    "n_majority_hkls",
+    "n_residual_tie_hkls",
+    "n_forward_sim_hkls",
+)
 
 
 def write_consolidated_h5(
@@ -111,22 +122,67 @@ def write_diagnostics_h5(
         /diagnostics/n_majority_hkls     : int32 (N,)
         /diagnostics/n_residual_tie_hkls : int32 (N,)
         /diagnostics/n_forward_sim_hkls  : int32 (N,)
+        /residuals/...                   : see :func:`write_diagnostics_arrays`
         /attrs/...
+
+    Thin adapter over :func:`write_diagnostics_arrays`, which ``c_parity``
+    calls directly — it has no ``ProcessGrainsResult`` to hand.
+    """
+    diag = result.diagnostics or {}
+    write_diagnostics_arrays(
+        path,
+        diagnostics=diag,
+        n_grains=result.n_grains,
+        mode=result.mode,
+        int_keys=_SPOT_AWARE_INT_KEYS,
+    )
+
+
+def write_diagnostics_arrays(
+    path: Union[str, Path],
+    *,
+    diagnostics: Mapping[str, object],
+    n_grains: int,
+    mode: str,
+    int_keys: tuple = _SPOT_AWARE_INT_KEYS,
+) -> None:
+    """Write ``processgrains_diagnostics.h5`` from plain arrays.
+
+    The single implementation of the sidecar schema, shared by every mode so
+    downstream readers (``utils/midas_ff_report.py``,
+    ``utils/midas_ff_report_beamreport.py``) see one layout regardless of
+    which mode produced the run.
+
+    Parameters
+    ----------
+    diagnostics
+        Mapping that may carry any of ``int_keys`` (per-grain int32 arrays),
+        ``"residuals"`` (the :func:`decompose_residuals` output dict),
+        ``"residuals_spot_table"`` (the ``(n_spots, 11)`` per-spot table) and
+        ``"edge_weights_per_cluster"``.
+    n_grains
+        Length of the per-grain arrays; a key in ``int_keys`` that is absent
+        from ``diagnostics`` is written as zeros of this length.
+    mode
+        Stamped on ``/attrs/mode`` so a reader can tell which pipeline wrote
+        the file.
+    int_keys
+        Which per-grain integer arrays to write. **Pass only the keys the
+        calling mode actually measures.** The zero-fill above is a padding
+        convenience for the spot-aware pipeline, where every key is genuinely
+        computed; a mode that does not compute one must leave it out rather
+        than emit zeros, which a reader cannot distinguish from a measured
+        count of zero.
     """
     import h5py
 
     p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    diag = diagnostics or {}
     with h5py.File(p, "w") as f:
         g = f.create_group("diagnostics")
-        diag = result.diagnostics or {}
-        for key in (
-            "cluster_sizes",
-            "n_resolved_hkls",
-            "n_majority_hkls",
-            "n_residual_tie_hkls",
-            "n_forward_sim_hkls",
-        ):
-            arr = np.asarray(diag.get(key, np.zeros(result.n_grains)), dtype=np.int32)
+        for key in int_keys:
+            arr = np.asarray(diag.get(key, np.zeros(n_grains)), dtype=np.int32)
             g.create_dataset(key, data=arr)
 
         # Signed residual decomposition (see compute/residual_decomposition).
@@ -135,7 +191,7 @@ def write_diagnostics_h5(
         #       the ``columns`` attribute (SPOT_RESIDUAL_COLS).
         if "residuals" in diag:
             r = f.create_group("residuals")
-            for key, arr in diag["residuals"].items():
+            for key, arr in diag["residuals"].items():   # type: ignore[union-attr]
                 r.create_dataset(key, data=np.asarray(arr))
             tbl = diag.get("residuals_spot_table")
             if tbl is not None and np.asarray(tbl).size:
@@ -151,10 +207,10 @@ def write_diagnostics_h5(
         if "edge_weights_per_cluster" in diag:
             ew = diag["edge_weights_per_cluster"]
             ew_grp = g.create_group("edge_weights_per_cluster")
-            for i, arr in enumerate(ew):
+            for i, arr in enumerate(ew):                  # type: ignore[arg-type]
                 ew_grp.create_dataset(
                     str(i), data=np.asarray(arr, dtype=np.float64),
                 )
 
         a = f.create_group("attrs")
-        a.attrs["mode"] = result.mode
+        a.attrs["mode"] = mode

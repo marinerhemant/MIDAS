@@ -27,7 +27,6 @@ preserve, so no torch pass-through is required.
 
 from __future__ import annotations
 
-import math
 from typing import Dict, Optional
 
 import numpy as np
@@ -36,6 +35,7 @@ import numpy as np
 __all__ = [
     "SPOT_RESIDUAL_COLS",
     "build_spot_residual_row",
+    "build_spot_residual_block",
     "decompose_residuals",
 ]
 
@@ -57,6 +57,107 @@ SPOT_RESIDUAL_COLS = (
 )
 
 
+# FitBest column indices this module reads. Verified against the *maintained*
+# refiner, ``midas_fit_grain/c_port.py:517-532`` (``CalcAngleErrors``), which
+# fills the 22-double row as:
+#   0        SpotID
+#   1..6     SpotsYZOGCorr  = position-corrected observed (y, z, omega, g1..g3)
+#   7..12    TheorSpotsYZWE = predicted            (y, z, omega, g1..g3)
+#   13..15   raw observed (YLab, ZLab, Omega)   16..18  OmegaIni, YOrig, ZOrig
+#   19       min internal angle (deg)
+#   20       diff_len (µm, = hypot(dy, dz))     21  |diff_ome| (deg)
+# Cols 20/21 are the *unsigned* magnitudes legacy Grains.csv averages into
+# DiffPos/DiffOme; everything here is the signed decomposition of the same
+# misfit, so it is a strict superset.
+_FB_Y_OBS, _FB_Z_OBS, _FB_OME_OBS = 1, 2, 3
+_FB_Y_EXP, _FB_Z_EXP, _FB_OME_EXP = 7, 8, 9
+_FB_INTERNAL_ANGLE = 19
+
+
+def build_spot_residual_block(
+    grain_idx: int,
+    fb_block: np.ndarray,
+    spot_ids: np.ndarray,
+    ring_nrs: np.ndarray,
+) -> np.ndarray:
+    """Vectorised residual rows for one grain's matched spots.
+
+    This is the single implementation of the decomposition arithmetic;
+    :func:`build_spot_residual_row` is a thin wrapper over it, so the
+    ``c_parity`` and spot-aware/``legacy`` callers cannot drift apart.
+
+    Parameters
+    ----------
+    grain_idx : int
+        Index into the output grain list (NOT GrainID). Grains.csv row order.
+    fb_block : ndarray ``(n, 22)``
+        FitBest rows for this grain's matched spots (see the column map
+        above). Already in RAM at both call sites — the memmap read is the
+        expensive part and this costs nothing on top of it.
+    spot_ids, ring_nrs : ndarray ``(n,)``
+        Per-spot SpotID and MIDAS ring number, carried through to columns 1
+        and 2 of the output.
+
+    Returns
+    -------
+    ndarray ``(m, 11)`` with ``m <= n`` — layout :data:`SPOT_RESIDUAL_COLS`.
+    Rows whose expected *or* observed radius is degenerate (zero-padding, or
+    a spot sitting exactly on the beam centre where the radial/tangential
+    basis is undefined) are dropped, matching the ``None`` return of the
+    scalar builder.
+    """
+    fb = np.asarray(fb_block, dtype=np.float64)
+    if fb.ndim == 1:
+        fb = fb[None, :]
+    n_cols = len(SPOT_RESIDUAL_COLS)
+    if fb.size == 0:
+        return np.zeros((0, n_cols), dtype=np.float64)
+
+    y_obs = fb[:, _FB_Y_OBS]
+    z_obs = fb[:, _FB_Z_OBS]
+    y_exp = fb[:, _FB_Y_EXP]
+    z_exp = fb[:, _FB_Z_EXP]
+    r_exp = np.hypot(y_exp, z_exp)
+    r_obs = np.hypot(y_obs, z_obs)
+
+    keep = (r_exp > 0.0) & (r_obs > 0.0)
+    if not keep.any():
+        return np.zeros((0, n_cols), dtype=np.float64)
+
+    fb = fb[keep]
+    y_obs = y_obs[keep]; z_obs = z_obs[keep]
+    y_exp = y_exp[keep]; z_exp = z_exp[keep]
+    r_exp = r_exp[keep]; r_obs = r_obs[keep]
+    sid = np.asarray(spot_ids, dtype=np.float64).reshape(-1)[keep]
+    rnr = np.asarray(ring_nrs, dtype=np.float64).reshape(-1)[keep]
+
+    dy = y_obs - y_exp
+    dz = z_obs - z_exp
+    # Radial / tangential unit vectors at the *observed* spot azimuth; use
+    # the observed position so the decomposition degrades gracefully when
+    # the prediction is far off.
+    ur_y = y_obs / r_obs
+    ur_z = z_obs / r_obs
+    drad = dy * ur_y + dz * ur_z
+    dtan = -dy * ur_z + dz * ur_y
+    dome = (fb[:, _FB_OME_OBS] - fb[:, _FB_OME_EXP] + 180.0) % 360.0 - 180.0
+    eta_deg = np.degrees(np.arctan2(-y_obs, z_obs))
+
+    out = np.empty((fb.shape[0], n_cols), dtype=np.float64)
+    out[:, 0] = float(grain_idx)
+    out[:, 1] = sid
+    out[:, 2] = rnr
+    out[:, 3] = eta_deg
+    out[:, 4] = dy
+    out[:, 5] = dz
+    out[:, 6] = drad
+    out[:, 7] = dtan
+    out[:, 8] = dome
+    out[:, 9] = fb[:, _FB_INTERNAL_ANGLE]
+    out[:, 10] = r_exp
+    return out
+
+
 def build_spot_residual_row(
     grain_idx: int,
     spot_id: float,
@@ -65,37 +166,23 @@ def build_spot_residual_row(
 ) -> Optional[list]:
     """Build one residual-table row from a FitBest per-spot record.
 
-    ``fb_row`` is one 22-double FitBest row (see ``io/binary.py``):
-    col 1/2 = YObsCorrPos/ZObsCorrPos (position-corrected observed, µm),
-    col 3 = OmegaObsCorrPos (deg), col 7/8/9 = YExp/ZExp/OmegaExp,
-    col 19 = InternalAngle (deg).
+    ``fb_row`` is one 22-double FitBest row (see ``io/binary.py`` and the
+    column map above): col 1/2 = YObsCorrPos/ZObsCorrPos (position-corrected
+    observed, µm), col 3 = OmegaObsCorrPos (deg), col 7/8/9 =
+    YExp/ZExp/OmegaExp, col 19 = InternalAngle (deg).
 
-    Returns ``None`` when the expected position is degenerate (all-zero
-    padding row).
+    Returns ``None`` when the expected or observed position is degenerate
+    (all-zero padding row).
     """
-    y_obs = float(fb_row[1]); z_obs = float(fb_row[2])
-    y_exp = float(fb_row[7]); z_exp = float(fb_row[8])
-    r_exp = math.hypot(y_exp, z_exp)
-    if r_exp <= 0.0:
+    block = build_spot_residual_block(
+        grain_idx,
+        np.asarray(fb_row, dtype=np.float64).reshape(1, -1),
+        np.asarray([spot_id], dtype=np.float64),
+        np.asarray([ring_nr], dtype=np.float64),
+    )
+    if block.shape[0] == 0:
         return None
-    dy = y_obs - y_exp
-    dz = z_obs - z_exp
-    # Radial / tangential unit vectors at the *observed* spot azimuth; use
-    # the observed position so the decomposition degrades gracefully when
-    # the prediction is far off.
-    r_obs = math.hypot(y_obs, z_obs)
-    if r_obs <= 0.0:
-        return None
-    ur_y = y_obs / r_obs
-    ur_z = z_obs / r_obs
-    drad = dy * ur_y + dz * ur_z
-    dtan = -dy * ur_z + dz * ur_y
-    dome = (float(fb_row[3]) - float(fb_row[9]) + 180.0) % 360.0 - 180.0
-    eta_deg = math.degrees(math.atan2(-y_obs, z_obs))
-    return [
-        float(grain_idx), float(spot_id), float(ring_nr), eta_deg,
-        dy, dz, drad, dtan, dome, float(fb_row[19]), r_exp,
-    ]
+    return block[0].tolist()
 
 
 def _median_or_nan(x: np.ndarray) -> float:

@@ -293,6 +293,7 @@ class ProcessGrains:
 
     def _run_c_parity(
         self, *, out_dir: Optional[Union[str, Path]] = None,
+        write_diagnostics: bool = True,
     ) -> ProcessGrainsResult:
         """``mode='c_parity'`` — dispatch to the C-replica pipeline.
 
@@ -316,6 +317,7 @@ class ProcessGrains:
             device=device_str,
             min_nr_spots=self.params.MinNrSpots,
             confidence_min=self.params.Completeness,   # None → from the file
+            write_diagnostics=write_diagnostics,
         )
         # MisoriTol is Optional with None meaning "not set in paramstest", so
         # only override the C default when the caller actually chose a value.
@@ -338,7 +340,8 @@ class ProcessGrains:
         )
 
     def run(self, mode: str = "c_parity",
-            *, out_dir: Optional[Union[str, Path]] = None) -> ProcessGrainsResult:
+            *, out_dir: Optional[Union[str, Path]] = None,
+            write_diagnostics: bool = True) -> ProcessGrainsResult:
         """End-to-end: cluster + resolve + strain + (optional) stress.
 
         Parameters
@@ -349,18 +352,26 @@ class ProcessGrains:
             :data:`SPOT_AWARE_DISABLED`.
         out_dir : path, optional
             ``c_parity`` only; defaults to ``run_dir``. See the note below.
+        write_diagnostics : bool
+            ``c_parity`` only — whether to emit
+            ``processgrains_diagnostics.h5`` alongside the CSVs. Every other
+            mode carries its residuals in the returned result and writes them
+            when the caller calls ``result.write(..., diagnostics_h5=True)``.
 
         Notes
         -----
         **``c_parity`` writes its artefacts as part of the call.** It dispatches
         to :func:`~.compute.c_parity_run.run_c_parity_pipeline_from_disk` — the
         same function the ``midas-process-grains`` CLI runs — which emits
-        ``Grains.csv`` / ``GrainIDsKey.csv`` / ``SpotMatrix.csv`` into
+        ``Grains.csv`` / ``GrainIDsKey.csv`` / ``SpotMatrix.csv`` and (unless
+        ``write_diagnostics=False``) ``processgrains_diagnostics.h5`` into
         ``out_dir``. The returned result is then read back from that
         ``Grains.csv``, so the object and the file cannot disagree and the
         C-parity strain solve has exactly one implementation. You do **not**
         need to call ``result.write()`` afterwards; doing so rewrites the same
-        rows. Every other mode is pure-compute and leaves writing to the caller.
+        rows — and because the result is rebuilt from the CSV it carries no
+        ``diagnostics``, so a ``result.write(diagnostics_h5=True)`` would
+        *overwrite* the sidecar c_parity just wrote with an empty one.
 
         Returns
         -------
@@ -369,7 +380,9 @@ class ProcessGrains:
         if mode == "spot_aware":
             raise ValueError(SPOT_AWARE_DISABLED)
         if mode == "c_parity":
-            return self._run_c_parity(out_dir=out_dir)
+            return self._run_c_parity(
+                out_dir=out_dir, write_diagnostics=write_diagnostics,
+            )
         if out_dir is not None:
             raise ValueError(
                 "out_dir applies to mode='c_parity' only; every other mode is "
@@ -1266,7 +1279,11 @@ def _build_spot_matrix_rows(
     n_resid_cols = len(SPOT_RESIDUAL_COLS)
     if fb is None:
         return np.zeros((0, 12)), np.zeros((0, n_resid_cols))
-    fb_arr = np.asarray(fb)
+    # NOT np.asarray(fb): read_fit_best may return a TailPaddedBinary (when
+    # the C writer left a short final slot), which refuses whole-file
+    # materialisation rather than copying tens of GB. Per-seed indexing below
+    # works identically on both the plain memmap view and the padded view.
+    fb_arr = fb
     fb_n_rows = fb_arr.shape[0]
     # Pre-extract the per-hkl ring + theta arrays for fast indexing.
     hkl_int_ring = hkl_table.integers[:, 3].astype(np.int64)

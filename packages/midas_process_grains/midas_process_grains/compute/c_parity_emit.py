@@ -2,8 +2,8 @@
 
 Format follows ``FF_HEDM/src/ProcessGrains.c`` line-for-line.
 
-Grains.csv layout (47 columns)
-------------------------------
+Grains.csv layout (53 columns; 47 before 2026-08-21)
+----------------------------------------------------
   0       GrainID                 (= IDs[rep_pos], the SpotID at the rep seed)
   1..9    OM (3×3 row-major)      OPF[rep_pos][1..9]
   10..12  X, Y, Z                 OPF[rep_pos][11..13]
@@ -18,6 +18,20 @@ Grains.csv layout (47 columns)
   42      RMSErrorStrain          (Kenesei RMSE in microstrain)
   43      PhaseNr
   44..46  Eul0, Eul1, Eul2        (degrees)
+  47..49  DiffPosPre,  DiffOmePre,  DiffAnglePre    OPF[rep_pos][27..29]
+  50..52  DiffPosPost, DiffOmePost, DiffAnglePost   OPF[rep_pos][30..32]
+
+**Cols 19-21 are a historical MIXTURE and are deliberately left that way**:
+19 is the post-fit position error while 20/21 are the pre-fit omega and
+internal-angle means. Nothing in the file ever said so. Cols 47-52 are the
+clean pre and post triples, both from the same estimator, so
+``post - pre`` is a real improvement rather than partly an estimator change.
+Use those for any before/after comparison; 19-21 exist for bug-compatibility
+with everything already written.
+
+Cols 47-52 are **NaN** when the run's ``OrientPosFit.bin`` is the legacy
+27-column form (i.e. refined before midas-fit-grain 0.9.0) — NaN rather than
+0.0 precisely because a reader cannot tell a measured zero from a missing one.
 """
 
 from __future__ import annotations
@@ -31,6 +45,27 @@ import torch
 
 from .c_parity import OPF_OM, OPF_POS, OPF_LATTICE, OPF_DIFF_POS, OPF_DIFF_OME, OPF_IA, OPF_RADIUS, OPF_CONFIDENCE
 from .c_parity_run import CParityKeptGrain, CParityResult
+from .residual_decomposition import build_spot_residual_block
+from ..io.binary import ORIENT_POS_FIT_DOUBLES_V2
+
+#: Grains.csv data-column count. 47 through 2026-08-21; 53 with the pre/post
+#: error triples appended at 47-52. Anything reading this file positionally
+#: should assert against it rather than a literal — a silent width change
+#: shifts columns without raising anywhere.
+GRAINS_CSV_NCOLS = 53
+
+#: SpotMatrix.csv column count. 12 through 2026-08-21; 28 with the prediction,
+#: the per-spot residuals and the un-found-expected rows. Cols 0-11 are
+#: unchanged, so a parser reading the first 12 tab fields is unaffected.
+SPOT_MATRIX_NCOLS = 28
+SPOT_MATRIX_HEADER_EXPANDED = (
+    "%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw"
+    "\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError"
+    "\tMatched\ttheorSpotID\ttheorRingNr\ttheorEta"
+    "\tYExp\tZExp\tOmegaExp\tDiffLen\tDiffOme\tInternalAngle"
+    "\tYExpPost\tZExpPost\tOmegaExpPost"
+    "\tDiffLenPost\tDiffOmePost\tInternalAnglePost\n"
+)
 from .strain import (
     solve_strain_fable_beaudoin,
     solve_strain_kenesei_batched,
@@ -51,6 +86,7 @@ def gather_per_grain_spot_data(
     wavelength_a: float,
     ids_hash=None,
     progress: bool = True,
+    collect_residuals: bool = True,
 ) -> List[Optional[dict]]:
     """Single pass over FitBest, returning one dict per kept grain (or None
     if the grain has no FitBest row).
@@ -61,9 +97,18 @@ def gather_per_grain_spot_data(
       - ``g`` (n, 3) float64              — used by Kenesei (sample frame)
       - ``ds_obs`` (n,) float64           — used by Kenesei
       - ``ds_0``   (n,) float64           — used by Kenesei
+      - ``resid`` (n', 11) float64        — signed per-spot residual rows
+                                            (``collect_residuals``; layout
+                                            ``SPOT_RESIDUAL_COLS``)
 
     Eliminates the 22 k × 80 KB random-NFS-read round-trip that
     SpotMatrix.csv would otherwise pay a second time.
+
+    ``collect_residuals`` adds the signed residual decomposition rows for the
+    diagnostics sidecar. It reads no additional bytes — the same ``seed``
+    block is already in RAM, and the memmap read is the whole cost — but it
+    does hold ~11 float64 per matched spot until the caller concatenates
+    (≈190 MB at 22 k grains × 100 spots). Pass ``False`` to skip.
     """
     out: List[Optional[dict]] = []
     if fb is None:
@@ -100,11 +145,30 @@ def gather_per_grain_spot_data(
         # positions and orientations were correct. Refuse instead: the caller
         # checks for IDsHash.csv and raises before reaching this point.
         ds_r = ids_hash.d_for_spot_ids(sid[valid])
-        out.append({
+        entry = {
             "spot_ids": sid[valid],
             "y": y, "z": z, "g": g_v,
             "ds_obs": ds_o, "ds_0": ds_r,
-        })
+        }
+        # Predicted position + the refiner's own per-spot residuals, from the
+        # same seed block. Needed by the expanded SpotMatrix; free here.
+        entry["exp3"] = seed[valid][:, [7, 8, 9]].astype(np.float64)
+        entry["res3"] = seed[valid][:, [20, 21, 19]].astype(np.float64)
+        if collect_residuals:
+            # Signed residual decomposition of the SAME FitBest rows: obs
+            # (cols 1,2,3) vs the refiner's own prediction (cols 7,8,9).
+            # These are the residuals of the *representative seed's* refined
+            # fit — the same convention the spot-aware/legacy path uses, so
+            # the numbers are comparable across modes — not a re-fit over the
+            # merged cluster's pooled spots.
+            if ids_hash is not None:
+                rings = ids_hash.ring_for_spot_ids(sid[valid])
+            else:
+                rings = np.full(int(valid.sum()), -1, dtype=np.int64)
+            entry["resid"] = build_spot_residual_block(
+                gi, seed[valid], sid[valid], rings,
+            )
+        out.append(entry)
         if progress and gi >= next_progress:
             print(f"[c-parity emit] gather {gi:,}/{n:,}  "
                   f"[{_time.time()-t0:.1f}s]", flush=True)
@@ -381,8 +445,9 @@ def write_grains_csv(
         ken_rmse = rmse_per_grain[gi]
         eul_rad = eul_per_grain[gi]
 
-        # Assemble 47-col row (matches ProcessGrains.c:1039-1058).
-        row = [0.0] * 47
+        # Assemble the row: cols 0-46 match ProcessGrains.c:1039-1058;
+        # 47-52 are the pre/post error triples appended 2026-08-21.
+        row = [0.0] * GRAINS_CSV_NCOLS
         row[0] = float(g.grain_id)
         # OPs[i][0..20] mapping (see c_parity.OPF_* constants):
         # OPs[0..8] = OPF[1..9] = OM
@@ -410,6 +475,15 @@ def write_grains_csv(
         row[44] = float(eul_rad[0])
         row[45] = float(eul_rad[1])
         row[46] = float(eul_rad[2])
+        # Pre/post triples straight from the widened OrientPosFit row. NaN on
+        # a legacy 27-col run — the refiner never measured them there, and a
+        # zero would be indistinguishable from a measurement.
+        if opf.shape[1] >= ORIENT_POS_FIT_DOUBLES_V2:
+            for k in range(6):
+                row[47 + k] = float(opf[rep, 27 + k])
+        else:
+            for k in range(6):
+                row[47 + k] = float("nan")
         rows.append(row)
 
         v_norm = radius * radius * radius
@@ -437,14 +511,16 @@ def write_grains_csv(
             "GrainRadius\tConfidence\t"
             "eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t"
             "eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\t"
-            "RMSErrorStrain\tPhaseNr\tEul0\tEul1\tEul2\n"
+            "RMSErrorStrain\tPhaseNr\tEul0\tEul1\tEul2\t"
+            "DiffPosPre\tDiffOmePre\tDiffAnglePre\t"
+            "DiffPosPost\tDiffOmePost\tDiffAnglePost\n"
         )
         for row in rows:
             # Match C printf %d for GrainID/PhaseNr, %lf for the rest.
             line = (f"{int(row[0])}\t"
                     + "\t".join(f"{v:f}" for v in row[1:43])
                     + f"\t{int(row[43])}\t"
-                    + "\t".join(f"{v:f}" for v in row[44:47])
+                    + "\t".join(f"{v:f}" for v in row[44:GRAINS_CSV_NCOLS])
                     + "\n")
             f.write(line)
 
@@ -509,8 +585,10 @@ def write_spot_matrix_csv(
     input_matrix: np.ndarray,                      # (n_input, 10) from load_input_extra_info_matrix
     progress: bool = True,
     spot_cache: Optional[List[Optional[dict]]] = None,
+    spot_diag=None,
+    fb_final=None,
 ) -> int:
-    """Write SpotMatrix.csv in C ProcessGrains' 12-column layout.
+    """Write SpotMatrix.csv: observed AND expected, plus the spots never found.
 
     Per C ProcessGrains.c:1011-1037, one row per (kept_grain, matched_spot).
     Columns:
@@ -548,6 +626,7 @@ def write_spot_matrix_csv(
             kept_grains, fb,
             distance_um=1.0, wavelength_a=1.0,
             ids_hash=None, progress=progress,
+            collect_residuals=False,   # SpotMatrix-only path; no ids_hash for rings
         )
 
     if spot_cache is None:
@@ -568,6 +647,9 @@ def write_spot_matrix_csv(
     #    list, then look up input_matrix once for all rows.
     grain_ids_chunks: List[np.ndarray] = []
     spot_ids_chunks: List[np.ndarray] = []
+    rep_chunks: List[np.ndarray] = []
+    exp_chunks: List[np.ndarray] = []
+    res_chunks: List[np.ndarray] = []
     for gi, g in enumerate(kept_grains):
         cache = spot_cache[gi]
         if cache is None:
@@ -578,6 +660,11 @@ def write_spot_matrix_csv(
             continue
         grain_ids_chunks.append(np.full(n_g, g.grain_id, dtype=np.int64))
         spot_ids_chunks.append(sids.astype(np.int64))
+        rep_chunks.append(np.full(n_g, g.rep_pos, dtype=np.int64))
+        exp_chunks.append(cache.get(
+            "exp3", np.full((n_g, 3), np.nan)))
+        res_chunks.append(cache.get(
+            "res3", np.full((n_g, 3), np.nan)))
 
     if not grain_ids_chunks:
         # No rows to write — emit just the header.
@@ -590,15 +677,23 @@ def write_spot_matrix_csv(
 
     all_gid = np.concatenate(grain_ids_chunks)
     all_sid = np.concatenate(spot_ids_chunks)
+    all_rep = np.concatenate(rep_chunks)
+    all_exp = np.concatenate(exp_chunks, axis=0)
+    all_res = np.concatenate(res_chunks, axis=0)
     row_idx = all_sid - 1
     valid = (row_idx >= 0) & (row_idx < n_input)
     all_gid = all_gid[valid]
     all_sid = all_sid[valid]
+    all_rep = all_rep[valid]
+    all_exp = all_exp[valid]
+    all_res = all_res[valid]
     im_rows = input_matrix[row_idx[valid]]
 
-    # Assemble (N, 12) output, then write in one np.savetxt call.
+    # Assemble (N, SPOT_MATRIX_NCOLS); cols 0-11 are byte-identical to the
+    # legacy 12-column layout so a parser taking the first 12 tab fields is
+    # unaffected.
     N = all_gid.shape[0]
-    out_arr = np.empty((N, 12), dtype=np.float64)
+    out_arr = np.full((N, SPOT_MATRIX_NCOLS), np.nan, dtype=np.float64)
     out_arr[:, 0]  = all_gid                          # GrainID
     out_arr[:, 1]  = all_sid                          # SpotID
     out_arr[:, 2]  = im_rows[:, 0]                    # Omega
@@ -611,18 +706,104 @@ def write_spot_matrix_csv(
     out_arr[:, 9]  = im_rows[:, 7]                    # ZLab
     out_arr[:, 10] = im_rows[:, 8] / 2.0              # Theta
     out_arr[:, 11] = 0.0                              # StrainError (placeholder)
+    # ── matched-spot prediction + the refiner's own per-spot residuals ──
+    out_arr[:, 12] = 1.0                              # Matched
+    out_arr[:, 16:19] = all_exp                       # YExp, ZExp, OmegaExp
+    out_arr[:, 19:22] = all_res                       # DiffLen, DiffOme, IA
+    # theorEta from the PREDICTED position (MIDAS convention atan2(-Y, Z)),
+    # not the observed one, so it stays meaningful on un-found rows below.
+    out_arr[:, 15] = np.degrees(np.arctan2(-all_exp[:, 0], all_exp[:, 1]))
+    out_arr[:, 14] = im_rows[:, 5]                    # theorRingNr == obs ring
+    # 13 theorSpotID and 22-27 (post-fit) are filled from SpotDiagnostics /
+    # FitBestFinal below when those exist; NaN otherwise, never 0.0.
 
-    # Match C printf at ProcessGrains.c:1021-1029. Note the trailing '\t'
-    # before the newline — C's format string ends in "%lf\t\n", so we use
-    # ``newline='\t\n'`` to recreate it.
-    fmt = "%d\t%d\t%f\t%f\t%f\t%f\t%f\t%d\t%f\t%f\t%f\t%f"
+    # ── theorSpotID + the un-found expected spots, from SpotDiagnostics ──
+    # This is the only artifact that records reflections a grain was PREDICTED
+    # to produce but which were never found — the completeness deficit itself.
+    # Matched rows join on (rep voxel, SpotID); unmatched rows become new rows
+    # with every observed column NaN.
+    unmatched_rows = None
+    if spot_diag is not None:
+        by_vox = {}
+        for vi in range(spot_diag.n_voxels):
+            by_vox[int(spot_diag.voxel_nrs[vi])] = vi
+        # matched: theorSpotID by (voxel, obsSpotID)
+        tsid = {}
+        for rep in np.unique(all_rep):
+            vi = by_vox.get(int(rep))
+            if vi is None:
+                continue
+            sp = spot_diag.voxel(vi)["spots"]
+            m = sp[:, 10] > 0.5
+            for osid, t in zip(sp[m, 14].astype(np.int64), sp[m, 5]):
+                tsid[(int(rep), int(osid))] = t
+        if tsid:
+            out_arr[:, 13] = [tsid.get((int(r), int(sd)), np.nan)
+                              for r, sd in zip(all_rep, all_sid)]
+        # unmatched: one row per predicted-but-not-found spot
+        chunks = []
+        for g in kept_grains:
+            vi = by_vox.get(int(g.rep_pos))
+            if vi is None:
+                continue
+            sp = spot_diag.voxel(vi)["spots"]
+            u = sp[sp[:, 10] <= 0.5]
+            if not len(u):
+                continue
+            blk = np.full((len(u), SPOT_MATRIX_NCOLS), np.nan)
+            blk[:, 0] = g.grain_id
+            # Cols 1 (SpotID) and 7 (RingNr) are %d in the legacy format and
+            # cannot carry NaN, so un-found rows use -1: SpotIDs are 1-based
+            # and ring numbers >= 1, so -1 cannot be mistaken for either. The
+            # *predicted* ring is in col 14. Every other observed column is
+            # NaN, which is the honest value for a spot that was never seen.
+            blk[:, 1] = -1.0              # no observed SpotID
+            blk[:, 7] = -1.0              # no observed RingNr
+            blk[:, 12] = 0.0              # NOT found
+            blk[:, 13] = u[:, 5]          # theorSpotID
+            blk[:, 14] = u[:, 4]          # theorRingNr
+            blk[:, 15] = u[:, 3]          # theorEta
+            blk[:, 16] = u[:, 0]          # YExp
+            blk[:, 17] = u[:, 1]          # ZExp
+            blk[:, 18] = u[:, 2]          # OmegaExp
+            chunks.append(blk)
+        if chunks:
+            unmatched_rows = np.concatenate(chunks, axis=0)
+
+    # ── post-fit prediction + residuals, from FitBestFinal.bin ──
+    if fb_final is not None:
+        fbf_n = fb_final.shape[0]
+        post = {}
+        for rep in np.unique(all_rep):
+            if int(rep) >= fbf_n:
+                continue
+            blk = np.asarray(fb_final[int(rep)])
+            v = blk[:, 0] > 0
+            for r in blk[v]:
+                post[(int(rep), int(r[0]))] = (r[7], r[8], r[9],
+                                               r[20], r[21], r[19])
+        if post:
+            miss = (np.nan,) * 6
+            vals = np.array([post.get((int(r), int(sd)), miss)
+                             for r, sd in zip(all_rep, all_sid)], dtype=np.float64)
+            out_arr[:, 22:28] = vals
+
+    if unmatched_rows is not None:
+        out_arr = np.concatenate([out_arr, unmatched_rows], axis=0)
+
+    # Cols 0-11 keep the C printf format from ProcessGrains.c:1021-1029,
+    # including the trailing '\t' before the newline ("%lf\t\n"), so a parser
+    # reading the first 12 tab fields sees exactly what it always did. The
+    # appended columns use %.6f and NaN prints as "nan".
+    fmt = ("%d\t%d\t%f\t%f\t%f\t%f\t%f\t%d\t%f\t%f\t%f\t%f"
+           + "\t%.0f" + "\t%.6f" * (SPOT_MATRIX_NCOLS - 13))
     with open(out_path, "w") as out:
-        out.write(
-            "%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw"
-            "\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError\n"
-        )
+        out.write(SPOT_MATRIX_HEADER_EXPANDED)
         np.savetxt(out, out_arr, fmt=fmt, newline='\t\n')
-    n_written = N
+    n_written = out_arr.shape[0]
+    if progress and unmatched_rows is not None:
+        print(f"[c-parity emit] SpotMatrix: {N:,} matched + "
+              f"{unmatched_rows.shape[0]:,} un-found expected rows", flush=True)
 
     if progress:
         print(f"[c-parity emit] SpotMatrix done: {n_written:,} rows  "
