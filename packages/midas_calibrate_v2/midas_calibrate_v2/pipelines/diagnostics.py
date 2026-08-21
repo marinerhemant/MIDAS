@@ -21,6 +21,22 @@ Three lightweight gates:
 Each gate returns a :class:`DiagnosticResult` with a ``severity`` of
 ``"ok"``, ``"warn"``, or ``"fail"`` plus a one-line explanation.  Use
 :func:`run_all_gates` to evaluate all three in one call.
+
+One more gate runs **before** any of those, and needs no fit at all:
+
+  4. ``seed_provenance_gate(...)`` — was the geometry seeded by the validated
+     seeder, or by the last-resort fallback?  ``basin_check`` structurally
+     cannot answer this: it flags LARGE seed-to-MAP drift, so a refiner that
+     never leaves a wrong seed scores a clean pass.
+
+  5. ``detector_scope_gate(...)`` — pure geometry.  Does the calibrant put
+     enough rings on this panel, at this distance and wavelength, for a
+     geometry to be determinable?  Everything above assumes the answer is yes.
+     When it is not, the fitter still converges — onto parasitic scatter — and
+     every downstream gate then judges a meaningless answer.  Measured on the
+     1-ID archive: of 42 exposures this gate halts, 26 had produced a
+     plausible-looking calibration, including a SAXS detector (25 × 63 mm at
+     1.8–3.3 m) whose CeO2 (111) ring sits six times past the panel edge.
 """
 from __future__ import annotations
 
@@ -39,6 +55,150 @@ class DiagnosticResult:
     severity: str            # "ok" | "warn" | "fail"
     message: str
     metrics: Dict[str, float]
+
+
+def seed_provenance_gate(
+    *,
+    seed_method: str,
+    seed_note: str = "",
+    seed_BC_y: Optional[float] = None,
+    seed_BC_z: Optional[float] = None,
+    NrPixelsY: Optional[int] = None,
+    NrPixelsZ: Optional[int] = None,
+) -> DiagnosticResult:
+    """Was the geometry seeded by the validated seeder, or by the last resort?
+
+    This exists because :func:`basin_check` cannot see the failure it is most
+    likely to be asked about.  It measures seed-to-MAP drift and flags LARGE
+    drift, so a refiner that never moves scores a clean pass — which is exactly
+    what happens when the seed is wrong: LM has no gradient telling it to leave.
+    Measured on the 1-ID archive: a frame seeded by the fallback converged with
+    ``ΔLsd=+0 µm, ΔBC=0.0 px`` and collected a green ``basin_check`` tick
+    alongside a beam centre 103 px off the edge of the detector.
+
+    So the provenance of the seed is itself a diagnostic, independent of
+    anything the fit reports about itself.
+    """
+    off_panel = False
+    if None not in (seed_BC_y, seed_BC_z, NrPixelsY, NrPixelsZ):
+        off_panel = not (0 <= seed_BC_y <= NrPixelsY - 1
+                         and 0 <= seed_BC_z <= NrPixelsZ - 1)
+    metrics = {"off_panel": float(off_panel)}
+
+    if seed_method == "fallback":
+        extra = (" The seed beam centre is OFF THE PANEL, which the refiner will "
+                 "not recover from." if off_panel else "")
+        return DiagnosticResult(
+            name="seed_provenance", severity="fail",
+            message=("seeded by the LAST-RESORT chord-only arc seed, not the "
+                     "validated seeder (%s). That fallback is a materially "
+                     "weaker estimate and the refiner tends to stay where it is "
+                     "put, so basin_check's zero drift is not reassurance here.%s"
+                     % (seed_note or "reason not recorded", extra)),
+            metrics=metrics)
+
+    if off_panel:
+        return DiagnosticResult(
+            name="seed_provenance", severity="warn",
+            message=("seeded by %s, but the seed beam centre lies off the panel "
+                     "— legitimate for a wedge geometry, wrong for a centred one; "
+                     "confirm which this is" % seed_method),
+            metrics=metrics)
+
+    if seed_method in ("make_seed", "user"):
+        return DiagnosticResult(
+            name="seed_provenance", severity="ok",
+            message="seeded by %s (%s)" % (seed_method, seed_note or "no detail"),
+            metrics=metrics)
+
+    return DiagnosticResult(
+        name="seed_provenance", severity="warn",
+        message="seed provenance not recorded (seed_method=%r)" % seed_method,
+        metrics=metrics)
+
+
+def detector_scope_gate(
+    *,
+    wavelength_A: float,
+    Lsd_um: float,
+    pxY_um: float,
+    NrPixelsY: int,
+    NrPixelsZ: int,
+    BC_y: Optional[float] = None,
+    BC_z: Optional[float] = None,
+    pxZ_um: Optional[float] = None,
+    lattice_a_A: float = 5.41153,          # CeO2
+    space_group: int = 225,
+    min_rings: int = 3,
+) -> DiagnosticResult:
+    """Preflight: can this detector see enough of the calibrant to be calibrated?
+
+    Pure geometry — no image, no fit, no residual — so it cannot be fooled by a
+    fitter converging onto parasitic scatter, and it costs nothing to run first.
+
+    A ring at Bragg angle 2θ lands at ``R = Lsd·tan(2θ)``.  The panel reaches at
+    most its beam-centre-to-farthest-corner distance, so any ring beyond that is
+    simply not recorded.  With fewer than ``min_rings`` on the panel the
+    geometry is not determinable, however well the optimiser reports it did.
+
+    ``BC_y`` / ``BC_z`` default to the panel centre, which is the most generous
+    assumption: it maximises the reach and so makes the gate conservative.
+
+    Ring positions come from ``midas_hkls`` — the same generator the calibration
+    itself uses — not from a hardcoded d-spacing list.
+    """
+    import math
+
+    from midas_hkls import SpaceGroup, Lattice, generate_hkls
+
+    pz = float(pxZ_um) if pxZ_um else float(pxY_um)
+    bcy = float(NrPixelsY) / 2.0 if BC_y is None else float(BC_y)
+    bcz = float(NrPixelsZ) / 2.0 if BC_z is None else float(BC_z)
+
+    dy = max(bcy, NrPixelsY - bcy) * float(pxY_um)
+    dz = max(bcz, NrPixelsZ - bcz) * pz
+    R_reach = math.hypot(dy, dz)
+    two_theta_max = math.degrees(math.atan(R_reach / float(Lsd_um)))
+
+    refs = generate_hkls(SpaceGroup.from_number(space_group),
+                         Lattice(lattice_a_A, lattice_a_A, lattice_a_A, 90, 90, 90),
+                         wavelength_A=float(wavelength_A),
+                         two_theta_max_deg=max(two_theta_max, 1e-6))
+    radii = sorted(float(Lsd_um) * math.tan(math.radians(float(r.two_theta_deg)))
+                   for r in refs)
+    on_panel = [R for R in radii if R <= R_reach]
+    n = len(on_panel)
+
+    # innermost ring the calibrant can produce at all, for the message
+    sin_t = float(wavelength_A) / (2.0 * lattice_a_A / math.sqrt(3.0))
+    R_first = (float(Lsd_um) * math.tan(2.0 * math.asin(sin_t))
+               if sin_t < 1.0 else float("inf"))
+
+    metrics = {"n_rings_on_panel": float(n),
+               "R_reach_mm": R_reach / 1000.0,
+               "R_innermost_mm": R_first / 1000.0,
+               "two_theta_max_deg": two_theta_max}
+
+    if n < min_rings:
+        return DiagnosticResult(
+            name="detector_scope", severity="fail",
+            message=(
+                "only %d calibrant ring(s) reach this panel — innermost ring at "
+                "R=%.0f mm, panel reaches %.0f mm at Lsd=%.0f mm. The geometry is "
+                "NOT determinable from this exposure; a fit will converge on "
+                "parasitic scatter. Check the detector is the one the calibrant "
+                "was shot for (a small-angle detector at a long distance sees no "
+                "powder rings) and that Lsd and the wavelength are right."
+                % (n, R_first / 1000.0, R_reach / 1000.0, float(Lsd_um) / 1000.0)),
+            metrics=metrics)
+
+    sev = "warn" if n < min_rings + 2 else "ok"
+    return DiagnosticResult(
+        name="detector_scope", severity=sev,
+        message=("%d calibrant rings reach the panel (innermost %.0f mm, reach "
+                 "%.0f mm, 2θ_max %.1f°)"
+                 % (n, R_first / 1000.0, R_reach / 1000.0, two_theta_max)),
+        metrics=metrics)
 
 
 def cross_validation_gate(
@@ -550,6 +710,8 @@ def _ks_2samp_p(a, b) -> float:
 
 __all__ = [
     "DiagnosticResult",
+    "seed_provenance_gate",
+    "detector_scope_gate",
     "cross_validation_gate",
     "strain_cap_check",
     "basin_check",

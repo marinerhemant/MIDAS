@@ -80,6 +80,13 @@ class CalibrationParams:
     Width: float = 800.0           # μm; ring half-width
     EtaBinSize: float = 5.0        # degrees
     RBinSize: float = 0.25         # px
+    # Radial integration range, in PIXELS like RBinSize (not µm like RhoD).
+    # These are what an integrator bins over: midas_integrate_v2 derives
+    # nR = ceil((RMax - RMin) / RBinSize), so leaving RMax at 0 yields nR = 0
+    # and the run dies with "Invalid bins". to_text() therefore always emits
+    # them, falling back to the detector edge when a calibration never set one.
+    RMin: float = 0.0              # px
+    RMax: float = 0.0              # px; 0 = derive from RhoD at write time
     AdaptiveEtaBins: bool = True
     DoubletDetection: bool = True
     DoubletSeparation: float = 5.0 # px
@@ -291,6 +298,24 @@ class CalibrationParams:
             lines.append(f"RBinSize {self.RBinSize:g}")
         if self.EtaBinSize > 0:
             lines.append(f"EtaBinSize {self.EtaBinSize:g}")
+        # The binning *sizes* above are useless without the range they span.
+        # An integrator bins over [RMin, RMax] in pixels; omitting RMax left it
+        # at the reader's default of 0, so nR = 0 and the file could not be
+        # integrated without being hand-patched first. When a calibration never
+        # set a range, fall back to the detector edge implied by RhoD (µm), which
+        # is the widest radius the fitted geometry describes.
+        r_max = self.RMax
+        if r_max <= 0 and self.RhoD > 0 and self.pxY > 0:
+            r_max = self.RhoD / self.pxY
+        if r_max > 0:
+            lines.append(f"RMin {max(self.RMin, 0.0):.6f}")
+            lines.append(f"RMax {r_max:.6f}")
+        # MaxRingRad is parsed by from_file and *required* by validate(), so
+        # dropping it here meant a file this writer produced failed to validate
+        # when read back. Emit the explicit value, or the same detector edge.
+        max_ring = self.MaxRingRad if self.MaxRingRad > 0 else r_max
+        if max_ring > 0:
+            lines.append(f"MaxRingRad {max_ring:.6f}")
         for k, v in self.extra.items():
             lines.append(f"{k} {v}")
         return "\n".join(lines) + "\n"

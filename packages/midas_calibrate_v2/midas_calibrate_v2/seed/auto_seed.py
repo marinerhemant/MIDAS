@@ -89,6 +89,11 @@ class Seed:
     rms_px: float      # per-ring Lsd assignment residual (px)
     elapsed_s: float = 0.0
     notes: str = ""
+    # Which rung of the threshold relaxation ladder produced the arcs.
+    # 0 = the strict setting. Anything above 0 means the strict threshold found
+    # nothing and the search was relaxed, which is a weaker result: relaxed far
+    # enough, the arc finder will fit noise.
+    threshold_rung: int = 0
 
     def __str__(self):
         return (
@@ -533,44 +538,76 @@ def make_seed(img: np.ndarray, *,
         img.astype(np.float32), kernel_size=median_kernel,
         n_iters=median_iters, use_diplib=use_diplib)
 
-    # ── B  threshold ────────────────────────────────────────────────────────
+    # ── B/C/D  threshold → skeletonize → arcs, with a relaxation ladder ─────
+    #
+    # The strict rung is the historical behaviour: thr = max(SNR·σ, percentile).
+    # It fails in two measured ways, and neither is detectable from the
+    # threshold alone, so the ladder is driven by the OUTCOME (did we get arcs)
+    # rather than by a ratio test:
+    #
+    #   * σ blows up on an over-exposed frame. Measured on a no-attenuator
+    #     Pilatus reference (max 1.16e6 counts): MAD-σ = 10636, so 4σ = 42543
+    #     against a percentile cap of 504 — 84× too high, every ring pixel
+    #     rejected. Dropping to the percentile arm recovers 14 arcs.
+    #   * σ is only mildly high on a short/noisy exposure, but the rings then
+    #     fragment below the length cut. Measured on a 0.3 s GE frame: 4σ = 488
+    #     vs cap 254, the rings break into 5163 pieces of ≤99 px against a
+    #     204 px cut, so nothing survives. Halving the cut recovers them.
+    #
+    # A relaxed rung is NOT as trustworthy as the strict one — relaxing far
+    # enough will find "arcs" in pure noise (measured: 3 spurious arcs on a
+    # frame whose maximum is 12 counts). The rung that fired is therefore
+    # recorded in ``notes`` so a caller can see the seed was not obtained on
+    # the strict setting, and callers must still screen frames for signal.
     thr_sigma = snr_threshold * sigma
     if 0 < bright_fraction_cap < 1:
         thr_pct = float(np.percentile(diff, 100.0 * (1.0 - bright_fraction_cap)))
-        thr = max(thr_sigma, thr_pct)
     else:
-        thr = thr_sigma
-    bright = diff > thr
+        thr_pct = thr_sigma
+    base_min_arc = (min_arc_pixels if min_arc_pixels is not None
+                    else max(30, int(min_arc_fraction * min(img.shape))))
+    ladder = [
+        (max(thr_sigma, thr_pct), base_min_arc, "strict"),
+        (thr_pct, base_min_arc, "percentile threshold (sigma arm dropped)"),
+        (thr_pct, max(30, base_min_arc // 2), "percentile threshold, half arc length"),
+        (thr_pct, max(30, base_min_arc // 4), "percentile threshold, quarter arc length"),
+    ]
 
-    # ── C  (optional) dilation → skeletonize ────────────────────────────────
-    if dilation_radius and dilation_radius > 0:
-        bright = morphology.binary_dilation(
-            bright, footprint=morphology.disk(int(dilation_radius)))
-    thin = morphology.skeletonize(bright)
+    arcs, rung_used, rung_note = [], 0, "strict"
+    for rung, (thr, min_arc_px, note) in enumerate(ladder):
+        bright = diff > thr
+        if dilation_radius and dilation_radius > 0:
+            bright = morphology.binary_dilation(
+                bright, footprint=morphology.disk(int(dilation_radius)))
+        thin = morphology.skeletonize(bright)
+        label = measure.label(thin, connectivity=2)
+        found = []
+        for region in measure.regionprops(label):
+            if region.area < min_arc_px:
+                continue
+            rows = region.coords[:, 0].astype(float)
+            cols = region.coords[:, 1].astype(float)
+            try:
+                cx0, cy0, R0 = _taubin(cols, rows)
+                cx, cy, R, rms = _refine_circle(cols, rows, cx0, cy0, R0)
+            except Exception:
+                continue
+            if not np.isfinite(R) or R <= 5 or R > 4000 or rms > max_rms_px:
+                continue
+            found.append({"cx": cx, "cy": cy, "R": R, "rms": rms,
+                          "n_pts": int(rows.size), "x": cols, "y": rows})
+        if len(found) >= 2:
+            arcs, rung_used, rung_note = found, rung, note
+            break
+        if rung == 0 and found:            # keep a single strict arc as a floor
+            arcs, rung_used, rung_note = found, rung, note
 
-    # ── D  connected components → per-arc fits ──────────────────────────────
-    if min_arc_pixels is None:
-        min_arc_pixels = max(30, int(min_arc_fraction * min(img.shape)))
-    label = measure.label(thin, connectivity=2)
-    arcs = []
-    for region in measure.regionprops(label):
-        if region.area < min_arc_pixels:
-            continue
-        rows = region.coords[:, 0].astype(float)
-        cols = region.coords[:, 1].astype(float)
-        try:
-            cx0, cy0, R0 = _taubin(cols, rows)
-            cx, cy, R, rms = _refine_circle(cols, rows, cx0, cy0, R0)
-        except Exception:
-            continue
-        if not np.isfinite(R) or R <= 5 or R > 4000 or rms > max_rms_px:
-            continue
-        arcs.append({"cx": cx, "cy": cy, "R": R, "rms": rms,
-                     "n_pts": int(rows.size), "x": cols, "y": rows})
     if not arcs:
         raise RuntimeError(
-            "make_seed: no arcs detected. "
-            "Try lowering snr_threshold or min_arc_fraction.")
+            "make_seed: no arcs detected at any threshold "
+            "(tried the strict setting and %d relaxations). The frame may carry "
+            "too little signal to seed from — check its counts before lowering "
+            "snr_threshold or min_arc_fraction by hand." % (len(ladder) - 1))
     arcs.sort(key=lambda a: a["R"])
 
     # ── E  RANSAC → joint LM → purge → collapse ─────────────────────────────
@@ -614,5 +651,10 @@ def make_seed(img: np.ndarray, *,
         calibrant_name=calibrant_name,
         first_ring=a["first_ring"], n_measured=len(R_collapsed),
         rms_px=a["rms_px"], elapsed_s=time.time() - t0,
+        threshold_rung=rung_used,
         notes=(f"{len(arcs)} arcs, {len(inliers)} BC inliers, "
-               f"{len(R_collapsed)} collapsed radii, score={a['score']:.2f}"))
+               f"{len(R_collapsed)} collapsed radii, score={a['score']:.2f}, "
+               f"threshold rung {rung_used} ({rung_note})"
+               + ("" if rung_used == 0 else
+                  " — NOT the strict setting; treat as weaker and confirm the "
+                  "frame carries real signal")))

@@ -22,6 +22,7 @@ Typical usage::
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Sequence, Tuple, Union, Dict, List
@@ -90,6 +91,16 @@ def _distortion_refine_flags(spec) -> Dict[str, bool]:
 
 # ============================================================ result type
 
+class SeedFallbackWarning(UserWarning):
+    """The validated seeder failed and a last-resort seed was used instead.
+
+    Not an error: a geometry is still returned.  It fires because the fallback
+    is a materially weaker estimate, the refiner tends to stay wherever it is
+    put, and ``basin_check`` scores the resulting zero drift as a pass — so
+    without this warning a wrong geometry arrives carrying green ticks.
+    """
+
+
 @dataclass
 class AutoCalibrationResult:
     """Everything the autocalibration pipeline produces."""
@@ -133,6 +144,12 @@ class AutoCalibrationResult:
     seed_BC_y: float = 0.0
     seed_BC_z: float = 0.0
     seed_Lsd: float = 0.0
+    # How the seed was obtained: "user" (BC_guess), "make_seed" (the validated
+    # seeder) or "fallback" (last-resort chord-only arc seed).  A "fallback"
+    # geometry is NOT of the same quality as a "make_seed" one and should not be
+    # reported as though it were.  ``seed_note`` carries why.
+    seed_method: str = "unknown"
+    seed_note: str = ""
     iter_history: List[Dict] = field(default_factory=list)
 
     def to_integration_spec(
@@ -426,6 +443,7 @@ def calibrate(
     t0 = time.time()
     from types import SimpleNamespace
     seed = None
+    seed_method, seed_note = "unknown", ""
     # PATH 1: caller supplied a beam centre -> bypass arc detection entirely.
     # Use it + initial_Lsd as the seed.  Explicit escape hatch for datasets
     # where the automatic seeder fails (off-panel BC, very weak rings).
@@ -433,6 +451,7 @@ def calibrate(
         bcy, bcz = float(BC_guess[0]), float(BC_guess[1])
         seed = SimpleNamespace(bc_y=bcy, bc_z=bcz, Lsd=float(initial_Lsd),
                                n_arcs=0, n_rings=0)
+        seed_method, seed_note = "user", "BC_guess supplied by caller"
         if verbose:
             print(f"[calibrate]   user-provided BC=({bcy:.3f}, {bcz:.3f})  "
                   f"Lsd={initial_Lsd/1000:.3f} mm — auto-seed bypassed",
@@ -454,15 +473,28 @@ def calibrate(
             if ms.Lsd_um and ms.Lsd_um > 0:
                 seed = SimpleNamespace(bc_y=ms.BC_y, bc_z=ms.BC_z, Lsd=ms.Lsd_um,
                                        n_arcs=0, n_rings=int(ms.n_measured))
+                seed_method = "make_seed"
+                seed_note = (f"{ms.n_measured} rings, first_ring={ms.first_ring}, "
+                             f"rms={ms.rms_px:.2f} px")
                 if verbose:
-                    print(f"[calibrate]   make_seed ({ms.n_measured} rings, "
-                          f"first_ring={ms.first_ring}, rms={ms.rms_px:.2f}px)",
-                          flush=True)
+                    print(f"[calibrate]   make_seed ({seed_note})", flush=True)
+            else:
+                seed_note = f"make_seed returned Lsd={ms.Lsd_um!r}"
         except Exception as e:  # pragma: no cover - fall back on any seed failure
+            seed_note = f"make_seed failed: {e}"
             if verbose:
-                print(f"[calibrate]   make_seed failed ({e}); "
-                      f"using arc seed fallback", flush=True)
+                print(f"[calibrate]   {seed_note}; using arc seed fallback",
+                      flush=True)
     # PATH 3: last-resort chord-only arc seed.
+    #
+    # This is a DEGRADED path, not an equivalent one: make_seed is the validated
+    # seeder (<=3.6 px BC on four real geometries), while this is a chord-only
+    # arc fit that can and does return a beam centre off the panel entirely
+    # (measured: BC_y = -103 px on a 4148-wide EIGER frame).  The refiner then
+    # stays in that basin, and `basin_check` reports the resulting ZERO
+    # seed-to-MAP drift as "within safe basin" — so a wrong answer collects a
+    # green tick.  Falling back must therefore be visible whatever `verbose` is
+    # set to, and must be recorded on the result.
     if seed is None:
         seed = seed_from_image(
             image=img, sim_radii_px=sim_radii,
@@ -470,6 +502,15 @@ def calibrate(
             bc_guess=BC_guess,
             skip_median=False, min_ring_radius_px=min_ring_radius_px,
         )
+        seed_method = "fallback"
+        warnings.warn(
+            f"calibrate(): the validated seeder did not produce a seed "
+            f"({seed_note}); fell back to the last-resort chord-only arc seed, "
+            f"which gave BC=({seed.bc_y:.1f}, {seed.bc_z:.1f}) "
+            f"Lsd={seed.Lsd / 1000:.1f} mm. Treat this geometry as unverified: "
+            f"check the beam centre lies on the panel and that the seed-to-MAP "
+            f"drift is not zero before using it.",
+            SeedFallbackWarning, stacklevel=2)
     seed_time = time.time() - t0
     if verbose:
         print(f"[calibrate]   BC=({seed.bc_y:.3f}, {seed.bc_z:.3f})  "
@@ -645,6 +686,11 @@ def calibrate(
             diag_results = run_all_gates(
                 v1_init=v1, unpacked=u, history=cr.history, fits=fd,
                 spec=cr.spec, panel_layout=panel_layout)
+            from .diagnostics import seed_provenance_gate
+            diag_results.insert(0, seed_provenance_gate(
+                seed_method=seed_method, seed_note=seed_note,
+                seed_BC_y=seed.bc_y, seed_BC_z=seed.bc_z,
+                NrPixelsY=NY, NrPixelsZ=NZ))
     except Exception as e:                    # diagnostics must never fail a run
         if verbose:
             print(f"[calibrate]   (uncertainty/diagnostics skipped: {e})",
@@ -732,10 +778,12 @@ def calibrate(
         calibrants=cal_names, diagnostics=diag_results,
         seed_seconds=seed_time, refine_seconds=refine_time,
         seed_BC_y=seed.bc_y, seed_BC_z=seed.bc_z, seed_Lsd=seed.Lsd,
+        seed_method=seed_method, seed_note=seed_note,
         iter_history=[{"iter": h.iteration, "strain_uE": h.mean_strain_uE,
                        "Lsd": h.Lsd, "BC_y": h.BC_y, "BC_z": h.BC_z,
                        "ty": h.ty, "tz": h.tz} for h in cr.history],
     )
 
 
-__all__ = ["calibrate", "AutoCalibrationResult", "CALIBRANTS"]
+__all__ = ["calibrate", "AutoCalibrationResult", "CALIBRANTS",
+           "SeedFallbackWarning"]
