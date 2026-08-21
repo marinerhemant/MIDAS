@@ -53,6 +53,8 @@ def integrate_stream(
     mask: Optional[np.ndarray] = None,
     normaliser: Optional[FrameNormalizer] = None,
     writer: Optional[Callable[[str, np.ndarray, np.ndarray], None]] = None,
+    cake_writer: Optional[Callable[[str, torch.Tensor], None]] = None,
+    geom=None,
     progress_every: int = 0,
 ) -> dict:
     """Build geometry once; integrate every frame in ``source`` against it.
@@ -79,6 +81,17 @@ def integrate_stream(
         called once per frame. Use this to emit CSV/XYE per frame
         without holding profiles in memory. If None, profiles are
         accumulated in the returned dict.
+    cake_writer :
+        Optional callable ``(frame_id, int2d) -> None`` called once per
+        frame with the full ``(n_eta, n_r)`` 2-D result, before it is
+        reduced to a profile. Use this to emit the 2-D formats (stacked
+        HDF5, MIDAS zarr) without ever holding the whole cake stack.
+    geom :
+        Optional prebuilt binning geometry. Building it is the expensive
+        part of a run, so a caller that already needs it — e.g. for
+        :func:`~midas_integrate_v2.io.v1_outputs.bin_weights` — can build
+        it once and pass it here instead of paying for it twice. It must
+        match ``mode``/``K``/``mask``; those arguments are then unused.
     progress_every :
         Print "processed N / total" every this many frames. 0 = silent.
 
@@ -100,7 +113,8 @@ def integrate_stream(
         raise ValueError(
             f"unknown mode {mode!r}; valid: {list(_INTEGRATE_FUNCS)}"
         )
-    geom = _build_default_geometry(spec, mode, K, mask=mask)
+    if geom is None:
+        geom = _build_default_geometry(spec, mode, K, mask=mask)
     integrate_fn = _INTEGRATE_FUNCS[mode]
 
     n_r = spec.n_r_bins
@@ -116,6 +130,8 @@ def integrate_stream(
             int2d = integrate_fn(img_t, geom)
         else:
             int2d = integrate_fn(img_t, geom, normalize=True)
+        if cake_writer is not None:
+            cake_writer(fid, int2d)
         prof = int2d.mean(dim=0).detach().cpu().numpy()
         if writer is not None:
             writer(fid, r_axis, prof)

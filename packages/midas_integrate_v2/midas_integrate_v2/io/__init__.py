@@ -6,6 +6,12 @@ from .writers import (
 )
 from .mtex import write_mtex_xpc, write_mtex_epf
 from .milk import MILKMultiGeometryAdapter
+from .zarr_gsas import (
+    write_gsas_zarr_zip, GSASZarrWriter, reta_map,
+    instrument_params_from_spec,
+    DEFAULT_INSTRUMENT_PARAMS, INSTRUMENT_PARAM_NAMES,
+)
+from .h5_stacked import write_stacked_h5, StackedH5Writer
 
 __all__ = [
     "write_csv",
@@ -20,4 +26,12 @@ __all__ = [
     "write_mtex_xpc",
     "write_mtex_epf",
     "MILKMultiGeometryAdapter",
+    "write_gsas_zarr_zip",
+    "GSASZarrWriter",
+    "reta_map",
+    "instrument_params_from_spec",
+    "DEFAULT_INSTRUMENT_PARAMS",
+    "INSTRUMENT_PARAM_NAMES",
+    "write_stacked_h5",
+    "StackedH5Writer",
 ]

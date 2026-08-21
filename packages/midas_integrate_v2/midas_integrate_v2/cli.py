@@ -18,6 +18,7 @@ subpixel oversampling.
 from __future__ import annotations
 
 import argparse
+import itertools
 import signal
 import sys
 import threading
@@ -374,8 +375,27 @@ def batch_main(argv=None) -> int:
                    help="Bad-pixel mask (TIFF; 1 = masked)")
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--out-format", default="csv",
-                   choices=["csv", "xye", "h5"],
-                   help="csv / xye = per-frame; h5 = single stacked file")
+                   choices=["csv", "xye", "h5", "h5-stacked", "zarr"],
+                   help="csv / xye = one file per frame; h5 = single "
+                        "NeXus-style 1-D profile stack; h5-stacked = the "
+                        "streaming-GPU stacked layout (2-D cakes + geometry "
+                        "maps); zarr = the MIDAS .zarr.zip the C integrator "
+                        "wrote, readable by GSAS-II and midas_zipper")
+    p.add_argument("--omega-sum-frames", type=int, default=1,
+                   help="Frames per OmegaSumFrame chunk for --out-format "
+                        "zarr / h5-stacked. 0 disables the group, -1 sums "
+                        "every frame into one (default: 1)")
+    p.add_argument("--omega-start", type=float, default=None,
+                   help="Omega of the first frame in degrees (zarr / "
+                        "h5-stacked). Without it the frame index is used.")
+    p.add_argument("--omega-step", type=float, default=None,
+                   help="Omega increment per frame in degrees")
+    p.add_argument("--individual-save", action="store_true",
+                   help="--out-format zarr: also write /IntegrationResult/"
+                        "FrameNr_<i> per frame. Doubles the file size; "
+                        "GSAS-II does not read it.")
+    p.add_argument("--no-sum-frames", action="store_true",
+                   help="--out-format zarr: skip the /SumFrames dataset")
     p.add_argument("--reject-outliers-sigma", type=float, default=None,
                    help="Per-pixel-across-stack outlier rejection at "
                         "this many σ. Requires --hdf5 or --zarr "
@@ -492,6 +512,79 @@ def batch_main(argv=None) -> int:
             progress_every=args.progress_every,
         )
         print(f"wrote {result['n_processed']} profiles to {args.out_dir}")
+    elif args.out_format in ("zarr", "h5-stacked"):
+        # Both formats carry the 2-D cake and the geometry maps, so the
+        # geometry is built here (not inside integrate_stream) to get the
+        # per-bin area weight for REtaMap / Area_map without paying for a
+        # second build.
+        from .io import build_provenance
+        from .io.v1_outputs import bin_weights, profile_1d_v1
+        from .streaming import integrate_stream
+        from .streaming.integrate_stream import (
+            _build_default_geometry, _INTEGRATE_FUNCS,
+        )
+
+        md = build_provenance(spec, integrate_mode=args.mode,
+                              integrate_K=args.subpixel_K)
+        geom = _build_default_geometry(spec, args.mode, args.subpixel_K,
+                                       mask=mask)
+        area = bin_weights(geom, _INTEGRATE_FUNCS[args.mode])
+
+        def _omega(i: int):
+            if args.omega_start is None:
+                return None
+            return args.omega_start + i * (args.omega_step or 0.0)
+
+        n_total = source.n_frames
+        if args.out_format == "zarr":
+            from .io import GSASZarrWriter
+            out = args.out_dir / "integrated.zarr.zip"
+            w = GSASZarrWriter(
+                out, spec=spec, bin_area=area,
+                omega_sum_frames=args.omega_sum_frames,
+                individual_save=args.individual_save,
+                sum_images=not args.no_sum_frames,
+            )
+        else:
+            from .io import StackedH5Writer
+            if n_total is None:
+                p.error("--out-format h5-stacked needs a frame source of "
+                        "known length; use --hdf5 / --zarr, or --out-format "
+                        "zarr which streams without one")
+            out = args.out_dir / "integrated_stacked.h5"
+            w = StackedH5Writer(
+                out, spec=spec, n_frames=n_total, bin_area=area,
+                omega_sum_frames=args.omega_sum_frames,
+                write_lineouts=True, write_simple_mean=True, metadata=md,
+            )
+
+        counter = itertools.count()
+
+        def cake_writer(fid, int2d):
+            i = next(counter)
+            if args.out_format == "zarr":
+                w.add_frame(int2d, omega=_omega(i))
+            else:
+                # The C's lineout.bin is area-weighted and its
+                # lineout_simple_mean.bin is the unweighted per-eta mean;
+                # the stacked format carries both. A plain mean here would
+                # look right and quietly differ from the C.
+                w.add_frame(
+                    int2d, name=str(fid), omega=_omega(i),
+                    lineout=profile_1d_v1(int2d, area, mode="area_weighted"),
+                    lineout_simple_mean=profile_1d_v1(int2d,
+                                                      mode="simple_mean"),
+                )
+
+        with w:
+            result = integrate_stream(
+                spec, source, mode=args.mode, K=args.subpixel_K,
+                mask=mask, geom=geom,
+                writer=lambda *a: None,      # profiles handled above
+                cake_writer=cake_writer,
+                progress_every=args.progress_every,
+            )
+        print(f"wrote {result['n_processed']} frames to {out}")
     else:    # h5
         from .io import build_provenance, write_h5
         md = build_provenance(spec, integrate_mode=args.mode,
