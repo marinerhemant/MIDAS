@@ -207,6 +207,8 @@ typedef struct {
   int    TakeGrainMax;
   int    LocalMaximaOnly;
   double MargABC, MargABG;
+  double MargStrain; /* half-width of the per-component
+                        strain search box, absolute strain (0.01 = 10000 ue) */
   int    DebugMode;
   double OmeBinSize;
   double WeightMask, WeightFitRMSE;

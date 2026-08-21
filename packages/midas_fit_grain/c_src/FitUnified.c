@@ -63,8 +63,26 @@ double WeightMask = 1.0;
 double WeightFitRMSE = 0.0;
 
 /* Spot diagnostics output (env MIDAS_SPOT_DIAGNOSTICS) */
+/* OrientPosFit.bin / FitBest_*.csv result-row width.
+ * 27 through 2026-08-21; 33 from the pre/post error columns:
+ *   0-26  unchanged legacy layout (22 PosErr, 23 OmeErr, 24 InternalAngle —
+ *         historically a MIXTURE: 22 is post-fit, 23/24 pre-fit)
+ *   27-29 ErrorPre  (pos, ome, internal angle) — CalcAngleErrors at the seed
+ *   30-32 ErrorPost (pos, ome, internal angle) — CalcAngleErrors at the fit
+ * Both triples come from the SAME estimator, so post-minus-pre is a real
+ * improvement rather than partly an estimator change. Readers must sniff the
+ * width (27 or 33) from file size; see midas_process_grains.io.binary and
+ * midas_fit_grain.io_binary. */
+#define ORIENT_POS_FIT_NCOLS 33
+
 #define SPOT_DIAG_MAGIC   0x47414944  /* "DIAG" */
-#define SPOT_DIAG_VERSION 1
+/* v2 (2026-08-21): col 5 is theorSpotID on MATCHED rows too (was theorGx,
+ * i.e. a different quantity per row depending on the matched flag), and the
+ * col-15 observed-scan lookup no longer reads one row past the spot. Column
+ * count and file layout are unchanged, so a v1 reader still parses a v2 file
+ * — it would just mislabel col 5 exactly as before. Readers should branch on
+ * the version rather than assume. */
+#define SPOT_DIAG_VERSION 2
 #define SPOT_DIAG_NCOLS   19
 #define SPOT_DIAG_SENTINEL (-999.0)
 static int DoSpotDiag = 1;
@@ -1062,7 +1080,8 @@ static inline int StrainTensorKenesei(int nspots, double **SpotsInfo,
                                       double Distance,
                                double wavelength, int nhkls, double **hkls,
                                double StrainTensorSample[3][3],
-                               double **SpotMatrix, double *RetVal) {
+                               double **SpotMatrix, double *RetVal,
+                               double margStrain) {
   int i, j;
   struct data_StrainFit mydata;
   double gobs[3], lenGobs;
@@ -1104,10 +1123,19 @@ static inline int StrainTensorKenesei(int nspots, double **SpotsInfo,
   }
   int n = 6;
   double x[n], xl[n], xu[n];
+  /* Half-width of the strain search box.  This used to be hardcoded at 0.01
+     (+-10000 ue).  It is a BOUND, not a tolerance: the fit measures
+     (dsObs-ds0)/ds0 against the ds0 implied by LatticeConstant, so a reference
+     cell that is wrong by ~0.7% spends most of the box before any real strain
+     is measured and components rail silently.  Widening it is the wrong first
+     move -- fix the reference cell (midas_stress.recover_d0_anisotropic) and
+     leave this at its default.  Exposed as `MargStrain` so a genuinely
+     large-strain experiment is not blocked by a compiled-in constant. */
+  double sBound = (margStrain > 0.0) ? margStrain : 0.01;
   for (i = 0; i < n; i++) {
     x[i] = 0.0;
-    xl[i] = -0.01;
-    xu[i] = 0.01;
+    xl[i] = -sBound;
+    xu[i] = sBound;
   }
   struct data_StrainFit *f_datat;
   f_datat = &mydata;
@@ -1318,7 +1346,8 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < cs; i++)
     RingNumbers[i] = cfg.RingNumbers[i];
   double Rsample = cfg.Rsample, Hbeam = cfg.Hbeam, RingRadii[200],
-         MargABC = cfg.MargABC, MargABG = cfg.MargABG;
+         MargABC = cfg.MargABC, MargABG = cfg.MargABG,
+         MargStrain = cfg.MargStrain;
   for (int i = 0; i < cs2; i++)
     RingRadii[i] = cfg.RingRadii[i];
   char OutputFolder[1024], ResultFolder[1024];
@@ -1583,7 +1612,8 @@ int main(int argc, char *argv[]) {
    * (27 dbl/seed), Key.bin (2 int/seed), ProcessKey.bin (MaxNHKLS int/seed).
    * Hoist the FDs before the parallel region; threads pwrite at per-seed
    * offsets (rowNr). PF mode writes the consolidated SpotDiagnostics.bin only. */
-  int fdOrientPos = -1, fdKey = -1, fdProcKey = -1, fdFitBest = -1;
+  int fdOrientPos = -1, fdKey = -1, fdProcKey = -1, fdFitBest = -1,
+      fdFitBestFinal = -1;
   if (ffLegacySeeds || gNumScans <= 1) {  /* any FF (legacy or consolidated) */
     char ffn[2048];
     sprintf(ffn, "%s/OrientPosFit.bin", ResultFolder);
@@ -1599,6 +1629,9 @@ int main(int argc, char *argv[]) {
      * OutputFolder/ (dirname is the run dir process-grains reads from). */
     sprintf(ffn, "%s/FitBest.bin", OutputFolder);
     fdFitBest = open(ffn, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+    /* Post-fit companion: same layout/stride, matched at FinalResult. */
+    sprintf(ffn, "%s/FitBestFinal.bin", OutputFolder);
+    fdFitBestFinal = open(ffn, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
   }
 
   /* Intra-stage progress, same contract as midas_indexer: counted on entry,
@@ -1823,6 +1856,25 @@ int main(int argc, char *argv[]) {
       printf("  CalcAngleErrors pass2: nSpotsComp=%d\n", nSpotsComp);
     }
 
+    /* PRE-fit error triple. Captured here, at Ini, before the fit runs and
+     * before anything can overwrite Error[].
+     *
+     * Internal order is (pos, ome, angle) — see the accumulation at :535-537,
+     * where Error[0] sums MatchDiff[][1]=diffLen, Error[1] sums
+     * MatchDiff[][2]=diffOme and Error[2] sums MatchDiff[][0]=minAngle.
+     * Keep that order here and map once, at the OutMatr assembly, rather
+     * than reordering in two places.
+     *
+     * ErrorPre[0] is the quantity the existing output THROWS AWAY:
+     * ErrorFin[0] overwrites it with FitErrors12D(FinalResult)/nSpotsComp.
+     * It is the mean of the per-spot diffLen values in FitBest.bin, and it
+     * equals the logged IniErr to print precision (measured over all 55,593
+     * seeds of a from-scratch Ni layer). ErrorPre[1]/[2] are what currently
+     * reach Grains.csv as DiffOme/DiffAngle. */
+    double ErrorPre[3];
+    for (i = 0; i < 3; i++)
+      ErrorPre[i] = Error[i];
+
     for (i = 0; i < nSpotsComp; i++)
       for (j = 0; j < 11; j++)
         spotsYZONew[i][j] = Splist[i][j];
@@ -2030,6 +2082,39 @@ int main(int argc, char *argv[]) {
     ErrorFin[1] = Error[1];  /* OmeErr from CalcAngleErrors pass 2 */
     ErrorFin[2] = Error[2];  /* InternalAngle from CalcAngleErrors pass 2 */
 
+    /* ── POST-fit re-match ────────────────────────────────────────────────
+     * Re-run the matcher at FinalResult so the three error values exist on
+     * BOTH sides of the fit, measured by the SAME estimator. Without this,
+     * ErrorFin mixes states: [0] is FitErrors12D at the refined parameters
+     * while [1]/[2] are CalcAngleErrors at the seed, so no two of the three
+     * legacy Grains.csv error columns describe the same geometry — a
+     * discrepancy that is invisible in the output and cost a long
+     * investigation to pin down.
+     *
+     * Separate buffers on purpose: SpotsComp / Splist keep their PRE-fit
+     * contents, so FitBest.bin, the FitBest_*.csv spot block and the
+     * SpotDiagnostics record are all bit-unchanged. This is the same call
+     * the MIDAS_FG_REMATCH isolation macro makes, but non-destructive and
+     * unconditional.
+     *
+     * Cost: one extra forward-model evaluation per seed, against the
+     * hundreds the fit already does. */
+    double **SpotsCompFinal = allocMatrix(MaxNSpotsBest, 23);
+    double **SplistFinal = allocMatrix(MaxNSpotsBest, 11);
+    double ErrorPost[3] = {0.0, 0.0, 0.0};
+    int nSpotsCompFinal = 0;
+    CalcAngleErrors(nSpotsComp, nhkls, nOmeRanges, FinalResult, spotsYZONew,
+                    hkls, Lsd, Wavelength, OmegaRanges, BoxSizes, MinEta,
+                    wedge, chi, SpotsCompFinal, SplistFinal, ErrorPost,
+                    &nSpotsCompFinal, 1, NULL, NULL, NULL);
+    if (getenv("MIDAS_DEBUG_REFINE")) {
+      printf("  CalcAngleErrors post-fit: nSpotsCompFinal=%d "
+             "(pre %d), ErrorPre=(%.4f,%.5f,%.5f) ErrorPost=(%.4f,%.5f,%.5f)\n",
+             nSpotsCompFinal, nSpotsComp,
+             ErrorPre[0], ErrorPre[1], ErrorPre[2],
+             ErrorPost[0], ErrorPost[1], ErrorPost[2]);
+    }
+
     /* meanRadius (OrientPosFit col 25): mean of the per-spot grain-radius
      * estimate from peak finding, over this grain's MATCHED spots. It was
      * declared `= 1` above and written straight out, so every grain this
@@ -2103,16 +2188,23 @@ int main(int argc, char *argv[]) {
      * IndexBest_all.bin) produce these; PF (nScans>1) writes SpotDiagnostics. */
     if (ffLegacySeeds || gNumScans <= 1) {
       size_t rowNrW = infoArr[thisRowNr * 5 + 0];
-      double OutMatr[27];
+      double OutMatr[ORIENT_POS_FIT_NCOLS];
       for (i = 0; i < 10; i++) OutMatr[i] = OrientsFit[i];
       for (i = 0; i < 4; i++) OutMatr[i + 10] = PositionsFit[i];
       for (i = 0; i < 7; i++) OutMatr[i + 14] = StrainsFit[i];
       for (i = 0; i < 4; i++) OutMatr[i + 21] = ErrorsFin[i];
       OutMatr[25] = meanRadius;
       OutMatr[26] = completeness;
+      /* Cols 22-24 are LEFT EXACTLY AS THEY WERE (the historical mixture:
+       * [22] post-fit position error, [23]/[24] pre-fit ome/angle) so no
+       * existing column silently changes value. The clean, same-estimator
+       * pre and post triples are appended instead. */
+      for (i = 0; i < 3; i++) OutMatr[i + 27] = ErrorPre[i];   /* pos,ome,ang */
+      for (i = 0; i < 3; i++) OutMatr[i + 30] = ErrorPost[i];  /* pos,ome,ang */
       if (fdOrientPos >= 0)
-        pwrite(fdOrientPos, OutMatr, 27 * sizeof(double),
-               rowNrW * 27 * sizeof(double));
+        pwrite(fdOrientPos, OutMatr,
+               ORIENT_POS_FIT_NCOLS * sizeof(double),
+               rowNrW * ORIENT_POS_FIT_NCOLS * sizeof(double));
       if (fdKey >= 0) {
         int KeyInfo[2] = {SpId, nSpotsComp};
         pwrite(fdKey, KeyInfo, 2 * sizeof(int), rowNrW * 2 * sizeof(int));
@@ -2132,7 +2224,7 @@ int main(int argc, char *argv[]) {
     SpotsOut = allocMatrix(nSpotsComp, 24);
     double RetVal;
     StrainTensorKenesei(nSpotsComp, SpotsComp, Lsd, Wavelength, nhkls, hkls,
-                        StrainTensorSample, SpotsOut, &RetVal);
+                        StrainTensorSample, SpotsOut, &RetVal, MargStrain);
 
     /* ── Spot diagnostics: export CalcAngleErrors data ── */
     if (DoSpotDiag && diagVoxels && TheorDiag) {
@@ -2168,7 +2260,20 @@ int main(int argc, char *argv[]) {
         sd[b + 2] = SpotsComp[m][9];   /* theorOmega */
         sd[b + 3] = CalcEtaAngleLocal(SpotsComp[m][7], SpotsComp[m][8]);
         sd[b + 4] = SpotsComp[m][22];  /* ringNr */
-        sd[b + 5] = SpotsComp[m][10];  /* theorGx (repurpose as hklIdx proxy) */
+        /* theorSpotID — the matched theoretical spot's stable id
+         * (CalcDiffractionSpots.c: ih*2 + 1 + within). CalcAngleErrors
+         * records it for the winning candidate in Splist col 8, filled at
+         * the same nMatched index as SpotsComp, so the two are row-aligned.
+         *
+         * This used to be SpotsComp[m][10] (theorGx) with the comment
+         * "repurpose as hklIdx proxy", which made col 5 mean a G-vector
+         * component on MATCHED rows and a real theoretical-spot id on
+         * UNMATCHED ones — while utils/spot_diagnostics.py labelled it
+         * `hklIndex` for every row. Measured on a 55,593-voxel FF layer:
+         * col5 == col6 on 41,118/41,118 matched rows (100%), against
+         * integral ids on the unmatched ones. Now the same quantity on both,
+         * so a matched spot can be joined to its prediction. */
+        sd[b + 5] = Splist[m][8];      /* theorSpotID (matches unmatched col 5) */
         sd[b + 6] = SpotsComp[m][10];  /* theorGx */
         sd[b + 7] = SpotsComp[m][11];  /* theorGy */
         sd[b + 8] = SpotsComp[m][12];  /* theorGz */
@@ -2178,11 +2283,26 @@ int main(int argc, char *argv[]) {
         sd[b + 12] = SpotsComp[m][14]; /* obsZ */
         sd[b + 13] = SpotsComp[m][15]; /* obsOmega */
         sd[b + 14] = SpotsComp[m][0];  /* spotID */
-        /* Observed scan from Spots.bin */
+        /* Observed scan from Spots.bin. SpotIDs are 1-BASED rows of
+         * ExtraInfo.bin / Spots.bin — verified on a real layer: Spots.bin
+         * col 4 == row + 1 for all 617,505 rows. So the row index is
+         * (SpotID - 1). This read used to be ObsSpotsLab[obsSpotID*10 + 9]
+         * guarded by `obsSpotID >= 0 && obsSpotID < gNSpotsBin`, which
+         * returned the record belonging to SpotID+1 and additionally
+         * sentinelled the very last spot.
+         *
+         * SCOPE: diagnostics only. The bad value went to sd[b+15], the
+         * observed-scan column of the SpotDiagnostics record, and nothing
+         * else reads it. Orientations, lattice, strain,
+         * Result_OrientPos_voxel_*.csv and Grains.csv were NOT affected, so
+         * no completed reconstruction is tainted by this. It was also
+         * invisible in FF, where the scan column is identically 0.
+         * Contrast the correct convention at :1233, where spotRow comes
+         * from BinData and is already 0-based. */
         int obsSpotID = (int)SpotsComp[m][0];
         double obsScanNr = SPOT_DIAG_SENTINEL;
-        if (ObsSpotsLab && obsSpotID >= 0 && obsSpotID < gNSpotsBin)
-          obsScanNr = ObsSpotsLab[obsSpotID * 10 + 9];
+        if (ObsSpotsLab && obsSpotID >= 1 && obsSpotID <= gNSpotsBin)
+          obsScanNr = ObsSpotsLab[(obsSpotID - 1) * 10 + 9];
         sd[b + 15] = obsScanNr;
         sd[b + 16] = SpotsComp[m][19]; /* IA */
         sd[b + 17] = SpotsComp[m][20]; /* diffLen */
@@ -2227,7 +2347,13 @@ int main(int argc, char *argv[]) {
     // What to write: Orientation, Position, LatticeParameter, Errors
     char outFN[2048];
     sprintf(outFN, "%s/FitBest_%0*d_%0*d.csv", ResultFolder, 6, voxNr, 9, SpId);
-    double OutMatr[27];
+    /* NOTE: this writer runs in BOTH FF and PF. PF writes no OrientPosFit.bin
+     * (see :1598), so this CSV is PF's only carrier for the new columns —
+     * midas_fit_grain.fitbest_adapter turns it into
+     * Result_OrientPos_voxel_*.csv for midas_pf_odf / consolidation_pf, and
+     * it forwards ALL tokens, so the widening propagates for free. Its
+     * hardcoded _HEADER must gain the six names to match. */
+    double OutMatr[ORIENT_POS_FIT_NCOLS];
     for (i = 0; i < 10; i++) {
       OutMatr[i] = OrientsFit[i];
     }
@@ -2242,17 +2368,29 @@ int main(int argc, char *argv[]) {
     }
     OutMatr[25] = meanRadius;
     OutMatr[26] = completeness;
+    for (i = 0; i < 3; i++) OutMatr[i + 27] = ErrorPre[i];
+    for (i = 0; i < 3; i++) OutMatr[i + 30] = ErrorPost[i];
 #pragma omp critical
     {
       FILE *outF = fopen(outFN, "w");
       if (outF == NULL) {
         printf("Could not open output file for writing: %s\n", outFN);
       } else {
+        /* The six new columns go at the END (39-44), NOT at OutMatr's 27-32.
+         * In this CSV the strain tensor and Euler angles follow Completeness,
+         * so inserting at 27 would shift E11..E33 to 33-41 and Eul to 42-44 —
+         * breaking the documented layout that fitbest_adapter and
+         * midas_pf_odf._read_voxel_result depend on (row[1:10], row[15:21],
+         * completeness at 26). Appending keeps all 39 legacy columns at their
+         * existing indices. The binary OrientPosFit.bin has no strain/Euler
+         * block, so there the same values ARE contiguous at 27-32. */
         fprintf(outF,
                 "SpotID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tSpotID\tx"
                 "\ty\tz\tSpotID\ta\tb\tc\talpha\tbeta\tgamma\tSpotID\tPosErr\tO"
                 "meErr\tInternalAngle\tRadius\tCompleteness\tE11\tE12\tE13\tE21"
-                "\tE22\tE23\tE31\tE32\tE33\tEul1\tEul2\tEul3\n");
+                "\tE22\tE23\tE31\tE32\tE33\tEul1\tEul2\tEul3"
+                "\tPosErrPre\tOmeErrPre\tInternalAnglePre"
+                "\tPosErrPost\tOmeErrPost\tInternalAnglePost\n");
         for (i = 0; i < 27; i++)
           fprintf(outF, "%lf\t", OutMatr[i]);
         for (i = 0; i < 3; i++)
@@ -2260,11 +2398,26 @@ int main(int argc, char *argv[]) {
             fprintf(outF, "%lf\t", StrainTensorSample[i][j] * 1000000);
         for (i = 0; i < 3; i++)
           fprintf(outF, "%lf\t", EulerFit[i]);
+        for (i = 27; i < ORIENT_POS_FIT_NCOLS; i++)
+          fprintf(outF, "%lf\t", OutMatr[i]);
         fprintf(outF, "\n");
         fprintf(outF, "%s", header);
         for (i = 0; i < nSpotsComp; i++) {
           for (j = 0; j < 23; j++) {
             fprintf(outF, "%lf\t", SpotsOut[i][j]);
+          }
+          fprintf(outF, "\n");
+        }
+        /* POST-fit spot block, as a THIRD header + rows rather than extra
+         * columns on the rows above: the post-fit matcher can select a
+         * different spot set, so the two blocks are NOT row-aligned and must
+         * not be zipped together. Appending is safe for the one consumer that
+         * parses this file — fitbest_adapter._first_data_row reads only
+         * physical line 2. */
+        fprintf(outF, "%s", header);
+        for (i = 0; i < nSpotsCompFinal; i++) {
+          for (j = 0; j < 23; j++) {
+            fprintf(outF, "%lf\t", SpotsCompFinal[i][j]);
           }
           fprintf(outF, "\n");
         }
@@ -2287,11 +2440,31 @@ int main(int argc, char *argv[]) {
         free(fbBuf);
       }
     }
+    /* FitBestFinal.bin — same layout and stride as FitBest.bin, but the
+     * POST-fit match. FitBest.bin stays pre-fit so every existing consumer is
+     * bit-unchanged; anything wanting "how well does the REFINED grain
+     * explain its spots" reads this one instead. Same short-final-slot
+     * behaviour, so read it with the same tail-padding reader. */
+    if (fdFitBestFinal >= 0 && nSpotsCompFinal > 0) {
+      size_t rowNrFB = infoArr[thisRowNr * 5 + 0];
+      double *fbBuf = malloc((size_t)nSpotsCompFinal * 22 * sizeof(double));
+      if (fbBuf) {
+        for (i = 0; i < nSpotsCompFinal; i++)
+          for (j = 0; j < 22; j++)
+            fbBuf[(size_t)i * 22 + j] = SpotsCompFinal[i][j];
+        size_t fbOff = (size_t)MaxNHKLS * 22 * sizeof(double) * rowNrFB;
+        pwrite(fdFitBestFinal, fbBuf,
+               (size_t)nSpotsCompFinal * 22 * sizeof(double), fbOff);
+        free(fbBuf);
+      }
+    }
     free(spotIDS);
     FreeMemMatrix(spotsYZO, nSpotsBest);
     FreeMemMatrix(SpotsOut, nSpotsComp);
     FreeMemMatrix(SpotsComp, MaxNSpotsBest);
     FreeMemMatrix(Splist, MaxNSpotsBest);
+    FreeMemMatrix(SpotsCompFinal, MaxNSpotsBest);
+    FreeMemMatrix(SplistFinal, MaxNSpotsBest);
     FreeMemMatrix(spotsYZONew, nSpotsComp);
   }
 
@@ -2351,6 +2524,7 @@ int main(int argc, char *argv[]) {
   if (fdKey >= 0) close(fdKey);
   if (fdProcKey >= 0) close(fdProcKey);
   if (fdFitBest >= 0) close(fdFitBest);
+  if (fdFitBestFinal >= 0) close(fdFitBestFinal);
   FreeMemMatrix(hkls, MaxNHKLS);
   free(infoArr);
   munmap(AllSpots, size);

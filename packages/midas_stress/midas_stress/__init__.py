@@ -55,6 +55,7 @@ _EXPORTS = {
     "equilibrium_correction_uncertainty": "equilibrium",
     "d0_correction_strain_level": "equilibrium", "correct_d0": "equilibrium",
     "recover_d0": "equilibrium", "recover_d0_cubic_free_standing": "equilibrium",
+    "recover_d0_anisotropic": "equilibrium",
     # orientation
     "misorientation": "orientation", "misorientation_om": "orientation",
     "misorientation_om_batch": "orientation", "misorientation_quat_batch": "orientation",

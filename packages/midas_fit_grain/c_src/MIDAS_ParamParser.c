@@ -28,6 +28,7 @@ void midas_config_defaults(MIDASConfig *cfg) {
   cfg->lineoutRMin = 10.0;
   sprintf(cfg->darkDatasetName, "exchange/dark");
   sprintf(cfg->dataDatasetName, "exchange/data");
+  cfg->MargStrain = 0.01; /* +-10000 ue, the historical hardcoded value */
   cfg->MargABC = 0.3;
   cfg->MargABG = 0.3;
   cfg->NrFilesPerDistance = 1;
@@ -405,6 +406,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "TopLayer", &cfg->TopLayer)) continue;
     if (param_int(aline, "TakeGrainMax", &cfg->TakeGrainMax)) continue;
     if (param_int(aline, "LocalMaximaOnly", &cfg->LocalMaximaOnly)) continue;
+    if (param_double(aline, "MargStrain", &cfg->MargStrain)) continue;
     if (param_double(aline, "MargABC", &cfg->MargABC)) continue;
     if (param_double(aline, "MargABG", &cfg->MargABG)) continue;
     if (param_int(aline, "DebugMode", &cfg->DebugMode)) continue;
@@ -445,6 +447,7 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_int(aline, "Twins", &cfg->Twins)) continue;
     if (param_double(aline, "GBAngle", &cfg->GBAngle)) continue;
     if (param_double(aline, "MarginOme", &cfg->MarginOme)) continue;
+    if (param_double(aline, "MarginOmega", &cfg->MarginOme)) continue;  // alias
     if (param_double(aline, "MarginEta", &cfg->MarginEta)) continue;
     if (param_double(aline, "MinConfidence", &cfg->MinConfidence)) continue;
     if (param_double(aline, "MinFracAccept", &cfg->MinFracAccept)) continue;
