@@ -13,6 +13,7 @@ from midas_fit_grain.io_binary import (
     FIT_BEST_NCOLS,
     MAX_NHKLS_DEFAULT,
     ORIENT_POS_FIT_NCOLS,
+    ORIENT_POS_FIT_NCOLS_V2,
     ExtraInfoSpot,
     GrainResult,
     read_extra_info,
@@ -65,7 +66,9 @@ def test_grain_result_layout():
         meanRadius=50.0, completeness=0.99,
     )
     row = g.to_row()
-    assert row.shape == (ORIENT_POS_FIT_NCOLS,)
+    # 33 doubles since 2026-08-21 (was 27): cols 27-32 carry the
+    # same-estimator pre/post error triples.
+    assert row.shape == (ORIENT_POS_FIT_NCOLS_V2,)
     # Layout per FitPosOrStrainsOMP.c:3007-3025:
     #   [0]=SpotID, [1..9]=OrientMat, [10]=SpotID, [11..13]=Pos,
     #   [14]=SpotID, [15..20]=Lattice, [21]=SpotID,
@@ -77,6 +80,11 @@ def test_grain_result_layout():
     np.testing.assert_array_equal(row[15:21], [4.04, 4.04, 4.04, 90, 90, 90])
     assert row[22] == 0.1 and row[23] == 0.2 and row[24] == 0.3
     assert row[25] == 50.0 and row[26] == 0.99
+    # 27-29 pre / 30-32 post. This (python) refiner has no seed-parameter
+    # evaluation, so the PRE triple must be NaN -- never 0.0, which a reader
+    # could not tell from a measurement. See GrainResult's KNOWN GAP note.
+    assert np.all(np.isnan(row[27:30])), "pre triple must be NaN, not zero"
+    assert np.all(np.isnan(row[30:33])), "post unset here defaults to NaN too"
 
 
 def test_orient_pos_fit_pwrite_strided(tmp_path):
@@ -97,13 +105,13 @@ def test_orient_pos_fit_pwrite_strided(tmp_path):
     write_orient_pos_fit_row(p, 0, g0)
     write_orient_pos_fit_row(p, 3, g3)
 
-    expected_size = 4 * ORIENT_POS_FIT_NCOLS * 8
+    expected_size = 4 * ORIENT_POS_FIT_NCOLS_V2 * 8
     assert p.stat().st_size == expected_size
 
-    out = read_orient_pos_fit(p, n_grains=4)
+    out = read_orient_pos_fit(p, n_grains=4, ncols=ORIENT_POS_FIT_NCOLS_V2)
     np.testing.assert_array_equal(out[0], g0.to_row())
-    np.testing.assert_array_equal(out[1], np.zeros(ORIENT_POS_FIT_NCOLS))
-    np.testing.assert_array_equal(out[2], np.zeros(ORIENT_POS_FIT_NCOLS))
+    np.testing.assert_array_equal(out[1], np.zeros(ORIENT_POS_FIT_NCOLS_V2))
+    np.testing.assert_array_equal(out[2], np.zeros(ORIENT_POS_FIT_NCOLS_V2))
     np.testing.assert_array_equal(out[3], g3.to_row())
 
 

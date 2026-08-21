@@ -36,7 +36,7 @@ from midas_fit_grain import driver
 
 
 def test_the_denominator_is_the_expected_count():
-    src = inspect.getsource(driver.refine_block_from_disk)
+    src = inspect.getsource(driver._refine_block_from_disk_retired)
     assert "float(n_matched) / float(n_exp)" in src, (
         "completeness must divide by the predicted-reflection count"
     )
@@ -44,7 +44,7 @@ def test_the_denominator_is_the_expected_count():
 
 def test_the_expected_count_is_read_from_the_indexer_record():
     """IndexBest col 13 = n_expected, col 14 = n_observed (15-col legacy)."""
-    src = inspect.getsource(driver.refine_block_from_disk)
+    src = inspect.getsource(driver._refine_block_from_disk_retired)
     assert "seed_n_expected.append(int(rec[13]))" in src
     assert "n_observed = int(rec[14])" in src, (
         "col 14 stays the observed count — the two must not be swapped"
@@ -61,10 +61,10 @@ def test_the_consolidated_adapter_supplies_it_too():
 
 def test_a_missing_expected_count_falls_back_and_is_reported():
     """Silently reverting to the old formula is how this hid for a session."""
-    src = inspect.getsource(driver.refine_block_from_disk)
+    src = inspect.getsource(driver._refine_block_from_disk_retired)
     assert "if n_exp > 0:" in src
     assert "n_no_expected += 1" in src
-    assert "n_no_expected" in inspect.getsource(driver.refine_block_from_disk)
+    assert "n_no_expected" in inspect.getsource(driver._refine_block_from_disk_retired)
 
 
 def test_the_seed_row_3716_arithmetic():
@@ -80,3 +80,22 @@ def test_scan_driver_still_uses_the_expected_count():
     from midas_fit_grain import scan_driver
     src = inspect.getsource(scan_driver)
     assert "float(n_matched) / max(int(n_expected), 1)" in src
+
+
+def test_the_public_entry_point_refuses():
+    """The PyTorch refiner is dead; running it must fail loudly.
+
+    These tests inspect ``_refine_block_from_disk_retired`` — the preserved
+    body — because the public ``refine_block_from_disk`` now raises. Keeping
+    the body under test means a revival cannot quietly lose the logic these
+    tests were written to protect.
+    """
+    import pytest
+
+    from midas_fit_grain import driver
+
+    with pytest.raises(NotImplementedError, match="RETIRED"):
+        driver.refine_block_from_disk(
+            cfg=None, param_file="x", block_nr=0, num_blocks=1,
+            device=None, dtype=None,
+        )

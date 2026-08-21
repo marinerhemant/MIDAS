@@ -35,7 +35,9 @@ import numpy as np
 # Constants matching FitPosOrStrainsOMP.c
 # ----------------------------------------------------------------------------
 EXTRA_INFO_NCOLS = 16            # ExtraInfo.bin row width
-ORIENT_POS_FIT_NCOLS = 27        # OrientPosFit.bin row width
+ORIENT_POS_FIT_NCOLS = 27        # OrientPosFit.bin row width (legacy)
+ORIENT_POS_FIT_NCOLS_V2 = 33     # + pre/post error triples (2026-08-21):
+                                 # 27-29 pre (pos, ome, angle), 30-32 post
 FIT_BEST_NCOLS = 22              # FitBest.bin row width per matched spot
 MAX_NHKLS_DEFAULT = 5000         # FitPosOrStrainsOMP MaxNHKLS — strides FitBest
 
@@ -121,8 +123,28 @@ class GrainResult:
     meanRadius: float
     completeness: float
 
+    # Cols 27-32: the same-estimator pre/post error triples the C refiner
+    # writes. NaN means "this backend did not measure it" — deliberately NOT
+    # 0.0, which is indistinguishable from a measured zero and would be
+    # silently averaged into downstream statistics.
+    #
+    # KNOWN GAP: this (python) refiner evaluates its one CalcAngleErrors call
+    # at the REFINED parameters — note that `err_ini` in driver.py is a
+    # misnomer — so it can fill the POST triple but has no seed-parameter
+    # evaluation to fill the PRE triple. The seed orientation/position is not
+    # plumbed through to the write loop. The C refiner fills both.
+    # The pipeline forbids this backend (`--refine-backend` accepts only
+    # c-omp), so no production run is affected; fix by threading the seed
+    # params into the write loop.
+    ErrorPosPre: float = float("nan")
+    ErrorOmePre: float = float("nan")
+    ErrorAnglePre: float = float("nan")
+    ErrorPosPost: float = float("nan")
+    ErrorOmePost: float = float("nan")
+    ErrorAnglePost: float = float("nan")
+
     def to_row(self) -> np.ndarray:
-        out = np.zeros(ORIENT_POS_FIT_NCOLS, dtype=np.float64)
+        out = np.zeros(ORIENT_POS_FIT_NCOLS_V2, dtype=np.float64)
         out[0] = self.SpotID
         out[1:10] = self.OrientMat
         out[10] = self.SpotID
@@ -135,6 +157,12 @@ class GrainResult:
         out[24] = self.ErrorAngle
         out[25] = self.meanRadius
         out[26] = self.completeness
+        out[27] = self.ErrorPosPre
+        out[28] = self.ErrorOmePre
+        out[29] = self.ErrorAnglePre
+        out[30] = self.ErrorPosPost
+        out[31] = self.ErrorOmePost
+        out[32] = self.ErrorAnglePost
         return out
 
 
@@ -178,23 +206,56 @@ def read_extra_info(path: str | Path,
 
 
 def read_orient_pos_fit(path: str | Path,
-                        n_grains: Optional[int] = None) -> np.ndarray:
-    """Return ``OrientPosFit.bin`` as ``(n_grains, 27)`` float64 array.
+                        n_grains: Optional[int] = None,
+                        ncols: Optional[int] = None) -> np.ndarray:
+    """Return ``OrientPosFit.bin`` as ``(n_grains, ncols)`` float64.
 
-    If ``n_grains`` is None, infer from file size. Tolerates pwrite-past-EOF
+    ``ncols`` is 27 for files written before 2026-08-21 and
+    :data:`ORIENT_POS_FIT_NCOLS_V2` = 33 after, the extra six being the
+    same-estimator pre/post error triples (27-29 pre pos/ome/angle, 30-32
+    post). When ``ncols`` is None the width is sniffed from the file size,
+    preferring 33; pass it explicitly to be certain.
+
+    If ``n_grains`` is None it is inferred too. Tolerates pwrite-past-EOF
     truncation: missing tail rows are zero-padded.
+
+    A size divisible by both widths (any multiple of 297 doubles) is
+    genuinely ambiguous. Rather than silently picking one, this raises unless
+    the caller pins ``ncols`` or ``n_grains`` —
+    ``midas_process_grains.io.binary.read_orient_pos_fit`` disambiguates the
+    same file with a sentinel-column content check and Key.bin.
     """
     p = Path(path)
-    expected_row = ORIENT_POS_FIT_NCOLS * 8
     size = p.stat().st_size
-    if n_grains is None:
-        if size % expected_row != 0:
+    if size % 8:
+        raise ValueError(f"{p}: {size} bytes is not a whole number of float64")
+    n_doubles = size // 8
+
+    if ncols is None and n_grains is None:
+        fits = [w for w in (ORIENT_POS_FIT_NCOLS_V2, ORIENT_POS_FIT_NCOLS)
+                if n_doubles % w == 0]
+        if not fits:
             raise ValueError(
-                f"{p}: {size} bytes not a multiple of {expected_row}; "
-                f"pass n_grains= explicitly"
+                f"{p}: {n_doubles} doubles is a multiple of neither "
+                f"{ORIENT_POS_FIT_NCOLS} nor {ORIENT_POS_FIT_NCOLS_V2}; "
+                f"pass ncols=/n_grains= explicitly"
             )
-        n_grains = size // expected_row
-    target = n_grains * ORIENT_POS_FIT_NCOLS
+        if len(fits) > 1:
+            raise ValueError(
+                f"{p}: {n_doubles} doubles is divisible by BOTH "
+                f"{ORIENT_POS_FIT_NCOLS} and {ORIENT_POS_FIT_NCOLS_V2} rows, "
+                f"so the width is ambiguous. Pass ncols= explicitly."
+            )
+        ncols = fits[0]
+    elif ncols is None:
+        ncols = (ORIENT_POS_FIT_NCOLS_V2
+                 if n_doubles % (n_grains * ORIENT_POS_FIT_NCOLS_V2) == 0
+                 and n_doubles // n_grains == ORIENT_POS_FIT_NCOLS_V2
+                 else ORIENT_POS_FIT_NCOLS)
+
+    if n_grains is None:
+        n_grains = n_doubles // ncols
+    target = n_grains * ncols
     arr = np.fromfile(p, dtype=np.float64)
     if arr.size > target:
         arr = arr[:target]
@@ -202,7 +263,7 @@ def read_orient_pos_fit(path: str | Path,
         padded = np.zeros(target, dtype=np.float64)
         padded[: arr.size] = arr
         arr = padded
-    return arr.reshape(n_grains, ORIENT_POS_FIT_NCOLS)
+    return arr.reshape(n_grains, ncols)
 
 
 def read_fit_best(path: str | Path,
@@ -279,9 +340,14 @@ def _pwrite(path: str | Path, offset: int, payload: bytes) -> None:
 def write_orient_pos_fit_row(path: str | Path,
                              row_nr: int,
                              grain: GrainResult) -> None:
-    """Write a 27-double grain row at offset ``row_nr * 216`` bytes."""
-    payload = np.ascontiguousarray(grain.to_row(), dtype=np.float64).tobytes()
-    _pwrite(path, row_nr * ORIENT_POS_FIT_NCOLS * 8, payload)
+    """Write a 33-double grain row at offset ``row_nr * 264`` bytes.
+
+    Was 27 doubles / 216 bytes before 2026-08-21. The stride must match the
+    row width or every seed lands at the wrong offset, so both come from
+    ``to_row()``'s own length rather than a separate constant.
+    """
+    row = np.ascontiguousarray(grain.to_row(), dtype=np.float64)
+    _pwrite(path, row_nr * row.size * 8, row.tobytes())
 
 
 def write_fit_best_row(path: str | Path,

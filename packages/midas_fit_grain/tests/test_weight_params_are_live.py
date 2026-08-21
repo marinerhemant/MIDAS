@@ -33,7 +33,7 @@ from midas_fit_grain.config import FitConfig
 
 def test_the_dead_expression_is_gone():
     from midas_fit_grain import driver
-    src = inspect.getsource(driver.refine_block_from_disk)
+    src = inspect.getsource(driver._refine_block_from_disk_retired)
     code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
     assert "and 1.0 or 1.0" not in code, (
         "x and 1.0 or 1.0 evaluates to 1.0 for every x"
@@ -45,7 +45,7 @@ def test_the_dead_expression_is_gone():
 
 def test_driver_reads_the_real_parameters():
     from midas_fit_grain import driver
-    src = inspect.getsource(driver.refine_block_from_disk)
+    src = inspect.getsource(driver._refine_block_from_disk_retired)
     assert 'getattr(cfg, "WeightMask"' in src
     assert 'getattr(cfg, "WeightFitRMSE"' in src
 
@@ -107,4 +107,23 @@ def test_weighting_actually_changes_a_residual():
         assert err_unweighted != err_weighted, (
             "WeightMask must be able to change the residual of a "
             "mask-touched spot"
+        )
+
+
+def test_the_public_entry_point_refuses():
+    """The PyTorch refiner is dead; running it must fail loudly.
+
+    These tests inspect ``_refine_block_from_disk_retired`` — the preserved
+    body — because the public ``refine_block_from_disk`` now raises. Keeping
+    the body under test means a revival cannot quietly lose the logic these
+    tests were written to protect.
+    """
+    import pytest
+
+    from midas_fit_grain import driver
+
+    with pytest.raises(NotImplementedError, match="RETIRED"):
+        driver.refine_block_from_disk(
+            cfg=None, param_file="x", block_nr=0, num_blocks=1,
+            device=None, dtype=None,
         )

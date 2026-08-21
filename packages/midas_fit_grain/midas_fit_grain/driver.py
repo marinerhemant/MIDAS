@@ -381,7 +381,56 @@ def refine_block_from_disk(
     dtype: torch.dtype,
     also_write_csv: bool = False,
 ) -> int:
-    """Load ``block_nr`` from disk, refine, write outputs. Returns # grains."""
+    """RETIRED. Raises. Use the c-omp refiner (``backend_c.run_refiner``).
+
+    The PyTorch refiner is **dead** — it is not a supported path and has not
+    been one for some time:
+
+    * ``midas-pipeline``/``midas-ff-pipeline`` accept only
+      ``--refine-backend c-omp``, enforced in argparse *and* in
+      ``PipelineConfig``, so nothing in production could reach this.
+    * It never gained the pre/post error triples: it has a single
+      ``calc_angle_errors`` call at the **refined** parameters (the local
+      ``err_ini`` is a misnomer), and the seed parameters are not plumbed into
+      its write loop, so it can fill ``ErrorPosPost`` but not ``ErrorPosPre``.
+    * Its output would now be silently malformed: ``_preallocate`` below sizes
+      ``OrientPosFit.bin`` with ``ORIENT_POS_FIT_NCOLS``, which is the legacy
+      27, while ``GrainResult.to_row()`` emits 33 doubles. Every seed would
+      land at the wrong offset.
+
+    Refusing is the point. Leaving it runnable would produce a file that looks
+    like a refinement and is not one, and the third bullet means it would do so
+    without raising anywhere.
+    """
+    raise NotImplementedError(
+        "The PyTorch refiner is RETIRED and will not run.\n"
+        "Use the c-omp refiner: midas_fit_grain.backend_c.run_refiner(), which "
+        "is what midas-pipeline invokes (--refine-backend accepts only "
+        "'c-omp').\n"
+        "Why this is a hard refusal rather than a warning: this path never "
+        "gained the pre/post error triples (no seed-parameter evaluation), and "
+        "its OrientPosFit.bin preallocation is sized 27 doubles per seed while "
+        "the row is now 33 — so it would write every seed at the wrong offset "
+        "and raise nothing. The in-memory kernel refine_block() is unaffected "
+        "and still usable for tests."
+    )
+
+
+def _refine_block_from_disk_retired(
+    *,
+    cfg: FitConfig,
+    param_file: str | Path,
+    block_nr: int,
+    num_blocks: int,
+    num_lines: Optional[int] = None,
+    device: torch.device,
+    dtype: torch.dtype,
+    also_write_csv: bool = False,
+) -> int:
+    """Retired body, kept only so the source-inspection tests still have
+    something to read and so the logic is not lost if it is ever revived.
+    Revival needs: the seed params threaded in for ErrorPre, and the
+    preallocation switched to ORIENT_POS_FIT_NCOLS_V2."""
     cwd = Path(param_file).resolve().parent
     out_dir = Path(cfg.OutputFolder)
     res_dir = Path(cfg.ResultFolder)
@@ -770,6 +819,15 @@ def refine_block_from_disk(
             ErrorAngle=mean_angle_deg,
             meanRadius=mean_radius,
             completeness=completeness,
+            # This call was made at the REFINED parameters (OM/pos_um/lat_c
+            # all come from `g`), so despite the name `err_ini` these ARE the
+            # post-fit values. The pre-fit triple is left NaN: the seed
+            # orientation/position is not plumbed into this write loop, and a
+            # fabricated or zero value here would be indistinguishable from a
+            # measurement. The C refiner fills both; see GrainResult.
+            ErrorPosPost=mean_pos_um,
+            ErrorOmePost=mean_ome_deg,
+            ErrorAnglePost=mean_angle_deg,
         )
         write_orient_pos_fit_row(orient_path, row_nr, grain_result)
 

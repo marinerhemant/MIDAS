@@ -113,6 +113,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     _configure_logging(args.verbose)
 
+    # The PyTorch refiner this CLI drives is RETIRED. Fail at the front door
+    # with the reason, rather than after parsing a parameter file and building
+    # a model, so the message is the first thing anyone sees.
+    LOG.error(
+        "midas-fit-grain drives the PyTorch refiner, which is RETIRED and "
+        "will not run.\n"
+        "  Use the c-omp refiner instead — that is what midas-pipeline runs, "
+        "and --refine-backend accepts only 'c-omp':\n"
+        "      from midas_fit_grain.backend_c import run_refiner\n"
+        "      run_refiner(paramstest, block_nr=0, n_blocks=1, "
+        "n_work=<nSeeds|nScans>, num_procs=N)\n"
+        "  or invoke the bundled binary directly:\n"
+        "      $(python -c 'from midas_fit_grain.backend_c import binary_path;"
+        "print(binary_path())') paramstest.txt 0 1 <nWork> <nProcs>\n"
+        "  Why it is refused rather than deprecated: this path never gained "
+        "the pre/post error triples (no seed-parameter evaluation), and its "
+        "OrientPosFit.bin preallocation is 27 doubles per seed while the row "
+        "is now 33 — it would write every seed at the wrong offset and raise "
+        "nothing."
+    )
+    return 2
+
     device = resolve_device(args.device)
     dtype = resolve_dtype(device, args.dtype)
     if args.num_procs > 0:
