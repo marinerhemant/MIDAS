@@ -132,12 +132,28 @@ rings break into **discrete spots** the sample is coarse-grained and this is the
 that is scanning-3DXRD, doc set `pf-hedm`. The dividing line is operational: continuous at the
 working (R, η) bin size, or not.
 
-**Status of the capabilities.** Reduction, sinograms, reconstruction and per-voxel peak fitting
-are real-data-proven. Deviatoric strain from centroids is real-data-proven but the magnitudes on
-the one loaded-cell dataset are **provisional**. The texture operator is validated three
-independent ways including against third-party TexTOM — but **no XRD-CT dataset here has yet
-produced a positive per-voxel ODF result**: one was refuted, one null was itself refuted, one is
-parked. Treat that as calibration for your priors.
+**Status of the capabilities — downgraded 2026-08-21, read this before promising anything.**
+The *components* are strongly validated; the *chain* has never been demonstrated end-to-end on a
+dataset that passes its own scope gate.
+
+* **Validated independently:** the pole-figure operator (three routes, including third-party
+  TexTOM at corr 0.999992), all 230 space groups, the truncation/identifiability work,
+  reduction, sinograms, reconstruction and per-voxel peak fitting.
+* **`midas_calibrate_v2` + `midas_integrate_v2` performed well on real frames** (2026-08-21):
+  an unseeded CeO₂ calibration at **7.1 µε** with an inspected overlay, corroborated
+  independently by two reflections agreeing on `a` to 200 µε; and v2's ring positions fit one
+  smooth geometry to **8.13 µε** where a 2021 legacy cake of the same frames carried a
+  **ring-dependent 562 µε offset**.
+* **~~Deviatoric strain from centroids is real-data-proven~~ — WITHDRAWN.** That rested on the
+  DAC Ti scan, whose six-reflection agreement was a `nan_to_num` bug (`LAB_NOTEBOOK.md` §5h) and
+  which then **failed the scope gate** at ~4 crystallites per 0.3° azimuthal column (§5i). The
+  area-vs-centroid asymmetry stands on **synthetic evidence only**.
+* **No XRD-CT dataset here has yet produced a positive per-voxel ODF result**, and none has yet
+  passed the scope gate end-to-end: one refuted, one null itself refuted, one out of scope, one
+  parked.
+
+**Treat that as calibration for your priors: the tools are sound and the gates work — what is
+missing is an in-scope dataset carried all the way through.**
 
 ## Sibling doc sets
 

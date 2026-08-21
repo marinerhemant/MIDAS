@@ -36,6 +36,9 @@
 | `StepsizePos` | indexer position grid step | PF fixes position to the voxel grid; less critical than in FF |
 | `GrainsFile <path>` | FF seed for the c-omp indexer/refiner | **required** for the c-omp seeded path (`isGrainsInput=1`); absent → silent full-grid comb |
 | `MinMatchesToAcceptFrac`, `MinNrSpots` | acceptance gates | a low-completeness scan can fall below these |
+| `LatticeConstant` / `LatticeParameter` | the phase's cell | **it is also the ZERO of the strain measurement.** The refiner gauges `(dsObs−ds0)/ds0` against the `ds0` this implies, so a cell that is not the sample's own rails strain components and depresses completeness. Pin it from the observed rings (phase-2 §2.5) — never by averaging refined per-grain cells, which is a feedback loop |
+| `MargStrain` | half-width of the per-component strain search box, absolute strain | default **0.01 = ±10000 µε** (a compiled-in constant before 2026-08-21). Railing here means the reference cell is wrong — **fix the cell, do not widen the box**. `0` keeps the default |
+| `MargABC` / `MargABG` | lattice length / angle refinement tolerance | `MargABG` is applied as a **percent**, not degrees (`alpha*(1 − MargABG/100)`) despite reading like an angle |
 
 ## Zip-baked analysis parameters (the trap)
 
@@ -57,7 +60,7 @@ Changing them requires regenerating the zips (phase 2.2).
 |---|---|---|
 | `SpotsToIndex.csv` (PF) | 5-col: `voxNr SpId nSpotsBest _ bestSolIdx` | `midas_fit_grain.scan_seed.write_pf_seed_file` (from `IndexBest_all.bin`) |
 | `FitBest_<vox>_<sp>.csv` | multi-block: header + result row + repeated header + per-spot rows | the c-omp refiner |
-| `Result_OrientPos_voxel_<v>.csv` | 2-line clean 43-col | python refiner directly, or `midas_fit_grain.fitbest_adapter` from FitBest |
+| `Result_OrientPos_voxel_<v>.csv` | 2-line clean **39-col** (was documented here as 43 — wrong; verified 39 on the s5pf1/L2 reference layer). **45-col** from midas-fit-grain 0.9.0, which appends `PosErr/OmeErr/InternalAngle` x `Pre/Post` at 39-44 | python refiner directly, or `midas_fit_grain.fitbest_adapter` from FitBest |
 
 ## pf-odf strain parameters
 

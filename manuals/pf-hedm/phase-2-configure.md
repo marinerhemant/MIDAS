@@ -10,7 +10,10 @@ Start from the calibration `paramstest` (phase 1). PF-specific keys are in
 - `RingNumbers` — which rings to index/refine on. For **strain**, prefer the bright,
   fully-on-detector rings; the rings used for indexing are not always the best for strain
   (a low-order bright ring beats a corner-clipped high-order one).
-- `Hbeam` / `BeamThickness` — the **true per-layer beam** (hard rule).
+- `Hbeam` / `Rsample` — **generous SEARCH BOUNDS, never the physical beam or
+  sample** (spine hard rule 5). Tightening them to the true dimensions plops
+  solutions onto the bounding box. In PF it is doubly moot: PF fixes each voxel
+  to the scan grid and does not fit position at all.
 - `BeamSize` — the in-plane beam width; sets the voxel/scan overlap tolerance.
 - `SpaceGroup`, `LatticeParameter` — the phase.
 - `OmegaRange` — one or more valid ω spans; **gaps** (blocked ranges) are normal and reduce
@@ -77,5 +80,101 @@ often writes no output. The tractable path is to seed indexing with far-field or
 
 Seeded, a full scanning layer indexes in tens of minutes instead of days.
 
-When params are authoritative, zips regenerated, and the FF seed staged, go to
-[`phase-3-run.md`](phase-3-run.md).
+## 2.5 Pin the reference cell — `LatticeConstant` is the zero of the strain
+
+**`LatticeConstant` is not a starting guess. It is the origin of every strain
+number the run will report,** and getting it wrong is silent in exactly the way
+this doc set keeps warning about.
+
+The C refiner's strain comes from `StrainTensorKenesei`
+(`packages/midas_fit_grain/c_src/FitUnified.c:1061`), which fits six components
+to `(dsObs − ds0)/ds0` where **`ds0` is the nominal d-spacing implied by
+`LatticeConstant`** — not by the refined cell. Its box is
+`MargStrain` (default **±0.01 = ±10000 µε**; it was a compiled-in constant before
+2026-08-21). So a reference wrong by 0.7 % spends most of the box before any real
+strain is measured, and components rail at the bound.
+
+**Measured on NMC811 at 1-ID** (`bt_1id_jun25b`, s5/L9), pristine
+`2.8691 / 14.212` vs the sample's own pinned `2.85074 / 14.32299`, everything
+else identical:
+
+| | pristine ref | pinned ref |
+|---|---|---|
+| voxels solved | 84 | **123** |
+| completeness median | 0.618 | **0.833** |
+| voxels with a railed strain component | 10 (11.9 %) | **0** |
+| max abs E | 10000 µε | 6635 µε |
+
+Note it is **not only a strain problem** — completeness rose by a third. A naive
+check ("the ring shift is 700 µm, inside `MarginRadial` 800, so it costs no
+spots") was wrong: the shift eats the tolerance budget alongside every other
+error.
+
+### How to pin it — from the rings, never from the refined cells
+
+```python
+import numpy as np, collections
+from midas_hkls import refine_lattice_from_d_spacings
+
+# Ttheta + RingNumber straight out of transforms — no indexing, no refinement
+tt = collections.defaultdict(list)
+for line in open("InputAllExtraInfoFittingAll0.csv").readlines()[1:]:
+    p = line.split(); r = int(float(p[5]))
+    if r > 0: tt[r].append(float(p[7]))          # col 5 RingNumber, col 7 Ttheta
+
+rings = sorted(tt)
+d_obs = [LAMBDA / (2*np.sin(np.radians(np.median(tt[r]))/2)) for r in rings]
+hkls  = [hkl_of_ring[r] for r in rings]          # from the RUN'S OWN hkls.csv
+fit   = refine_lattice_from_d_spacings(hkls, d_obs, "hexagonal")
+print(fit.lattice, fit.rms_strain, fit.residual_strain)
+```
+
+`1/d² = hᵢG*ᵢⱼhⱼ` is **linear** in the reciprocal metric tensor, so this is a
+direct least squares that takes **no starting cell** — which is the whole point.
+
+> **Do not instead average the refined per-voxel cells.** The refiner starts from
+> `LatticeConstant` and only partly leaves it, so that average returns roughly
+> what you fed in. Measured: one iteration drifted a further −3740 µε in `a` and
+> **+6361 µε in `c` without converging** (ratio 0.83 per pass). Any
+> equilibrium-based recovery fed refined cells inherits the same loop.
+
+### Two traps in the fit itself
+
+1. **Drop or down-weight the lowest-angle ring.** `dd/d = cot(θ)·dθ`, so at
+   2θ = 2.85° (NMC 003) a **0.006° systematic in 2θ becomes 2105 µε in d**,
+   against 596 µε for a ring at 10°. On the reference dataset that ring's
+   residual was **−1696 µε** while the other four sat inside ±340 µε; dropping
+   it took the fit RMS **776 → 171 µε**.
+2. **Never weight by the statistical error of the ring centroid.** With ~160 k
+   spots the SEM is ~6 µε, so 1/σ² weighting hands the *least reliable* ring the
+   *largest* weight. The systematic floor dominates. Use uniform weights, or
+   weight by `tan²θ`. Across {uniform, tan²θ, drop-low-ring} the pinned cell
+   moved only **83 µε in a and 313 µε in c** — that spread is the honest
+   uncertainty.
+
+### Cross-check it against equilibrium
+
+For an unloaded sample `⟨σ⟩ = 0`, which determines the cell independently:
+
+```python
+from midas_stress import recover_d0_anisotropic
+r = recover_d0_anisotropic(lattice_params, pinned_cell, stiffness,
+                           orientations, crystal_system="hexagonal")
+```
+
+Use the **anisotropic** version for any non-cubic phase: `recover_d0` scales
+`a`, `b`, `c` by one factor, which cannot represent an error that is negative in
+`a` and positive in `c`. Read `condition_number` — and note the counter-intuitive
+part: a **weak** texture is the ill-conditioned case (uniform orientation
+averaging projects onto the isotropic subspace, so the `a` and `c` responses
+collapse onto each other and `cond` grows with N), while a sharp texture
+separates them cleanly.
+
+The two routes agreeing is the gate. On the reference dataset the powder cell and
+the equilibrium recovery agreed to **−994 µε in a, +587 µε in c**, versus
+−3740 / +6361 for the un-pinned reference. Absolute scale still rides on λ and
+`Lsd` (they are degenerate with a cell dilatation), so the cell is only ever on
+the calibrant's length scale.
+
+When params are authoritative, zips regenerated, the reference cell pinned, and
+the FF seed staged, go to [`phase-3-run.md`](phase-3-run.md).

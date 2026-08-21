@@ -242,6 +242,25 @@ Strain      relative, median-referenced; treat as diagnostic pending the above
 Texture     NOT attempted -- the powder null on this dataset is refuted
 ```
 
+## 8b. Current state — the pick-up point
+
+**As of 2026-08-21.** Read this before re-deriving anything; each line is
+recorded in `LAB_NOTEBOOK.md` with the entry that established it.
+
+| what | state |
+|---|---|
+| 11-ID-C CeO₂ geometry | **SETTLED.** `Lsd = 1632 mm` measured **from the data**; the metadata (1600 mm) and the beamline calibration (1579.5 mm) are both wrong. Do not re-derive from either. |
+| ω sign | **UNDETERMINED** — the map is mirror-ambiguous. Not resolvable from this dataset. |
+| Rings | 9 indexed; 331 + 420 dropped (26.7 px apart, mutual contamination). |
+| Half-correlation −0.61..−0.74 on five rings | **UNEXPLAINED.** Window truncation is EXCLUDED by a 5× width sweep. The hkl pattern is open. |
+| Strain | relative, median-referenced. **Diagnostic only** pending the line above. |
+| Texture | **NOT attempted.** The powder null on this dataset is refuted (§5 of the notebook), so a per-voxel ODF is not reportable at any spatial scale here. |
+| DAC Ti S1 | **OUT OF SCOPE** — coarse-grained (~4 grains per 0.3° column), i.e. pf-HEDM not XRD-CT. All strain/texture claims on it are refuted; geometry and 6.2 GPa stand. |
+
+**Where the next session should start:** the hkl pattern behind the
+half-correlation. Everything upstream of it is settled; everything downstream
+of it is labelled diagnostic *because* of it.
+
 ## 9. Files
 
 | | |

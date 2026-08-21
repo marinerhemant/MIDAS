@@ -18,6 +18,23 @@ no flat, no dark, sample never clears the beam at any omega
 That last line matters: **no absorption tomography is obtainable from this scan.** The sample
 outline had to be inferred, and FBP gives the classic truncation wedge.
 
+## Current state — the pick-up point
+
+**As of 2026-08-21.** The scan below is complete and its numbers are final;
+this section says where the *work* stopped, not where the scan did.
+
+| what | state |
+|---|---|
+| Grain map (orientation + position) | **DONE** — 862 grains, spot intensity explained 19.6 % → 77.1 % |
+| Grain shapes | **DONE** — 455 grains with a validated shape |
+| Domain unambiguously one grain | **~22 %** at any threshold — the information ceiling of this data, not a tuning target |
+| Orientation refinement | **NEXT** — the open step; the map is built but per-grain orientations have not been refined against their assigned spots |
+| TT intragranular field | gated on the conditioning check in `ENVELOPE.md` §3 — do not promise a rotation tensor before running it |
+
+**Where the next session should start:** orientation refinement. Everything
+above it is closed; nothing below it should be attempted until the §3
+conditioning gate is run for the specific reflection pairs available.
+
 ## Where it ended up
 
 | | start | final |

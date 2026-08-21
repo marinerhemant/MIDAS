@@ -2,13 +2,15 @@
 
 > Part of the **XRD-CT doc set**. Spine: [`README.md`](README.md).
 
-**Read §5 before re-investigating anything.** It records **four** results as refuted or
-invalid, **one as downgraded**, **one superseded with its cause since identified**, and **three**
-inferences as withdrawn — each with the measurement that killed it. None died of new physics.
+**Read §5 before re-investigating anything.** It records **five** results as refuted or
+invalid, **one as downgraded**, **one superseded with its cause since identified**, **one
+withdrawn for a coding defect**, and **three** inferences as withdrawn — each with the
+measurement that killed it. None died of new physics.
 They died of a windowed sum that was mostly background, a degrees-of-freedom mismatch that made a
 comparison meaningless, a plant script that accepted a random seed and never used it, a positive
 control whose forward model was gentler than reality, a fix aimed at a mechanism that could not
-produce the symptom, and an inference that was simply backwards.
+produce the symptom, a `nan_to_num` that turned a dead azimuthal column into a 34-pixel centroid
+shift, and an inference that was simply backwards.
 
 **Last checked:** 2026-08-20 · **Owner:** MIDAS maintainers
 
@@ -25,8 +27,22 @@ produce the symptom, and an inference that was simply backwards.
 
 Synthetic, no planted azimuthal structure, so all of it is extraction error
 (`tests/test_azimuthal.py::test_centroid_survives_low_contrast_where_area_does_not`).
-Reproduced on real data: the DAC Ti scan gave strain consistent across six independent
-reflections while every texture signal was incoherent.
+
+> **★ THE REAL-DATA LEG OF THIS ENTRY WAS WITHDRAWN 2026-08-21.** It read:
+> *"Reproduced on real data: the DAC Ti scan gave strain consistent across six
+> independent reflections while every texture signal was incoherent."* Both
+> halves are now void. The six-reflection agreement was **BUG A** — a shared
+> `nan_to_num` systematic, not a shared measurement (§5h) — and on a corrected
+> re-extraction α(012) **reverses sign**. And the DAC Ti scan **fails the scope
+> gate**: ~4 crystallites per 0.3° azimuthal column (§5i), so its azimuthal
+> quantities were never in scope, and "every texture signal was incoherent" is
+> what crystallite-count fluctuation looks like, not evidence about texture.
+>
+> **What stands: the synthetic result only.** The area-vs-centroid asymmetry is
+> a property of the arithmetic — area is a difference, centroid is a ratio — and
+> the synthetic test demonstrates it cleanly. **It has no surviving real-data
+> corroboration in this project.** Do not cite one until an in-scope dataset
+> provides it.
 
 **Not asserted:** that the area degrades *faster* in relative terms as contrast falls. It
 does not — measured 2.7× for area against 3.3× for centroid between 50 % and 2 % contrast,
@@ -578,11 +594,257 @@ model.
 doublet; v1 kept it on a gap/FWHM of 2.04 against a 2.00 gate. Under a correct
 `n_live == 10` selection it yields **zero** usable bins.
 
-**Standing suspicion for this technique:** across the four primary rings `E_even`
-was **monotonic in window/FWHM** (2.52× → −323, 2.88× → +1041, 4.00× → +1071,
-5.71× → +2850). A real strain signal must be window-*independent* above ~2.3×
-FWHM (§ the area-invariance line). Treat any centroid-strain number as
-provisional until a window sweep shows it plateaus.
+**Window width was suspected and then EXCLUDED by measurement.** `E_even` looked
+monotonic in window/FWHM across the four rings (2.52× → −323 … 5.71× → +2850),
+which would have been the signature of tail leakage. A 16-arm sweep at full ω
+resolution, with the **background peak-mask held fixed** so only the integration
+window varied, shows all three testable rings **converge**:
+
+| ring | arms ≥ 2.3× FWHM | span |
+|---|---|---|
+| α(100) | +2748, +2778, +2844, +2864, +2936 (to 6.1× FWHM) | **188 µε** |
+| α(110) | +1136, +962 | **174 µε** |
+| ω(300) | +1080, +1020, +1220 | **200 µε** |
+
+The n=4 monotonicity was a coincidence. `ti_s1_windowsweep.py`.
+
+### ★ THE MEASUREMENT FLOOR FOR CENTROID STRAIN ON THIS DATASET IS ~1750 µε
+
+Because the window is excluded, **α(100) ≈ 2800 µε and α(110) ≈ 1050 µε stand as
+robust measurements — and both have χ = 0, i.e. both measure the same α-Ti
+a-axis.** They differ by a factor **2.7** at every window width tested. No strain
+field can give one lattice parameter two values, so this is an uncontrolled
+systematic of ~1750 µε, and it is a property of the *data*, not of a
+specification choice.
+
+**Consequence:** the pre-registered meaningful effect size was 1000 µε. The floor
+is above it. **DAC Ti S1 cannot answer the radial-gradient question at all** —
+definitively, not provisionally. Do not re-attempt it on this dataset without
+first explaining the α(100)/α(110) split.
+
+**Diagnostic hint for whoever takes it up.** Converting each `E_even` to the
+centroid shift it implies, `ΔR = ε·R`:
+
+| ring | R (px) | E_even (µε) | implied ΔR (px) |
+|---|---|---|---|
+| α(100) | 344.9 | +2800 | **+0.966** |
+| α(110) | 599.4 | +1050 | +0.629 |
+| ω(300) | 666.9 | +1100 | +0.734 |
+| α(012) | 513.6 | −323 | −0.166 |
+
+An additive sub-pixel offset compresses the spread from **2.67× to 1.53×** — so
+the systematic behaves more like a **sub-pixel centroid offset** than like a
+strain, though neither model is clean and α(012) fits neither.
+
+### 5h-bis. Chasing the α(100)/α(110) split — two mechanisms tested
+
+**Note on the physics first.** "Both measure the same a-axis so they cannot
+differ" is **not a valid argument for a polycrystal** — different hkl sample
+different grain families, and diffraction elastic constants plus type-II
+intergranular strains routinely differ between reflections. The argument that
+*does* hold here: **hcp is elastically transversely isotropic about c**, and both
+α(100) and α(110) have `l = 0`, so their plane normals lie in the basal plane
+where all directions are elastically equivalent. Their diffraction elastic
+constants are therefore equal. Plastic anisotropy could still split them; a
+factor 2.7 is far too large for that.
+
+**The window sweep excludes two mechanisms analytically**, because both scale
+with window width while the result does not (span ≤ 200 µε over 2.3×→6.1× FWHM):
+a linear background residual shifts the centroid by `~e₁(2W³/3)/A` (**W³**), and
+neighbouring-ring tail leakage grows with **W**.
+
+**H1 pixel locking — RULED OUT.** Sub-bin phase of the measured centroids is
+uniform on all four rings (KS statistic 0.002–0.005, p = 0.16–0.98, n ≈ 54 000
+each). Expected, since the cake is binned at 0.25 px against a 5.25–8.5 px FWHM,
+but measured rather than assumed. `ti_s1_shapediag.py`.
+
+**H2 width change × off-centre window — LIVE, and it exposed a real defect.**
+The peaks **broaden markedly at the edge chords**: α(100) **+45 %**, ω(300)
++43 %, α(110) +18 %, α(012) +13 % — and `E_even` is **perfectly rank-correlated**
+with relative width change (Spearman 1.0, n = 4, p = 0.042). This is degenerate:
+a real strain gradient *along the ray* also broadens the peak and shifts its
+centroid. But the diagnostic showed the **ring-centre positions are hard-coded
+from the 2021 ring assignment and were never fitted to the data**:
+
+| ring | window offset from its own peak |
+|---|---|
+| α(100) | −0.563 px |
+| α(110) | **+0.044 px** |
+| ω(300) | **−1.524 px** (19 % of its FWHM) |
+| α(012) | −0.848 px |
+
+An off-centre window truncates one flank more than the other, so a **width**
+change becomes an apparent **centroid** shift with a per-ring gain set by the
+per-ring offset — and a fixed fractional offset does **not** wash out as the
+window widens, which is why the window sweep could not see it.
+
+**★ But the mechanism is quantitatively too weak, and that was checked rather
+than assumed.** Modelled on a Gaussian with the measured +45 % width change
+(`tests/test_azimuthal.py`), the artefact depends steeply on `half/σ`:
+
+| `half/σ` | window/FWHM | fake shift | µε at R = 345 px |
+|---|---|---|---|
+| 5.00 | 4.2× | 0.02–0.22 bins | **15–161** |
+| 2.50 | 2.1× | 0.72–2.38 bins | 522–1727 |
+| 1.75 | 1.5× | 0.82–2.42 bins | 591–1753 |
+
+The Ti rings sit at `half/σ` = 6.73 α(100), 4.71 ω(300), 3.39 α(110), 2.96
+α(012). The model therefore predicts **α(012) most affected and α(100) least**,
+which is exactly the re-centring result — but for ω(300) it predicts ~20 µε
+against **585 µε observed**, i.e. it is **1–2 orders of magnitude too small**.
+So Gaussian tail truncation is NOT why re-centring matters on this data;
+non-Gaussian content moving in and out of the window (background residual,
+neighbour tails) is. **Do not quote the off-centre window as the explanation for
+the ring split — it is a real defect worth fixing, not the cause.**
+
+**Standing lesson regardless of that outcome: do not centre a radial window on a
+catalogued ring position.** Fit the peak, or centre on the measured centroid.
+This is the same disease as §5b's CeO₂ null, whose prescribed fix was
+peak-fitted areas rather than windowed moments — one fix serves both.
+
+**Re-centring result.** Windows re-centred on each ring's measured peak, all else
+identical (`ti_s1_recentred.py`): α(110), whose offset was +0.044 px, is
+**bit-identical** — the control works. ω(300) moves **+55 %** (1100 → ~1685) and
+α(012) **flips sign to ≈ 0** (−323 → +21…+152). So centring is a real error
+source worth up to 55 % and a sign. **But the α(100)/α(110) split survives at
+2.8×** (2950 vs 1050), so centring is not its cause and the ~1900 µε floor stands.
+
+### ★ 5h-ter. The decisive argument: the broadening has the WRONG SIGN
+
+For a disc with a radial profile `d(r)`, a chord at offset `|t|` samples radii
+`|t| → R`. The **centre** chord therefore spans the full `d(0)…d(R)` and must
+give the **broadest** peak; an edge chord spans almost nothing and must give the
+**narrowest**. A real radial gradient predicts *edge narrower than centre*.
+
+**Measured: edge peaks are BROADER in all four rings** — α(100) +45 %, ω(300)
++43 %, α(110) +18 %, α(012) +13 % — and `E_even` tracks that broadening at
+**Spearman 1.000** (Pearson +0.899, n = 4). The broadening is **not** a
+low-count artefact: the SNR drop at the edge chords (ratios 0.38–0.75) is
+**uncorrelated** with it (Pearson +0.050, Spearman −0.400), and the area ratio
+tracks the SNR ratio to three figures, so signal loss does not drive it either.
+
+**Conclusion.** Whatever generates `E_even` is driven by the edge-chord
+broadening, and that broadening has the opposite sign to the radial gradient it
+was being used to support. **`E_even` on this dataset is not a measurement of a
+radial strain gradient.** This is a geometric argument, not a statistical one,
+and it does not weaken with n = 4. `ti_s1_snrwidth.py`.
+
+**Still unexplained, and the honest open question:** *why* the edge chords
+broaden. Candidates not yet separated — the ray passing close to the gasket where
+the stress state differs sharply, partial illumination / penumbra at the chamber
+edge, or relative growth of a contaminant contribution as the sample signal falls
+26–63 %.
+
+### ★ 5h-quater. The raw frames were not gone, and the geometry is exonerated
+
+Earlier entries here said this needed the `.ge5` frames and that they were absent.
+**They are not.** `/gdata/dm/1ID/2021/hpldrd_dec21/data/ge5` on **copland**
+(5.7 TB, DM status *live*) holds all 50 `DAC_Ti_S1_PFocus_seg1_*` — **both**
+y-layers — and this beamtime's **own CeO₂ calibrant**. The DM tree is
+year-partitioned, so `ls /gdata/dm/1ID/` misses it; use the 1-ID gdata inventory.
+
+The byte count settles the format for good: 8192 header + **653** frames of
+2048²×2, so `HeadSize 8396800` (header + one throwaway) leaves **652** and
+integrated frame 0 sits at ω = −169.0, exactly as the macro states.
+
+**Unseeded calibration on that calibrant** (no `BC_guess`, bounds in detector
+pixels only): **Lsd = 1 002 136.5 ± 1.9 µm**, BC (1022.354, 991.032) matching the
+par to 0.002/0.004 px, **residual strain 7.1 µε** against the <100 µε gate, and an
+overlay of 16 rings agreeing to **−0.82…+0.53 px**.
+
+**So the distance was right all along.** The gap to `bt_1id_dec20.txt` is 590 µm —
+316σ on a 2 ppm determination, but only **−0.059 %**, i.e. **589 µε** of scale
+error, comfortably below the ~1900 µε floor. **Geometry does not explain the
+α(100)/α(110) split.** The doc set's standing warning that a stored distance is
+usually wrong did not hold here, and it is worth recording that it did not.
+
+*Two caveats on the new calibration:* `phi5` came back unconstrained (<1σ), and
+RhoD resolved to 294.4 mm against an outermost fitted ring at 183.7 mm, so the
+high-order radial terms are weakly determined. The 2021 integration used
+**RhoD 200000 µm**, so its `p0–p3` are **not** interchangeable with these.
+
+### ★ 5h-quinquies. The 2021 cake and `midas_integrate_v2` disagree by up to 0.33 px
+
+With the raw frames in hand, one S1 frame (file 754, integrated frame 326 = raw
+frame 327) was re-integrated at the **identical 2021 geometry** — same Lsd, BC,
+tilts, `p0–p3`, RhoD 200000, same R and η axes read from the 2021
+`.REtaAreaMap.csv` rather than assumed. Any difference is then the **integrator**
+and nothing else.
+
+| ring | 2021 cake (px) | re-integrated (px) | Δ | as µε |
+|---|---|---|---|---|
+| ω(001) | 309.4982 | 309.2898 | **−0.2084** | +673 |
+| α(100) | 344.9973 | 344.8687 | −0.1286 | +373 |
+| α(101) | 391.0262 | 390.9829 | −0.0433 | +111 |
+| α(012) | 512.8751 | 512.5439 | **−0.3311** | +646 |
+| α(110) | 599.5933 | 599.5068 | −0.0864 | +144 |
+| ω(300) | 666.7927 | 666.5998 | −0.1930 | +289 |
+
+Median −0.161 px, **ring-to-ring spread 0.288 px ≈ 562 µε**.
+
+**Normalisation is excluded as the cause.** The two cakes differ in mean by
+8.55×, but the ratio is **flat inside every clean ring window** — slopes −0.04 to
++0.015 %/px, implying centroid shifts of only −0.008…+0.0015 px. A constant scale
+cannot move a centroid. (α(101) alone shows −1.12 %/px, which is its 382.4 px
+doublet neighbour inside the window, not normalisation.)
+
+**So a ring-dependent radial offset of a few hundred µε is baked into the 2021
+cake** — precisely the failure `known-limits.md` predicts for an analysis that
+never touches a raw frame. It is a real contributor to the ring incoherence,
+though at 562 µε of spread it is **not the whole** ~1900 µε floor.
+
+**Not established:** which integrator is right. `midas_integrate_v2` 0.5.1 is the
+tested one and the 2021 code is unseen, so the presumption is against the cake —
+but that is a presumption, not a measurement.
+
+**Two integration gotchas found doing this, both silent:**
+* `integrate()` returns **(n_eta, n_r)** — the transpose of the 1-ID `.bin`
+  `[nR][nEta]`. Both reshape cleanly. Verify by collapsing each axis.
+* `np.median(np.diff(eta_axis))` on a 0.3° axis gives `0.29999999999999716`, and
+  the integrator then computes 1207.0000…1 → **1208** bins, one too many. Round
+  bin sizes before putting them in an `IntegrationSpec`.
+
+### 5i. ★★ DAC Ti S1 is COARSE-GRAINED and was out of scope all along — 2026-08-21
+
+The finding that retires everything above, and the one that should have come first.
+
+Measured on raw frames, integrated with the verified geometry, at the **full 0.3° azimuthal
+resolution** (`ti_scope_gate.py`, `ti_scope_gate2.py` in
+`~/Desktop/analysis/dac_ti_strain/`):
+
+| ring | cv_robust / cv_Poisson | crystallites per 0.3° column | % of ring intensity in >3 MAD spikes |
+|---|---|---|---|
+| α(100) | **225** | **4.7** | 4.1 % |
+| α(110) | **223** | **3.8** | 4.1 % |
+| α(012) | **174** | **4.4** | 2.3 % |
+| ω(300) | **247** | **4.1** | 2.9 % |
+
+Azimuthal intensity varies **40–59 %** where shot noise allows **0.2 %**. The bright spikes are
+**not** the story — 0.2–1.7 % of columns carrying 2–6 % of intensity; the apparent *continuum*
+is itself ~4 grains per column. At the 3° working bin that is ~40 grains, so cv ≈ 1/√40 ≈ 16 % —
+**exactly the amplitude of the Ē(η) structure that four `/verify` lenses had just refuted as
+strain.**
+
+**This explains every earlier observation at once**, which no other hypothesis did:
+reproduces across the two layers (2 µm apart in a 20 µm sample — *the same grains*);
+uncorrelated between rings (different hkl diffract from different grain subsets);
+survives widening the radial window (a spot is inside either window); and carries power at
+**harmonics n ≥ 3**, which `E(η) = q̂·ε·q̂` cannot produce for **any** strain tensor.
+
+**Consequences.**
+1. **Azimuthal intensity here is crystallite-count fluctuation.** Per the spine, every texture
+   number this pipeline produces from it is noise. The technique for this sample is
+   **scanning-3DXRD → `pf-hedm`**, not `xrd-ct`.
+2. **§1's real-data leg is withdrawn** (see the box there), and with it the spine's
+   "deviatoric strain from centroids is real-data-proven" — that rested on this dataset.
+3. **The scope gate was checked on ring CONTINUITY and passed.** It was never checked *per
+   azimuth at the working bin size*. `phase-0-survey.md` §0.1b now carries the measurement.
+
+**The methodological lesson, which cost a day.** Four artefact hunts came back negative and
+were read as converging on "it must be the sample". They were not: they were **scope checks
+being run as artefact checks**. A dataset outside the technique's stated scope will pass
+artefact tests, because the structure is real — it is simply not the quantity being claimed.
+**Check the scope gate quantitatively before, not after, the analysis that depends on it.**
 
 ## 6. Provisional — labelled provisional, and must stay that way
 

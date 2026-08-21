@@ -67,7 +67,7 @@ Things the module will not let you get wrong:
 * **Symmetry comes from the file.** `Grains.csv` states its space group in the
   preamble; the plots use it. Defaulting to cubic would colour a hexagonal
   sample with the wrong IPF triangle and produce a plausible, wrong figure.
-* **Columns are read by name.** `Grains.csv` has 47 columns and
+* **Columns are read by name.** `Grains.csv` has 53 columns (47 before 2026-08-21) and
   `midas-fit-grain` 0.5.6 shipped a cyclic rotation of three of them; a
   positional reader inherits that silently.
 * **Euler angles are cross-checked against `O11..O33`.** They describe the same

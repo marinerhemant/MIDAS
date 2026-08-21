@@ -145,15 +145,53 @@ C's 6138**, and matched pairs agree to **0.0000°** and **0.000 µm**.
 > treat "spot_aware is wrong" as a finished explanation, and do not re-enable it on
 > the strength of a single dataset looking better. See Lab Notebook §2e.
 
-**The one thing `c_parity` costs you: no residual sidecar.** That branch returns
-without calling `result.write()`, so `processgrains_diagnostics.h5` — which carries
-`residuals/spot_table`, the per-observation residuals every downstream diagnostic
-needs — **is not produced by a default run**, with or without `--generate-h5` (the FF
-`process_grains` stage does not read that flag; FF `consolidation` is a no-op stub).
-Nothing errors; the run completes and `Grains.csv` is correct. `legacy` and
-`paper_claim` write the sidecar, but **neither is a drop-in substitute for
-`c_parity`'s grain list** — pick one for diagnostics on a scratch run, not for the
-grain list you report.
+**`c_parity` writes the residual sidecar** as of `midas-process-grains` 0.9.2.
+`processgrains_diagnostics.h5` — which carries `residuals/spot_table`, the
+per-observation residuals every downstream diagnostic needs — is produced by a default
+run, and `utils/midas_ff_report.py` renders its full figure set from it. It costs no
+extra FitBest I/O (the rows are already in RAM for the strain solve); skip it with
+`--no-diagnostics-h5`.
+
+> **Before 0.9.2 it was not.** That branch returned without calling `result.write()`,
+> so a default run produced no sidecar, with or without `--generate-h5` (the FF
+> `process_grains` stage does not read that flag; FF `consolidation` is a no-op stub).
+> Nothing errored and `Grains.csv` was correct, so **an older run's missing sidecar is
+> not evidence of anything wrong with that run** — check the version before concluding.
+> `mode=physics` still has no residuals: `v4_pipeline` never reads FitBest, so there is
+> no obs-vs-predicted table to decompose.
+
+### The residual columns describe two different geometries — use the new pairs
+
+**`Grains.csv` cols 19-21 are a MIXTURE, and nothing in the file says so.** Col 19
+(`DiffPos`) is evaluated at the **refined** parameters; cols 20-21 (`DiffOme`,
+`DiffAngle`) at the **indexer seed**, before any fitting. So no two of the three
+describe the same geometry, and `DiffPos` is *not* the mean of the per-spot
+`DiffLen` in `FitBest.bin` — measured ratio **1.711** over all 55,593 seeds of a
+from-scratch Ni layer, 0 exceptions. ESTABLISHED: the mechanism is that
+`SpotsComp` is filled only by `CalcAngleErrors` at `Ini`
+(`FitUnified.c:1804`/`:1828`), the post-fit re-match being env-gated and off, while
+`ErrorFin[0]` is `FitErrors12D(FinalResult)/nSpotsComp`. Convention-free
+confirmation: the theoretical ring radii in `FitBest.bin` vary by **3e-16** across
+grains whose refined `a` spans 4.3e-3, and match `hkls.csv` (built at the seed
+lattice) to <5e-07 µm.
+
+**From `midas-fit-grain` 0.9.0 you do not have to live with that.** `Grains.csv`
+gains cols **47-52** — `DiffPos/Ome/Angle` x `Pre/Post`, both from the *same*
+estimator, so `post - pre` is a real improvement rather than partly an estimator
+change. Cols 19-21 are left exactly as they were, so nothing silently changes
+value. On the reference layer: **596.77 -> 351.50 µm**, omega 0.19750 -> 0.15806,
+internal angle 0.22070 -> 0.18151, improving on **1951/1951** grains. Cols 47-52
+are **NaN** on a run whose `OrientPosFit.bin` is the legacy 27-column form — NaN
+rather than 0.0, so a missing value cannot be read as a measured one.
+
+**New artifacts from the same release:**
+
+| artifact | what it is |
+|---|---|
+| `Output/FitBestFinal.bin` | the **post-fit** twin of `FitBest.bin` — same layout, stride and short-final-slot behaviour, matched at the refined parameters. `FitBest.bin` stays pre-fit, so every existing consumer is bit-unchanged (verified: sha256 identical over 1.76 GB). The two are **not row-aligned** — join on SpotID, never by row index |
+| `Results/OrientPosFit.bin` | **33** doubles per seed, not 27 (27-29 pre, 30-32 post). Readers sniff the width; a legacy file still reads |
+| `SpotMatrix.csv` | **28** columns, and now carries one row per **un-found expected spot** — see phase 4 |
+| `Results/SpotDiagnostics.bin` | version **2**. Written by default in FF too, despite an in-source comment saying PF-only |
 
 **Two things to check in the log every time:**
 

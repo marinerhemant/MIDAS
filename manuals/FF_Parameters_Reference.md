@@ -289,7 +289,7 @@ These are passed to `IndexerOMP` via the Zarr analysis file (not via
 | `UseFriedelPairs`    | int    | bool     | 1       | no       | Use Friedel-pair speedup. Typical: 1. |
 | `StepSizeOrient`     | double | deg      | 0       | yes      | Orientation search step. Typical: 0.2. Alias: `StepsizeOrient`. |
 | `StepSizePos`        | double | µm       | —       | yes      | Position search step. Typical: 100. |
-| `MarginOme`          | double | deg      | 0       | no       | ω tolerance for spot matching. Typical: 0.5. |
+| `MarginOme`          | double | deg      | 0       | no       | ω tolerance for spot matching. Typical: 0.5. Alias: `MarginOmega` (accepted from midas-params 0.11.0 / midas-index 0.7.8 / midas-fit-grain 0.8.2 — **before that it was an unrecognised key and was silently dropped**, so a file setting it ran on the default; such a file will not reproduce its old results now). |
 | `MarginEta`          | double | **µm**   | 0       | no       | Azimuthal (η) spot-matching tolerance, as an **arc length in µm on the detector** — *not* degrees. Typical: 500. |
 | `MarginRadial`       | double | µm       | —       | no       | 2θ (radial) spot-matching tolerance. |
 | `MarginRadius`       | double | µm       | —       | no       | Equivalent grain radius filter. |
@@ -318,6 +318,7 @@ These are passed to `IndexerOMP` via the Zarr analysis file (not via
 |--------------------------|--------|-------|---------|-------|
 | `MargABC`                | double | %     | 0.3     | Lattice `a,b,c` refinement tolerance. |
 | `MargABG`                | double | %     | 0.3     | Lattice `α,β,γ` refinement tolerance. |
+| `MargStrain`             | double | strain| 0.01    | Half-width of the per-component strain search box (0.01 = 10000 µε). Was a compiled-in constant before 2026-08-21. The strain fit gauges `(dsObs−ds0)/ds0` against the `ds0` implied by `LatticeParameter`, so a reference cell wrong by ~0.7 % spends most of the box and components rail **silently**. **Fix the reference cell first** (`midas_hkls.refine_lattice_from_d_spacings`); widen this only for a genuinely large-strain experiment. `0` keeps the 0.01 default. |
 | `FitAllAtOnce`           | int    | bool  | 0       | Fit all grains simultaneously vs. sequentially. |
 | `DoDynamicReassignment`  | int    | bool  | 0       | Dynamically reassign spots during refinement. |
 | `TakeGrainMax`           | int    | bool  | 0       | Twin-analysis: take max-solution grain. |
@@ -553,6 +554,7 @@ The following defaults come directly from `midas_config_defaults()` in
 | `lineoutRMin`          | 10.0 |
 | `MargABC`              | 0.3 |
 | `MargABG`              | 0.3 |
+| `MargStrain`           | 0.01 |
 | `NumPhases`            | 1 |
 | `NrFilesPerDistance`   | 1 |
 | `MinFracAccept`        | 0.5 |

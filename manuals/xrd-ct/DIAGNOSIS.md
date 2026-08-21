@@ -12,12 +12,39 @@ because an attractive hypothesis was wrong.
 
 ---
 
+## Local symptoms
+
+Emitted by **this technique's own procedure**, not by `beamreport`'s generic diagnostics,
+which key off per-observation residuals against declared coordinates. A ring matched as a
+singlet when it is a doublet, a background estimator riding up the peak flanks, or a
+point-group table with the wrong order are real and useful, and nothing generic will ever
+detect them — so they are declared here rather than renamed into the wrong shape.
+
+Every row names where the check lives. A symptom nothing produces is dead text that reads
+as coverage, which is exactly what the generic vocabulary existed to prevent.
+
+| symptom | emitted by |
+|---|---|
+| `detection.unverified` | `scripts/odf_positive_control.py` — plants discrete crystallites at the measured contrast and asks whether the fit recovers them; a null with no positive control is unverified, not negative |
+| `pattern.static_in_omega` | the ω-dependence check in that entry: `n_s·ẑ = cos θ_B sin η` carries no ω term, so an axial fibre is *necessarily* static in ω and cannot be called instrumental on that basis |
+| `ring.doublet_as_singlet` | `count_maxima` on the background-subtracted azimuthal mean of the window, which requires a *dip* between maxima rather than two high points |
+| `background.rides_peaks` | the background estimate at ring centres against a straight interpolation across the peak, or against truth on a synthetic. **Not `scale.suppressed`**: that is "a recovered magnitude far below an independent expectation", and the suppressed *area* is the consequence here, not the symptom — the entry keys off the estimator's own behaviour, which nothing generic observes, and its discriminating test is a background comparison, not an area one |
+| `field.explained_by_polynomial` | `explained_by_polynomial` on the recovered field, plus whether it is centred on the rotation axis |
+| `symmetry.wrong_order` | assertion against `midas_hkls.point_group.EXPECTED_ORDER` plus a closure-under-composition check |
+| `polefigure.metric_convention` | Monte-Carlo pole figure from sampled orientations against the closed-form operator (`tests/test_texture_kernel.py`) — symmetry tests cannot catch it |
+| `compute.thread_oversubscribed` | host `uptime` load against the core count |
+
+---
+
 ## A per-voxel texture map looks structured and plausible
+
+symptom: null.not_cleared
+coord: texture
 
 **This is the most dangerous symptom in the doc set**, because the failure mode looks exactly
 like success.
 
-**Test — three of them, all cheap, all able to come back the other way.**
+**Test.** Three of them, all cheap, all able to come back the other way.
 
 1. **The ladder.** Fit a *uniform null*, then **one globally shared** texture, then per-voxel
    (`fit_uniaxial_ladder`). If the global rung already captures most of the improvement, you
@@ -42,6 +69,8 @@ there, the map is not reportable at any spatial scale — say so and report stra
 ---
 
 ## The fit returns a null. Is there no texture, or can we not see it?
+
+symptom: detection.unverified
 
 **Test.** `scripts/odf_positive_control.py --contrasts <your measured contrast>`. It plants
 **discrete crystallites** (no Legendre polynomials, no squared modulus — nothing the fit uses),
@@ -84,6 +113,9 @@ and move to strain.
 
 ## Strain magnitudes are absurd — tens of thousands of microstrain
 
+symptom: scale.inflated
+coord: strain
+
 **Test.** Count the **live azimuths** per ring: `RingExtraction.live_mask(min_snr=3)`. Then
 recompute the spread as a **5–95 % inter-percentile range and a MAD**, not as a peak-to-peak.
 
@@ -99,6 +131,9 @@ reflections agreeing — which is what made them credible.
 ---
 
 ## Azimuthal intensity varies strongly, and it looks like a pole figure
+
+symptom: trend.periodic
+coord: eta_deg
 
 **Test.** Two of them.
 
@@ -122,6 +157,9 @@ And read the movement as the signal it is — that is your strain.
 
 ## The CeO₂ (or any powder-standard) null shows structured texture
 
+symptom: null.not_cleared
+coord: texture
+
 **Test.** Sweep `L`. If the residual is **flat in `L`**, truncation is not the cause. Then
 predict the absorption effect quantitatively before invoking it.
 
@@ -143,6 +181,9 @@ finer powder, a larger gauge volume, or more ω (and more ω removes only the ra
 
 ## An azimuthal pattern does not vary with ω. Is it instrumental?
 
+symptom: pattern.static_in_omega
+coord: eta_deg
+
 **You cannot tell from that.** This entry exists because the inference was made and had to be
 withdrawn.
 
@@ -162,6 +203,9 @@ to an axial fibre only.
 
 ## Absolute strains are all offset by a similar amount
 
+symptom: systematic.common_offset
+coord: strain
+
 **Test.** Refine the sample-to-detector distance **against the data** — ring positions across
 many rings over-determine it. Compare against the metadata and against the beamline
 calibration *separately*; do not assume they agree.
@@ -176,6 +220,8 @@ over azimuths, which is `strain_from_centroid`'s default precisely because of th
 ---
 
 ## A "clean singlet" ring gives unstable areas and centroids
+
+symptom: ring.doublet_as_singlet
 
 **Test.** `count_maxima` on the background-subtracted azimuthal mean of the window. It requires
 a **dip** between maxima (prominence), not just two high points.
@@ -196,6 +242,8 @@ criterion is robust rather than tuned.
 
 ## The background estimate rides up under every peak
 
+symptom: background.rides_peaks
+
 **Test.** On a synthetic with a known background, compare the estimate at the ring centres
 against truth. Or on real data, check whether the fitted background at a ring centre exceeds a
 straight interpolation from the ring-free radii on either side.
@@ -211,6 +259,9 @@ which is for ring *finding*, where the bias does not matter.
 
 ## The texture map is smooth and radial
 
+symptom: field.explained_by_polynomial
+coord: texture
+
 **Test.** `explained_by_polynomial`. And ask whether the field is centred on the rotation axis.
 
 **Cause.** Absorption, illumination, or a centring error. A radially smooth "texture" field is
@@ -224,6 +275,8 @@ texture. If scatter: the data does not support a per-voxel map (first entry).
 ---
 
 ## A symmetry group has the wrong number of elements
+
+symptom: symmetry.wrong_order
 
 **Test.** Assert the order against `midas_hkls.point_group.EXPECTED_ORDER`, and check the group
 closes under composition.
@@ -244,6 +297,8 @@ returning a plausible non-group if the lattice is inconsistent with the space gr
 ---
 
 ## A hexagonal or non-cubic pole figure is subtly wrong
+
+symptom: polefigure.metric_convention
 
 **Test.** Compare a Monte-Carlo pole figure from **sampled orientations** against the
 closed-form operator (`tests/test_texture_kernel.py`). Symmetry tests cannot catch this: a
@@ -266,6 +321,8 @@ corr ~0.999 is this, not a broken operator.
 ---
 
 ## A batch of per-voxel fits never finishes
+
+symptom: compute.thread_oversubscribed
 
 **Test.** `uptime` on the host. Compare against the core count.
 

@@ -67,7 +67,7 @@ Record, with provenance, into the runbook:
 | tilts `ty`, `tz` | calibrant fit, 0/180 spread |
 | distortion `p0…` | calibrant fit |
 | pixel size, detector size | detector spec |
-| `Hbeam` / beam height | **the true per-layer beam**, never the sample size (hard rule) |
+| `Hbeam` / `Rsample` | a **generous search bound**, never the physical beam or sample (spine hard rule 5). PF fixes voxels to the scan grid and does not fit position, so this bites even less here. The true beam height is needed only when **stitching** layers |
 
 > **A powder calibrant cannot constrain `tx`** (rotation about the beam) — hold it fixed
 > during powder calibration, refine it from grains after. (Shared with FF; envelope §1.)

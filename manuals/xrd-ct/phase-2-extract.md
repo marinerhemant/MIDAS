@@ -40,6 +40,39 @@ idx, half = ring_windows(r_axis, centres_px, max_half_px=16.0, gap_frac=0.45)
 Set `max_half_px` from the measured FWHM (phase 0), roughly 2× FWHM. Too narrow truncates the
 tails; too wide imports background.
 
+### ★ Centre the window on the PEAK, not on the catalogue
+
+`ring_windows` places each window at the bin nearest the position **you gave it** — normally a
+catalogued or previously-assigned ring radius. If that is off the real peak, the window is
+asymmetric about the peak, and then any change in peak **width** between measurements is
+converted into an apparent change in **centroid**, i.e. into strain that is not there.
+
+```python
+idx = refine_ring_centres(net, r_axis, idx, half)     # measured peak, not catalogue
+# or, per ring:
+ext = extract_ring(cake, net, bg, r_axis, idx[c], half[c], recentre=True)
+```
+
+`extract_ring` **always** reports `centre_offset_bins` and warns above 10 % of the half-width,
+so the defect cannot pass unnoticed; `recentre` defaults to `False` so it never silently moves
+an existing analysis's numbers.
+
+**Measured on the DAC Ti S1 scan**, whose centres came from a 2021 assignment: offsets of
+−0.563, **+0.044**, **−1.524** and −0.848 px on four rings, the largest 19 % of that ring's
+FWHM. Re-centring moved one ring's apparent strain by **55 %** and **flipped another's sign**,
+while the ring already centred to +0.044 px was unchanged to the bit — which is what makes the
+comparison a controlled test rather than a tweak.
+
+**Do not over-claim it.** For a Gaussian the artefact is second-order at a comfortably wide
+window (`half/σ` 5 → 0.02–0.22 bins) and first-order only near the safety line (`half/σ` 2.5 →
+0.72–2.38 bins). Where real data moves far more than that, the cause is non-Gaussian content
+entering the window — background residual and neighbour tails — not tail truncation. And
+because `centre_bin` is an integer, re-centring leaves up to ~0.5 bin of residual; widen the
+window rather than chasing it.
+
+**A window-width sweep cannot find this.** The offset is a fixed *fraction* of the window, so
+it does not dilute as the window grows — which is exactly why it survived one on this dataset.
+
 ## 2.2 Background — the dominant error term, not a refinement
 
 ```python

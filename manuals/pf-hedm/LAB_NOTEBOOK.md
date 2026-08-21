@@ -48,7 +48,61 @@ anonymised.
   O(N²) dedup). Worked around with connected-components segmentation of the cleaned refined
   orientations → `voxel_grid.csv` in seconds (Handbook phase 3.5).
 
+- **Per-voxel strain railed at the compiled-in ±10000 µε box** (`bt_1id_jun25b`,
+  NMC811, 2026-08-21). `StrainTensorKenesei` measures `(dsObs − ds0)/ds0` against the
+  `ds0` implied by `LatticeConstant`, inside a hardcoded `xl/xu = ±0.01`. The
+  parameter file carried *pristine* NMC811 while the cell was charged (c/a 5.07 vs
+  4.95), so ~0.7 % of the box was gone before any real strain was measured and
+  **11.9 % of voxels railed**. Fixes shipped: the box is now the **`MargStrain`**
+  parameter (`FitUnified.c`, `MIDAS_ParamParser.[ch]`, `midas_params/registry.py`,
+  `midas_transforms/params.py`; 0 ⇒ the 0.01 default, and the writer emits the key
+  only when set so existing files stay byte-identical to the C writer), and
+  **`midas_hkls.refine_lattice_from_d_spacings`** pins the reference cell from
+  observed ring positions. Pinning it: voxels **84 → 123**, completeness median
+  **0.618 → 0.833**, railed voxels **11.9 % → 0 %**.
+- **`--num-files-per-scan` defaulted to 1 and produced a clean 0-voxel layer.**
+  The parameter file's `NrFilesPerSweep 1440` is written into the zarr but does not
+  drive the file list, so `exchange/data` came out `(1, ny, nz)`, all 23 stages ran
+  and the layer finished exit 0 with nothing. Also: `--scan-work-dir` must be
+  absolute (a relative path is joined twice), and stale
+  `InputAllExtraInfoFittingAll*.csv` + `midas_state.h5` make `transforms` report
+  "13 ok" in 0.04 s from cache so indexing runs on the previous attempt's spots.
+
 ## 3. Method findings
+
+- **Pin the reference cell from the rings, never from refined per-grain cells.**
+  Averaging refined cells is a feedback loop — the refiner starts at
+  `LatticeConstant` and only partly leaves it. Measured: recovering the reference
+  from the refined output drifted a further −3740 µε in `a` and **+6361 µε in `c`,
+  ratio 0.83 per pass, i.e. not converging**. The powder route is a *direct* linear
+  least squares on `1/d²` (linear in the reciprocal metric tensor) and takes no
+  starting cell, so it cannot drift. The two independent routes — powder rings and
+  mechanical equilibrium (`recover_d0_anisotropic`) — then agreed to **−994 µε in
+  `a`, +587 µε in `c`**, versus −3740 / +6361 before pinning. Agreement of the two
+  is the gate.
+- **Down-weight the lowest-angle ring; never weight by its statistical error.**
+  `dd/d = cot(θ)·dθ`: at 2θ = 2.85° (NMC 003) a 0.006° systematic in 2θ is
+  **2105 µε in d**, against 596 µε at 10°. That ring's residual was −1696 µε while
+  four others sat inside ±340 µε. With ~160 k spots its centroid SEM is ~6 µε, so
+  1/σ² weighting hands the least reliable ring the largest weight. Dropping it took
+  the fit RMS **776 → 171 µε**; across {uniform, tan²θ, drop-low-ring} the cell moved
+  only **83 µε in `a`, 313 µε in `c`** — that spread is the honest uncertainty.
+- **Weak texture, not sharp texture, is the ill-conditioned case for an anisotropic
+  d0 recovery.** Averaging the Mandel rotation over a uniform orientation
+  distribution projects onto the isotropic subspace, so the `a` and `c` stiffness
+  responses collapse onto `C{I}` and the condition number *grows with N* (2.8 for a
+  single orientation or a 10° fibre; 23 at N=100 uniform; 142 at N=1000). A single
+  crystal separates them cleanly because its stiffness is anisotropic. The first
+  test written for this asserted the opposite and failed — which is how it was found.
+- **The anisotropic d0 answer barely depends on the elastic constants.** Scaling the
+  whole stiffness tensor ±30 % changes it *not at all* (the factor cancels in the
+  least squares); swinging C33 140→260 and C13 20→90 moved `a` by 198 µε and `c` by
+  718 µε. So poorly-known single-crystal constants (NMC811, LLZO, new phases) are not
+  load-bearing here.
+- **Peakfit is I/O-bound, and the page cache is the lever.** On 64 cores it pegs only
+  ~3.5–4 cores (load ~3); `--scan-workers 8` was no faster than 4. Peakfit run
+  straight after `zip_convert` took **467 s/scan**; the same work on cold zips took
+  **1009 s/scan**. Drive layer-by-layer (zip → peakfit → …), not all-zips-then-peakfit.
 
 - **Dark subtraction matters, quantitatively.** pf-odf's loss has no additive background
   term. Raw patches (≈1850-count pedestal) vs per-patch-border dark subtraction: median von
@@ -99,6 +153,25 @@ anonymised.
   blamed on dtype, memory exhaustion, batch size, a prefetch loop, and an async race before
   the int32 stride overflow was instrumented. The lesson: instrument the actual failing
   index, do not theorise from the symptom.
+- **RETRACTED: "the reported strain is decoupled from the refined lattice."** The
+  reported `E11..E33` are in the **sample** frame (fitted on `gobs`), while strain
+  rebuilt from the lattice parameters is in the **crystal** frame. Compared raw, the
+  correlation is −0.08 and looks like a serious defect; rotated with the row's own
+  orientation (`O E Oᵀ`) it is **+0.84…+0.94** and the refiner is self-consistent.
+  Compare invariants first, then rotate.
+- **RETRACTED: "the strain columns rail at 5×10⁹ µε."** The `E` columns are
+  *already* microstrain; the 5×10⁹ came from multiplying by 1e6 a second time. The
+  real rail is at ±10000 µε and needed the unit check to see.
+- **RETRACTED: "the wrong reference cell costs no spots."** Argued from the ring
+  shift (700 µm) fitting inside `MarginRadial` (800 µm). Measured the other way:
+  pinning the cell moved completeness **0.618 → 0.833** and voxels 84 → 123. A
+  static margin comparison ignores that the shift eats the tolerance budget
+  alongside every other error.
+- **CORRECTED: this doc set previously told the reader `Hbeam` was "the true
+  per-layer beam, never the sample size."** That is wrong and cost a session.
+  `Hbeam`/`Rsample` are **generous search bounds**; tightening them to the real
+  dimensions plops solutions onto the bounding box. In PF it is doubly moot — PF
+  fixes voxel positions to the scan grid and does not fit position at all.
 - **OPEN: cross-modal (tomo) in-plane registration.** The tomo reconstruction's flip and
   rotation-centre pixel were not recorded; the crack↔KAM overlay needs them or a shared
   fiducial. Z is registered; in-plane is not.

@@ -1,5 +1,23 @@
 # Envelope — what these measurements can and cannot determine
 
+**Owner:** Hemant Sharma. **Last reviewed 2026-08-21.**
+
+## Tiers — which limits can move, and which cannot
+
+The tier decides what a report is allowed to say: a *configured* limit may be
+suggested as a change, an *intrinsic* one must be called unobtainable rather
+than tuned at.
+
+| tier | meaning | sections |
+|---|---|---|
+| **Fixed** | set by the instrument or the material for this cycle; not changeable by this analysis | §1 (λ/2a degeneracy — the ring pattern determines `s = λ/2a` and cannot separate λ from `a`), §5 (the physical ceiling on grain coherence) |
+| **Configured** | chosen per run, changeable next time — these are the only ones a report may propose changing | §7 (what these recipes assume: tolerances, thresholds, model order), and the acceptance set from the ω-scrambled null in `DIAGNOSIS.md` entry 2 |
+| **Intrinsic** | a property of what the measurement can determine at all; no parameter recovers it | §2 (how much of a grain map is measurement rather than dilation), §3 (the conditioning envelope for intragranular rotation), §4 (the spatial envelope for a recovered field), §6 (the detection floor) |
+
+Each section below states what imposes its limit, which is the part that makes
+a bound actionable rather than decorative.
+
+
 A dataset can be squarely in scope and still unable to support what is being asked of it.
 **Read this before promising an answer.** Section 0 is the table to check first.
 

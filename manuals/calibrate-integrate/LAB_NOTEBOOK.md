@@ -460,3 +460,64 @@ put a frame counter in the same column.
 energy a *measurement* of any given exposure — that still needs several known
 distances (rule 9), and the multi-distance sets that could check it are listed
 in the inventory.
+
+---
+
+## §14. A detector that cannot see the calibrant still calibrates — ESTABLISHED
+
+The 1-ID archive run (2026-08-20, 252 exposures) surfaced a failure no gate in
+this doc set covered: an exposure whose rings are not on the detector at all.
+
+**What happened.** 30 work units were built from `data/pixirad/` folders because
+their filenames matched `CeO2` / `LaB6`. The pixirad at 1-ID is a **SAXS**
+detector: its folders hold `glassy_carbon_1s`, `gC_1s`, `test_Ag_behenate` and
+`bright_1s`/`dark_before` flat-fielding, and Almer's calibration spreadsheet
+independently lists "glassy carbon C" as its calibrant for 11 rows. The CeO2
+files are stray WAXS test exposures.
+
+**The geometry is decisive and needs no fit.** 402 × 1024 px at 62 µm is
+25 × 63 mm, so the panel reaches 34 mm from a centred beam. At 3300 mm and
+71.676 keV the CeO2 (111) ring sits at
+
+    2θ = 2·asin(λ/2d) = 3.17°,   R = Lsd·tan(2θ) = 183 mm
+
+— **six times past the edge**. Zero rings, at every distance the archive used
+(1780–3600 mm).
+
+**The fitter does not notice.** Of the 30, sixteen failed with `RuntimeError: No
+reflections within max 2θ` — the right answer, arrived at late and with a
+message that blames "geometry / lattice / wavelength" rather than saying the
+detector cannot see the calibrant. The other **fourteen converged**, entered the
+results table, and were only caught later by an independent check against the
+distance recorded in the filename: one returned **Lsd = 26.9 mm against a
+recorded 3300 mm**.
+
+**It is not confined to small detectors.** The same gate halts 12 GE quad panels
+from `bt_1id_jul25b` at 3300 mm — a full 2048² panel, simply parked too far for
+CeO2 at that energy. Those had fitted 480–573 mm.
+
+**Scored against the run** (`detector_scope_gate`, `min_rings=3`, 252 units):
+
+| | n |
+|---|---|
+| halted, and the run had failed anyway | 16 |
+| **halted, and the run had "succeeded"** | **26** |
+| passed, and the run failed | 2 |
+| passed, and the run succeeded | 208 |
+
+**Status.** ESTABLISHED — it is arithmetic, not inference. The 26 is the number
+that matters: no post-fit diagnostic catches these, because every post-fit
+diagnostic is grading a fit that converged.
+
+**Corollary for surveys.** Classifying detectors by folder name and files by a
+`ceo2|lab6` regex is how a SAXS detector entered a powder archive. The physical
+check — does this detector, at this distance, subtend the calibrant's rings —
+is one line of geometry and belongs before the survey, not after the fit.
+
+**Site convention, measured not assumed.** 1-ID mounting distances, taken only
+from fits their own recorded distance confirms: single panel **0.5–1.9 m**
+(largest confirmed 1905 mm), GE quad **1.0–3.3 m** (largest confirmed 3257 mm).
+As a standalone flag over the archive this scores precision 58 %, recall 49 % —
+useful as a cross-check, useless as a sole gate. The Eiger is a recent addition
+and does not yet have a characterised envelope (`bt_1id_jul26d` runs it at 1935 mm
+`in_chamber`); leave it exempt rather than inventing a band for it.

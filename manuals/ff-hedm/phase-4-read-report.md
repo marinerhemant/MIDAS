@@ -9,6 +9,41 @@
 
 ## 8. STEP 7 — Read the result
 
+### 8-0. The spots that were never found
+
+`SpotMatrix.csv` is **28 columns** from `midas-process-grains` 0.10.0, and the
+important part is not the extra columns — it is the extra **rows**. Col 12
+`Matched` is 1 for an observed spot that matched a prediction and **0 for a
+reflection the grain was predicted to produce and which was never found**. Until
+now that population was recorded nowhere: `Grains.csv`, `SpotMatrix.csv` and
+`FitBest.bin` all described matched spots only, so completeness could be read as a
+number but never explained.
+
+Un-found rows carry `-1` in the two integer columns (`SpotID`, observed `RingNr`)
+because those are `%d` and cannot hold NaN, and **NaN** in every other observed
+column. The prediction is in cols 14-18 (`theorRingNr`, `theorEta`, `YExp`,
+`ZExp`, `OmegaExp`). Cols 0-11 on *matched* rows are byte-identical to the legacy
+12-column layout, so a parser taking the first 12 tab fields is unaffected.
+
+The first thing to do with it is ask **which rings are losing spots**:
+
+```python
+import numpy as np
+d = np.genfromtxt("SpotMatrix.csv", skip_header=1)
+u = d[:, 12] <= 0.5                       # predicted but not found
+for r in sorted(set(d[:, 14][np.isfinite(d[:, 14])])):
+    tot = (d[:, 14] == r).sum(); un = (d[u, 14] == r).sum()
+    print(f"ring {int(r)}: {un}/{tot} un-found ({100*un/tot:.1f}%)")
+```
+
+On the reference Ni layer that reads 2.7 / 6.9 / 9.1 / 9.7 / **21.6 %** for rings
+1-5 — the outer ring is where the completeness deficit actually lives, which no
+existing output would have told you. Cols 19-21 and 22-27 carry the per-spot
+residual before and after the fit (590.27 -> 300.39 µm median, 80.4 % of
+individual spots improving). Post-fit columns are NaN where the post-fit matcher
+did not keep that spot: 0.03 % on the reference layer, and notably **not** the
+worst spots, which is unexplained.
+
 ### 8a. Check the refiner version before reading the residual columns
 
 **`midas-fit-grain` < 0.5.7 writes `DiffPos`, `DiffOme`, `DiffAngle` cyclically

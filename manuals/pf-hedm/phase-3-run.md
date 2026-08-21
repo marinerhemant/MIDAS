@@ -23,6 +23,46 @@ the essential PF-only stages between the ones you name.
 Run naturally (no `--only`), on GPU, under `nohup`/`setsid` with a log. Outputs go under the
 run's own `LayerNr_<N>/` — never `/tmp`.
 
+### 3.1a Three flags that fail silently (measured 2026-08-21)
+
+All three finish with **exit 0** and a plausible-looking run.
+
+1. **`--num-files-per-scan` defaults to 1.** For a per-frame TIFF/`.tif.bz2`
+   series you MUST pass it (e.g. `--num-files-per-scan 1440`). The parameter
+   file's `NrFilesPerSweep` is written into the zarr but does **not** drive the
+   file list (`midas_pipeline/stages/zip_convert.py`, `num_files_per_scan: int = 1`).
+   Symptom: `zip_convert` finishes suspiciously fast, `exchange/data` is
+   `(1, ny, nz)`, every stage runs, the layer ends with **0 voxels**.
+   Check: `zarr.open(zip)["exchange/data"].shape[0]` must equal your sweep length.
+
+2. **`--scan-work-dir` must be an ABSOLUTE path.** A relative value is joined
+   twice (`…/scans/167051/scans/167051/…`) and every zip fails. Omitting it
+   writes per-scan zips and `Temp/` **into the raw data tree**, which you may not
+   own and will not think to clean.
+
+3. **Stale layer state silently poisons a re-run.** `transforms` caches on the
+   per-layer `InputAllExtraInfoFittingAll*.csv`, and `midas_state.h5` records
+   stage completion. After a failed attempt these survive, and the next run logs
+   `transforms(PF): 13 ok` in **0.04 s** with no per-scan spot counts, then
+   indexes the OLD spots. Two tells: transforms taking ~0 s, and
+   `resume: 'find_grains' already complete, skipping`. **Prefer a fresh result
+   directory**; if you must reuse one, delete `InputAllExtraInfoFittingAll*.csv`,
+   `Data.bin`, `ExtraInfo.bin`, `Spots.bin`, `hkls.csv`, `Output/`, `Results/`,
+   `Recons/`, `FitBest_comp/` **and `midas_state.h5`**.
+
+### 3.1b Throughput: peakfit is I/O-bound, and the page cache is the lever
+
+Measured on a 64-core host, 13 scans × 1440 frames: peakfit pegs only
+**~3.5–4 of 64 cores** (load ~3), so it is **not** CPU-bound — do not "fix" it
+with more workers. `--scan-workers 8` was no faster than 4.
+
+What does matter is whether the zarr is still in the page cache: peakfit run
+immediately after `zip_convert` took **467 s/scan**, the same work on cold zips
+took **1009 s/scan**. So drive the run **layer-by-layer (zip → peakfit → …)**
+rather than pre-building all the zips and then peakfitting. On a
+disk-constrained host, delete each layer's `*.MIDAS.zip` once its `Results/` are
+written — they rebuild from raw in ~100 s and cost ~2 GB per scan.
+
 ## 3.2 Binning — the memory wall
 
 A busy scanning layer generates hundreds of millions of raw spots; assigning them to
@@ -96,6 +136,9 @@ LayerNr_<N>/Output/voxel_grid.csv               voxel→grain map
 LayerNr_<N>/Output/IndexBest_all.bin            consolidated indexer output
 LayerNr_<N>/Output/UniqueOrientations.csv       unique grain orientations
 LayerNr_<N>/Results/Result_OrientPos_voxel_*.csv  per-voxel refined orientation+lattice
+LayerNr_<N>/SpotMatrix.csv                        per-voxel spots: observed AND
+                                                  predicted, plus one row per
+                                                  reflection that was NEVER FOUND
 ```
 
 For a **grain map only**, go to [`phase-5-read-report.md`](phase-5-read-report.md). For

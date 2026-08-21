@@ -26,6 +26,46 @@ strong ring at the working bin size.
 **The dividing line is operational**, at the working (R, η) bin size — not a property of the
 material.
 
+### ★ 0.1b The eyeball test is NOT enough — measure the azimuthal statistics
+
+**A ring can look perfectly continuous and still be grain-dominated.** On the DAC Ti scan the
+rings passed 0.1 on continuity, and only much later — after a per-voxel gradient, three
+preregistrations and a four-lens `/verify` had all been refuted — did the azimuthal statistics
+show ~4 crystallites per 0.3° column (`LAB_NOTEBOOK.md` §5i). Continuity answers "are there
+gaps?"; it does not answer "are there enough grains to make an azimuthal measurement mean
+anything?"
+
+So measure it, per ring, on a raw frame at the **finest** available η resolution:
+
+```python
+I   = np.clip(net[lo:hi, :], 0, None).sum(axis=0)     # (n_eta,) one ring
+raw = np.clip(cake[lo:hi, :], 0, None).sum(axis=0)    # counts, for the floor
+med = np.median(I[I > 0]); mad = 1.4826 * np.median(np.abs(I[I > 0] - med))
+cv_robust = mad / med                       # robust: a few bright grains do not dominate
+cv_poisson = 1 / np.sqrt(raw[I > 0].mean())  # the shot-noise floor
+N_grains  = 1 / (cv_robust**2 - cv_poisson**2)   # crystallites per eta column
+```
+
+| `cv_robust / cv_poisson` | `N_grains` per column | verdict |
+|---|---|---|
+| ~1 | large (10²–10³) | powder — XRD-CT applies |
+| a few | ~20–100 | **marginal** — `azimuthal.mad_filter`, and say so in the report |
+| ≫10 | **≲10** | **coarse-grained — out of scope, go to `pf-hedm`** |
+
+**Use the ROBUST cv.** `std/mean` is dominated by a handful of bright spikes and will read
+200–350× on data whose bulk is what actually matters; on the Ti scan `std/mean` gave 0.52–0.84
+while the robust value was 0.40–0.59 — the verdict was the same, but only because the bulk was
+*also* grain-dominated. Separate the two: report what fraction of azimuthal columns are
+>3 MAD outliers and what fraction of the ring's intensity they carry (Ti: 0.2–1.7 % of columns,
+2–6 % of intensity — i.e. the spikes were **not** the story).
+
+**Why it matters more than it looks.** Crystallite-count fluctuation reproduces across nearby
+sample layers (same grains), is uncorrelated between rings (different grain subsets), survives
+widening the radial window (a spot is inside either), and puts power at **high azimuthal
+harmonics** — `E(η) = q̂·ε·q̂` can hold only n ≤ 2 for any strain tensor, so n ≥ 3 content is a
+positive signature of grains. Every one of those looks like a successful artefact check if you
+are hunting artefacts rather than checking scope.
+
 ## 0.2 Decode the format before anything else
 
 Integrated DT output is a raw binary slab. Getting the axis order wrong gives an array that

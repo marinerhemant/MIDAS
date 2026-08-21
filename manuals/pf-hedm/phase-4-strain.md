@@ -19,7 +19,17 @@ pf-odf consumes the phase-3 outputs:
 
 - `Output/voxel_grid.csv` — voxel→grain map (groups voxels for the per-grain joint fit).
 - `Results/Result_OrientPos_voxel_<v>.csv` — per-voxel refined orientation + lattice
-  (warm-start).
+  (warm-start). **39 columns**, or **45** from midas-fit-grain 0.9.0, which appends
+  `PosErrPre/OmeErrPre/InternalAnglePre` then the `*Post` triple at 39-44. Cols 0-38
+  are unchanged, so `row[1:10]` (orientation) and `row[15:21]` (lattice) do not move.
+  These arrive in PF for free: the CSV writer at `FitUnified.c:2270` runs in **both**
+  modes and `fitbest_adapter` forwards every token.
+
+  > **PF's `PosErr` pre/post is NOT the FF quantity.** `isFF` gates fit stages 2 and 4
+  > (`FitUnified.c:1991`/`:2015`), which are the **position** fits — so **PF does not
+  > refine position at all**. A PF `PosErr` moves only through the orientation and
+  > lattice fit. Do not compare a PF improvement against an FF one, and do not read a
+  > small PF change as a failed position fit: there was no position fit.
 - `paramstest.txt` + `hkls.csv` — geometry + reflections for the forward model.
 - The **raw detector frames** — the peak-shape fit needs the actual pixel patches.
 

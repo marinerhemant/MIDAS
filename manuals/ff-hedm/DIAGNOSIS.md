@@ -8,6 +8,28 @@ Source of the content: `manuals/Reconstruction_Reports.md` §4. Every entry carr
 test that can come back the other way — an entry that cannot exonerate the cause it
 names does not belong here.
 
+## Local symptoms
+
+These are emitted by **the FF pipeline's own checks**, not by `beamreport`'s generic
+diagnostics, which key off per-observation residuals against declared coordinates. A
+single refined geometry parameter finishing on its bound, or an indexing stage that
+reports zero seeds in 0.1 s, is real and useful, and nothing generic will ever detect
+it — so it is declared here rather than renamed into the wrong shape.
+
+Every row names where the check lives. A symptom nothing produces is dead text that
+reads as coverage, which is exactly what the generic vocabulary existed to prevent.
+
+| symptom | emitted by |
+|---|---|
+| `bound.parameter_railed` | `midas_joint_ff_calibrate.grain_refine` names any refined parameter that finished on a bound (`grain_refine.py:344`) and exits 1 |
+| `count.zero_indexed` | `n_seeds_indexed` in `<result>/LayerNr_N/midas_state.h5` (`stages/indexing/metrics`), written by the pipeline's indexing stage, read against the indexer's wall time |
+| `split.illumination_radial` | this entry's own two tests — per-grain `DiffPos` binned by `r = sqrt(X²+Y²)` from `Grains.csv`, and the per-grain lit-ω-arc duty-cycle enrichment (its own null) |
+| `systematic.mirrored_beam_centre` | this entry's comparison of the `midas_calibrate_v2` refined beam centre against its mirror `N-1 − BC`, since strain does not diagnose it |
+
+Strain railing at the Kenesei `MargStrain` bound is **not** listed here: it is the
+generic `bound.pileup` (objects piling against a declared parameter bound), and both
+the total and partial cases use it, discriminated by their own tests.
+
 ---
 
 ## Detector centre offset
@@ -112,9 +134,79 @@ correction is purely isotropic, so deviatoric strain is unchanged: it fixes bias
 scatter. Report the stress impact as `eps_iso × 3K` — it is usually the headline number
 and often hundreds of MPa.
 
+> **Non-cubic: one scale factor is not enough.** `recover_d0` and
+> `recover_d0_cubic_free_standing` both scale `a`, `b` and `c` by a single factor,
+> which is exact only for cubic. A hexagonal/trigonal cell has **two** independent
+> reference lengths, and a real error is often *anti*-correlated between them —
+> measured on NMC811 (SG 166): `a` low by 6316 µε while `c` was high by 7476 µε.
+> No single scale can absorb that. Use
+> **`midas_stress.recover_d0_anisotropic(..., crystal_system="hexagonal")`**, which
+> solves ⟨σ⟩ = σ_applied for one unknown per symmetry-allowed length.
+>
+> Read its `condition_number`, and note the counter-intuitive part: a **weak**
+> texture is the ill-conditioned case. Uniform orientation averaging projects onto
+> the isotropic subspace, so the `a` and `c` responses collapse onto `C{I}` and
+> `cond` *grows with N* (2.8 single-orientation or 10° fibre; 23 at N=100 uniform;
+> 142 at N=1000). Sharp texture separates them cleanly.
+>
+> Reassuringly, the answer barely depends on the elastic constants: scaling the
+> whole stiffness tensor ±30 % changes it **not at all** (the factor cancels), and
+> swinging C33 140→260 / C13 20→90 moved `a` by 198 µε and `c` by 718 µε. Badly
+> known single-crystal constants are not load-bearing here.
+
+## A *fraction* of grains rail at ±10000 µε — the reference cell is wrong
+
+symptom: bound.pileup
+coord: strain
+
+**Test.** Count components within ~1 µε of `1.000e+04`. **Total** railing (100 %,
+with `RMSErrorStrain ≈ 1e36`) is the missing-`IDsHash.csv` defect below — a
+different entry. A *partial* rail — measured 11.9 % of voxels, worst on one
+component — means the reference cell is wrong but not absent. Confirm by fitting
+the cell from the observed rings and comparing with `LatticeParameter`:
+
+```python
+from midas_hkls import refine_lattice_from_d_spacings
+fit = refine_lattice_from_d_spacings(hkls, d_obs, "hexagonal")   # no starting cell
+```
+
+A mismatch beyond ~2000 µε is the cause. **Do not widen `MargStrain`** — the box
+is not the problem, and a wider one hides a bad reference instead of exposing it.
+
+**Cause.** `StrainTensorKenesei` (`FitUnified.c:1061`) gauges
+`(dsObs − ds0)/ds0` against the `ds0` implied by `LatticeParameter`, inside
+`MargStrain` (default ±0.01 = ±10000 µε; a compiled-in constant before
+2026-08-21). A reference wrong by ~0.7 % — e.g. pristine values used for a
+charged battery cathode, c/a 4.95 vs the actual 5.07 — spends most of the box
+before any real strain is measured.
+
+It is **not** only a strain problem: on the reference dataset pinning the cell
+took solved voxels 84 → 123 and completeness median 0.618 → 0.833. A static
+"the ring shift fits inside `MarginRadial`" argument said it would cost no spots,
+and was wrong.
+
+**Lever.** Pin `LatticeParameter` from the observed ring positions — `Ttheta` and
+`RingNumber` in `InputAllExtraInfoFittingAll*.csv`, which involve no indexing and
+no per-grain refinement — then re-run. Two traps in that fit:
+
+- **Drop or down-weight the lowest-angle ring.** `dd/d = cot(θ)·dθ`; at 2θ = 2.85°
+  a 0.006° systematic in 2θ is **2105 µε in d** versus 596 µε at 10°. Its residual
+  was −1696 µε where four other rings sat inside ±340 µε; dropping it took the fit
+  RMS 776 → 171 µε.
+- **Never weight by the ring centroid's statistical error.** With ~160 k spots the
+  SEM is ~6 µε, so 1/σ² weighting gives the least reliable ring the largest weight.
+  Use uniform or `tan²θ`.
+
+**Never recover the cell by averaging refined per-grain cells** — the refiner
+starts from `LatticeParameter` and only partly leaves it, so that average returns
+roughly what you fed in (measured: a further −3740 µε in `a`, +6361 µε in `c`,
+not converging). Gate on the powder fit and `recover_d0_anisotropic` agreeing;
+on the reference dataset they closed to −994 / +587 µε.
+
 ## Strain pegged at its bound for every grain
 
-symptom: strain.all_railed
+symptom: bound.pileup
+coord: strain (all)
 
 **Test.** Read `RMSErrorStrain` (Grains.csv col 42) and the largest `|eKen|`
 (cols 33–41). The signature is unmistakable and admits no partial version:
@@ -196,6 +288,11 @@ produce only 13 % of its reflections cannot reach the bar on real spots — so t
 candidates that clear it at large *r* are ones padded out with coincidental matches. The
 result is not "fewer grains", it is **fabricated grains**, and the population median
 `DiffPos` then describes those artifacts rather than the instrument.
+
+**Test.** Two tests, cheap then decisive: bin per-grain `DiffPos` by radial
+offset *r*, then — for the grains that matter — compare each grain's assigned
+spots against the ω arcs where it was actually lit. The second carries its own
+null, because the arcs' duty cycle *is* the chance rate. Details below.
 
 **Test 1 — free, `Grains.csv` only.** Bin per-grain `DiffPos` by *r*. Measured on a 20-ID
 alumina rod (1 mm dia, 100 µm beam): good grains (`DiffPos` < 150 µm) sat at r p50 = 44 µm,

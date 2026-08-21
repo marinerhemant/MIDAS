@@ -5,7 +5,36 @@ carries a test that can come back the other way.
 
 ---
 
+## Local symptoms
+
+Emitted by **this technique's own procedure**, not by `beamreport`'s generic diagnostics,
+which key off per-observation residuals against declared coordinates. A misorientation
+symmetry operator applied on the wrong side, an antipode convention, a sensor-versus-imaging
+pixel, or a grain map filled in by dilation are real and useful, and nothing generic will
+ever detect them — so they are declared here rather than renamed into the wrong shape.
+
+Every row names where the check lives. A symptom nothing produces is dead text that reads
+as coverage, which is exactly what the generic vocabulary existed to prevent.
+
+| symptom | emitted by |
+|---|---|
+| `map.dilation_filled` | fraction of labelled voxels from a measured core versus from dilation, and the fraction claimed by exactly one grain |
+| `misorientation.operator_side` | cross-check against `midas_stress.misorientation` on a pair believed nearly coincident (`Uaᵀ Ub S`, S on the **right**) |
+| `position.shared_lab_frame` | whether the grain-centre cloud reproduces the sample cross-section, bounded by the beam height |
+| `forward.antipode_or_omega_wrap` | overlay of predicted against observed spots for one trusted grain: exact inversion about the beam centre, and whether ω→frame wrapped |
+| `grain.fragmented` | candidate causes injected into a validated phantom **one at a time** at the real measured value |
+| `compute.thread_oversubscribed` | `torch.get_num_threads()` inside a worker against the core count |
+| `field.explained_by_polynomial` | the recovered field against a **polynomial ceiling** — the best a smooth global function of stated order achieves on the same planted residual, carrying no per-voxel information |
+| `amplitude.registration_manufactured` | sub-pixel registration jitter injected while watching **amplitude**, not just correlation. **Not `scale.inflated`**: the amplitude is not far *above* an expectation, it *matches* truth — suspiciously well, for the wrong reason. "Right by accident" is not a magnitude error and no generic magnitude symptom describes it |
+| `optimizer.above_best_iterate` | loss at the returned iterate against the best loss actually evaluated during the sweep |
+| `scale.pixel_size_wrong` | effective pixel re-derived from a known physical length on **two independent axes** |
+| `orientation.rodrigues_conversion` | a known rotation converted and checked on the **absolute** angle, `θ = 2·atan(|r|)` |
+
+---
+
 ## 1. The grain map looks clean and space-filling
+
+symptom: map.dilation_filled
 
 **The most dangerous symptom in the technique**, because it is exactly what dilation of a
 sparse measurement produces — and it looks like success.
@@ -24,6 +53,8 @@ assignment does not separate from a null.
 
 ## 2. Indexing yields lots of grains and they look plausible
 
+symptom: null.not_cleared
+
 **Test.** ω-scrambled null: permute ω across the spot table, re-run the identical pipeline.
 
 **Discriminating outcome.** At a 4× looser margin, real and null indexed **identically**
@@ -40,6 +71,8 @@ of 0.069). Remember MIDAS FF margins are **µm against the ring radius** — at 
 
 ## 3. Seeds refuse to cluster into grains
 
+symptom: misorientation.operator_side
+
 **Test.** Cross-check your misorientation against `midas_stress.misorientation` on a pair you
 believe is nearly coincident.
 
@@ -54,6 +87,8 @@ are `U·S`, so the misorientation is `Uaᵀ Ub S` — **S on the right**.
 
 ## 4. Grain centres form a smeared cloud with no sample shape
 
+symptom: position.shared_lab_frame
+
 **Test.** Does the centre cloud reproduce the sample cross-section — compact, bounded by the
 beam height?
 
@@ -66,6 +101,8 @@ became a recognisable cross-section — a physical check, not a numerical one.
 ---
 
 ## 5. Forward-simulated spots are "nearly right" but never quite match
+
+symptom: forward.antipode_or_omega_wrap
 
 **Test.** Overlay predicted and observed spots for one grain you trust, and check
 (a) whether the pattern is the exact **inversion** about the beam centre, and (b) whether
@@ -80,6 +117,9 @@ fixes it) or an ω→frame conversion without wrapping, which silently discards 
 
 ## 6. Reconstructed grains come out absurdly small
 
+symptom: scale.suppressed
+coord: volume
+
 **Test.** Histogram the reconstructed volume. Are a few voxels far above the grain's own
 level?
 
@@ -91,6 +131,8 @@ maximum.
 ---
 
 ## 7. Grains fragment into multiple bodies
+
+symptom: grain.fragmented
 
 **Test.** Inject candidate causes into a validated phantom **one at a time**, at the real
 measured value, holding everything else fixed.
@@ -110,6 +152,8 @@ help. Report the fragmented grains as position+orientation only.
 
 ## 8. Nothing finishes, and the machine is loaded
 
+symptom: compute.thread_oversubscribed
+
 **Test.** `torch.get_num_threads()` inside a worker.
 
 **Cause.** Every worker grabbing every core.
@@ -120,6 +164,8 @@ finished **zero** grains in 32 min; one thread each finished all 121 in ~3 min.
 ---
 
 ## 9. A TT intragranular field fits beautifully — on the mask you gave it
+
+symptom: null.not_cleared
 
 **Test.** Re-run on a **deliberately wrong support** and compare.
 
@@ -136,6 +182,8 @@ bounds what the field is evidence *for*.
 
 ## 10. A TT field looks smooth and convincing
 
+symptom: field.explained_by_polynomial
+
 **Test.** Compare against a **polynomial ceiling** — the best a smooth global function of
 stated order achieves on the same planted residual while carrying no per-voxel information.
 
@@ -149,6 +197,8 @@ Above ~2.8 µm a low-order polynomial did *better*.
 ---
 
 ## 11. A recovered field's amplitude matches truth suspiciously well
+
+symptom: amplitude.registration_manufactured
 
 **Test.** Inject sub-pixel registration jitter and watch amplitude, not just correlation.
 
@@ -164,6 +214,8 @@ until shown otherwise.
 
 ## 12. A model-selection sweep gives an incoherent answer across λ
 
+symptom: optimizer.above_best_iterate
+
 **Test.** Does the loss at the returned iterate equal the best loss actually evaluated?
 
 **Cause.** Adam without an annealed schedule ends *above* its own best iterate. The effect on
@@ -178,6 +230,8 @@ steps at full rate) and `return_best=True`. Note `info["settled"]` is budget-rel
 
 ## 13. Every length looks wrong by a constant factor
 
+symptom: scale.pixel_size_wrong
+
 **Test.** Re-derive the effective pixel from a known physical length, on **two independent
 axes**.
 
@@ -190,6 +244,8 @@ trustworthy.
 ---
 
 ## 14. Orientations read from a reference grain map are wrong at large misorientation
+
+symptom: orientation.rodrigues_conversion
 
 **Test.** Convert a known rotation and check the **absolute angle**: `θ = 2·atan(|r|)`.
 
@@ -204,6 +260,8 @@ deposits with `midas_dct_tt.rodrigues_to_crystal_to_sample`.
 ---
 
 ## 15. A count against a threshold changes when nothing physical changed
+
+symptom: bound.pileup
 
 **Test.** Recount with a small tolerance (`>= x - 1e-9`).
 

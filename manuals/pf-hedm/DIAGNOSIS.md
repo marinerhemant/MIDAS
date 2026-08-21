@@ -12,6 +12,27 @@ there as refuted.
 
 ---
 
+## Local symptoms
+
+Emitted by **this technique's own procedure**, not by `beamreport`'s generic
+diagnostics, which key off per-observation residuals against declared coordinates.
+Comparing two of pf-HEDM's own outputs against each other — the reported strain
+tensor against the strain implied by the refined cell in the same row — is real and
+useful, and nothing generic will ever detect it, so it is declared here rather than
+renamed into the wrong shape.
+
+Every row names where the check lives. A symptom nothing produces is dead text that
+reads as coverage, which is exactly what the generic vocabulary existed to prevent.
+
+| symptom | emitted by |
+|---|---|
+| `consistency.strain_vs_lattice` | this entry's own cross-check: `O E Oᵀ` from `Result_OrientPos_voxel_*.csv` cols 27-35 (sample frame, already µε) against strain rebuilt from cols 15-20 (crystal frame) |
+
+Strain railing at the Kenesei `MargStrain` bound is **not** listed here: it is the
+generic `bound.pileup` (objects piling against a declared parameter bound).
+
+---
+
 ## The grain map is mirrored / reflected
 
 symptom: systematic.per_object
@@ -48,6 +69,53 @@ signal-limited scan where most voxels genuinely lack matched spots (physics).
 **Lever.** Wiring: synthesise the seed (`midas_fit_grain.scan_seed.write_pf_seed_file`) — the
 pipeline now does this automatically. Physics: accept the limit and report completeness; a
 weaker seed threshold will not manufacture spots that are not there.
+
+---
+
+## Per-voxel strain components sit exactly on ±10000 µε
+
+symptom: bound.pileup
+coord: strain
+
+**Test.** Count components within ~1 µε of **10000**:
+`sum(abs(abs(E) - 10000) < 1)` over `Result_OrientPos_voxel_*.csv` cols 27–35.
+Any hit is diagnostic — that is the `MargStrain` box (default ±0.01), not a
+measurement. Then fit the cell from the observed rings (phase-2 §2.5) and compare
+with `LatticeParameter`: a mismatch of more than ~2000 µε is the cause. **Do not
+raise `MargStrain` to make it go away** — a wider box hides a bad reference
+instead of exposing it.
+
+**Cause.** `LatticeConstant` is not the sample's cell. `StrainTensorKenesei`
+measures `(dsObs − ds0)/ds0` against the *nominal* `ds0`, so the reference error
+is spent out of the ±10000 µε budget before any real strain is measured.
+Measured on NMC811: a pristine reference (0.7 % off a charged cell) railed
+**11.9 %** of voxels; pinning the cell took it to **0 %**, and lifted completeness
+0.618 → 0.833 and voxels 84 → 123.
+
+**Lever.** Pin `LatticeConstant` with
+`midas_hkls.refine_lattice_from_d_spacings` and re-run (phase-2 §2.5). Cross-check
+with `midas_stress.recover_d0_anisotropic`; the two should agree to ~1000 µε.
+
+---
+
+## Reported strain looks unrelated to the refined lattice in the same row
+
+symptom: consistency.strain_vs_lattice
+
+**Test.** Rotate before comparing. The reported `E11..E33` are in the **sample**
+frame (`StrainTensorKenesei` fits on `gobs`, the observed G-vector directions),
+while strain rebuilt from `a,b,c,α,β,γ` is in the **crystal** frame. Compare
+`O E Oᵀ` against the reported tensor, not the raw components. On the reference
+dataset that took the correlation from **−0.08 (meaningless) to +0.84…+0.94**.
+Also check units: the `E` columns are **already microstrain** — multiplying by
+1e6 again manufactures a fake 5×10⁹ "rail".
+
+**Cause.** A frame (or unit) mismatch in the *analysis*, not a defect in the
+refiner. Both of these were live mistakes in a real session before being caught.
+
+**Lever.** Compare invariants (trace, eigenvalues) first — they are frame-free —
+then rotate. If the correlation is still low **after** rotating, only then suspect
+the refiner.
 
 ---
 

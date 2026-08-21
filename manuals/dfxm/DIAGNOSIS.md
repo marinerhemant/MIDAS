@@ -34,6 +34,8 @@ as coverage, which is exactly what the generic vocabulary existed to prevent.
 | `ratio_threshold_invalid` | channel-ratio-to-phase-fraction validity check (Notebook §7i) |
 | `map_significance_inflated` | map-statistic significance against its null (Notebook §5h) |
 | `centroid_lineshape_untested` | lineshape-invariance test on the centroid (Notebook §5i) |
+| `periodicity_vs_scalar` | the two structural tests in that entry — real-space autocorrelation side-lobes at ±λ, and wavevector direction under reflection rotation. Deliberately not a scalar coherence/band-SNR number, which does not collapse on a non-periodic field |
+| `wrong_channel_or_half_period` | that entry's ΔQ = H·G₀ direction check on a θ,2θ map (transverse ΔQ sees no longitudinal strain), and the ±λ/2 period check |
 **Six entries migrated to the generic vocabulary** (2026-08-12) once `beamreport` grew the
 detectors for them: the pedestal dilution and the too-broad mosaicity are `scale.suppressed`
 / `scale.inflated`, the uniform strain offset is `systematic.common_offset`, the doubled

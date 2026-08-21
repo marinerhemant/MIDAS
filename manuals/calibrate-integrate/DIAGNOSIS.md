@@ -9,7 +9,36 @@ detectors the *test* transfers; the *value* may not.
 
 ---
 
+## Local symptoms
+
+Emitted by **this technique's own procedure**, not by `beamreport`'s generic diagnostics,
+which key off per-observation residuals against declared coordinates. A detector-map row
+cap, a missing panel-shift file, an unmasked dtype-max sentinel or a λ–Lsd degeneracy are
+real and useful, and nothing generic will ever detect them — so they are declared here
+rather than renamed into the wrong shape.
+
+Every row names where the check lives. A symptom nothing produces is dead text that reads
+as coverage, which is exactly what the generic vocabulary existed to prevent.
+
+| symptom | emitted by |
+|---|---|
+| `map.per_row_cap` | map entry count against a map built with a much larger per-row buffer, or against the C `DetectorMapper`, which has no cap |
+| `panels.shifts_missing` | `PanelShiftsMissingWarning`, plus whether `PanelShiftsFile` is named and readable from the working directory |
+| `band.mostly_empty` | count of bins holding data in the suspect azimuthal band, per ring, before blaming the code |
+| `backend.mismatch` | max absolute difference between CPU and GPU over all bins — for v2 it must be exactly 0, being float64 throughout |
+| `loop.not_converged` | the *honest* per-iteration strain, re-extracted at each post-refinement geometry rather than the optimiser's own objective |
+| `agreement.uninformative` | the absolute per-phase residual read *before* the ratio (`per_phase_summary`, `packages/midas_calibrate_v2/midas_calibrate_v2/loss/diagnostics.py:139`) — two calibrants can agree and both be wrong |
+| `degeneracy.lambda_lsd` | λ compared across three sources (parameter file, filename/metadata, beamline log), since the fit cannot separate λ from Lsd |
+| `io.filter_plugin_missing` | the dataset's HDF5 filter pipeline read with `h5py` rather than its data |
+| `pixel.sentinel_unmasked` | whether the extreme value is exactly the dtype maximum, and what fraction of the frame it covers |
+| `geometry.rings_unreachable` | pure-geometry reachability of the calibrant's rings on this panel, before looking at the fit at all |
+
+---
+
 ## Spiky or wildly wrong intensity near η = 0, ±90, ±180
+
+symptom: trend.periodic
+coord: eta_deg
 
 **Test.** Read `SubPixelLevel` from the parameter file. Then integrate the same
 frame twice against the *same* map, once with the truncating lookup and once with
@@ -30,6 +59,9 @@ sharpness against the radial bin width.
 
 ## Every ring sits uniformly inside or outside where it should
 
+symptom: systematic.common_offset
+coord: radius
+
 **Test.** Contour the per-pixel R map at the ideal radii over the raw frame
 (spine §6). Then compare against a from-scratch `make_seed`, which uses only the
 image.
@@ -49,6 +81,9 @@ and the calibrant lattice constant.
 ---
 
 ## Panel shifts rail at their bound
+
+symptom: bound.pileup
+coord: panel_shift
 
 **Test.** Which per-panel degrees of freedom are refined? Then decompose the
 fitted (δy, δz) field onto its global modes: uniform translation, radial
@@ -73,6 +108,8 @@ reference detector the modules sit within ~1.5 px.
 
 ## Rings look right but absolute intensities are wrong
 
+symptom: map.per_row_cap
+
 **Test.** Compare the map entry count against a map built with a much larger
 per-row buffer, or against the C `DetectorMapper`, which has no cap.
 
@@ -88,6 +125,8 @@ v2 has no map step and is not affected.
 ---
 
 ## Integrated pattern is subtly wrong only near module boundaries
+
+symptom: panels.shifts_missing
 
 **Test.** Is `PanelShiftsFile` named, and readable from the working directory?
 Watch for `PanelShiftsMissingWarning`.
@@ -106,6 +145,9 @@ without any warning. Measured against v1-with-panels: RMS 0.116 px, max 0.560 px
 
 ## A metric returns NaN or a blank for one azimuthal band
 
+symptom: band.mostly_empty
+coord: eta_deg
+
 **Test.** Count bins with data in that band, per ring, before blaming the code.
 
 **If the band is mostly empty** → a module gap runs through it. At η = ±90 on the
@@ -119,6 +161,9 @@ emits NaN. Report the band as under-sampled and do not weight it.
 ---
 
 ## Cardinal-angle oscillation, and whether to enable GradientCorrection
+
+symptom: trend.periodic
+coord: eta_deg
 
 **Test.** High-frequency residual of I(η) about a smooth fit, **with a control at
 a non-cardinal angle** (45° works). Without the control you cannot separate
@@ -140,6 +185,8 @@ detector, not a constant — Lab Notebook §4.
 
 ## CPU and GPU results differ
 
+symptom: backend.mismatch
+
 **Test.** Which stack?
 
 **v2** → they should agree **exactly**; it is float64 throughout. Measured max
@@ -150,6 +197,9 @@ If it exceeds ~1e-5, check that both runs used the same `Map.bin`.
 
 
 ## Distortion coefficients sit on their bounds
+
+symptom: bound.pileup
+coord: distortion
 
 **Test.** Two candidate causes, and they are told apart by *which* coefficients
 rail. Run both gates
@@ -178,6 +228,8 @@ distortion is real and determined. Keep it.
 
 ## The E↔M loop will not settle
 
+symptom: loop.not_converged
+
 **Test.** Look at the *honest* per-iteration strain — re-extracted at each
 post-refinement geometry, not the optimiser's own objective
 (`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/single.py:184`). Then
@@ -205,6 +257,8 @@ gap was 41 µε in-loop against 418 µε re-extracted.
 
 ## Two calibrants agree, but you are not sure that means anything
 
+symptom: agreement.uninformative
+
 **Test.** Read the absolute per-phase residual *before* the ratio
 (`packages/midas_calibrate_v2/midas_calibrate_v2/loss/diagnostics.py:139`). Then
 ask whether both phases could be sitting on a common noise floor.
@@ -228,6 +282,8 @@ describes both powders. This is the only combination that is a pass.
 
 ## The calibration passes every gate but you doubt the distance
 
+symptom: degeneracy.lambda_lsd
+
 **Test.** Compare λ from three sources: the parameter file, the filename /
 metadata, and the beamline log. Then ask whether the fit could have told you.
 
@@ -247,6 +303,8 @@ distances rescale together.
 ---
 
 ## Reading a frame fails with `can't open directory (/usr/local/lib/plugin)`
+
+symptom: io.filter_plugin_missing
 
 **Test.** Open the file with `h5py` and read the dataset's filter pipeline
 rather than its data:
@@ -278,6 +336,8 @@ dataset path (`data_loc`) instead.
 
 ## A whole detector, or a fixed fraction of it, reads as ~4.29e9
 
+symptom: pixel.sentinel_unmasked
+
 **Test.** Ask whether the extreme value is exactly the dtype maximum, and how
 much of the frame it covers:
 
@@ -300,3 +360,45 @@ you — the §2 azimuthal-median recipe is for detectors with no bad-pixel map.
 
 **If the extreme value is not the dtype max** → it is a real count or a
 saturation, not a sentinel; check the detector's saturation level instead.
+
+---
+
+## The calibration converged, but the distance is nowhere near what was recorded
+
+symptom: geometry.rings_unreachable
+
+**Test.** Before looking at the fit at all, ask whether the calibrant's rings
+can reach this panel — pure geometry, no image needed:
+
+```python
+from midas_calibrate_v2.pipelines.diagnostics import detector_scope_gate
+g = detector_scope_gate(wavelength_A=12.398419 / E_keV, Lsd_um=LSD_UM,
+                        pxY_um=PX, NrPixelsY=NY, NrPixelsZ=NZ)
+print(g.severity, g.message)
+```
+
+**If it returns `fail`** → the rings are not on the detector, and whatever the
+fit converged to is parasitic scatter, not a geometry. Two distinct causes, and
+the message distinguishes them by comparing the innermost ring radius with the
+panel's reach:
+
+- *Wrong detector for the job.* A small-angle detector sees no powder rings at
+  a long working distance. At 1-ID the pixirad is SAXS — 402 × 1024 at 62 µm is
+  25 × 63 mm, and at 3300 mm the CeO2 (111) ring sits at R ≈ 183 mm, six times
+  past the panel edge. Its real calibrants are glassy carbon and silver
+  behenate; the `CeO2_*` files in its folder are stray WAXS test exposures.
+  A name-based survey will happily count them as calibration data.
+- *Right detector, parked too far.* Measured case: a GE quad at 3300 mm fitted
+  480–573 mm. Nothing about the panel is wrong; the calibrant simply cannot be
+  seen from there.
+
+**If it returns `ok`** → the scope is fine and the wrong distance is a real
+convergence problem. Cross-check `Lsd` against any distance recorded in the
+filename, then see "The calibration passes every gate but you doubt the
+distance".
+
+**Why this needs its own entry.** The fitter does not fail when the rings are
+absent — it succeeds. On the 1-ID archive this gate halts 42 of 252 exposures,
+and **26 of those had already produced a calibration that looked plausible in
+every downstream diagnostic**. No post-fit gate catches it, because every
+post-fit gate is grading a fit that converged.

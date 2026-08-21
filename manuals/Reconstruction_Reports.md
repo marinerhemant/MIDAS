@@ -31,6 +31,13 @@ same file path keeps the same URL, so reports can be updated in place.
 but is where most of the value lives — without it you lose the residual plate and most
 auto-findings.
 
+`midas-process-grains` ≥ 0.9.2 writes the sidecar from every mode that reads FitBest,
+including the default `c_parity`; below that, a `c_parity` run produced none, so a
+missing sidecar on an older run says nothing about the run's quality. `mode=physics`
+never writes one (`v4_pipeline` does not read FitBest). Note that `Grains.csv`
+`DiffPos` is **not** the mean of the table's per-spot position residual (median ratio
+0.61) even though `DiffOme` and `DiffAngle` are — do not reconcile them in a report.
+
 ---
 
 ## 2. Inputs the generator reads

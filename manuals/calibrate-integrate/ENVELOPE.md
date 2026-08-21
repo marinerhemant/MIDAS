@@ -1,5 +1,19 @@
 # Envelope — what has actually been exercised
 
+**Owner:** Hemant Sharma. **Last reviewed 2026-08-21.**
+
+## Tiers — which limits can move, and which cannot
+
+The tier decides what a report may say: a *configured* limit can be proposed as a
+change; an *intrinsic* one must be reported as unobtainable rather than tuned at.
+
+| tier | meaning | what falls here |
+|---|---|---|
+| **Fixed** | the detector and beamline for this cycle | pixel size, panel geometry and module gaps, sentinel conventions per detector class, and the "Numbers that are detector-specific, not constants" sections below — these are properties of the hardware, and a report may not suggest changing them |
+| **Configured** | chosen per run, changeable next time | `RhoD` and the distortion order, ring selection, integration binning (`RBinSize`, `EtaBinSize`), `SubPixelLevel`, the calibrant used. **`RhoD` is the distortion normalisation — changing it without refitting `p0..p14` silently corrupts the distortion**, so it is configured but not free |
+| **Intrinsic** | no parameter recovers it | the λ–Lsd degeneracy (ring positions alone cannot separate wavelength from distance — see `DIAGNOSIS.md`, `degeneracy.lambda_lsd`), and anything in "Not exercised — stop and ask": an unexercised detector class is not a limit you can tune past, it is one you must go and measure |
+
+
 The spine reads as procedure. This records how much of it has been *run*, so an
 untested path does not get promoted to a recommendation. Written 2026-08-19.
 

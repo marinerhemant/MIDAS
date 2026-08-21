@@ -7,7 +7,8 @@
 | File | Format | Reads |
 |---|---|---|
 | `Output/voxel_grid.csv` | header + `voxel_idx x_um y_um z_um grain_id` per voxel | the layer's voxel→grain map |
-| `Results/Result_OrientPos_voxel_<v>.csv` | 2-line: header + a 43-col row | per-voxel OM (cols 1–9), position (11–13), lattice (15–20), completeness (26), refiner strain (27–35), Euler (36–38) |
+| `SpotMatrix.csv` | 17 cols, one row per **predicted** reflection per voxel. `Matched`=1 observed, **0 = predicted but never found** — the completeness deficit itself, which `Result_OrientPos_voxel` records only as a number. Un-found rows: `SpotID`/`ScanNr` = -1, observed columns and residuals NaN, prediction (`YExp`/`ZExp`/`OmegaExp`/`RingNr`/`theorEta`) intact. Carries `ScanNr`, which FF's SpotMatrix has no room for. New 2026-08-21 |
+| `Results/Result_OrientPos_voxel_<v>.csv` | 2-line: header + a **39**-col row (**45** from midas-fit-grain 0.9.0: `PosErr/OmeErr/InternalAngle` x `Pre/Post` at 39-44; PF does not fit position, so its `PosErr` pre/post is not the FF quantity) | per-voxel OM (cols 1–9), position (11–13), lattice (15–20), completeness (26), refiner strain (27–35), Euler (36–38) |
 | `Output/UniqueOrientations.csv` | 14-col: grainID + 4 pad + 9 OM | unique grain orientations |
 | `pfodf_eps/eps_grain<g>.npy` (if strain run) | `(n_vox, 6)` Voigt strain, crystal frame | pf-odf peak-shape strain per grain |
 

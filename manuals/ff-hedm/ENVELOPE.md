@@ -98,8 +98,15 @@ parameter file and mean the opposite.
   stage that applies it — **not** a refiner setting, and absent from both backends by design
   (phase-3 §7).
 - **Diagnostics sidecar not written.** If `residuals/spot_table` is absent the report is
-  descriptive only. That is a pipeline-version question, not a measurement limit — the
-  current pipeline writes it.
+  descriptive only. That is a pipeline-version question, not a measurement limit —
+  `midas-process-grains` ≥ 0.9.2 writes it from every mode that reads FitBest, the
+  default `c_parity` included. Below 0.9.2 `c_parity` wrote no sidecar at all;
+  `mode=physics` still writes none.
+- **`DiffPos` is not re-derivable from the residual table.** The per-spot residuals
+  reproduce the refiner's own FitBest `DiffLen` exactly, but the per-grain `DiffPos`
+  column is not their mean (median ratio 0.61), while `DiffOme` and `DiffAngle` *are*.
+  Report them as separate quantities. Cause not diagnosed — provisional, not
+  adversarially verified.
 - **Few rings because of saturation.** Recoverable by re-acquiring with a different exposure
   or attenuation; report as "not acquired", never "not available".
 

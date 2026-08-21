@@ -119,7 +119,7 @@ The only tier where "what could be observed differently" has an answer.
 | Azimuthal binning | 50–64 bins | integrator | counts per bin vs angular resolution | Directly trades pole-figure resolution against per-bin SNR. Muerer use 64 |
 | Exposure / attenuation | one setting | HDR or graded attenuation | station configuration | Un-saturating bright rings while lifting weak ones |
 
-## 3. Identifiability — count before you fit
+## 3. Intrinsic (identifiability) — count before you fit
 
 **Unknowns grow roughly as `L³`; the row count does not.** So a harmonic model goes
 underdetermined at high `L`, and an underdetermined least-squares fit drives its residual
