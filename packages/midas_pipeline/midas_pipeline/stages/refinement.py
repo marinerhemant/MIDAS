@@ -317,6 +317,36 @@ def run(ctx: StageContext) -> StageResult:
         n_written = fitbest_to_result_orientpos(fitbest_dir, results_dir)
         LOG.info("refinement(PF, c-omp): adapted %d FitBest -> "
                  "Result_OrientPos_voxel", n_written)
+        # (4) Per-voxel SpotMatrix.csv, including the reflections each voxel was
+        #     PREDICTED to produce and which were never found. PF had no
+        #     SpotMatrix at all, and Result_OrientPos_voxel carries completeness
+        #     only as a number — the deficit itself was recorded nowhere.
+        #     Built from SpotDiagnostics.bin, which already holds observed and
+        #     predicted positions, the residuals and the scan, so it needs no
+        #     per-scan InputAll join (PF has one such file per scan, and getting
+        #     that join wrong is silent).
+        try:
+            from midas_process_grains.io.spot_diag import (
+                load_spot_diag, write_pf_spot_matrix,
+            )
+            diag = load_spot_diag(fitbest_dir)
+            sm = results_dir.parent / "SpotMatrix.csv"
+            n_rows = write_pf_spot_matrix(diag, sm)
+            n_un = int((diag.n_theor - diag.n_matched).sum())
+            LOG.info("refinement(PF, c-omp): SpotMatrix.csv %d rows "
+                     "(%d matched + %d predicted-but-NOT-found) -> %s",
+                     n_rows, n_rows - n_un, n_un, sm)
+            if not diag.col5_is_theor_spot_id:
+                LOG.warning("refinement(PF): SpotDiagnostics is v1 — "
+                            "theorSpotID is blank on matched rows (the writer "
+                            "stored theorGx there). Re-run with a refiner "
+                            ">= midas-fit-grain 0.9.0 to populate it.")
+        except FileNotFoundError:
+            LOG.info("refinement(PF): no SpotDiagnostics.bin -> no "
+                     "SpotMatrix.csv (refiner older than 2026-08-21?)")
+        except Exception as exc:                       # noqa: BLE001
+            # A diagnostic must never take down a refinement that succeeded.
+            LOG.warning("refinement(PF): SpotMatrix.csv not written (%s)", exc)
         finished = time.time()
         return RefineResult(
             stage_name="refinement",

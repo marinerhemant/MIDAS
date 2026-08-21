@@ -360,10 +360,11 @@ def _build_parser() -> argparse.ArgumentParser:
                           "kept ~18%% more grains of which only 7.2%% were "
                           "EBSD-corroborated, and on 20-ID alumina it placed "
                           "4.1%% of them outside the physical sample. "
-                          "NOTE: only 'legacy' and 'paper_claim' "
-                          "write processgrains_diagnostics.h5; 'c_parity' returns "
-                          "without calling result.write(), so the default mode "
-                          "produces no residual sidecar.")
+                          "NOTE: 'c_parity' writes processgrains_diagnostics.h5 "
+                          "(the residual sidecar) as of midas-process-grains "
+                          "0.9.2; below that the default mode produced none. "
+                          "'physics' still produces none -- v4_pipeline does "
+                          "not read FitBest.")
 
     # Layers
     run.add_argument("--layers", default="1-1",
