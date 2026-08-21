@@ -24,7 +24,9 @@ from .form_factors import (
     form_factor_batch,
 )
 from .hkl_gen import Reflection, generate_hkls, reflections_to_dataframe
-from .lattice import Lattice
+from .lattice import (
+    Lattice, PowderLatticeFit, refine_lattice_from_d_spacings,
+)
 from .nf_hkls import emit_nf_hkls_csv, write_nf_hkls_csv
 from .point_group import (
     LAUE_TO_PROPER_GROUP,
@@ -52,6 +54,8 @@ __all__ = [
     "Crystal",
     "LAUE_TO_PROPER_GROUP",
     "Lattice",
+    "PowderLatticeFit",
+    "refine_lattice_from_d_spacings",
     "Reflection",
     "SpaceGroup",
     "SymOp",
