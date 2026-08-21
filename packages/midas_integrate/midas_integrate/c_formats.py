@@ -28,13 +28,25 @@ _MISSING = (
     "depends on this package; declaring it here would be a cycle."
 )
 
+#: Appended when midas_integrate_v2 IS installed but predates the writers.
+_TOO_OLD = (" It is installed but does not provide this writer, so it predates "
+            "midas-integrate-v2 0.6.0 -- upgrade it.")
+
 
 def _v2_io(name: str):
     try:
         from midas_integrate_v2 import io
     except ImportError as e:                       # pragma: no cover
         raise ImportError(_MISSING.format(name=name)) from e
-    return getattr(io, name)
+    try:
+        return getattr(io, name)
+    except AttributeError as e:
+        # An INSTALLED-BUT-OLD midas_integrate_v2 imports fine and simply lacks
+        # the writer, so the ImportError branch above never fires and the caller
+        # gets a bare AttributeError instead of the message explaining what to
+        # install. That is the likely case for anyone who upgraded this package
+        # alone, which is exactly who needs the message.
+        raise ImportError(_MISSING.format(name=name) + _TOO_OLD) from e
 
 
 def write_gsas_zarr_zip(*args, **kwargs):
