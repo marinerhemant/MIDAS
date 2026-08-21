@@ -28,7 +28,13 @@ plt.rcParams.update({"figure.facecolor":PAPER,"axes.facecolor":PAPER,"savefig.fa
 GCOLS=("ID O11 O12 O13 O21 O22 O23 O31 O32 O33 X Y Z a b c alpha beta gamma DiffPos DiffOme "
        "DiffAngle GrainRadius Confidence eFab11 eFab12 eFab13 eFab21 eFab22 eFab23 eFab31 eFab32 "
        "eFab33 eKen11 eKen12 eKen13 eKen21 eKen22 eKen23 eKen31 eKen32 eKen33 RMSErrorStrain "
-       "PhaseNr Eul0 Eul1 Eul2").split()
+       "PhaseNr Eul0 Eul1 Eul2 "
+       # 47-52 exist only on runs refined by midas-fit-grain >=0.9.0; the
+       # zip below stops at whichever of GCOLS/data is shorter, so a legacy
+       # 47-col file still reads. Cols 19-21 are a MIXTURE (19 post-fit,
+       # 20/21 pre-fit) -- these two triples are same-estimator, so use them
+       # for any before/after comparison.
+       "DiffPosPre DiffOmePre DiffAnglePre DiffPosPost DiffOmePost DiffAnglePost").split()
 
 # ------------------------------------------------------------------ parsing
 def parse_grains_header(path):
@@ -261,7 +267,7 @@ def main():
     nom_a=meta["nominal_lat"][0] if meta["nominal_lat"] else float("nan"); sg=meta["spacegroup"]; cubic=is_cubic(sg)
     d=np.loadtxt(gpath,comments="%");
     if d.ndim==1: d=d[None,:]
-    C={n:d[:,i] for i,n in enumerate(GCOLS)}; OM=d[:,1:10].reshape(-1,3,3)
+    C={n:d[:,i] for i,n in enumerate(GCOLS) if i<d.shape[1]}; OM=d[:,1:10].reshape(-1,3,3)
     material=a.material or f"SG{sg}"; ngr=len(d)
     prov=parse_param(rd)
 
@@ -342,6 +348,48 @@ def compute_findings(C,D,S,d0,prov,ngr,beam_um=None):
     if D.get("overall_med_internal_angle_deg") is not None:
         ia=float(D["overall_med_internal_angle_deg"]); dm=float(D.get("overall_mad_dome_deg",0))
         F["solid"].append(("Angular fit",f"Median internal angle {ia:.2f}°, dome MAD {dm:.2f}° — orientation is the most trustworthy product."))
+    # ── what refinement actually bought (Grains.csv cols 47-52) ──────────────
+    # Cols 19-21 cannot answer this: 19 is post-fit while 20/21 are pre-fit, so
+    # differencing them mixes two geometries. 47-52 are the same estimator on
+    # both sides, which is the whole reason they exist.
+    _pp_keys=("DiffPosPre","DiffPosPost","DiffOmePre","DiffOmePost",
+              "DiffAnglePre","DiffAnglePost")
+    if not all(C.get(k) is not None for k in _pp_keys):
+        # 47-column Grains.csv: the columns do not exist at all. Same
+        # information as all-NaN, so say the same thing rather than nothing.
+        F["warn"].append(("No before/after refinement numbers",
+            "This Grains.csv has 47 columns, so it predates the pre/post error "
+            "triples (midas-process-grains 0.10.0 / midas-fit-grain 0.9.0). How "
+            "much refinement improved each grain is UNKNOWN, not zero — and "
+            "cols 19-21 cannot be differenced to find out, because 19 is "
+            "post-fit while 20-21 are pre-fit."))
+    else:
+        ok=np.isfinite(C["DiffPosPre"])&np.isfinite(C["DiffPosPost"])
+        if ok.sum():
+            pp,qq=C["DiffPosPre"][ok],C["DiffPosPost"][ok]
+            oo,rr=C["DiffOmePre"][ok],C["DiffOmePost"][ok]
+            aa,bb=C["DiffAnglePre"][ok],C["DiffAnglePost"][ok]
+            better=int((qq<pp).sum()); frac=better/ok.sum()
+            F["solid"].append(("What refinement bought",
+                f"Position error {np.median(pp):.0f} → {np.median(qq):.0f} µm "
+                f"({np.median(pp)/max(np.median(qq),1e-9):.2f}×), ω "
+                f"{np.median(oo):.3f} → {np.median(rr):.3f}°, internal angle "
+                f"{np.median(aa):.3f} → {np.median(bb):.3f}°; improved on "
+                f"{better:,}/{int(ok.sum()):,} grains ({100*frac:.0f} %). "
+                f"Same estimator on both sides — cols 19-21 mix a post-fit "
+                f"DiffPos with pre-fit DiffOme/DiffAngle and cannot be "
+                f"differenced."))
+            if frac < 0.95:
+                F["warn"].append(("Refinement did not help every grain",
+                    f"{int(ok.sum())-better:,} of {int(ok.sum()):,} grains "
+                    f"({100*(1-frac):.0f} %) ended with a LARGER position error "
+                    f"than they started. Check whether those grains are the "
+                    f"low-completeness tail before trusting their positions."))
+        else:
+            F["warn"].append(("No before/after refinement numbers",
+                "Grains.csv cols 47-52 are all NaN — this run was refined "
+                "before midas-fit-grain 0.9.0, so how much refinement improved "
+                "each grain is unknown, not zero."))
     # eta-sinusoid → BC
     if S is not None:
         eta=np.deg2rad(S["eta_deg"]); amp,off=fit_sin(eta,S["drad_um"]); px=float(re.sub(r"[^0-9.eE+-]","",str(prov.get("px") or "150")) or "150")

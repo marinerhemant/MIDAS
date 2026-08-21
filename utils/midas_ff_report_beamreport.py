@@ -29,7 +29,13 @@ plt.rcParams.update({"figure.facecolor":PAPER,"axes.facecolor":PAPER,"savefig.fa
 GCOLS=("ID O11 O12 O13 O21 O22 O23 O31 O32 O33 X Y Z a b c alpha beta gamma DiffPos DiffOme "
        "DiffAngle GrainRadius Confidence eFab11 eFab12 eFab13 eFab21 eFab22 eFab23 eFab31 eFab32 "
        "eFab33 eKen11 eKen12 eKen13 eKen21 eKen22 eKen23 eKen31 eKen32 eKen33 RMSErrorStrain "
-       "PhaseNr Eul0 Eul1 Eul2").split()
+       "PhaseNr Eul0 Eul1 Eul2 "
+       # 47-52 exist only on runs refined by midas-fit-grain >=0.9.0; the
+       # zip below stops at whichever of GCOLS/data is shorter, so a legacy
+       # 47-col file still reads. Cols 19-21 are a MIXTURE (19 post-fit,
+       # 20/21 pre-fit) -- these two triples are same-estimator, so use them
+       # for any before/after comparison.
+       "DiffPosPre DiffOmePre DiffAnglePre DiffPosPost DiffOmePost DiffAnglePost").split()
 
 # ------------------------------------------------------------------ parsing
 def parse_grains_header(path):
@@ -383,6 +389,41 @@ def midas_findings(C, D, S, d0, nring):
         out.append(Finding(symptom="", level="solid", title="Angular fit",
             statement=f"Median internal angle {ia:.2f}°, dome MAD {dm:.2f}° — "
                       f"orientation is the most trustworthy product."))
+    # What refinement actually bought. Cols 19-21 cannot answer this — 19 is
+    # post-fit while 20-21 are pre-fit, so differencing them mixes geometries.
+    # Cols 47-52 are the same estimator on both sides.
+    _k = ("DiffPosPre", "DiffPosPost", "DiffOmePre", "DiffOmePost",
+          "DiffAnglePre", "DiffAnglePost")
+    if not all(C.get(x) is not None for x in _k):
+        out.append(Finding(symptom="", level="caution",
+            title="No before/after refinement numbers",
+            statement="Grains.csv has 47 columns, so it predates the pre/post "
+                      "error triples (midas-process-grains 0.10.0). How much "
+                      "refinement improved each grain is UNKNOWN, not zero, and "
+                      "cols 19-21 cannot be differenced to find out."))
+    else:
+        ok = np.isfinite(C["DiffPosPre"]) & np.isfinite(C["DiffPosPost"])
+        if ok.sum():
+            pp, qq = C["DiffPosPre"][ok], C["DiffPosPost"][ok]
+            oo, rr = C["DiffOmePre"][ok], C["DiffOmePost"][ok]
+            aa, bb = C["DiffAnglePre"][ok], C["DiffAnglePost"][ok]
+            better = int((qq < pp).sum()); frac = better / ok.sum()
+            out.append(Finding(symptom="", level="solid",
+                title="What refinement bought",
+                statement=f"Position error {np.median(pp):.0f} → "
+                          f"{np.median(qq):.0f} µm "
+                          f"({np.median(pp)/max(np.median(qq),1e-9):.2f}×), ω "
+                          f"{np.median(oo):.3f} → {np.median(rr):.3f}°, internal "
+                          f"angle {np.median(aa):.3f} → {np.median(bb):.3f}°; "
+                          f"improved on {better:,}/{int(ok.sum()):,} grains "
+                          f"({100*frac:.0f} %). Same estimator both sides."))
+            if frac < 0.95:
+                out.append(Finding(symptom="quality.low_fraction",
+                    level="caution",
+                    title="Refinement did not help every grain",
+                    statement=f"{int(ok.sum())-better:,} of {int(ok.sum()):,} "
+                              f"grains ({100*(1-frac):.0f} %) ended with a "
+                              f"LARGER position error than they started."))
     if nring and nring < 6:
         out.append(Finding(symptom="", level="caution", title="Ring coverage",
             statement=f"Only {nring} rings indexed. The strain tensor is poorly "
@@ -427,7 +468,7 @@ def main():
     sg = meta["spacegroup"]; cubic = is_cubic(sg)
     d = np.loadtxt(gpath, comments="%")
     if d.ndim == 1: d = d[None, :]
-    C = {n: d[:, i] for i, n in enumerate(GCOLS)}; OM = d[:, 1:10].reshape(-1, 3, 3)
+    C = {n: d[:, i] for i, n in enumerate(GCOLS) if i < d.shape[1]}; OM = d[:, 1:10].reshape(-1, 3, 3)
     material = a.material or f"SG{sg}"; ngr = len(d)
     prov = parse_param(rd)
 

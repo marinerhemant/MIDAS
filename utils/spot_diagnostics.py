@@ -17,11 +17,23 @@ import numpy as np
 
 
 SPOT_DIAG_MAGIC = 0x47414944  # "DIAG"
-SPOT_DIAG_VERSION = 1
+# v1 and v2 share the layout and column count, so both parse here. See
+# midas_process_grains.io.spot_diag for the canonical reader (version-aware,
+# named-column access) — that module is the one pipeline code should import;
+# this file stays because it owns the interactive plotter.
+SPOT_DIAG_SUPPORTED_VERSIONS = (1, 2)
+SPOT_DIAG_VERSION = 2
 SENTINEL = -999.0
 
+# Col 5 was called 'hklIndex' here, which was wrong for MATCHED rows on v1
+# files: the writer stored theorGx there ("repurpose as hklIdx proxy"), so the
+# column meant two different things depending on the matched flag. Measured on
+# a 55,593-voxel FF layer: col5 == col6 on 41,118/41,118 matched rows. Fixed in
+# writer v2; on a v1 file trust col 5 only where matched == 0.
+# It is a theoretical-spot id (ih*2 + 1 + within, CalcDiffractionSpots.c:112),
+# not a bare hkl row index — hence the name.
 COL_NAMES = [
-    'theorY', 'theorZ', 'theorOmega', 'theorEta', 'ringNr', 'hklIndex',
+    'theorY', 'theorZ', 'theorOmega', 'theorEta', 'ringNr', 'theorSpotID',
     'theorGx', 'theorGy', 'theorGz', 'theorScanNr',
     'matched', 'obsY', 'obsZ', 'obsOmega', 'obsSpotID', 'obsScanNr',
     'IA', 'diffLen', 'diffOme',
@@ -45,8 +57,16 @@ class SpotDiagnostics:
             magic, version, nv, nc = struct.unpack('<IIii', f.read(16))
             if magic != SPOT_DIAG_MAGIC:
                 raise ValueError(f'Bad magic: 0x{magic:08X} (expected 0x{SPOT_DIAG_MAGIC:08X})')
-            if version != SPOT_DIAG_VERSION:
-                raise ValueError(f'Unsupported version: {version}')
+            if version not in SPOT_DIAG_SUPPORTED_VERSIONS:
+                raise ValueError(
+                    f'Unsupported version: {version} '
+                    f'(known: {SPOT_DIAG_SUPPORTED_VERSIONS})')
+            self.version = int(version)
+            # v1 stored theorGx in col 5 on matched rows; only v2 has a real
+            # theorSpotID there, and only v2's obsScanNr is free of the
+            # one-row offset. Callers that use either column on matched rows
+            # must check this.
+            self.col5_is_theor_spot_id = self.version >= 2
             self.sentinel = struct.unpack('<d', f.read(8))[0]
             f.read(40)  # reserved
 
