@@ -16,6 +16,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from midas_dt import azimuthal
 from midas_dt.azimuthal import (
     area_and_centroid,
     azimuthal_rebin,
@@ -24,6 +25,7 @@ from midas_dt.azimuthal import (
     count_maxima,
     extract_ring,
     mad_filter,
+    refine_ring_centres,
     ring_free_mask,
     ring_windows,
     snr_per_eta,
@@ -468,3 +470,108 @@ def test_strain_magnitude_is_plausible_for_a_planted_shift():
     cen = np.array([250.0, 251.0])
     eps = strain_from_centroid(cen, r, tt, 0.17297867)
     assert 1e-4 < abs(eps[1] - eps[0]) < 1e-1
+
+
+# --------------------------------------------------------------------------
+# Window centring. An off-centre radial window converts peak WIDTH changes into
+# apparent CENTROID changes -- i.e. into strain that is not there -- and because
+# the offset is a fixed fraction of the window it does NOT dilute as the window
+# widens, so a window-width sweep cannot detect it. Measured on an APS 1-ID DAC
+# Ti scan: catalogue-derived centres were off by up to 1.524 px (19% of that
+# ring's FWHM); re-centring moved one ring's apparent strain by 55% and flipped
+# another ring's sign, while the ring already centred to +0.044 px was unchanged.
+# --------------------------------------------------------------------------
+def _gauss_cake(n_r=400, n_eta=24, centre=200.0, sigma=8.0, amp=1000.0):
+    r = np.arange(n_r, dtype=float)
+    prof = amp * np.exp(-0.5 * ((r - centre) / sigma) ** 2)
+    return np.repeat(prof[:, None], n_eta, axis=1)
+
+
+def test_centre_offset_is_reported_even_when_not_corrected():
+    """The defect must be visible without the caller opting in."""
+    net = _gauss_cake(centre=200.0)
+    bg = np.ones_like(net)
+    r_axis = np.arange(net.shape[0], dtype=float)
+    res = azimuthal.extract_ring(net + bg, net, bg, r_axis,
+                                 centre_bin=194, half_bins=40)
+    assert res.centre_offset_bins == pytest.approx(6.0, abs=0.2)
+    assert "OFFSET" in res.describe()
+
+
+def _fake_shift(offset_bins, half_bins, sigma=8.0, grow=1.45):
+    """Centroid shift produced by a pure WIDTH change through an off-centre window."""
+    r_axis = np.arange(400, dtype=float)
+    bg = np.ones((400, 24))
+    narrow = _gauss_cake(centre=200.0, sigma=sigma)
+    wide = _gauss_cake(centre=200.0, sigma=sigma * grow)
+    c = 200 - offset_bins
+    a = azimuthal.extract_ring(narrow + bg, narrow, bg, r_axis, c, half_bins)
+    b = azimuthal.extract_ring(wide + bg, wide, bg, r_axis, c, half_bins)
+    return float(np.nanmedian(b.centroid) - np.nanmedian(a.centroid))
+
+
+def test_centred_window_is_immune_to_a_pure_width_change():
+    """A width change with the window ON the peak must not move the centroid."""
+    assert _fake_shift(0, 40) == pytest.approx(0.0, abs=0.02)
+    assert _fake_shift(0, 20) == pytest.approx(0.0, abs=0.02)
+
+
+def test_offcentre_artefact_grows_steeply_as_the_window_narrows():
+    """Magnitude matters, and it is NOT a large effect for a wide window.
+
+    Measured here (sigma=8, +45% width change, offsets 0.38-1.5 sigma):
+
+        half/sigma 5.00  ->  0.02-0.22 bins
+        half/sigma 2.50  ->  0.72-2.38 bins
+        half/sigma 1.75  ->  0.82-2.42 bins
+
+    So an off-centre window is a real but SECOND-ORDER error where the window is
+    comfortably wide, and a first-order one near or below the ~2.3x FWHM safety
+    line. On the DAC Ti S1 rings (half/sigma 2.96-6.73) this mechanism accounts
+    for the ring that moved most on re-centring and NOT for the one that moved
+    585 ue -- it is 1-2 orders too small there, so non-Gaussian content in the
+    window (background residual, neighbour tails), not Gaussian tail truncation,
+    is what makes re-centring matter on real data. Do not over-claim it.
+    """
+    wide_window = abs(_fake_shift(6, 40))       # half/sigma = 5.0
+    narrow_window = abs(_fake_shift(6, 20))     # half/sigma = 2.5
+    assert wide_window < 0.15, f"wide-window artefact should be small, got {wide_window}"
+    assert narrow_window > 5 * wide_window, (
+        f"artefact should grow steeply as the window narrows: "
+        f"{narrow_window} vs {wide_window}")
+
+
+def test_recentre_removes_the_offcentre_artefact():
+    r_axis = np.arange(400, dtype=float)
+    bg = np.ones((400, 24))
+    narrow = _gauss_cake(centre=200.0, sigma=8.0)
+    wide = _gauss_cake(centre=200.0, sigma=11.6)
+    fake = abs(_fake_shift(6, 20))
+    a = azimuthal.extract_ring(narrow + bg, narrow, bg, r_axis, 194, 20,
+                               recentre=True)
+    b = azimuthal.extract_ring(wide + bg, wide, bg, r_axis, 194, 20,
+                               recentre=True)
+    fixed = abs(float(np.nanmedian(b.centroid) - np.nanmedian(a.centroid)))
+    assert fixed < fake / 3.0, f"recentre did not help: {fixed} vs {fake}"
+
+
+def test_refine_ring_centres_finds_the_peak_and_refuses_a_wild_shift():
+    net = _gauss_cake(centre=207.0)
+    r_axis = np.arange(net.shape[0], dtype=float)
+    index, half = {207.0: 200}, {207.0: 40}
+    out = azimuthal.refine_ring_centres(net, r_axis, index, half)
+    assert out[207.0] == pytest.approx(207, abs=1)
+
+    # a shift beyond max_shift_frac is refused, not silently applied
+    index2, half2 = {207.0: 180}, {207.0: 10}
+    out2 = azimuthal.refine_ring_centres(net, r_axis, index2, half2,
+                                         max_shift_frac=0.5)
+    assert out2[207.0] == 180
+
+
+def test_recentre_default_is_off_so_existing_numbers_do_not_move():
+    net = _gauss_cake(centre=200.0)
+    bg = np.ones_like(net)
+    r_axis = np.arange(net.shape[0], dtype=float)
+    off = azimuthal.extract_ring(net + bg, net, bg, r_axis, 194, 40)
+    assert off.centre_bin == 194          # unchanged unless asked
