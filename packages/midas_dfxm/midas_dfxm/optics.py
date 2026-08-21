@@ -108,6 +108,23 @@ class ObjectiveOptics:
         ``(n_u, n_v)`` detector dimensions in pixels.
     center_px : tuple[float, float]
         Pixel coordinate of the optical axis (defaults to detector centre).
+    detector_tilt_deg : float
+        Physical tilt of the detector face away from perpendicular to ``k_out``,
+        about ``tilt_axis`` (default ``0`` = perpendicular, unchanged). A grazing
+        detector is used to *increase resolution*: the in-plane axis orthogonal to
+        ``tilt_axis`` is stretched by ``1 / cos(tilt)`` (a sample feature spreads
+        over more pixels), so its effective object-space pixel shrinks by
+        ``cos(tilt)``. For the parallel (telecentric) projection this class models
+        the scaling is **exact** -- it equals the ray/tilted-plane intersection with
+        no keystone (validated in ``tests/test_optics_kout.py`` against an
+        independent geometric construction). A real finite-conjugate objective adds
+        perspective keystone and Scheimpflug defocus, which are NOT modelled here;
+        panel distortion is deferred to ``midas_distortion``. Note this is a
+        *separate* effect from the inclined-projection foreshortening already set
+        by ``2*theta`` -- that one is present at zero tilt.
+    tilt_axis : {"u", "v"}
+        Detector in-plane axis the panel is rotated about (default ``"u"``). The
+        stretched axis is the orthogonal one.
     k_out : tensor (3,), optional
         Explicit optical axis in the lab frame. When ``None`` (the default) the
         axis is derived from ``two_theta_deg`` and lies in ``geometry``'s
@@ -140,10 +157,14 @@ class ObjectiveOptics:
     k_out: torch.Tensor | None = None
     NA: float | None = None
     wavelength_A: float | None = None
+    detector_tilt_deg: float = 0.0
+    tilt_axis: str = "u"
     geometry: object = None
 
     def __post_init__(self):
         self.geometry = as_geometry(self.geometry)
+        if self.tilt_axis not in ("u", "v"):
+            raise ValueError(f"tilt_axis must be 'u' or 'v', got {self.tilt_axis!r}")
         if self.k_out is None:
             return
         # An inconsistent (k_out, two_theta_deg) pair is a silent physics bug:
@@ -200,9 +221,32 @@ class ObjectiveOptics:
         k_out = self.optical_axis(device=positions_lab.device, dtype=positions_lab.dtype)
         u, v = detector_basis(k_out, geometry=self.geometry)
         cu, cv = self._center(positions_lab)
-        pu = self.magnification * (positions_lab @ u) / self.pixel_um + cu
-        pv = self.magnification * (positions_lab @ v) / self.pixel_um + cv
+        su, sv = self._anamorphic_scales()
+        pu = su * self.magnification * (positions_lab @ u) / self.pixel_um + cu
+        pv = sv * self.magnification * (positions_lab @ v) / self.pixel_um + cv
         return torch.stack([pu, pv], dim=-1)
+
+    def _anamorphic_scales(self) -> tuple[float, float]:
+        """``(s_u, s_v)`` magnification factors from a physical detector tilt.
+
+        A planar detector rotated by ``detector_tilt_deg`` about ``tilt_axis``
+        records the grazing intersection of the (along-``k_out``) imaging rays with
+        the tilted face: extents along the in-plane axis *orthogonal* to
+        ``tilt_axis`` are stretched by ``1 / cos(tilt)`` -- more pixels per object
+        micrometer, the reason grazing detectors are used to gain resolution. Zero
+        tilt returns ``(1, 1)`` and leaves the projection untouched.
+        """
+        import math
+        g = math.radians(float(self.detector_tilt_deg))
+        if g == 0.0:
+            return 1.0, 1.0
+        c = math.cos(g)
+        if abs(c) < 1e-9:
+            raise ValueError(
+                "detector_tilt_deg too close to 90 deg -- grazing projection is singular"
+            )
+        s = 1.0 / c
+        return (1.0, s) if self.tilt_axis == "u" else (s, 1.0)
 
     def _center(self, ref: torch.Tensor) -> tuple[float, float]:
         if self.center_px is not None:

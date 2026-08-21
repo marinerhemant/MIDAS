@@ -185,6 +185,107 @@ def test_render_accepts_an_explicit_axis():
 
 
 # ---------------------------------------------------------------------------
+# physical detector tilt (grazing-incidence resolution boost)
+# ---------------------------------------------------------------------------
+@pytest.mark.unit
+def test_zero_tilt_is_a_no_op():
+    """detector_tilt_deg=0 must reproduce the untilted projection exactly."""
+    kw = dict(two_theta_deg=18.0, magnification=8.0, pixel_um=0.5, detector_shape=(48, 48))
+    pos = torch.randn(40, 3, dtype=DT)
+    base = ObjectiveOptics(**kw)
+    for axis in ("u", "v"):
+        tilted0 = ObjectiveOptics(**kw, detector_tilt_deg=0.0, tilt_axis=axis)
+        assert torch.equal(tilted0.project(pos), base.project(pos))
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("axis,tilt", [("u", 60.0), ("v", 45.0), ("u", 70.0)])
+def test_tilt_stretches_only_the_orthogonal_axis(axis, tilt):
+    """Rotation about tilt_axis scales the ORTHOGONAL in-plane offset by 1/cos(tilt)."""
+    kw = dict(two_theta_deg=20.0, magnification=10.0, pixel_um=0.5, detector_shape=(128, 128))
+    pos = torch.randn(60, 3, dtype=DT)
+    base = ObjectiveOptics(**kw)
+    tilted = ObjectiveOptics(**kw, detector_tilt_deg=tilt, tilt_axis=axis)
+    cu, cv = (128 - 1) / 2.0, (128 - 1) / 2.0
+    s = 1.0 / math.cos(math.radians(tilt))
+    pb, pt = base.project(pos), tilted.project(pos)
+    if axis == "u":                         # u unchanged, v-offset scaled
+        assert torch.allclose(pt[:, 0], pb[:, 0], atol=1e-12)
+        assert torch.allclose(pt[:, 1] - cv, s * (pb[:, 1] - cv), atol=1e-10)
+    else:                                   # v unchanged, u-offset scaled
+        assert torch.allclose(pt[:, 1], pb[:, 1], atol=1e-12)
+        assert torch.allclose(pt[:, 0] - cu, s * (pb[:, 0] - cu), atol=1e-10)
+
+
+@pytest.mark.unit
+def test_tilt_boosts_resolution_direction():
+    """A grazing tilt gives MORE pixels per object-um along the stretched axis."""
+    kw = dict(two_theta_deg=20.0, magnification=10.0, pixel_um=0.5, detector_shape=(128, 128))
+    base = ObjectiveOptics(**kw)
+    tilted = ObjectiveOptics(**kw, detector_tilt_deg=70.0, tilt_axis="u")
+    u, v = detector_basis(base.optical_axis(dtype=DT))
+    step = 1.0 * v                          # 1 um along the (stretched) v axis
+    o = torch.zeros(1, 3, dtype=DT)
+    dv_base = float((base.project(o + step) - base.project(o))[0, 1])
+    dv_tilt = float((tilted.project(o + step) - tilted.project(o))[0, 1])
+    assert dv_tilt > dv_base                # more px per um -> finer effective pixel
+    assert abs(dv_tilt / dv_base - 1.0 / math.cos(math.radians(70.0))) < 1e-9
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("tt", (12.0, 20.0, 36.5))
+@pytest.mark.parametrize("axis", ("u", "v"))
+@pytest.mark.parametrize("gamma", (0.0, 30.0, 55.0, 70.0, 78.0))
+def test_tilt_matches_ray_plane_intersection(tt, axis, gamma):
+    """VALIDATION: the 1/cos(tilt) scaling equals the exact tilted-plane geometry.
+
+    Independent ground truth built from scratch: intersect the parallel imaging
+    rays (along k_out) with a physically rotated detector plane and read the hit in
+    the tilted panel's own basis. No 1/cos anywhere in the construction. project()
+    must reproduce it to machine precision for arbitrary 3D points (incl. depth),
+    which proves the anamorphic form is exact for this parallel projection -- not a
+    leading-order approximation.
+    """
+    opt = ObjectiveOptics(two_theta_deg=tt, magnification=10.0, pixel_um=0.5,
+                          detector_shape=(256, 256), detector_tilt_deg=gamma, tilt_axis=axis)
+    k = opt.optical_axis(dtype=DT)
+    u, v = detector_basis(k)
+    g = math.radians(gamma)
+    cg, sg = math.cos(g), math.sin(g)
+    if axis == "u":                       # rotate about u -> v & k tilt
+        n_g, u_g, v_g = cg * k + sg * v, u, cg * v - sg * k
+    else:                                 # rotate about v -> u & k tilt
+        n_g, u_g, v_g = cg * k + sg * u, cg * u - sg * k, v
+    pos = torch.randn(300, 3, dtype=DT) * 20.0
+    t = -(pos @ n_g) / (k @ n_g)
+    X = pos + t[:, None] * k
+    cu, cv = (256 - 1) / 2.0, (256 - 1) / 2.0
+    want = torch.stack([10.0 * (X @ u_g) / 0.5 + cu, 10.0 * (X @ v_g) / 0.5 + cv], dim=-1)
+    assert float((opt.project(pos) - want).abs().max()) < 1e-9
+
+
+@pytest.mark.unit
+def test_bad_tilt_axis_is_rejected():
+    with pytest.raises(ValueError, match="tilt_axis"):
+        ObjectiveOptics(two_theta_deg=10.0, tilt_axis="w")
+
+
+@pytest.mark.unit
+def test_grazing_singularity_is_rejected():
+    opt = ObjectiveOptics(two_theta_deg=10.0, detector_tilt_deg=90.0)
+    with pytest.raises(ValueError, match="singular"):
+        opt.project(torch.randn(4, 3, dtype=DT))
+
+
+@pytest.mark.autograd
+def test_gradients_flow_with_a_tilted_detector():
+    k = torch.tensor([0.9, 0.3, 0.2], dtype=DT, requires_grad=True)
+    opt = ObjectiveOptics.from_k_out(k, magnification=1.0, detector_tilt_deg=55.0, tilt_axis="v")
+    opt.project(torch.randn(20, 3, dtype=DT)).sum().backward()
+    assert k.grad is not None and float(k.grad.abs().sum()) > 0.0
+
+
+# ---------------------------------------------------------------------------
 # autograd + device
 # ---------------------------------------------------------------------------
 @pytest.mark.autograd
