@@ -25,6 +25,20 @@ def test_no_alias_shadows_canonical():
                 f"Alias {a!r} on {p.name!r} shadows canonical name."
 
 
+def test_margin_omega_aliases_margin_ome():
+    """``MarginOmega`` must resolve to ``MarginOme`` through ``by_name``.
+
+    It was an unrecognised key until 2026-08-21, so a parameter file setting
+    it ran on the ``MarginOme`` default instead. Both C parsers carry the same
+    alias (``MIDAS_ParamParser.c``, ``IndexerUnified.c``); if this test is
+    ever deleted, delete those too, or Python and C will disagree about what
+    a parameter file means.
+    """
+    spec = by_name().get("MarginOmega")
+    assert spec is not None, "MarginOmega must be a registered alias"
+    assert spec.name == "MarginOme"
+
+
 def test_all_validator_refs_resolve():
     """Every string in ParamSpec.validators must exist in VALIDATORS."""
     for p in PARAMS:

@@ -934,8 +934,17 @@ PARAMS: list[ParamSpec] = [
         name="MarginOme", type=ParamType.FLOAT, category="Indexing",
         description="ω tolerance for spot matching.",
         applies_to=FF_PF, default=0, units="deg", typical=0.5, stages=S_INDEX,
+        aliases=("MarginOmega",),
         notes="FF/PF only — NF uses ExcludePoleAngle for its own eta "
-              "exclusion scheme.",
+              "exclusion scheme. `MarginOmega` is accepted as an alias "
+              "(added 2026-08-21). BEHAVIOUR CHANGE: it used to be an "
+              "unrecognised key, so a file carrying `MarginOmega 0.6` ran on "
+              "the MarginOme default instead — observed on the datasetA Ni "
+              "dataset, whose generated paramstest.txt reads "
+              "`MarginOme 0.500000`. Re-running such a file now honours the "
+              "value, so it will NOT reproduce results from before this "
+              "alias existed. The C parsers accept it too "
+              "(MIDAS_ParamParser.c, IndexerUnified.c).",
     ),
     ParamSpec(
         name="MarginEta", type=ParamType.FLOAT, category="Indexing",
@@ -1285,6 +1294,21 @@ PARAMS: list[ParamSpec] = [
         description="Lattice `α,β,γ` refinement tolerance.",
         applies_to=FF_PF, default=0.3, units="%", stages=S_REFINE,
         typical=4,
+    ),
+    ParamSpec(
+        name="MargStrain", type=ParamType.FLOAT, category="Refinement",
+        description=(
+            "Half-width of the per-component strain search box, as absolute "
+            "strain (0.01 = 10000 µε, the historical hardcoded value). "
+            "The strain fit measures (dsObs-ds0)/ds0 against the ds0 implied "
+            "by LatticeParameter, so a reference cell that is wrong by ~0.7 % "
+            "spends most of the box before any real strain is measured and "
+            "components rail silently. Fix the reference cell first "
+            "(midas_stress.recover_d0_anisotropic); widen this only for a "
+            "genuinely large-strain experiment. 0 keeps the 0.01 default."
+        ),
+        applies_to=FF_PF, default=0.01, units="strain", stages=S_REFINE,
+        typical=0.01,
     ),
     ParamSpec(
         name="FitAllAtOnce", type=ParamType.BOOL, category="Refinement",

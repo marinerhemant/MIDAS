@@ -53,11 +53,35 @@ def _write(tmp_path, text):
 
 
 def test_reports_the_real_typo_with_a_suggestion(tmp_path):
-    p = _write(tmp_path, "MarginOmega 0.6\nLsd 958874.75\nSpaceGroup 225\n")
+    # `MarginOmeg` is a genuine typo with no spelling registered anywhere.
+    # This used to be spelled `MarginOmega`, which is now an accepted ALIAS
+    # (see test_margin_omega_is_an_accepted_alias) — so the linter must be
+    # exercised with a key that is still unknown, or it tests nothing.
+    p = _write(tmp_path, "MarginOmeg 0.6\nLsd 958874.75\nSpaceGroup 225\n")
     msg = _run_capturing(p)
-    assert "MarginOmega" in msg
+    assert "MarginOmeg" in msg
     assert "IGNORED" in msg
     assert "MarginOme" in msg, "must suggest the canonical key"
+
+
+def test_margin_omega_is_an_accepted_alias(tmp_path):
+    """``MarginOmega`` resolves to ``MarginOme`` and must not warn.
+
+    Before the alias (2026-08-21) this key was silently dropped and the run
+    used the ``MarginOme`` default — the datasetA Ni recipe said
+    ``MarginOmega 0.6`` and its generated paramstest.txt read
+    ``MarginOme 0.500000``.
+    """
+    p = _write(tmp_path, "MarginOmega 0.6\nLsd 958874.75\nSpaceGroup 225\n")
+    assert "unrecognised" not in _run_capturing(p)
+
+    from midas_params.parser import parse_typed
+    parsed = parse_typed(str(p))
+    assert "MarginOmega" not in [k for k, _ in (parsed.unknown_keys or ())]
+    assert float(parsed.values["MarginOme"]) == pytest.approx(0.6), (
+        "the alias must carry its VALUE onto the canonical key, not merely "
+        "be tolerated — silently keeping the default is the original bug"
+    )
 
 
 def test_reports_a_key_with_no_close_match(tmp_path):
@@ -80,6 +104,6 @@ def test_never_raises_on_a_missing_or_broken_file(tmp_path):
 
 
 def test_reports_the_line_number(tmp_path):
-    p = _write(tmp_path, "Lsd 958874.75\nSpaceGroup 225\nMarginOmega 0.6\n")
+    p = _write(tmp_path, "Lsd 958874.75\nSpaceGroup 225\nMarginOmeg 0.6\n")
     msg = _run_capturing(p)
     assert "line 3" in msg
