@@ -34,6 +34,15 @@ dependencies = [
     "hdf5plugin>=4.0",
     "tifffile>=2022.0",
     "midas-zipper>=0.1.1",                # CBF reader in MIDAS orientation (not fabio)
+    # scikit-image is a HARD requirement, not an extra: seed/auto_seed.py
+    # imports `measure` and `morphology` unconditionally at the top of
+    # make_seed, and from_calibrant_image.py imports `measure` twice more.
+    # make_seed is on the normal autocalibrate path (pipelines/auto.py,
+    # pipelines/diagnostics.py), so a clean install without it raises
+    # ModuleNotFoundError the first time anyone seeds a geometry. It went
+    # undeclared for as long as the seeder existed, and only surfaced when
+    # the threshold-ladder tests became the first to call make_seed in CI.
+    "scikit-image>=0.19",
 ]
 
 [project.optional-dependencies]
