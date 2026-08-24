@@ -176,25 +176,37 @@ frame measured, the phases differ 1.51× at 45.6 / 69.0 µε, which is above the
 threshold — but the absolute residual is not demonstrably at the floor, so the
 gate's precondition is unproven.
 
-## Detector classes: frames read vs calibration run (2026-08-20)
+## Detector classes: frames read vs calibration run (2026-08-22)
 
-A survey of `/gdata/dm/1ID` read frames on five detector classes with the MIDAS
-reader. **Reading a frame is not calibrating one** — this table exists so the
-second is never inferred from the first.
+**Reading a frame is not calibrating one** — this table exists so the second is
+never inferred from the first. It is now filled in from an archive-scale run:
+**252 exposures from 57 beamtimes, 2016–2026**, calibrated end to end with no
+human in the loop, each checked back against its own raw frame
+(`calibration_table.csv`, ring check = ≥ 60 % of ideal rings matched **and**
+scatter ≤ 0.30 px). "Verified" below means that check passed.
 
-| detector | frames read | calibration run here |
-|---|---|---|
-| GE 2048², single panel (`ge5`, `ge`, standalone `ge3`) | yes | no |
-| GE Hydra quad (`ge1`–`ge4`), beam centre off panel | yes | no — but §6bis/§8 cover this geometry |
-| Pilatus 2M tiled, 1679 × 1475, `-1`/`-2` sentinels | yes | yes — the reference dataset |
-| Varex 2880², single panel | yes | yes — the 2026-08-19 single-panel run |
-| **EIGER2 CdTe 16M**, 4362 × 4148, `2**32-1` sentinel | yes | **no** |
+| detector | attempted | usable | verified | median ring scatter | span |
+|---|---|---|---|---|---|
+| GE 2048², single panel (`ge5`) | 84 | 75 | **67** | 0.078 px | 2019–2026, 31 beamtimes |
+| Pilatus 2M tiled, `-1`/`-2` sentinels | 34 | 33 | **32** | 0.145 px | 2022–2026, 12 beamtimes |
+| GE single panel (`ge3` standalone) | 24 | 21 | 13 | 0.200 px | 2016–2026, 24 beamtimes |
+| Varex 2880², single panel (`varexC`) | 15 | 13 | 11 | 0.128 px | 2024–2026, 7 beamtimes |
+| GE Hydra quad (`ge1`,`ge2`,`ge4`), BC off panel | 52 | 46 | 17 | ~0.21 px | 2021–2026 |
+| Dexela, single panel | 3 | 3 | 3 | 0.072 px | 2019, 1 beamtime |
+| **EIGER2 CdTe 16M**, `2**32-1` sentinel | 6 | 6 | **0** | 1.078 px | 2026, 2 beamtimes |
+| pixirad (SAXS) | 34 | **0** | 0 | — | halted by the scope gate, correctly |
 
-The EIGER is the gap that matters. What is established for it: the frames read
-(after the `hdf5plugin` import fix), the rings are sharp and plentiful, the
-sentinel is 7.102 % and maps the module layout, and the mask round-trips through
-`--mask`. What is **not** established: nothing has been calibrated on it, and
-three things would have to be settled first —
+**Read the quad row as geometry, not quality.** Split by class at identical
+median 100 % ring match: single panel 0.091 px scatter and 91 % verified, GE quad
+0.286 px and 45 %. The 0.30 px threshold sits on the quad median and halves that
+class by construction; it is a single-panel number and should be per-class.
+
+**The EIGER is still the gap that matters** — and it is now a measured gap rather
+than an unknown one. Six exposures calibrate, converge, and match 100 % of their
+ideal rings, but at **1.078 px** median scatter, so none verifies. Established:
+frames read (after the `hdf5plugin` import fix), rings sharp and plentiful,
+sentinel 7.102 % mapping the module layout, mask round-trips through `--mask`.
+Not established:
 
 - **pixel size.** The file records 62 µm; the measured module geometry says
   EIGER2 16M, i.e. 75 µm. Decided as 75 on the geometry, *not confirmed by the
@@ -206,5 +218,7 @@ three things would have to be settled first —
 
 | path | why it is not covered |
 |---|---|
-| calibrating any EIGER / photon-counting frame | frames read only; see above |
-| the K-edge energy rule (rule 9) as an input to a fit | the edge assignment is established across the archive (Lab Notebook §13), but no calibration has yet been run with the edge value substituted for the readback, so the ~0.04 % `Lsd` shift it implies is predicted, not measured |
+| an EIGER geometry good enough to quote | 6 calibrate and 0 verify (above). The geometry is recoverable, not yet to spec |
+| a per-geometry-class ring-scatter threshold | the need is measured (quad 0.286 px vs single 0.091 px); the replacement threshold is not yet chosen or tested |
+| a distortion field reused across beamtimes | tested and **INCONCLUSIVE** — one calibration pins the ge5 field only to ~0.25 px RMS against a 0.39 px field. Lab Notebook §16 |
+| recovering λ from the fit | **REFUTED**, do not retry. Lab Notebook §15, rule 9 |

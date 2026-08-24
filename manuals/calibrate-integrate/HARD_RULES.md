@@ -77,6 +77,35 @@
    offsets and a shared λ. Measured on a planted 1 % error: the two hypotheses
    differed by 0.063 vs 0.083 px RMS, i.e. barely distinguishable.
 
+   **Do not try to recover λ by calibrating at candidate energies and taking the
+   lowest residual. It cannot work, and it produces a convincing wrong answer.**
+   The only thing that breaks the degeneracy is the `tan`/`asin` nonlinearity,
+   and to first order that is
+
+       ln[R(λ')/R(λ₀)] = c₀ + c₂ρ² + c₄ρ⁴ + O(ρ⁶)
+
+   which is **exactly the span of `{Lsd, iso_R2, iso_R4, iso_R6}`**. So with
+   `refine_distortion=True` — the default — the fit absorbs the entire signal
+   into the radial distortion block. Measured for a −5.94 % energy error
+   (Lab Notebook §15):
+
+   | free parameters | residual left |
+   |---|---|
+   | `Lsd` only | **555 µε** — trivially detectable |
+   | `Lsd` + `iso_R2` | 0.70 µε |
+   | `Lsd` + full radial block (the default) | **8.8e−06 µε** |
+
+   against an empirical noise floor of **11.3 µε**. The default configuration
+   makes this rule *stricter* than it reads: not "weakly broken", but **not
+   broken at all**. A 30-unit control that appeared to recover the energy 83 %
+   of the time was matched exactly by a constant, data-blind guess.
+
+   **What does work: use the degeneracy instead of fighting it.** `Lsd` tracks
+   the assumed energy at log-log slope **1.0066 ± 0.0037**, so an independently
+   recorded distance *is* an energy estimator. Picking the candidate whose
+   fitted `Lsd` matches a distance written in the filename recovered the true
+   energy in **17 of 17** units, using no residual at all.
+
 10. **`FixPanelID` is a gauge choice, not a measurement.** Panel shifts from two
    calibrations with different anchors are not directly comparable.
 

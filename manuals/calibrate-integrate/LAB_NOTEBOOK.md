@@ -456,10 +456,28 @@ field 10 of *every* `.par` file and got nonsense (16867, 5147, 27) — only the
 `fastpar_*` layout puts energy there; `per_frame_waxs_*.par` and `waxs_*.par`
 put a frame counter in the same column.
 
-**Status.** ESTABLISHED as a description of the archive. It does not make the
-energy a *measurement* of any given exposure — that still needs several known
-distances (rule 9), and the multi-distance sets that could check it are listed
-in the inventory.
+**Substituting the edge changes the answer, and an independent distance says it
+changes it the right way.** The rule was applied for real: per-scan energy from
+the filename, snapped to the nearest tabulated K edge. Three beamtimes carry a
+detector distance written into the filename by the acquisition, which the fit
+never sees — so it is an independent check.
+
+| beamtime | `Lsd` before | `Lsd` after | recorded in the filename |
+|---|---|---|---|
+| `mpe_dec24` | 492.6 mm | **680.7 mm** | 680 mm |
+| `bt_1id_mar23` | 1875 mm | **2371 mm** | 2400 mm |
+| `bt_1id_nov24` | 811 mm | **952.6 mm** | 950 mm |
+
+The energies had been recorded per *experiment* on beamtimes that changed energy
+mid-run; 18 of 124 records were wrong by up to 46 %. The fit residual barely
+moved across that error — which is rule 9 in action, and is why the independent
+distance is the only thing that caught it.
+
+**Status.** ESTABLISHED as a description of the archive, and the edge value has
+now been used as a fit input at archive scale. It still does not make the energy
+a *measurement* of any given exposure — that needs several known distances
+(rule 9), and §15 records what happened when this was attempted from the residual
+instead.
 
 ---
 
@@ -521,3 +539,94 @@ As a standalone flag over the archive this scores precision 58 %, recall 49 % �
 useful as a cross-check, useless as a sole gate. The Eiger is a recent addition
 and does not yet have a characterised envelope (`bt_1id_jul26d` runs it at 1935 mm
 `in_chamber`); leave it exempt rather than inventing a band for it.
+
+---
+
+## §15. Energy is not recoverable from the fit residual — REFUTED (a claim of mine)
+
+**Registered as a claim, then killed.** Having found that 58 of 252 archive units
+had no trustworthy energy, the obvious move was: calibrate each frame at every
+plausible 1-ID energy and keep the candidate with the lowest strain residual.
+It appeared to work — the true energy in the top 3 of 13 candidates in **25 of
+30** units, p = 4.9e-12. It is wrong, and the way it is wrong is instructive.
+
+**Why it cannot work.** The λ/`Lsd` degeneracy (rule 9) is broken only by the
+`tan`/`asin` nonlinearity. Expanding, the residual signature of a wrong λ is
+
+    ln[R(λ')/R(λ₀)] = c₀ + c₂ρ² + c₄ρ⁴ + O(ρ⁶)
+
+and that is **exactly the span of `{Lsd, iso_R2, iso_R4, iso_R6}`** — the very
+parameters `refine_distortion=True` sets free. The method refines away the only
+thing it depends on. Planting a −5.94 % energy error on a real frame:
+
+| free parameters | residual left | detectable against the 11.3 µε floor? |
+|---|---|---|
+| `Lsd` only | 555 µε | yes, easily |
+| `Lsd` + `iso_R2` | 0.70 µε | no |
+| `Lsd` + full radial block (**the default**) | 8.8e−06 µε | no, by eight orders of magnitude |
+
+**Then why did the control score 83 %?** Because the score did not come from the
+data. The best **constant, data-blind** guess — always answer {Re, Au, 100 keV} —
+scores **25 of 30, identical** (McNemar p = 1.00): 1-ID's energies are so
+concentrated that guessing the three commonest beats chance by itself. The
+"−5.9 % systematic offset" that the bias correction removed is
+**−4.260 keV = 67.416 − 71.676 keV exactly**, i.e. the Ta→Re edge spacing,
+learned from the 16 of 30 units that are Re. And the leave-one-beamtime-out that
+was supposed to make it honest was **vacuous**: all 17 folds returned the same
+correction, span 0.000.
+
+**What the refuters cost, and what to copy.** Four lenses, two REFUTED. The
+reproduction lens also found that the headline 19/30 does not reproduce from the
+stated recipe (a percentage correction gives 17/30). Any "we recovered a
+parameter the physics says is degenerate" result should face the same three
+questions: *what does a constant blind guess score; is the correction a physical
+constant in disguise; does the cross-validation actually vary between folds.*
+
+**The constructive half — use the degeneracy.** Since a wrong λ goes into `Lsd`
+almost quantitatively, `Lsd` **is** an energy readout: over the candidate scan
+the fitted distance tracks the assumed energy at log-log slope
+**1.0066 ± 0.0037**. For the 17 units whose filename records the detector
+distance, choosing the candidate whose fitted `Lsd` matches that distance gives
+the true energy **17 of 17**, using no residual at all. This does not rescue the
+58 units that have neither an energy nor a distance; nothing does.
+
+**Status.** REFUTED (physics, statistics), logged in `~/.claude/skill-log.jsonl`.
+The rule-9 consequence is now written into `HARD_RULES.md`.
+
+---
+
+## §16. How well one powder calibration determines a distortion field — ~0.25 px
+
+The archive's 143 ring-verified records make a question testable that a single
+beamtime cannot ask: **is a ge5 distortion field reusable?** Preregistered
+(`PREREGISTER_pooled.md`), then run — `pooled.py`, output `pooled_result.json`.
+
+| component | `S_within` (floor) | `S_pooled` (cost of reuse) | pooled amplitude | pooled part explains |
+|---|---|---|---|---|
+| **full field** (primary) | 0.2498 px | 0.2635 px | 0.3934 px | **33 %** |
+| isotropic (fold 0) | 0.0737 px | 0.1340 px | 0.3576 px | 63 % |
+| folds ≥ 3 | 0.1195 px | 0.1294 px | 0.0571 px | — |
+
+n = 28 different-scan within-beamtime pairs, 26 beamtimes.
+
+**Verdict: INCONCLUSIVE, not the CONFIRM the table literally scores.** The
+criterion `S_pooled ≤ 1.5 × S_within` fires (ratio 1.05) — but only through its
+"no better is achievable" clause, with **both** terms ~2.5× the 0.1 px that
+matters physically. The preregistration's §7 vacuity check is what catches it:
+the pooled component explains 33 % of the full field, not the 81–88 % that a
+refuter of the earlier drift study had assumed. And the fold≥3 "CONFIRM" is
+vacuous in the plainest way — its pooled amplitude, 0.057 px, is **smaller than
+the scatter about it**, 0.129 px. There is no field there to reuse.
+
+**The real, reportable finding is the floor itself.** One powder calibration
+determines the ge5 distortion field to only about **0.25 px RMS**, against a
+field of amplitude 0.39 px. That is the measurement precision of the method as
+run — and at 100 µε ≈ 0.075 px, it is roughly 3× the level anyone cares about.
+Reuse-versus-recalibrate cannot be settled until that floor comes down;
+averaging several frames per beamtime is the obvious first attempt.
+
+**Not claimed:** that the detector is stable over time (that was the earlier
+drift study, REFUTED — an inconclusive reported as a finding); that fold 0 is a
+detector property at all (it absorbs a median 0.38 mm of `Lsd`, ~25σ); anything
+about ge1–ge4, which have no valid null — 0 of 30 beamtimes carry two
+ring-verified frames from different scans.

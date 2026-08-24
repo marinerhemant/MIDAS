@@ -402,3 +402,40 @@ absent — it succeeds. On the 1-ID archive this gate halts 42 of 252 exposures,
 and **26 of those had already produced a calibration that looked plausible in
 every downstream diagnostic**. No post-fit gate catches it, because every
 post-fit gate is grading a fit that converged.
+
+---
+
+## The E-step produced no fitted points
+
+symptom: `fit failed: no ring points` / an E↔M loop that exits at iteration 0
+
+The E-step finds ring crests along η rays and hands the M-step a point cloud. An
+empty cloud is almost never the geometry — it is the frame. In archive order of
+frequency:
+
+1. **The frame is a dark, a test, or a shutter-closed exposure.** Check
+   `p99.9 − median` before anything else: a real calibrant frame on a GE runs
+   thousands of counts; the 1-ID archive's decoys ran 12. Ranking a folder's
+   candidates by contrast, not by filename, is what fixed this. Note `re.match`
+   only anchors at the start — `dark_ceo2_*` matches a `ceo2` filter that
+   `re.search` would have caught and `re.match` will not.
+2. **The dark is wrong for this frame.** A `NaN` anywhere in the dark poisons the
+   whole subtraction and every crest search returns nothing — guard with
+   `np.isfinite(dark).all()`. A dark of the *wrong exposure* is worse, because it
+   does not fail: a 1 s dark under a 5 s frame still fits, and moved a fitted
+   `Lsd` from 1052 mm to 578 mm. Match on directory **and** integration time, or
+   subtract no dark at all.
+3. **Sentinels are still in the frame.** 7 % of an EIGER at 4.29e9 puts the
+   threshold above every real ring. Hard rule 3.
+4. **The seed is nonsense.** If the beam centre landed off the panel, the rays
+   never cross a ring. Check `result.seed_method` — `"fallback"` means the
+   validated seeder gave up and a chord-only guess was used; the
+   `seed_provenance_gate` fails on it and `SeedFallbackWarning` is raised whether
+   or not `verbose` is set.
+5. **The threshold is too strict for this frame.** `make_seed` now walks a
+   4-rung relaxation ladder (SNR∧percentile → percentile → half arc → quarter
+   arc) and records the rung it accepted in `seed.notes`. A non-zero rung is a
+   working answer, **not** the strict setting — say so when reporting it.
+
+Only after all five: `detector_scope_gate` for whether the rings reach the panel
+at all.
