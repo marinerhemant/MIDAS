@@ -57,7 +57,9 @@ def run(ctx: StageContext) -> StageResult:
     pg_paramstest = paramstest
     if "c-omp" in (ctx.config.indexer_backend, ctx.config.refine_backend):
         from ._comp_params import comp_backend_paramstest
-        pg_paramstest = comp_backend_paramstest(paramstest, layer_dir)
+        pg_paramstest = comp_backend_paramstest(
+            paramstest, layer_dir,
+            params_file=getattr(ctx.config, "params_file", None))
 
     # paramstest.txt is written for the indexer and refiner and carries none of
     # the grain-selection thresholds (MinNrSpots, Completeness, ...). Handing it

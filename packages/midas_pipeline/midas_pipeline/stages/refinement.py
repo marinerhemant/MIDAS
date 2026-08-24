@@ -152,7 +152,9 @@ def _run_ff(ctx: StageContext) -> StageResult:
     fit_paramstest = paramstest
     if "c-omp" in (ctx.config.indexer_backend, ctx.config.refine_backend):
         from ._comp_params import comp_backend_paramstest
-        fit_paramstest = comp_backend_paramstest(paramstest, layer_dir)
+        fit_paramstest = comp_backend_paramstest(
+            paramstest, layer_dir,
+            params_file=getattr(ctx.config, "params_file", None))
         if ctx.config.refine_backend == "c-omp":
             _expose_legacy_seeds_for_c_refiner(layer_dir)
 

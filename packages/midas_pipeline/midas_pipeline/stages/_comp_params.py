@@ -16,8 +16,68 @@ from __future__ import annotations
 from pathlib import Path
 
 
+# Keys the unified C indexer and refiner read from paramstest and that
+# FitSetup does NOT write, because paramstest mirrors the legacy
+# ``FitSetupParamsAllZarr.c:1579-1634`` key list and these postdate it.
+#
+# Measured 2026-08-24 on the Ce dhcp run: a Parameters.txt setting
+# ``ConfidenceMetric weighted`` produced a Grains.csv byte-identical to raw,
+# because the key never reached ``paramstest_comp.txt`` — the file the binary
+# is actually invoked with. The same held for ``BigDetSize`` (Phase 1's
+# detector mask) and ``MinSeedGrainRadius``. Each feature was implemented and
+# unit-gated in the C, and each was unreachable from a parameter file.
+#
+# A silently-ignored key is worse than an unimplemented one: the run looks
+# like it honoured the request.
+_INDEXER_KEYS = (
+    # completeness weighting (structure factor / mask / detectability)
+    "ConfidenceMetric",
+    "ForbiddenF2Threshold",
+    # detector active-area bitset -- read by BOTH the indexer and the refiner
+    "BigDetSize",
+    # PF seed-strength floor
+    "MinSeedGrainRadius",
+    "SeedDropWeakestFrac",
+)
+
+
+def _propagate_keys(lines: list, params_file, keys, have: set) -> list:
+    """Append any *keys* the user's file sets and *lines* lacks.
+
+    ONLY keys absent from *lines* are appended, and that is load-bearing rather
+    than tidiness: in a duplicated key the LAST occurrence wins, not the first.
+    The C assigns on every match (``param_double`` in ``MIDAS_ParamParser.h``
+    ``key_match`` then ``sscanf`` straight into ``*out``, inside the per-line
+    ``while (fgets(...))`` loop), and the Python parsers do the same -- measured:
+    ``Lsd 1000000`` then ``Lsd 2000000`` reads back as 2000000.
+
+    So appending a key that paramstest already sets would SILENTLY OVERRIDE the
+    user's value, which is the same class of defect this function exists to fix.
+    Keep the ``key not in have`` guard.
+
+    Returns the list of appended lines (for logging).
+    """
+    if not params_file:
+        return []
+    src = Path(params_file)
+    if not src.exists():
+        return []
+    added = []
+    for ln in src.read_text().splitlines():
+        stripped = ln.split("#", 1)[0].strip()
+        if not stripped:
+            continue
+        key = stripped.split()[0].rstrip(";")
+        if key in keys and key not in have:
+            lines.append(stripped)
+            have.add(key)
+            added.append(stripped)
+    return added
+
+
 def comp_backend_paramstest(
     paramstest: Path, layer_dir: Path, result_folder: Path | None = None,
+    params_file: Path | str | None = None,
 ) -> Path:
     """Write ``paramstest_comp.txt`` next to *paramstest* with OutputFolder/
     ResultFolder pointed at ``<layer_dir>/Output`` and ``<layer_dir>/Results``.
@@ -31,6 +91,11 @@ def comp_backend_paramstest(
     dir so those files don't collide (double-count) with the adapted
     ``Result_OrientPos_voxel_*.csv`` that consolidation also globs from
     ``Results/``.
+
+    ``params_file`` is the user's own parameter file. When given, any
+    :data:`_INDEXER_KEYS` it sets and *paramstest* lacks are propagated, so a
+    feature the user asked for actually reaches the binary. Without it those
+    keys are silently dropped — see the note on :data:`_INDEXER_KEYS`.
     """
     out_dir = layer_dir / "Output"
     res_dir = Path(result_folder) if result_folder is not None else layer_dir / "Results"
@@ -38,8 +103,11 @@ def comp_backend_paramstest(
     res_dir.mkdir(parents=True, exist_ok=True)
 
     lines, seen_out, seen_res = [], False, False
+    have = set()
     for ln in Path(paramstest).read_text().splitlines():
         key = ln.strip().split(" ")[0] if ln.strip() else ""
+        if key:
+            have.add(key.rstrip(";"))
         if key == "OutputFolder":
             lines.append(f"OutputFolder {out_dir}"); seen_out = True
         elif key == "ResultFolder":
@@ -50,6 +118,13 @@ def comp_backend_paramstest(
         lines.append(f"OutputFolder {out_dir}")
     if not seen_res:
         lines.append(f"ResultFolder {res_dir}")
+
+    added = _propagate_keys(lines, params_file, _INDEXER_KEYS, have)
+    if added:
+        from .._logging import LOG
+        LOG.info("c-omp paramstest: propagating %s from %s (absent from %s)",
+                 ", ".join(a.split()[0] for a in added),
+                 Path(params_file).name, Path(paramstest).name)
 
     dst = Path(layer_dir) / "paramstest_comp.txt"
     dst.write_text("\n".join(lines) + "\n")

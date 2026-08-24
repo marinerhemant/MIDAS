@@ -176,7 +176,9 @@ def _run_ff(ctx: StageContext) -> StageResult:
             )
         # The C binary locates binned inputs via dirname(OutputFolder) and
         # emits into OutputFolder; hand it OutputFolder=<layer_dir>/Output.
-        comp_paramstest = comp_backend_paramstest(paramstest, layer_dir)
+        comp_paramstest = comp_backend_paramstest(
+            paramstest, layer_dir,
+            params_file=getattr(ctx.config, "params_file", None))
         cmd = [
             str(backend_c.binary_path()),
             str(comp_paramstest),
