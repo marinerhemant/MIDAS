@@ -37,7 +37,7 @@ identifiability below assume this configuration throughout.
 | `phase-5-read-report.md` | read `voxel_grid.csv` + Results, orientation/KAM/GROD/strain maps, report | at the end |
 | `PF_PARAMETERS.md` | the PF-specific parameter reference | when tuning |
 | `DIAGNOSIS.md` | symptom → test → cause → lever | **when something looks wrong** |
-| `RUNBOOK.md` | where it runs, what healthy looks like, pick-up point | on resume |
+| `RUNBOOK.md` | where it runs, what healthy looks like, pick-up point, **and §R4 multi-layer campaigns** | on resume; **§R4 before driving more than one layer** |
 | `LAB_NOTEBOOK.md` | evidence, ledger, **retracted claims** | before re-investigating |
 
 ## STOP — read this before touching anything
@@ -105,6 +105,16 @@ Finish everything not blocked by it first.
    Measured: iterating drifted a further −3740 µε in `a` and +6361 µε in `c`
    without converging. Use the powder route (`refine_lattice_from_d_spacings`),
    which takes **no starting cell**.
+
+8. **Profile PER STAGE. Never generalise one stage's behaviour to "the
+   pipeline."** A PF layer is two workloads with opposite bottlenecks: **prep**
+   (`zip_convert→peakfit→transforms→binning`) is **disk**-bound and uses ~4 of 64
+   cores however many you give it, while **index**
+   (`indexing→refinement→find_grains`) is **CPU**-bound and saturates 63.5 of 64.
+   Measuring peakfit, concluding "the pipeline underuses the box", and running 3
+   layers at 20 cores each was measured **worse than serial** — it starved the
+   only stage that could use the cores. Overlap the two halves instead of
+   splitting the cores. Multi-layer campaigns: **RUNBOOK §R4**.
 
 ### Traps that silently corrupt results
 

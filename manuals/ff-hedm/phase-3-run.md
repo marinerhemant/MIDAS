@@ -66,7 +66,7 @@ already carry the correction:
 |---|---|
 | `zip_convert` | carries `tx` from `Parameters.txt` into the zarr — it is in the zipper's float key set (`midas_zipper/ff_zip.py:204`) |
 | `transforms` | **applies it.** `apply_tilt_distortion` (`midas_transforms/fit_setup/core.py:376`) sends every raw pixel through `pixel_to_REta_torch` (`midas_transforms/fit_setup/transform.py:82`) and writes *corrected* lab-frame µm into `InputAll.csv` → `Spots.bin` / `ExtraInfo.bin` |
-| `indexing` (c-omp) | reads those corrected spots. It parses a `DetTx` out of `DetParams` and then never reads it back (`midas_index/c_src/IndexerUnified.c:2374`) — a dead store, not a dropped correction |
+| `indexing` (c-omp) | reads those corrected spots. It parses a `DetTx` out of `DetParams` and then never reads it back (`midas_index/c_src/IndexerUnified.c:2515`) — a dead store, not a dropped correction |
 | `refinement` (c-omp) | reads the same corrected spots — it mmaps `AllSpots` straight out of the transforms output (`midas_fit_grain/c_src/FitUnified.c:1348`). No `tx` in the geometry model, by design |
 | `refinement` (python) | parses `tx` into its config and deliberately does **not** apply it — `apply_tilts` stays False because "the refined tilts live in the *observed* positions already" (`midas_fit_grain/driver.py:249`) |
 

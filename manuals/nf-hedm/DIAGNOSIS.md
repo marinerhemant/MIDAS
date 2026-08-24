@@ -61,6 +61,36 @@ overlap fraction and cap it below 1 regardless of the fit.
 structure factors and drops the impossible reflections. Never fix it by lowering
 `MinConfidence`. §8l, Lab Notebook §11.
 
+## Grid points masked by the wrong tomography pixel
+
+symptom: systematic.common_offset
+
+**Test.** Re-run `filter_grid_by_tomo` with `legacy_c_parity=False` and count how many grid
+points change status. Three independent one-pixel defects sat in `sample_tomo`
+(`tomo_filter/filter.py`), all found 2026-08-23 and each documented in its docstring:
+
+1. the row flip was `n - y_pos`, which never reads row 0 and indexes **past the end** at
+   `y_pos == 0` (an out-of-bounds heap read in `filterGridfromTomo.c:42`, an `IndexError`
+   in the Python transcription);
+2. the Python truncated `x/px` and then added `n // 2`, where the C truncates the sum —
+   measured on a 200k-point grid over a 1 mm sample at 1.5 µm, **75 % of grid points
+   landed on a different pixel than the C**;
+3. the Python used integer `n // 2` where the C uses `(double)n / 2`, which puts the origin
+   on the *edge* of the centre pixel instead of its centre for odd `n`.
+
+If the two modes agree on your grid, this entry does not apply — every existing test used
+integer coordinates, which is the one case where the conventions coincide, and that is why
+these survived.
+
+**Cause.** The tomography mask is displaced by up to one pixel relative to the grid, so a
+band of grid points at the sample edge is included or excluded wrongly. On a 1.5 µm grid
+that is a 1.5 µm boundary error, invisible in the reconstruction and visible only as a
+sliver of edge voxels that never reconstruct.
+
+**Lever.** Pass `legacy_c_parity=False` for new work. The default stays `True` so existing
+reconstructions reproduce; both modes now drop `y_pos == 0` instead of reading out of
+bounds, which is the only behaviour change in parity mode that is not a bug fix.
+
 ## Beam centre wrong, or β borrowed from another beamtime
 
 symptom: systematic.common_offset

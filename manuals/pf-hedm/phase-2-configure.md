@@ -152,6 +152,20 @@ direct least squares that takes **no starting cell** — which is the whole poin
    moved only **83 µε in a and 313 µε in c** — that spread is the honest
    uncertainty.
 
+### Scouting a cell is cheap — it needs no indexing
+
+`Ttheta` and `RingNumber` come out of **transforms**, so the *prep* half alone
+(`--skip indexing --skip refinement --skip find_grains …`) is enough to pin a
+cell. On a multi-sample campaign, scout **one layer per sample** that way —
+minutes each, not a full layer — then launch. Do not start a long campaign on an
+unpinned cell meaning to "fix the strain afterwards": the reference is baked into
+every strain number *and* it moves completeness (measured 0.618 → 0.833).
+
+**Pin per SAMPLE, not globally.** Measured on four NMC811 cathodes from one
+beamtime: two discharged (c/a 4.940, 4.942) and two delithiated (5.068, 5.078) —
+a **10 000–15 000 µε** difference in `a` and `c`, more than the whole ±10 000 µε
+strain box. One global cell would have injected more error than it removed.
+
 ### Cross-check it against equilibrium
 
 For an unloaded sample `⟨σ⟩ = 0`, which determines the cell independently:

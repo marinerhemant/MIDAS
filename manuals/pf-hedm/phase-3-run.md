@@ -63,6 +63,47 @@ rather than pre-building all the zips and then peakfitting. On a
 disk-constrained host, delete each layer's `*.MIDAS.zip` once its `Results/` are
 written — they rebuild from raw in ~100 s and cost ~2 GB per scan.
 
+### 3.1c Indexing wants ALL the cores — do not fund concurrency from it
+
+Peakfit being I/O-bound (§3.1b) tempts you to conclude the pipeline underuses
+the box and to run several layers at once on a slice of the cores each. **Do not
+generalise across stages.** Measured per stage on one 13-scan layer, varying
+only `numProcs` on the c-omp indexer (same binned inputs, byte-identical
+20.5 MB `IndexBest_all.bin` every time, so only speed changes):
+
+| indexer cores | time |
+|---|---|
+| 64 | **27.9 min** (saturates 63.5/64 cores) |
+| 32 | 40.9 min |
+| ~20 | 51.6–68.1 min |
+
+64 vs 32 is 1.47× for 2× the cores (~73 % efficiency) — sublinear but well worth
+having, and it keeps scaling to the full box. Two index slots at 32 cores each
+are **slower** than one at 64.
+
+Running 3 whole layers at 20 cores each was measured **worse** than serial: it
+starved the only CPU-bound stage and still left the machine ~48 % idle
+(3019 % of 6400 %, 0 % iowait).
+
+**The configuration that does work is a two-stage software pipeline**, because
+the halves want disjoint resources and take about the same wall time:
+
+| half | stages | cost | resource |
+|---|---|---|---|
+| prep | `zip_convert → peakfit → transforms → binning` | ~20–27 min | disk, ~4 cores |
+| index | `indexing → refinement → find_grains` | ~28 min at 64 cores | all 64 cores |
+
+Overlap `prep(N+1)` with `index(N)` and the wall time per layer is
+`max(prep, index)` (~28 min) instead of the sum (~50–55 min), with indexing
+still holding the whole box. Exactly one prep and one index live at a time, so
+disk and CPU each have a single consumer. Both halves already exist in the CLI:
+prep is `--skip indexing --skip refinement --skip find_grains …`, index is
+`--resume from --from indexing`.
+
+The index half never reads the zips (it reads `Data.bin`/`Spots.bin`/
+`nData.bin`), so free them at the end of **prep** — only one layer's ~26 GB is
+then ever live.
+
 ## 3.2 Binning — the memory wall
 
 A busy scanning layer generates hundreds of millions of raw spots; assigning them to
