@@ -176,3 +176,144 @@ def test_filter_grid_by_bbox():
     grid = make_hex_grid(grid_size=1.0, r_sample=5.0)
     f, m = filter_grid_by_bbox(grid, [-2.0, 2.0, -2.0, 2.0])
     assert f.shape[0] == int(m.sum())
+
+
+# -----------------------------------------------------------------------------
+# The three one-pixel defects in filterGridfromTomo.c:39-43 (found 2026-08-23)
+#
+# Every test above uses INTEGER coordinates, which is the one case where the
+# buggy and the correct conventions agree. That is why these survived.
+# -----------------------------------------------------------------------------
+
+
+def test_defect1_the_bottom_row_used_to_raise_IndexError():
+    """``row = n - y_pos`` is ``n`` at ``y_pos == 0`` -- one past the last row.
+
+    In C that reads past the ``calloc``; in Python it raised. Both modes now
+    treat it as outside the image, which is the only defensible reading of an
+    out-of-bounds read.
+    """
+    n = 8
+    tomo = np.arange(n * n, dtype=np.uint8).reshape(n, n)
+    # y_pos == 0  <=>  y/px + n/2 in [0, 1)  <=>  y = -4.0 at px = 1
+    pts = torch.tensor([[0.0, -4.0]], dtype=torch.float64)
+    for parity in (True, False):
+        v = sample_tomo(pts, tomo, 1.0, legacy_c_parity=parity)
+        assert v.shape == (1,)          # no exception
+    assert int(sample_tomo(pts, tomo, 1.0, legacy_c_parity=True)[0]) == 0
+
+
+def test_defect1_the_corrected_flip_reaches_the_bottom_row():
+    """The other half of the defect: parity mode can never read row n-1
+    (the bottom of the image), so a sample touching the bottom edge is
+    silently trimmed by one pixel."""
+    n = 8
+    tomo = np.zeros((n, n), dtype=np.uint8)
+    tomo[n - 1, 4] = 77                       # bottom row
+    pts = torch.tensor([[0.0, -4.0]], dtype=torch.float64)   # y_pos == 0
+    assert int(sample_tomo(pts, tomo, 1.0, legacy_c_parity=False)[0]) == 77
+    assert int(sample_tomo(pts, tomo, 1.0, legacy_c_parity=True)[0]) == 0
+
+
+def test_defect1_the_two_modes_differ_by_exactly_one_row():
+    n = 16
+    tomo = np.arange(n * n, dtype=np.uint8).reshape(n, n)
+    ys = torch.arange(-7.0, 8.0, dtype=torch.float64)
+    pts = torch.stack([torch.zeros_like(ys), ys], dim=1)
+    legacy = sample_tomo(pts, tomo, 1.0, legacy_c_parity=True)
+    fixed = sample_tomo(pts, tomo, 1.0, legacy_c_parity=False)
+    # one row apart => the values differ by exactly one row stride, n
+    assert torch.all(legacy - fixed == n)
+
+
+def test_defect2_truncating_the_quotient_moved_75_percent_of_the_grid():
+    """The C truncates ``x/px + n/2``; the Python truncated ``x/px`` then
+    added. They differ for every negative coordinate with a fractional part.
+
+    This test asserts the CURRENT code matches the C, and that the old
+    expression would not -- otherwise it would pass either way.
+    """
+    n, px = 64, 1.5
+    tomo = np.arange(n * n, dtype=np.uint8).reshape(n, n)
+    rng = np.random.default_rng(0)
+    xy = rng.uniform(-40.0, 40.0, size=(4000, 2))
+    pts = torch.tensor(xy, dtype=torch.float64)
+
+    c_x = np.trunc(xy[:, 0] / px + n / 2.0).astype(np.int64)
+    c_y = np.trunc(xy[:, 1] / px + n / 2.0).astype(np.int64)
+    old_x = np.trunc(xy[:, 0] / px).astype(np.int64) + n // 2
+    old_y = np.trunc(xy[:, 1] / px).astype(np.int64) + n // 2
+    disagree = (c_x != old_x) | (c_y != old_y)
+    assert disagree.mean() > 0.6, "fixture must exercise the divergence"
+
+    ok = (c_x >= 0) & (c_x < n) & (c_y >= 1) & (c_y < n)
+    want = np.where(ok, tomo[np.clip(n - c_y, 0, n - 1), np.clip(c_x, 0, n - 1)], 0)
+    got = sample_tomo(pts, tomo, px, legacy_c_parity=True).numpy()
+    np.testing.assert_array_equal(got, want)
+
+
+def _column_hit(x_um, n, px=1.0, parity=False):
+    """Which column does this x land in? Found by probing, not recomputed."""
+    pts = torch.tensor([[x_um, 0.0]], dtype=torch.float64)
+    for c in range(n):
+        probe = np.zeros((n, n), dtype=np.uint8)
+        probe[:, c] = 1
+        if int(sample_tomo(pts, probe, px, legacy_c_parity=parity)[0]):
+            return c
+    return None
+
+
+def _row_hit(y_um, n, px=1.0, parity=False):
+    pts = torch.tensor([[0.0, y_um]], dtype=torch.float64)
+    for r in range(n):
+        probe = np.zeros((n, n), dtype=np.uint8)
+        probe[r, :] = 1
+        if int(sample_tomo(pts, probe, px, legacy_c_parity=parity)[0]):
+            return r
+    return None
+
+
+def test_defect3_an_odd_image_has_a_pixel_CENTRED_on_the_origin():
+    """``(double)n / 2`` vs ``n // 2``.
+
+    With the float centre and an odd n, the centre pixel spans
+    ``x/px in [-0.5, 0.5)`` -- it is centred on the rotation axis, which is
+    what an odd-width reconstruction grid means. With ``n // 2`` the origin
+    sits on that pixel's *edge*, so x = -0.4 px and x = +0.4 px land in
+    different columns despite straddling the axis by less than half a pixel.
+    """
+    n = 9
+    assert _column_hit(-0.4, n) == _column_hit(+0.4, n) == n // 2
+    assert _column_hit(-0.9, n) == n // 2 - 1
+    assert _column_hit(+0.9, n) == n // 2 + 1
+
+    # The old expression is worse than a shift: truncating the quotient TOWARD
+    # ZERO makes the centre pixel twice as wide as every other one, because
+    # both (-1, 0] and [0, 1) collapse onto it.
+    old = lambda x: int(np.trunc(x / 1.0)) + n // 2       # noqa: E731
+    assert old(-0.9) == old(+0.9) == n // 2
+    assert old(-1.5) == n // 2 - 1 and old(+1.5) == n // 2 + 1
+
+
+def test_the_corrected_mode_is_symmetric_about_the_row_the_origin_lands_on():
+    """The property the off-by-one breaks. Note the reference row is measured,
+    not assumed to be ``(n-1)/2``: for even n no pixel is centred on the axis,
+    and asserting a half-integer centre is how the previous attempt at this
+    test failed."""
+    n = 16
+    r0 = _row_hit(0.0, n)
+    for d in (1.0, 3.0, 5.0):
+        up, down = _row_hit(+d, n), _row_hit(-d, n)
+        assert (r0 - up) == (down - r0) == d, f"asymmetric at {d}"
+    # +y is UP in the image (lower row index) -- the flip is still there
+    assert _row_hit(+3.0, n) < r0 < _row_hit(-3.0, n)
+
+
+def test_filter_grid_by_tomo_forwards_the_parity_flag():
+    n = 8
+    tomo = np.zeros((n, n), dtype=np.uint8)
+    tomo[n - 1, :] = 1                                   # bottom row only
+    grid = torch.tensor([[0.0, 0.0, 0.0, -4.0, 0.5]], dtype=torch.float64)
+    _, m_legacy = filter_grid_by_tomo(grid, tomo, 1.0, legacy_c_parity=True)
+    _, m_fixed = filter_grid_by_tomo(grid, tomo, 1.0, legacy_c_parity=False)
+    assert not bool(m_legacy[0]) and bool(m_fixed[0])

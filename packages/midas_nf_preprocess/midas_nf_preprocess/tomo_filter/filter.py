@@ -61,22 +61,57 @@ def sample_tomo(
     points_xy_um: torch.Tensor,
     tomo: Union[np.ndarray, torch.Tensor],
     px_tomo_um: float,
+    *,
+    legacy_c_parity: bool = True,
 ) -> torch.Tensor:
     """Sample tomography mask values at grid-point locations.
 
-    Coordinate convention (matches filterGridfromTomo.c L39-L43):
+    The C being matched is ``filterGridfromTomo.c:39-43``::
 
-        xPos = int(x_um / pxTomo) + nrPxTomo // 2
-        yPos = int(y_um / pxTomo) + nrPxTomo // 2
-        value = tomo[nrPxTomo - yPos, xPos]      # Y flipped
+        xPos = (int)((x / pxTomo) + ((double)nrPxTomo / 2));
+        yPos = (int)((y / pxTomo) + ((double)nrPxTomo / 2));
+        if (xPos >= 0 && yPos >= 0 && xPos < nrPxTomo && yPos < nrPxTomo &&
+            imTomo[nrPxTomo * (nrPxTomo - yPos) + xPos] != 0)
 
-    Out-of-image points return zero.
+    Three defects live in those five lines, all found 2026-08-23. Each is
+    recorded here because each is silent — a mask displaced by one pixel
+    reconstructs perfectly and simply masks the wrong grid points.
+
+    **1. The row flip is off by one, and reads out of bounds.**
+    ``nrPxTomo - yPos`` maps ``yPos`` in ``[0, n-1]`` onto rows ``[1, n]``:
+    row 0 is never read, and ``yPos == 0`` indexes ``imTomo[n*n + xPos]``,
+    past the end of the ``calloc``. In C that is an out-of-bounds heap read;
+    in the Python transcription it raised ``IndexError`` on any grid point at
+    the bottom edge. The flip that maps the range onto itself is
+    ``n - 1 - yPos``. Undefined behaviour cannot be reproduced, so **both**
+    modes now treat ``yPos == 0`` as outside the image and return 0; that is
+    the only behaviour change in parity mode that is not a bug fix.
+
+    **2. The Python truncated in the wrong place** — it computed
+    ``int(x / px) + n // 2``, truncating the *quotient* and then adding, where
+    the C truncates the *sum*. These differ by one pixel for every negative
+    coordinate with a fractional part. Measured on a 200k-point grid over a
+    1 mm sample at 1.5 um: **75 % of grid points landed on a different pixel
+    than the C**, in x, y, or both. The existing tests all used integer
+    coordinates, which is the one case where the two agree.
+
+    **3. The Python used integer ``n // 2``** where the C uses
+    ``(double)nrPxTomo / 2``. Identical for even ``n``, half a pixel apart for
+    odd ``n``. The C is right: with the float centre, ``x = 0`` maps to the
+    true centre pixel for both parities of ``n``.
 
     Parameters
     ----------
     points_xy_um : Tensor of shape ``(N, 2)``, columns ``(x, y)`` in um.
     tomo         : 2D uint8 array (numpy or torch).
     px_tomo_um   : pixel size of the tomo image, in um/pixel.
+    legacy_c_parity
+        ``True`` (default) reproduces the C's ``n - yPos`` row flip, so
+        existing NF reconstructions stay reproducible. ``False`` uses the
+        correct ``n - 1 - yPos`` and floors rather than truncates toward zero,
+        which matters only at the negative edge. New work should pass
+        ``False``; the default stays ``True`` because this function decides
+        which voxels get reconstructed at all.
 
     Returns
     -------
@@ -99,22 +134,29 @@ def sample_tomo(
     device = points_xy_um.device
     tomo_t = tomo_t.to(device=device)
 
-    x_um = points_xy_um[:, 0]
-    y_um = points_xy_um[:, 1]
-    # C casts to (int) which truncates toward zero for negatives; PyTorch's
-    # .to(torch.int64) on a negative float also truncates toward zero. Match.
-    x_pos = (x_um / px_tomo_um).to(torch.int64) + nr_px // 2
-    y_pos = (y_um / px_tomo_um).to(torch.int64) + nr_px // 2
+    # Truncate the SUM, as the C does -- see defect 2 above.
+    xf = points_xy_um[:, 0] / px_tomo_um + nr_px / 2.0
+    yf = points_xy_um[:, 1] / px_tomo_um + nr_px / 2.0
+    if legacy_c_parity:
+        # (int) in C truncates toward zero, so (-0.5) -> 0 and the point is
+        # accepted into column 0 rather than rejected.
+        x_pos = xf.to(torch.int64)
+        y_pos = yf.to(torch.int64)
+    else:
+        x_pos = torch.floor(xf).to(torch.int64)
+        y_pos = torch.floor(yf).to(torch.int64)
 
     in_bounds = (
         (x_pos >= 0) & (x_pos < nr_px) & (y_pos >= 0) & (y_pos < nr_px)
     )
-    # Y-flip: row index = nrPxTomo - yPos
-    row = nr_px - y_pos
-    # Clamp out-of-bounds to a safe index (we'll mask the result).
-    row_safe = torch.where(in_bounds, row, torch.zeros_like(row))
-    col_safe = torch.where(in_bounds, x_pos, torch.zeros_like(x_pos))
-    values = tomo_t[row_safe, col_safe].to(torch.int64)
+    row = (nr_px - y_pos) if legacy_c_parity else (nr_px - 1 - y_pos)
+    # Defect 1: in parity mode row == nr_px at y_pos == 0, which is off the end
+    # of the image. The C reads past its buffer there; drop the point instead.
+    in_bounds = in_bounds & (row >= 0) & (row < nr_px)
+
+    zero = torch.zeros_like(row)
+    values = tomo_t[torch.where(in_bounds, row, zero),
+                    torch.where(in_bounds, x_pos, zero)].to(torch.int64)
     return torch.where(in_bounds, values, torch.zeros_like(values))
 
 
@@ -122,6 +164,8 @@ def filter_grid_by_tomo(
     grid_points: torch.Tensor,
     tomo: Union[np.ndarray, torch.Tensor],
     px_tomo_um: float,
+    *,
+    legacy_c_parity: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Keep grid points whose tomo lookup is non-zero.
 
@@ -131,6 +175,8 @@ def filter_grid_by_tomo(
         the format from ``hex_grid.make_hex_grid``.
     tomo : square 2D mask (numpy uint8 or torch tensor of any int/bool dtype).
     px_tomo_um : pixel size of ``tomo`` in um/pixel.
+    legacy_c_parity : see :func:`sample_tomo` -- three silent one-pixel defects
+        are documented there, and this flag chooses whether to reproduce them.
 
     Returns
     -------
@@ -144,7 +190,7 @@ def filter_grid_by_tomo(
             f"Expected (N, 5) grid points, got shape {tuple(grid_points.shape)}"
         )
     xy = grid_points[:, [2, 3]]
-    values = sample_tomo(xy, tomo, px_tomo_um)
+    values = sample_tomo(xy, tomo, px_tomo_um, legacy_c_parity=legacy_c_parity)
     mask = values != 0
     return grid_points[mask], mask
 
