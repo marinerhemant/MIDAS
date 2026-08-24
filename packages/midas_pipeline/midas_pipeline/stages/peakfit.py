@@ -16,6 +16,7 @@ importable.
 
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 
@@ -23,6 +24,44 @@ from .._logging import LOG
 from ..results import StageResult
 from ._base import StageContext
 from ._stub import stub_run
+
+
+def _peakfit_device(cfg) -> str:
+    """Device for the peak-fit backend, honouring ``--peak-fit-gpu``.
+
+    ``--peak-fit-gpu`` exists so peakfit can use the torch GPU backend while
+    the rest of the run stays where it is -- peakfit is the long pole, and
+    indexing/refinement go to the c-omp binaries on CPU regardless. The flag
+    was parsed (``cli.py``) and stored on the config (``config.py``) but never
+    read by any stage, so it silently did nothing and every run landed on CPU
+    even on 4-GPU hosts.
+
+    ``--device`` still wins when it already names a GPU, so the flag can only
+    ever add GPU, never take it away.
+    """
+    device = cfg.device if cfg.device else "cpu"
+    if getattr(cfg, "peak_fit_gpu", False) and not device.startswith("cuda"):
+        return "cuda"
+    return device
+
+
+def _aggregate_frames(frames_done: dict, frames_total: dict, n_scans: int):
+    """Total frames done / expected across a layer's scans, or None.
+
+    ``None`` means no scan has reported a frame count yet, so the caller has
+    nothing better than a scan count to show.
+
+    Scans that have not started are charged the frame count of one that has:
+    the scans of a PF layer come from a single acquisition and share a frame
+    count. That keeps the denominator fixed from the first report onward, so
+    the bar cannot jump backwards as later scans join.
+    """
+    if not frames_total:
+        return None
+    per = max(frames_total.values())
+    if per <= 0:
+        return None
+    return sum(frames_done.values()), per * n_scans
 
 
 def run(ctx: StageContext) -> StageResult:
@@ -70,7 +109,7 @@ def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
         block_nr=0, n_blocks=1, num_procs=max(1, cfg.n_cpus_local),
         result_folder_cli=str(layer_dir),
         fit_peaks_cli=1,
-        device=cfg.device, dtype=cfg.dtype,
+        device=_peakfit_device(cfg), dtype=cfg.dtype,
         # peakfit is the long pole of an FF run (88.5 % of a 2652-grain gamma
         # reconstruction); this is what makes that visible while it runs.
         progress_cb=(ctx.progress.update if ctx.progress else None),
@@ -154,7 +193,7 @@ def _run_pf(ctx: StageContext, started: float, peakfit_run) -> StageResult:
     # oversubscribe.
     n_workers = max(1, int(getattr(cfg, "scan_workers", 1)))
     num_procs = max(1, cfg.n_cpus_local // n_workers)
-    base_device = cfg.device if cfg.device else "cpu"
+    base_device = _peakfit_device(cfg)
     dtype = cfg.dtype if cfg.dtype else "float64"
     n_gpus = 0
     if base_device.startswith("cuda"):
@@ -169,7 +208,30 @@ def _run_pf(ctx: StageContext, started: float, peakfit_run) -> StageResult:
             return f"cuda:{(scan_nr - 1) % n_gpus}"
         return base_device
 
-    def _do_scan(s):
+    # FRAMES, aggregated across the scans running concurrently -- not scans.
+    # A scan count is far too coarse: 19 scans against 12 workers leaves the
+    # bar reading 1/19 for forty minutes and then jumping, which is the same
+    # "everything is in flight, nothing has finished" problem the c-omp
+    # indexer has with voxels. Each scan reports its own frames every 10, so
+    # summing the per-scan counts gives a monotone, fine-grained total.
+    frames_done: dict = {}
+    frames_total: dict = {}
+    frames_lock = threading.Lock()
+
+    def _aggregate_locked():
+        return _aggregate_frames(frames_done, frames_total, len(scans))
+
+    def _frames_cb(scan_nr: int):
+        def cb(done, total, unit="frames", rate=None):
+            with frames_lock:
+                frames_done[scan_nr] = int(done)
+                frames_total[scan_nr] = int(total)
+                agg = _aggregate_locked()
+            if agg is not None and ctx.progress is not None:
+                ctx.progress.update(agg[0], agg[1], "frames", rate)
+        return cb
+
+    def _fit_one_scan(s):
         if s.allpeaks_ps_bin.exists():
             return "cached"
         if not s.zip_path.exists():
@@ -189,6 +251,7 @@ def _run_pf(ctx: StageContext, started: float, peakfit_run) -> StageResult:
             result_folder_cli=str(s.scan_dir),
             fit_peaks_cli=1,
             device=_device_for(s.scan_nr), dtype=dtype,
+            progress_cb=_frames_cb(s.scan_nr),
         )
         if not s.allpeaks_ps_bin.exists():
             LOG.warning("peakfit(PF): scan %d ran but %s missing.",
@@ -198,6 +261,37 @@ def _run_pf(ctx: StageContext, started: float, peakfit_run) -> StageResult:
                  s.scan_nr, len(scans), time.time() - t0,
                  s.allpeaks_ps_bin.name)
         return "ok"
+
+    # Scans completed, NOT frames. Up to n_workers scans run concurrently, so
+    # frame counts from different scans would interleave into the one sink and
+    # go backwards; "14/19 scans" is both monotone and what an operator wants.
+    # Counted in a finally so a scan that raises still advances the bar.
+    n_done = [0]
+    done_lock = threading.Lock()
+
+    def _do_scan(s):
+        try:
+            return _fit_one_scan(s)
+        finally:
+            if ctx.progress is not None:
+                with done_lock:
+                    n_done[0] += 1
+                    n_scans_done = n_done[0]
+                with frames_lock:
+                    # Charge the scan its full frame count on the way out. A
+                    # CACHED scan never reports a frame, so without this a
+                    # resumed layer would show the bar going backwards as
+                    # fresh scans dilute the total.
+                    per = max(frames_total.values()) if frames_total else 0
+                    if per > 0:
+                        frames_done[s.scan_nr] = frames_total.get(s.scan_nr, per)
+                    agg = _aggregate_locked()
+                if agg is not None:
+                    ctx.progress.update(agg[0], agg[1], "frames")
+                else:
+                    # Nothing has reported frames (every scan cached, or the
+                    # first has not got going): scans are all we know.
+                    ctx.progress.update(n_scans_done, len(scans), "scans")
 
     outcomes = fan_out_scans(scans, _do_scan, layer_dir=layer_dir,
                              stage="peakfit", n_workers=n_workers)

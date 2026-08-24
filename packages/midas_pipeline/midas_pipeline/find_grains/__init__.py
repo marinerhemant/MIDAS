@@ -157,7 +157,7 @@ def _pervoxel_worker(args):
     """
     out_dir, v0, v1, space_group, max_ang_deg = args
     vals_r, keys_r, _ = open_all_three(out_dir)
-    rows = []
+    rows: list = []
     for v in range(v0, v1):
         vals_v = vals_r.get_vals(v)
         keys_v = keys_r.get_keys(v)
@@ -177,10 +177,14 @@ def _pervoxel_worker(args):
         br = result.best_row
         rows.append((int(v), vals_v[br, 2:11].copy(), float(confs[br]),
                      int(keys_v[br, 0]), int(keys_v[br, 1]), int(keys_v[br, 2]), int(br)))
-    return rows
+    # The span comes back with the rows so a progress reporter can count
+    # VOXELS retired, not chunks: `rows` only covers valid voxels, so its
+    # length says nothing about how much of the grid has been swept.
+    return v0, v1, rows
 
 
-def _per_voxel_pass(out_dir, n_voxels, space_group, max_ang_deg, n_jobs=1):
+def _per_voxel_pass(out_dir, n_voxels, space_group, max_ang_deg, n_jobs=1,
+                    progress_cb=None):
     """Per-voxel pass over all voxels, optionally parallel across CPU workers.
 
     The loop is embarrassingly parallel; for DEFORMED maps with many candidate
@@ -188,6 +192,13 @@ def _per_voxel_pass(out_dir, n_voxels, space_group, max_ang_deg, n_jobs=1):
     voxels into contiguous chunks across a process pool. Result is independent of
     ``n_jobs`` (byte-parity): per-voxel arrays are indexed by ``v`` and the
     single-key rows are re-sorted ascending.
+
+    ``progress_cb(done, total, unit)`` is called as chunks retire. This stage
+    had no instrumentation at all and once sat for 94 minutes on s5/L3 looking
+    identical to a hang. Chunk order does not reach the output -- results are
+    scattered by ``v`` and re-sorted -- so results are collected as they
+    complete rather than in submission order. Granularity is one report per
+    chunk, i.e. per ``n_jobs``; the serial path reports only on completion.
     """
     INVALID_U64 = np.uint64(2 ** 64 - 1)
     per_vox_OMs = np.zeros((n_voxels, 9), dtype=np.float64)
@@ -196,18 +207,31 @@ def _per_voxel_pass(out_dir, n_voxels, space_group, max_ang_deg, n_jobs=1):
     per_vox_keys[:, 0] = INVALID_U64
     single_key_rows: list[tuple[int, np.ndarray]] = []
 
+    def _report(done):
+        if progress_cb is not None and n_voxels > 0:
+            try:
+                progress_cb(done, n_voxels, "voxels")
+            except Exception:
+                pass                  # reporting must never fail the stage
+
     if n_jobs and n_jobs > 1 and n_voxels > 0:
         import multiprocessing as mp
         step = (n_voxels + n_jobs - 1) // n_jobs
         chunks = [(str(out_dir), i, min(i + step, n_voxels), space_group, max_ang_deg)
                   for i in range(0, n_voxels, step)]
         ctx = mp.get_context("fork")
+        results = []
+        n_done = 0
         with ctx.Pool(min(n_jobs, len(chunks))) as pool:
-            results = pool.map(_pervoxel_worker, chunks)
+            for res in pool.imap_unordered(_pervoxel_worker, chunks):
+                results.append(res)
+                n_done += res[1] - res[0]
+                _report(n_done)
     else:
         results = [_pervoxel_worker((str(out_dir), 0, n_voxels, space_group, max_ang_deg))]
+        _report(n_voxels)
 
-    for rows in results:
+    for _v0, _v1, rows in results:
         for (v, om, conf, k0, k1, k2, br) in rows:
             per_vox_OMs[v] = om
             per_vox_confs[v] = conf
@@ -242,6 +266,7 @@ def find_grains_single(
     conc_threshold: float = 0.0,
     conc_min_band_um: float = 4.0,
     frame_loader=None,
+    progress_cb=None,
 ) -> FindGrainsArtifacts:
     """Replace ``findSingleSolutionPFRefactored.c``.
 
@@ -320,6 +345,7 @@ def find_grains_single(
     _njobs = int(_osj.environ.get("MIDAS_FINDGRAINS_NJOBS", "1") or "1")
     per_vox_OMs, per_vox_confs, per_vox_keys_for_global, single_key_rows = _per_voxel_pass(
         out_dir, n_voxels, space_group, cluster_misorientation_deg, n_jobs=_njobs,
+        progress_cb=progress_cb,
     )
 
     single_key_path = out_dir / "UniqueIndexSingleKey.bin"
@@ -529,6 +555,7 @@ def find_grains_multiple(
     confidence_min: float = 0.0,
     n_scans: Optional[int] = None,
     output_subdir: str = "Output",
+    progress_cb=None,
 ) -> FindGrainsArtifacts:
     """Replace ``findMultipleSolutionsPF.c``.
 
@@ -564,7 +591,17 @@ def find_grains_multiple(
     rows_per_voxel: dict[int, np.ndarray] = {}
     single_key_rows: list[tuple[int, np.ndarray]] = []
 
+    # Report every ~1 % so a long serial sweep is visibly alive without
+    # rewriting progress.txt thousands of times (StageProgress throttles too,
+    # but the cheap guard keeps the call out of the hot loop).
+    _step = max(1, n_voxels // 100)
+
     for v in range(n_voxels):
+        if progress_cb is not None and (v % _step == 0 or v == n_voxels - 1):
+            try:
+                progress_cb(v + 1, n_voxels, "voxels")
+            except Exception:
+                pass              # reporting must never fail the stage
         vals_v = vals_r.get_vals(v)
         keys_v = keys_r.get_keys(v)
         if vals_v is None or keys_v is None:

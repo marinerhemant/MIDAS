@@ -305,6 +305,9 @@ def run(ctx: StageContext) -> StageResult:
         proc = backend_c.run_refiner(
             comp_pt, block_nr=0, n_blocks=1, n_work=n_vox,
             num_procs=ctx.config.n_cpus, cwd=layer_dir,
+            # Live seed counts into progress.txt; the streaming path still
+            # returns stdout, so the log written below is unchanged.
+            line_cb=(ctx.progress.feed_line if ctx.progress else None),
         )
         (log_dir / "refinement_out.csv").write_bytes(proc.stdout or b"")
         (log_dir / "refinement_err.csv").write_bytes(proc.stderr or b"")

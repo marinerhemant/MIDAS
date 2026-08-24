@@ -154,9 +154,15 @@ def per_voxel_cluster(
     unique_OMs: list[np.ndarray] = []
 
     # For each unmarked i, compute miso vs all later unmarked j in a
-    # single batched call to misorientation_om_batch. This is the only
-    # hot loop and the batched call collapses the C nested for-loop into
-    # one ctypes call per i.
+    # single batched call to misorientation_om_batch. This is the only hot
+    # loop, and it is O(n_sol^2): n_sol is the number of indexer solutions
+    # in this voxel, which varies enormously between layers (median 70 to
+    # 506, max 13447 across three s5 layers of bt_1id_jun25b), so the
+    # cost of misorientation_om_batch dominates the whole find_grains stage.
+    # There is no ctypes backend on the NumPy path — the speed comes from
+    # misorientation_om_batch being genuinely vectorized. Do not "simplify"
+    # it back into a per-pair loop over misorientation_om: that costs ~119x
+    # and turned a 65 s stage into a >90 min stall (2026-08-22).
     for i in range(n):
         if marked[i]:
             continue

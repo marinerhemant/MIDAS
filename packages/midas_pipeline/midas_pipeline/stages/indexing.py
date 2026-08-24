@@ -398,6 +398,12 @@ def run(ctx: StageContext) -> StageResult:
             seed_group_size=ctx.config.indexer_group_size,
             backend=ctx.config.indexer_backend,
             paramstest_path=paramstest,
+            # Live voxel counts into progress.txt. This is the longest stage in
+            # a PF run by a wide margin (8 h+ on a dense s1 layer) and was
+            # completely silent: the C emits `progress: N/M voxels` ~200 times,
+            # but nothing consumed it, so the file sat at "indexing RUNNING
+            # 0.0s" for the whole run.
+            line_cb=(ctx.progress.feed_line if ctx.progress else None),
         )
     finally:
         os.chdir(cwd0)

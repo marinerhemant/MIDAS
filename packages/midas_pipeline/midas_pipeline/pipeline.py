@@ -282,8 +282,15 @@ class Pipeline:
             from .preflight import preflight
             preflight(self.config, list(self.config.layer_selection.layers()))
         results: List[LayerResult] = []
-        for layer_nr in self.config.layer_selection.layers():
-            results.append(self._run_layer(layer_nr))
+        try:
+            for layer_nr in self.config.layer_selection.layers():
+                results.append(self._run_layer(layer_nr))
+        finally:
+            # Stop the last layer's progress heartbeat (each earlier one is
+            # closed when the next layer opens its own).
+            last_sink = getattr(self, "_progress_sink", None)
+            if last_sink is not None:
+                last_sink.close()
         return results
 
     # --- internals ---
@@ -352,8 +359,16 @@ class Pipeline:
         # StageProgress throttles, so progress.txt is rewritten every couple of
         # seconds, not once per frame.
         from .progress import StageProgress
+        # One sink per LAYER, and each carries a heartbeat thread. Close the
+        # previous layer's before opening this one, or every finished layer
+        # keeps a thread alive rewriting its own progress.txt for the rest of
+        # the run. Layers run sequentially, so this is the whole lifecycle.
+        prev_sink = getattr(self, "_progress_sink", None)
+        if prev_sink is not None:
+            prev_sink.close()
         ctx.progress = StageProgress(
             on_change=lambda: _refresh_progress(store, ctx, scan_mode, stage_list))
+        self._progress_sink = ctx.progress
 
         LOG.info("=" * 60)
         LOG.info("Layer %d — scan_mode=%s, %d stages",

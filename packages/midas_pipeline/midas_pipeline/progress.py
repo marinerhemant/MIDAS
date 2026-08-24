@@ -13,10 +13,21 @@ Sources, one per long stage:
 * **indexing** and **refinement** shell out to the c-omp binaries, which now
   print ``  progress: N/M voxels|seeds, R u/s, elapsed Es`` on a pipe. The
   subprocess runner streams stdout and feeds matching lines back here.
+* **peakfit (PF)** counts completed scans, and **find_grains** completed voxels.
 
 Writes are throttled: the C reporters fire ~200 times per stage and peakfit
 every 10 frames, which would otherwise mean thousands of rewrites of a file
-nobody reads that often.
+nobody reads that often. The throttle *drops* the suppressed updates rather
+than deferring them, so a separate heartbeat rewrites the file every
+``heartbeat_s`` -- see :meth:`StageProgress._heartbeat` for the two ways that
+bit.
+
+Known coarseness (PF indexing): the C counts voxels on ENTRY, and its comment
+calls the overstatement "at most numProcs voxels in flight (64 of ~36000),
+immaterial for a progress bar". That holds for an FF-sized grid. A PF layer is
+``n_scans**2`` voxels -- 361 for a 19-scan layer -- so 64 threads put **18 %**
+of the grid in flight at once and the bar can only move ~6 times. Finer
+reporting needs a counter inside the per-voxel loop, i.e. a C change.
 """
 
 from __future__ import annotations
@@ -56,13 +67,56 @@ class StageProgress:
     """
 
     def __init__(self, on_change: Optional[Callable[[], None]] = None,
-                 *, min_interval_s: float = 2.0) -> None:
+                 *, min_interval_s: float = 2.0,
+                 heartbeat_s: float = 20.0) -> None:
         self._lock = threading.Lock()
         self._on_change = on_change
         self._min_interval = float(min_interval_s)
         self._stage: Optional[str] = None
         self._snap: Optional[Dict[str, Any]] = None
         self._last_write = 0.0
+        self._stop = threading.Event()
+        self._hb: Optional[threading.Thread] = None
+        if on_change is not None and heartbeat_s > 0:
+            self._hb = threading.Thread(
+                target=self._heartbeat, args=(float(heartbeat_s),),
+                name="midas-progress-heartbeat", daemon=True,
+            )
+            self._hb.start()
+
+    def _heartbeat(self, period: float) -> None:
+        """Rewrite progress.txt on a timer, not only when the count moves.
+
+        Two failures this fixes, both observed on a live PF indexing stage:
+
+        * **The throttle DROPS updates instead of deferring them.** The c-omp
+          indexer counts voxels on *entry*, so with 64 OpenMP threads entries
+          1..64 land in the same millisecond: the first is written and the
+          other 63 fall inside ``min_interval_s`` and never reach the file.
+          progress.txt reported ``1/361 voxels`` while this object held 64.
+        * **``elapsed`` is computed when the file is written**, so between
+          updates the clock freezes. A stage that reports rarely -- or has no
+          reporter at all -- looked like it had been running 0.0s for hours.
+
+        A stage with no reporter now still gets a live clock, which is most of
+        what "is it alive?" needs.
+        """
+        while not self._stop.wait(period):
+            cb = self._on_change
+            if cb is None:
+                continue
+            try:
+                cb()
+            except Exception:
+                pass                   # reporting must never fail a run
+            with self._lock:
+                self._last_write = time.time()
+
+    def close(self) -> None:
+        """Stop the heartbeat. One StageProgress is built per LAYER, so
+        without this each finished layer would keep a thread alive rewriting
+        its own progress.txt for the rest of the run."""
+        self._stop.set()
 
     def reset(self, stage: Optional[str]) -> None:
         """Called at each stage boundary; clears any previous stage's counts."""

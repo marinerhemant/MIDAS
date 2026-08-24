@@ -92,6 +92,10 @@ def run(ctx: StageContext) -> StageResult:
             conc_min_band_um=getattr(
                 ctx.config.recon, "sino_conc_min_band_um", 4.0,
             ),
+            # Per-voxel clustering is O(n_sol^2) and dominates this stage on
+            # dense maps; it once ran 94 min on s5/L3 with no way to tell it
+            # from a hang.
+            progress_cb=(ctx.progress.update if ctx.progress else None),
             **soft_kwargs,
         )
     else:
@@ -99,6 +103,7 @@ def run(ctx: StageContext) -> StageResult:
             layer_dir,
             space_group=space_group,
             cluster_misorientation_deg=ctx.config.fusion.max_ang_deg,
+            progress_cb=(ctx.progress.update if ctx.progress else None),
         )
 
     finished = time.time()
