@@ -178,15 +178,30 @@ int midas_ck_calc_diffraction_spots(
           break;
         }
       }
-      /* BigDetector active-area mask (refiner). */
+      /* BigDetector active-area mask. A clear bit drops the spot, so it
+       * leaves the numerator AND the denominator of the completeness ratio
+       * together — the correct semantics for a reflection that landed on dead
+       * silicon or off the panel entirely.
+       *
+       * The bounds test is not defensive padding: `idx` is derived from yl/zl,
+       * which are bounded only by BoxSizes, and BoxSizes is routinely far
+       * larger than the modelled detector (±1e6 µm is a common value). Without
+       * it a spot predicted outside the grid indexes past the end of an
+       * mmap'd file. Out of range means "not on the active area", so it drops,
+       * consistent with an unset bit. */
       if (KeepSpot && useBigDet) {
         int YCInt = (int)floor((bigdet->big_det_size / 2) -
                                (int)(-yl / bigdet->pixelsize));
         int ZCInt = (int)floor((int)(zl / bigdet->pixelsize) +
                                (bigdet->big_det_size / 2));
-        long long int idx =
-            (long long int)(YCInt + bigdet->big_det_size * ZCInt);
-        if (!TestBit(bigdet->mask, idx)) KeepSpot = 0;
+        if (YCInt < 0 || YCInt >= bigdet->big_det_size || ZCInt < 0 ||
+            ZCInt >= bigdet->big_det_size) {
+          KeepSpot = 0;
+        } else {
+          long long int idx =
+              (long long int)(YCInt + bigdet->big_det_size * ZCInt);
+          if (!TestBit(bigdet->mask, idx)) KeepSpot = 0;
+        }
       }
 
       if (KeepSpot) {
