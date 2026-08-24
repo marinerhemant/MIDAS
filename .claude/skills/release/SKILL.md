@@ -208,6 +208,20 @@ A one-copy fix leaves three packages computing different forward models with
 every test green — `test_forward_parity.py` compares ckernel against the LEGACY
 bodies, a different axis, and stays green with the mirrors diverged.
 
+**An UNPUBLISHED package gets the bump and the commit, never the tag.**
+`midas-ckernel` is deliberately not on PyPI (404, and it is the standing
+`--ignore` for the audit). It nonetheless has a `release.sh` AND an entry in the
+CI publish map, so everything about it looks releasable — and pushing its tag
+would publish it.
+
+> Caught with the tag already created locally: the tagging loop had bumped and
+> tagged all 14 changed packages, ckernel among them. Deleted before the push;
+> it had never reached origin.
+
+Its C still ships, because the published mirrors vendor a byte-identical copy —
+ckernel is the canonical *source*, not a delivery vehicle. Confirm that with
+`cmp` rather than assuming it.
+
 Then, in dependency order:
 
 ```bash
