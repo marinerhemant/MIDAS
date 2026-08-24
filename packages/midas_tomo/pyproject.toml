@@ -42,6 +42,7 @@ Issues = "https://github.com/marinerhemant/MIDAS/issues"
 
 [project.scripts]
 midas-tomo = "midas_tomo.cli:main"
+midas-tomo-reconstruct = "midas_tomo.cli_reconstruct:main"
 
 [tool.scikit-build]
 cmake.version = ">=3.20"

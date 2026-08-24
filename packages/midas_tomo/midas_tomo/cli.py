@@ -65,6 +65,14 @@ def _build_parser() -> argparse.ArgumentParser:
                    default=None,
                    help="sweep the rotation-axis shift instead of using the "
                         "single value stored in the file")
+    p.add_argument("--find-shift", dest="find_shift", action="store_true",
+                   help="pick the rotation-axis shift automatically from the "
+                        "sweep given by --shifts, using two independent "
+                        "sharpness criteria. Refuses to report a single value "
+                        "when they disagree -- see midas_tomo.center.")
+    p.add_argument("--find-shift-slices", type=int, nargs="+", default=None,
+                   help="slice indices to score (default: four spread through "
+                        "the stack).")
     p.add_argument("--filter", dest="filter_nr", type=int, default=2,
                    choices=[0, 1, 2, 3, 4],
                    help="0 none, 1 Shepp-Logan, 2 Hann, 3 Hamming, 4 ramp")
@@ -170,6 +178,40 @@ def main(argv: list[str] | None = None) -> int:
         deterministic=args.deterministic,
         **stripe_kw,
     )
+
+    if args.find_shift:
+        from .center import find_center_consensus
+
+        if args.shifts is None:
+            print("--find-shift needs a sweep to choose from; pass --shifts "
+                  "START END STEP.", file=sys.stderr)
+            return 2
+        if recon.shape[0] < 3:
+            print(f"--find-shift needs at least 3 candidate shifts, the sweep "
+                  f"produced {recon.shape[0]}.", file=sys.stderr)
+            return 2
+
+        c = find_center_consensus(recon, tuple(args.shifts),
+                                  slices=args.find_shift_slices)
+        v = c["per_method"]["variance"]
+        tvm = c["per_method"]["tv"]
+        print(f"rotation-axis shift, scored on slices {c['slices']}:")
+        print(f"  variance        {v['median']:+.3f}  "
+              f"(per-slice {[f'{x:+.2f}' for x in v['picks']]}, "
+              f"well-determined={v['well_determined']})")
+        print(f"  total variation {tvm['median']:+.3f}  "
+              f"(per-slice {[f'{x:+.2f}' for x in tvm['picks']]}, "
+              f"well-determined={tvm['well_determined']})")
+        if c["trustworthy"]:
+            print(f"  ==> shift {c['best_shift']:+.3f}   "
+                  f"(criteria agree to {c['disagreement']:.3f})")
+        else:
+            # Not an error: the reconstruction is still written for
+            # inspection. But no single number is reported as the answer.
+            print(f"  ==> NOT DETERMINED: {c['reason']}", file=sys.stderr)
+            print("      The sweep is written out; look at it rather than "
+                  "taking a number from a curve whose argmax means nothing.",
+                  file=sys.stderr)
 
     bin_out = out_dir / f"{args.data_fn.stem}_recon_float32.bin"
     recon.astype(np.float32).tofile(bin_out)
