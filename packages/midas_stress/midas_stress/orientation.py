@@ -372,6 +372,94 @@ def misorientation_om(om1, om2, space_group: int):
 #  Batch functions
 # ===================================================================
 
+def _quat_product_batch(q, r):
+    """Vectorized :func:`_quaternion_product_py`; ``q``, ``r`` are (..., 4).
+
+    Same arithmetic, same sign convention (flip so w >= 0), same final
+    normalization — element for element.
+    """
+    q0, q1, q2, q3 = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
+    r0, r1, r2, r3 = r[..., 0], r[..., 1], r[..., 2], r[..., 3]
+    Q = np.empty(np.broadcast_shapes(q.shape, r.shape), dtype=np.float64)
+    Q[..., 0] = r0 * q0 - r1 * q1 - r2 * q2 - r3 * q3
+    Q[..., 1] = r1 * q0 + r0 * q1 + r3 * q2 - r2 * q3
+    Q[..., 2] = r2 * q0 + r0 * q2 + r1 * q3 - r3 * q1
+    Q[..., 3] = r3 * q0 + r0 * q3 + r2 * q1 - r1 * q2
+    np.negative(Q, out=Q, where=(Q[..., 0] < 0)[..., None])
+    return Q / np.linalg.norm(Q, axis=-1, keepdims=True)
+
+
+def _fundamental_zone_batch(quats, sym_arr):
+    """Vectorized :func:`_fundamental_zone_py` over a stack of quaternions.
+
+    ``quats`` (n, 4), ``sym_arr`` (n_sym, 4) -> (n, 4). The scalar loop keeps
+    the *first* symmetry image attaining the maximum w (``if max_cos < qt[0]``
+    is strict), and ``np.argmax`` also returns the first maximum, so ties
+    resolve identically.
+    """
+    prod = _quat_product_batch(quats[:, None, :], sym_arr[None, :, :])
+    idx = np.argmax(prod[..., 0], axis=1)
+    out = prod[np.arange(quats.shape[0]), idx]
+    return out / np.linalg.norm(out, axis=-1, keepdims=True)
+
+
+def _orient_mat_to_quat_batch(oms):
+    """Vectorized :func:`_orient_mat_to_quat_py`; ``oms`` (n, 9) -> (n, 4).
+
+    Each of the four branches is evaluated only on the rows it owns, so the
+    inactive branches never take a sqrt of a negative.
+    """
+    m = oms
+    m0, m1, m2, m3, m4, m5, m6, m7, m8 = (m[:, i] for i in range(9))
+    trace = m0 + m4 + m8
+    q = np.empty((m.shape[0], 4), dtype=np.float64)
+
+    c0 = trace > 0
+    c1 = ~c0 & (m0 > m4) & (m0 > m8)
+    c2 = ~c0 & ~c1 & (m4 > m8)
+    c3 = ~(c0 | c1 | c2)
+
+    i = np.flatnonzero(c0)
+    if i.size:
+        s = 0.5 / np.sqrt(trace[i] + 1.0)
+        q[i, 0] = 0.25 / s
+        q[i, 1] = (m7[i] - m5[i]) * s
+        q[i, 2] = (m2[i] - m6[i]) * s
+        q[i, 3] = (m3[i] - m1[i]) * s
+    i = np.flatnonzero(c1)
+    if i.size:
+        s = 2.0 * np.sqrt(1.0 + m0[i] - m4[i] - m8[i])
+        q[i, 0] = (m7[i] - m5[i]) / s
+        q[i, 1] = 0.25 * s
+        q[i, 2] = (m1[i] + m3[i]) / s
+        q[i, 3] = (m2[i] + m6[i]) / s
+    i = np.flatnonzero(c2)
+    if i.size:
+        s = 2.0 * np.sqrt(1.0 + m4[i] - m0[i] - m8[i])
+        q[i, 0] = (m2[i] - m6[i]) / s
+        q[i, 1] = (m1[i] + m3[i]) / s
+        q[i, 2] = 0.25 * s
+        q[i, 3] = (m5[i] + m7[i]) / s
+    i = np.flatnonzero(c3)
+    if i.size:
+        s = 2.0 * np.sqrt(1.0 + m8[i] - m0[i] - m4[i])
+        q[i, 0] = (m3[i] - m1[i]) / s
+        q[i, 1] = (m2[i] + m6[i]) / s
+        q[i, 2] = (m5[i] + m7[i]) / s
+        q[i, 3] = 0.25 * s
+
+    np.negative(q, out=q, where=(q[:, 0] < 0)[:, None])
+    return q / np.linalg.norm(q, axis=-1, keepdims=True)
+
+
+def _as_om9(oms):
+    """(n, 9) or (n, 3, 3) -> contiguous (n, 9) float64."""
+    a = np.ascontiguousarray(oms, dtype=np.float64)
+    if a.ndim == 3 and a.shape[1:] == (3, 3):
+        a = a.reshape(a.shape[0], 9)
+    return a
+
+
 def misorientation_om_batch(oms1, oms2, space_group: int) -> np.ndarray:
     """Batch misorientation for n pairs of orientation matrices.
 
@@ -383,16 +471,34 @@ def misorientation_om_batch(oms1, oms2, space_group: int) -> np.ndarray:
     Returns
     -------
     ndarray (n,) (NumPy backend) or torch.Tensor (n,) (torch backend).
+
+    Notes
+    -----
+    Fully vectorized: identical arithmetic to :func:`misorientation_om`, but
+    the symmetry table is built once for the whole batch instead of once per
+    pair, and the axis (which this function discards anyway) is never formed.
+    The scalar path computed the fundamental zone of q1 and q2 twice — once
+    for the angle and again for the axis — so it did five reductions over the
+    symmetry table per pair where three suffice.
     """
     if _is_torch(oms1, oms2):
         return _misorientation_om_batch_torch(oms1, oms2, space_group)
-    oms1 = np.ascontiguousarray(oms1, dtype=np.float64)
-    oms2 = np.ascontiguousarray(oms2, dtype=np.float64)
-    n = oms1.shape[0]
-    angles = np.empty(n, dtype=np.float64)
-    for i in range(n):
-        angles[i], _ = misorientation_om(list(oms1[i]), list(oms2[i]), space_group)
-    return angles
+    oms1 = _as_om9(oms1)
+    oms2 = _as_om9(oms2)
+    if oms1.shape[0] == 0:
+        return np.empty(0, dtype=np.float64)
+
+    n_sym, sym = make_symmetries(space_group)
+    if n_sym == 0:
+        raise ValueError(f"no symmetry operators for space group {space_group}")
+    sym_arr = np.asarray(sym, dtype=np.float64)
+
+    q1FR = _fundamental_zone_batch(_orient_mat_to_quat_batch(oms1), sym_arr)
+    q2FR = _fundamental_zone_batch(_orient_mat_to_quat_batch(oms2), sym_arr)
+    q1FR = q1FR.copy()
+    q1FR[:, 0] = -q1FR[:, 0]
+    MisV = _fundamental_zone_batch(_quat_product_batch(q1FR, q2FR), sym_arr)
+    return 2.0 * np.arccos(np.minimum(1.0, MisV[:, 0]))
 
 
 def misorientation_quat_batch(quats1, quats2, space_group: int) -> np.ndarray:

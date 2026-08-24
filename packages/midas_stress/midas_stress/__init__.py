@@ -74,6 +74,8 @@ _EXPORTS = {
     "orient_aps_to_midas": "frames", "tensor_midas_to_aps": "frames",
     "tensor_aps_to_midas": "frames", "tensor_lab_to_sample": "frames",
     "grains_midas_to_sample": "frames",
+    "TOMO_IN_PLANE": "frames", "tomo_grid_to_midas": "frames",
+    "midas_to_tomo_grid": "frames", "tomo_slice_for_z": "frames",
     # pipeline
     "compute_stress": "pipeline",
     # io

@@ -18,6 +18,13 @@ Sample frame:
     the rotation axis. When omega = 0, the sample frame coincides with
     the lab frame.
 
+Tomography reconstruction grid:
+    (slice, iy, ix) voxel indices. `slice` runs along the rotation axis, so
+    slice = MIDAS Z = APS Y, and the sample-stage vertical position is what
+    registers a tomogram against an FF or NF layer. See
+    :func:`tomo_grid_to_midas` and :func:`tomo_slice_for_z` at the end of this
+    module; the in-plane handedness is NOT assumed.
+
 Reference: Park, J.-S., matlab_tools/hedm (2024),
 https://github.com/junspark/matlab_tools
 
@@ -324,3 +331,187 @@ def grains_midas_to_sample(
         'positions': pos_out,
         'strains': strain_out,
     }
+
+
+# -------------------------------------------------------------------
+#  Tomography reconstruction grid  <->  MIDAS lab
+# -------------------------------------------------------------------
+#
+# A tomographic reconstruction is the third frame that has to line up with a
+# diffraction experiment, and it is the one with no established convention in
+# this repository: the reconstruction cube's shape lives in a filename, its
+# pixel size lives in the acquisition config, and the rotation-axis position is
+# an output of the reconstruction rather than an input.
+#
+# The frames, and why each index means what it means:
+#
+#   Detector (tomo camera) : (row, col). Rows run along the rotation axis
+#                            (vertical); columns run across the beam.
+#   Reconstruction grid    : (slice, iy, ix). One slice per detector row, so
+#                            `slice` is vertical. Within a slice the two axes
+#                            are the in-plane sample axes at omega = 0.
+#   MIDAS lab              : x along the beam, y outboard, z up.
+#   APS lab                : x outboard, y up, z along the beam.
+#
+# So the vertical axis is `slice` = MIDAS z = APS y, and THAT is what ties a
+# tomogram to an FF or NF layer: the sample-stage vertical position is recorded
+# per scan, so the registration is READ, not fitted. Fitting it and then
+# validating the fit with the same data is circular.
+#
+# The in-plane pair is deliberately NOT hard-coded to a handedness here. A
+# reconstruction's in-plane axes depend on the projection ordering, the sign of
+# the rotation direction, and whether the reconstructor flips its output; those
+# are properties of the tomography code and the acquisition, not of MIDAS.
+# `tomo_grid_to_midas` therefore takes an explicit `in_plane` string and refuses
+# to guess -- a wrong choice mirrors the sample, which is silent and produces a
+# perfectly plausible reconstruction (the same failure class as the omega sign).
+
+#: The four axis assignments a reconstruction's in-plane pair can take, as
+#: (ix -> MIDAS axis, iy -> MIDAS axis) with signs. MIDAS in-plane axes are
+#: x (beam) and y (outboard).
+TOMO_IN_PLANE = {
+    "xy":   ((1.0, 0.0), (0.0, 1.0)),    # ix -> +x, iy -> +y
+    "yx":   ((0.0, 1.0), (1.0, 0.0)),    # ix -> +y, iy -> +x
+    "-xy":  ((-1.0, 0.0), (0.0, 1.0)),
+    "x-y":  ((1.0, 0.0), (0.0, -1.0)),
+    "-x-y": ((-1.0, 0.0), (0.0, -1.0)),
+    "-yx":  ((0.0, -1.0), (1.0, 0.0)),
+    "y-x":  ((0.0, 1.0), (-1.0, 0.0)),
+    "-y-x": ((0.0, -1.0), (-1.0, 0.0)),
+}
+
+
+def tomo_grid_to_midas(
+    slice_idx, iy, ix,
+    *,
+    pixel_size_um: float,
+    slice_pitch_um: float,
+    rot_axis_ix: float,
+    rot_axis_iy: float,
+    slice0_z_um: float = 0.0,
+    in_plane: str = "xy",
+):
+    """Reconstruction voxel indices -> MIDAS lab coordinates (µm).
+
+    The sample-frame position at omega = 0, which is where a tomogram lives.
+
+    Parameters
+    ----------
+    slice_idx, iy, ix
+        Voxel indices; scalars or broadcastable arrays.
+    pixel_size_um
+        In-plane reconstruction pixel size. **Required, never defaulted** — it
+        scales every path length and the illuminated volume, and no
+        reconstruction file format in use here records it.
+    slice_pitch_um
+        Distance between slices along the rotation axis. Equals
+        ``pixel_size_um`` for an isotropic reconstruction, but binning the
+        detector vertically breaks that, so it is separate.
+    rot_axis_ix, rot_axis_iy
+        In-plane index of the rotation axis. This is an OUTPUT of the
+        reconstruction (the shift sweep), not a property of the detector;
+        ``n/2`` is a guess, not a default.
+    slice0_z_um
+        MIDAS z of slice 0 — the sample-stage vertical position. This is the
+        number that registers the tomogram against an FF or NF layer.
+    in_plane
+        One of :data:`TOMO_IN_PLANE`. No default handedness is assumed; see the
+        module notes.
+
+    Returns
+    -------
+    (x, y, z) in MIDAS lab µm, same shape as the broadcast inputs.
+    """
+    if in_plane not in TOMO_IN_PLANE:
+        raise ValueError(
+            f"in_plane must be one of {sorted(TOMO_IN_PLANE)}; got {in_plane!r}. "
+            "There is no safe default: the wrong choice mirrors the sample, "
+            "which is silent and reconstructs perfectly."
+        )
+    if not (pixel_size_um > 0):
+        raise ValueError(
+            f"pixel_size_um must be > 0; got {pixel_size_um!r}. It is not "
+            "recorded in any reconstruction file format used here, so it has "
+            "to be supplied from the acquisition config."
+        )
+    if not (slice_pitch_um > 0):
+        raise ValueError(f"slice_pitch_um must be > 0; got {slice_pitch_um!r}")
+
+    (ax_x, ax_y), (ay_x, ay_y) = TOMO_IN_PLANE[in_plane]
+    dx = (ix - rot_axis_ix) * pixel_size_um
+    dy = (iy - rot_axis_iy) * pixel_size_um
+    x = ax_x * dx + ay_x * dy
+    y = ax_y * dx + ay_y * dy
+    z = slice_idx * slice_pitch_um + slice0_z_um
+    return x, y, z
+
+
+def midas_to_tomo_grid(
+    x, y, z,
+    *,
+    pixel_size_um: float,
+    slice_pitch_um: float,
+    rot_axis_ix: float,
+    rot_axis_iy: float,
+    slice0_z_um: float = 0.0,
+    in_plane: str = "xy",
+):
+    """MIDAS lab coordinates (µm) -> fractional reconstruction voxel indices.
+
+    Exact inverse of :func:`tomo_grid_to_midas`, and here rather than at the
+    call site so the forward and backward maps cannot drift apart — the
+    handedness convention has one home.
+
+    Every entry of :data:`TOMO_IN_PLANE` is a signed axis permutation, so the
+    in-plane inverse is the transpose; no matrix solve and no chance of an
+    inverse that is only approximately orthogonal.
+
+    Returns ``(slice_idx, iy, ix)`` as floats. They are deliberately NOT
+    rounded: a caller asking "is this point in the sample" wants to control its
+    own rounding, and ``rint`` here would quietly extend the mask by half a
+    voxel in every direction.
+    """
+    if in_plane not in TOMO_IN_PLANE:
+        raise ValueError(
+            f"in_plane must be one of {sorted(TOMO_IN_PLANE)}; got {in_plane!r}"
+        )
+    if not (pixel_size_um > 0 and slice_pitch_um > 0):
+        raise ValueError("pixel_size_um and slice_pitch_um must be > 0")
+
+    (ax_x, ax_y), (ay_x, ay_y) = TOMO_IN_PLANE[in_plane]
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    # A is orthonormal (a signed permutation), so A^-1 = A^T.
+    dx = ax_x * x + ax_y * y
+    dy = ay_x * x + ay_y * y
+    ix = dx / pixel_size_um + rot_axis_ix
+    iy = dy / pixel_size_um + rot_axis_iy
+    s = (np.asarray(z, dtype=np.float64) - slice0_z_um) / slice_pitch_um
+    return s, iy, ix
+
+
+def tomo_slice_for_z(
+    z_um, *, slice_pitch_um: float, slice0_z_um: float = 0.0, n_slices=None
+):
+    """MIDAS z (µm) -> nearest reconstruction slice index.
+
+    The inverse of the vertical half of :func:`tomo_grid_to_midas`, and the
+    practical way to ask "which tomo slice corresponds to this FF layer?".
+
+    Raises when the requested z falls outside the reconstruction rather than
+    clamping: silently returning the end slice would extrapolate the sample
+    mask beyond the tomographic field of view, fabricating path length.
+    """
+    if not (slice_pitch_um > 0):
+        raise ValueError(f"slice_pitch_um must be > 0; got {slice_pitch_um!r}")
+    idx_f = (np.asarray(z_um, dtype=np.float64) - slice0_z_um) / slice_pitch_um
+    idx = np.rint(idx_f).astype(np.int64)
+    if n_slices is not None:
+        bad = (idx < 0) | (idx >= int(n_slices))
+        if np.any(bad):
+            raise ValueError(
+                f"z={z_um} µm maps to slice {idx} which is outside the "
+                f"{int(n_slices)}-slice reconstruction. The tomogram does not "
+                "cover this layer; extrapolating would fabricate path length."
+            )
+    return idx if idx.ndim else int(idx)
