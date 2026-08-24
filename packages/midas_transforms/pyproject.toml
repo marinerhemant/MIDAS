@@ -31,6 +31,7 @@ dependencies = [
     "numcodecs>=0.12",
     "midas-distortion>=0.2.0",            # shared distortion model (single source)
     "midas-calibrate>=0.2.1",
+    "midas-stress>=0.6.0",              # frames: the MIDAS/APS/tomo-grid affine
 ]
 
 [project.optional-dependencies]
