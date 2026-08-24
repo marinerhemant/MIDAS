@@ -19,7 +19,7 @@ from .space_group import SpaceGroup
 from .tables import STBF
 
 
-__all__ = ["Atom", "Crystal", "B_to_U", "U_to_B"]
+__all__ = ["Atom", "Crystal", "B_to_U", "U_to_B", "parse_phase_atoms"]
 
 
 _8PI2 = 8.0 * (np.pi ** 2)
@@ -64,6 +64,46 @@ class Atom:
         if self.U_aniso is None:
             return B_to_U(self.B_iso)
         return (self.U_aniso[0] + self.U_aniso[1] + self.U_aniso[2]) / 3.0
+
+
+def parse_phase_atoms(rows):
+    """``PhaseAtom`` parameter lines -> ``list[Atom]``, or None if there are none.
+
+    One shared parser for every pipeline. The *collection* of the lines stays
+    with each pipeline (NF, FF and PF read parameter files differently), but
+    the field order and the defaults must not: a basis parsed two ways is a
+    structure factor computed two ways.
+
+    Line format::
+
+        PhaseAtom <element> <x> <y> <z> [occupancy] [B_iso]
+
+    Fractional coordinates; ``occupancy`` defaults to 1.0 and ``B_iso`` to 0.0
+    (Å²). Returning None rather than an empty list when nothing is declared is
+    deliberate — it is what keeps ``hkls.csv`` byte-identical to its historical
+    form, since the F2 column is only appended when a basis exists.
+
+    A short line raises rather than defaulting: silently discarding a
+    malformed row would put every atom at the origin, which produces a
+    perfectly plausible F2 column for the wrong structure.
+    """
+    if not rows:
+        return None
+    atoms = []
+    for r in rows:
+        toks = str(r).split()
+        if len(toks) < 4:
+            raise ValueError(
+                f"PhaseAtom needs '<element> <x> <y> <z> [occ] [B_iso]', "
+                f"got {r!r}"
+            )
+        atoms.append(Atom(
+            str(toks[0]),
+            (float(toks[1]), float(toks[2]), float(toks[3])),
+            occupancy=float(toks[4]) if len(toks) > 4 else 1.0,
+            B_iso=float(toks[5]) if len(toks) > 5 else 0.0,
+        ))
+    return atoms
 
 
 @dataclass

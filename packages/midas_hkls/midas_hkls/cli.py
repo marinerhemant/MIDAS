@@ -50,6 +50,24 @@ def _build_parser() -> argparse.ArgumentParser:
     z.add_argument("--result-folder", default=None,
                    help="Override the result folder (default: ResultFolder from "
                         "the Zarr archive, falling back to the archive's parent dir).")
+    z.add_argument("--phase-atom", action="append", default=None,
+                   metavar="'El x y z [occ] [B]'",
+                   help="Atom in the asymmetric unit, repeatable. Declaring a "
+                        "basis appends an F2 column (|F|^2 normalised). "
+                        "Lattice and space group still come from the Zarr.")
+    z.add_argument("--phase-cif", default=None,
+                   help="CIF supplying the atom basis (mutually exclusive with "
+                        "--phase-atom). Only the BASIS is taken: the "
+                        "calibrated lattice and space group from the Zarr win, "
+                        "and a disagreement is reported.")
+    z.add_argument("--drop-forbidden", action="store_true",
+                   help="Remove reflections with |F|^2 <= --forbidden-f2 from "
+                        "the file. They can never be observed, so leaving them "
+                        "in caps the achievable completeness for the phase. "
+                        "Ring numbers are assigned BEFORE this filter, so "
+                        "surviving rows keep the numbers they had.")
+    z.add_argument("--forbidden-f2", type=float, default=1e-6,
+                   help="Threshold for --drop-forbidden (default 1e-6).")
 
     sub.add_parser("list", help="List all 230 space groups in the canonical table")
 
@@ -104,8 +122,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.cmd == "zarr":
+        from .crystal import parse_phase_atoms
         from .zarr_compat import generate_hkls_from_zarr
-        out = generate_hkls_from_zarr(args.zarr_path, result_folder=args.result_folder)
+
+        atoms = parse_phase_atoms(args.phase_atom)
+        out = generate_hkls_from_zarr(
+            args.zarr_path,
+            result_folder=args.result_folder,
+            atoms=atoms,
+            cif_path=args.phase_cif,
+            drop_forbidden=args.drop_forbidden,
+            forbidden_f2_threshold=args.forbidden_f2,
+        )
         print(f"Wrote hkls.csv to {out}", file=sys.stderr)
         return 0
 

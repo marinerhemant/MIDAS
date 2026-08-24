@@ -178,6 +178,54 @@ def available_ions() -> Sequence[str]:
     return sorted(ION_COEFFICIENTS.keys())
 
 
+def publish_to_midas_hkls() -> int:
+    """Push these verified ions into ``midas_hkls``'s form-factor registry.
+
+    ``midas_hkls`` is the canonical home for X-ray physics, but it ships only
+    the IT92 **neutral-atom** table and silently folded every ion onto it. It
+    cannot import this module — ``midas_pdf`` depends on ``midas_hkls``, not
+    the reverse — so the data is pushed the other way at import time instead of
+    being copied. One table, right direction, no duplication.
+
+    Called on import of this module. Returns the number registered.
+
+    Note what this does *not* do: it registers the species this package has
+    verified against the f(0) electron-count sum rule, which is 11 ions and
+    does not include the 3d-oxide set (Ni2+, Mn4+, Co3+, Li1+, O2-) a layered
+    cathode needs. Those still fold to neutral, and now say so.
+    """
+    try:
+        from midas_hkls.form_factors import register_ion as _hkls_register
+    except ImportError:  # pragma: no cover - midas_hkls is a hard dependency
+        return 0
+    n = 0
+    rejected: list[str] = []
+    for species, coeff in ION_COEFFICIENTS.items():
+        try:
+            _hkls_register(species, coeff.a, coeff.b, coeff.c,
+                           source=coeff.source)
+            n += 1
+        except (ValueError, KeyError) as e:
+            # A species midas_hkls cannot validate keeps folding to neutral
+            # rather than being registered on trust. Report it: a silently
+            # skipped ion is indistinguishable from one that was never shipped.
+            rejected.append(f"{species} ({e})")
+    if rejected:
+        import warnings as _w
+        _w.warn(
+            "ionic_form_factors: midas_hkls refused "
+            f"{len(rejected)} of {len(ION_COEFFICIENTS)} shipped ions; they "
+            "will fall back to neutral-atom scattering. "
+            + "; ".join(rejected),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    return n
+
+
+publish_to_midas_hkls()
+
+
 __all__ = [
     "CromerMannCoeff",
     "ION_COEFFICIENTS",
@@ -185,4 +233,5 @@ __all__ = [
     "is_ionic_species",
     "ionic_form_factor",
     "available_ions",
+    "publish_to_midas_hkls",
 ]

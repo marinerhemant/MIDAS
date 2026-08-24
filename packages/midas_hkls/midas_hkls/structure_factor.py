@@ -28,7 +28,7 @@ if TYPE_CHECKING:  # pragma: no cover
     import torch
 
 
-__all__ = ["structure_factors", "structure_factor_intensity"]
+__all__ = ["structure_factors", "structure_factor_intensity", "f2_normalised"]
 
 
 _TWOPI = 2.0 * math.pi
@@ -89,6 +89,62 @@ def structure_factor_intensity(F) -> "torch.Tensor":
     """|F|² for a complex F tensor."""
     import torch
     return F.real * F.real + F.imag * F.imag
+
+
+def f2_normalised(lattice, space_group, atoms, hkl) -> "np.ndarray":
+    """Per-reflection |F|², normalised to its maximum. ``(M,)`` float64 ndarray.
+
+    The reflection weight used by every HEDM technique's completeness metric.
+    Extracted from ``nf_hkls`` so NF and FF/PF share one implementation rather
+    than two that can drift.
+
+    **Why a weight is needed at all.** Space-group extinction rules cannot see
+    *basis*-dependent extinctions. For a DHCP polytype (P6_3/mmc, sites 2a and
+    2c) 126 of 736 reflections have |F|² = 0 and can never produce a spot — yet
+    they sat in the confidence denominator, capping the achievable overlap
+    fraction at 0.829, while fcc (one atom at the origin, nothing extra
+    extinct) reached 1.000. A grain of the first phase and a grain of the
+    second are then not comparable on a number both are reported against.
+
+    **|F|², deliberately not intensity.** Lorentz-polarisation diverges at low
+    2θ and would swamp the normalisation, and for the rotation method the
+    Lorentz factor *cancels* in per-frame peak detection: Δω = w_rlp·L, so
+    I_peak = I_int/Δω is L-free. Measured on ``nf_sampleB_htB_s2`` — spot peak
+    height is flat in η where 1/|sin η| predicts 4.3×, and spot density along a
+    ring rises as sin η, the complementary half of the same model. LP belongs
+    in the *integrated*-intensity path (grain size, see
+    ``midas_transforms.radius.theoretical``), not here.
+
+    Normalising to the maximum is what makes the value a weight in [0, 1]
+    rather than an absolute electron count, so a run's numbers do not move when
+    the cell content changes scale.
+
+    Parameters
+    ----------
+    lattice, space_group, atoms
+        Passed straight to :class:`midas_hkls.crystal.Crystal`.
+    hkl
+        ``(M, 3)`` integer Miller indices.
+
+    Returns
+    -------
+    ``(M,)`` float64 in [0, 1]. All-zero if every reflection is extinct (an
+    all-zero return is a real answer, not a failure — but it means no
+    reflection can be observed, so callers should treat it as a configuration
+    error rather than divide by it).
+    """
+    import numpy as np
+    import torch
+
+    from .crystal import Crystal
+    from .structure_factor import structure_factors
+
+    hkl_arr = np.asarray(hkl)
+    cry = Crystal(lattice, space_group, list(atoms))
+    F = structure_factors(cry.to_torch(), torch.as_tensor(hkl_arr.astype(int)))
+    f2 = np.abs(np.asarray(F.detach().cpu().numpy()).ravel()) ** 2
+    mx = float(f2.max()) if f2.size else 0.0
+    return (f2 / mx) if mx > 0 else f2
 
 
 # ============================================================ private helpers

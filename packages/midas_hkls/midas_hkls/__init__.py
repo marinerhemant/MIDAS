@@ -16,14 +16,17 @@ CIF I/O (requires ``midas-hkls[cif]``)::
 
     from midas_hkls import read_cif, write_cif
 """
-from .crystal import Atom, B_to_U, Crystal, U_to_B
+from .crystal import Atom, B_to_U, Crystal, U_to_B, parse_phase_atoms
 from .form_factors import (
     available_elements,
     coefficients,
     form_factor,
     form_factor_batch,
+    register_ion,
+    registered_ions,
 )
 from .hkl_gen import Reflection, generate_hkls, reflections_to_dataframe
+from .param_basis import read_phase_basis
 from .lattice import (
     Lattice, PowderLatticeFit, refine_lattice_from_d_spacings,
 )
@@ -50,6 +53,8 @@ __all__ = [
     "refraction_shift_deg",
     "susceptibility_chi0",
     "Atom",
+    "parse_phase_atoms",
+    "read_phase_basis",
     "B_to_U",
     "Crystal",
     "LAUE_TO_PROPER_GROUP",
@@ -62,6 +67,8 @@ __all__ = [
     "U_to_B",
     "available_elements",
     "coefficients",
+    "register_ion",
+    "registered_ions",
     "emit_nf_hkls_csv",
     "form_factor",
     "form_factor_batch",
@@ -98,6 +105,9 @@ def __getattr__(name: str):  # pragma: no cover - lazy attribute access
     if name == "structure_factor_intensity":
         from .structure_factor import structure_factor_intensity
         return structure_factor_intensity
+    if name == "f2_normalised":
+        from .structure_factor import f2_normalised
+        return f2_normalised
     if name == "powder_intensity":
         from .intensity import powder_intensity
         return powder_intensity

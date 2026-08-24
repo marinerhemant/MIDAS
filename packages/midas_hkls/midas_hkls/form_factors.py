@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from functools import lru_cache
 from importlib.resources import files
 from typing import TYPE_CHECKING, Any, Iterable
@@ -25,6 +26,8 @@ __all__ = [
     "form_factor_batch",
     "available_elements",
     "coefficients",
+    "register_ion",
+    "registered_ions",
 ]
 
 
@@ -42,32 +45,134 @@ def available_elements() -> list[str]:
 
 _CHARGE_RE = re.compile(r"^([A-Z][a-z]?)(?:([0-9]+)?([+-]))?$")
 
+_ROMAN = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7,
+          "VIII": 8, "IX": 9, "X": 10}
 
-def _normalize_symbol(symbol: str) -> str:
-    """Map 'Fe', 'Fe2+', 'O2-', 'Fe(III)' → bare element 'Fe' / 'O' for IT92 lookup.
+#: Runtime registry of *ionic* Cromer-Mann coefficients, keyed by the species
+#: string exactly as written (e.g. ``"Fe3+"``). Empty by default: this package
+#: ships the IT92 **neutral-atom** table only, and inventing ionic coefficients
+#: would be worse than folding to neutral, because a wrong number looks right.
+#: Populate it with :func:`register_ion` — ``midas_pdf.ionic_form_factors``
+#: does exactly that at import for the species it has verified.
+_ION_TABLE: dict[str, tuple[np.ndarray, np.ndarray, float]] = {}
 
-    IT92 (gemmi export) only provides neutral-atom coefficients.  Ions are
-    folded onto the neutral entry with a future TODO to extend from cctbx.
+_FOLD_WARNED: set[str] = set()
+
+
+def _parse_species(symbol: str) -> tuple[str, int]:
+    """``'Fe3+'`` -> ``('Fe', +3)``; ``'O2-'`` -> ``('O', -2)``; ``'Ni'`` -> ``('Ni', 0)``.
+
+    ``Fe(III)`` is read as Fe³⁺ (the Roman numeral is an oxidation state).
     """
     s = symbol.strip()
     if not s:
         raise ValueError("empty element symbol")
-    # strip Roman-numeral charge in parens, e.g. Fe(III)
-    s = re.sub(r"\([IVX]+\)", "", s)
+
+    charge = 0
+    rm = re.search(r"\(([IVX]+)\)", s)
+    if rm is not None:
+        charge = _ROMAN.get(rm.group(1), 0)
+        s = re.sub(r"\([IVX]+\)", "", s)
+
     m = _CHARGE_RE.match(s)
     if m is None:
-        # last-ditch: take leading letters
-        s = re.match(r"^[A-Z][a-z]?", s).group(0) if re.match(r"^[A-Z]", s) else s
-        return s
-    return m.group(1)
+        lead = re.match(r"^[A-Z][a-z]?", s)
+        return (lead.group(0) if lead else s), charge
+    el, mag, sign = m.group(1), m.group(2), m.group(3)
+    if sign is not None:
+        n = int(mag) if mag else 1
+        charge = n if sign == "+" else -n
+    return el, charge
+
+
+def _normalize_symbol(symbol: str) -> str:
+    """Map 'Fe', 'Fe2+', 'O2-', 'Fe(III)' → bare element 'Fe' / 'O'."""
+    return _parse_species(symbol)[0]
+
+
+def register_ion(species: str, a, b, c: float, *, source: str = "") -> None:
+    """Register 4-Gaussian Cromer-Mann coefficients for an ionic species.
+
+    ``f(s) = c + Σ a_i exp(-b_i s²)``, the same form as the neutral table.
+
+    The electron-count sum rule ``f(0) = Σa + c ≈ Z - charge`` is enforced to
+    1 %: f(0) *is* the electron count, so a table entry that violates it is
+    simply wrong, and this is the one check that catches a transcription slip
+    without a second source.
+    """
+    a = np.asarray(a, dtype=np.float64).ravel()
+    b = np.asarray(b, dtype=np.float64).ravel()
+    if a.size != 4 or b.size != 4:
+        raise ValueError(f"{species}: need 4 a and 4 b coefficients")
+    el, charge = _parse_species(species)
+    if charge == 0:
+        raise ValueError(
+            f"{species!r} carries no charge — register_ion is for ions; the "
+            "neutral table is shipped and must not be shadowed."
+        )
+    tbl = _table()
+    if el not in tbl:
+        raise KeyError(f"{species}: unknown element {el!r}")
+    z = int(tbl[el]["Z"])
+    expected = z - charge
+    f0 = float(a.sum() + c)
+    if expected <= 0:
+        raise ValueError(f"{species}: Z - charge = {expected} is not a valid electron count")
+    if abs(f0 - expected) / expected > 0.01:
+        raise ValueError(
+            f"{species}: f(0) = {f0:.4f} but Z - charge = {expected}. "
+            f"The electron-count sum rule is violated by "
+            f"{100 * abs(f0 - expected) / expected:.1f} % — the coefficients "
+            f"are for a different species, or mistranscribed."
+        )
+    _ION_TABLE[species.strip()] = (a, b, float(c))
+    _FOLD_WARNED.discard(species.strip())
+
+
+def registered_ions() -> list[str]:
+    """Ionic species with real coefficients, as opposed to a neutral fold."""
+    return sorted(_ION_TABLE)
 
 
 def coefficients(element: str) -> tuple[np.ndarray, np.ndarray, float]:
-    """Return (a, b, c) for an element, where a and b are length-4 arrays."""
-    sym = _normalize_symbol(element)
+    """Return (a, b, c) for a species, where a and b are length-4 arrays.
+
+    An ionic species uses registered ionic coefficients when available. When it
+    does not, it falls back to the **neutral** atom and warns once — the fold
+    is an approximation, and silence about it is how a plausible wrong number
+    reaches a paper. At Q = 0 the error is exactly the charge: ``O2-`` has 10
+    electrons and neutral O has 8, a 25 % error in f(0); it shrinks with Q as
+    the valence electrons stop contributing.
+    """
+    key = element.strip()
+    if key in _ION_TABLE:
+        a, b, c = _ION_TABLE[key]
+        return a.copy(), b.copy(), c
+
+    sym, charge = _parse_species(element)
     tbl = _table()
     if sym not in tbl:
-        raise KeyError(f"no Cromer-Mann coefficients for element {element!r} (normalized {sym!r})")
+        raise KeyError(
+            f"no Cromer-Mann coefficients for element {element!r} "
+            f"(normalized {sym!r})"
+        )
+    if charge != 0 and key not in _FOLD_WARNED:
+        _FOLD_WARNED.add(key)
+        z = tbl[sym].get("Z", 0)
+        expected = (z - charge) if z else None
+        detail = (
+            f" f(0) will be {z} electrons instead of {expected} "
+            f"({100 * abs(charge) / max(expected, 1):.0f} % high at Q=0)"
+            if expected else ""
+        )
+        warnings.warn(
+            f"{element!r}: no ionic form factor registered; using the NEUTRAL "
+            f"{sym} coefficients.{detail} Register verified coefficients with "
+            f"midas_hkls.form_factors.register_ion, or import "
+            f"midas_pdf.ionic_form_factors for the species it ships.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
     e = tbl[sym]
     return np.asarray(e["a"], dtype=np.float64), np.asarray(e["b"], dtype=np.float64), float(e["c"])
 

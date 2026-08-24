@@ -225,17 +225,13 @@ def emit_nf_hkls_csv(
     # I_peak = I_int/Domega is L-free; measured on nf_sampleB_htB_s2 -- spot peak
     # is flat in eta while 1/|sin eta| predicts 4.3x, and spot density on a ring
     # rises as sin eta as the same model requires).
+    # Shared with the FF/PF generator (zarr_compat) as of 2026-08-22 — the two
+    # emit the same column and must not drift into two definitions of it.
     f2 = None
     if atoms is not None:
-        import torch
-        from .crystal import Crystal
-        from .structure_factor import structure_factors
+        from .structure_factor import f2_normalised
 
-        cry = Crystal(lattice, space_group, list(atoms))
-        F = structure_factors(cry.to_torch(), torch.as_tensor(hkl_arr.astype(int)))
-        f2_arr = np.abs(np.asarray(F.detach().cpu().numpy()).ravel()) ** 2
-        mx = float(f2_arr.max()) if f2_arr.size else 0.0
-        f2 = f2_arr / mx if mx > 0 else f2_arr
+        f2 = f2_normalised(lattice, space_group, atoms, hkl_arr)
 
     # 7. Build rows + write.
     rows: List[Tuple[float, ...]] = []
