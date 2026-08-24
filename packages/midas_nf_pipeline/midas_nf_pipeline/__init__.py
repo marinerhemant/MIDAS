@@ -39,7 +39,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.6.4"
+__version__ = "0.6.5"
 
 # Submodules are imported lazily by the orchestrator so the package can be
 # installed and tested without all optional deps present (e.g. denoise).

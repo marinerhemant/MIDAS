@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-ckernel"
-version = "0.1.0"
+version = "0.1.1"
 description = "Shared C kernels (diffraction forward model, Nelder-Mead, math) for the MIDAS c-omp indexer and refiner"
 readme = "README.md"
 license = "BSD-3-Clause"

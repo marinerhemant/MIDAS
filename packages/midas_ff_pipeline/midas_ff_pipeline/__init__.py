@@ -36,7 +36,7 @@ except ImportError:  # HDF5 files with no plugin filter still read fine
 
 import warnings as _warnings
 
-__version__ = "0.6.2"
+__version__ = "0.6.3"
 
 # Emit the deprecation notice once at import time. Use DeprecationWarning
 # (default-filtered by Python, but shown by pytest / explicit -W /

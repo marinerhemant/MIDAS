@@ -17,7 +17,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.15.2"
+__version__ = "0.15.3"
 
 from .config import (
     AlignMethod,

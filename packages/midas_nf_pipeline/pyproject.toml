@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-nf-pipeline"
-version = "0.6.4"
+version = "0.6.5"
 description = "Pure-Python NF-HEDM pipeline orchestrator (single + multi-resolution, multi-layer) — drop-in replacement for nf_MIDAS.py / nf_MIDAS_Multiple_Resolutions.py"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -31,7 +31,8 @@ dependencies = [
     "tqdm>=4.0",
     # >=0.6.0: write_nf_hkls_csv(atoms=...) + midas_hkls.Atom, used by
     # stages._build_hkls for structure-factor aware reflections.
-    "midas-hkls>=0.6.0",
+    # >=0.9.0: the atom-basis flags on the midas-hkls CLI (see ff-pipeline).
+    "midas-hkls>=0.9.0",
     "midas-stress>=0.6.0",
     # >=0.6.0: torch NLM backend + matched-filter spot detection, the
     # beam_calib shadow-phase -> sample-position fix, AND SumFrames-is-internal

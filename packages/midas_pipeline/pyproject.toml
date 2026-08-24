@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pipeline"
-version = "0.15.2"
+version = "0.15.3"
 description = "Unified MIDAS HEDM orchestrator. FF is the single-scan degeneracy of PF; one orchestrator, --scan-mode {ff,pf}."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -56,7 +56,10 @@ dependencies = [
     # calc_radius_v stage calls midas_hkls.read_cif() to compute theoretical
     # per-ring intensities for the V-map. Without it a clean production
     # install raises CifBackendError at that stage.
-    "midas-hkls[cif]>=0.2.0",
+    # >=0.9.0: param_basis + structure_factor, called directly here (unlike
+    # ff-pipeline, which shells out). [cif] stays a RUNTIME need for
+    # calc_radius_v.
+    "midas-hkls[cif]>=0.9.0",
     "midas-peakfit>=0.4.6",                # >=0.4.6: deterministic batched-LM grouping (peak fit was not reproducible)
     "midas-transforms>=0.8.2",
     "midas-index>=0.3.0",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-transforms"
-version = "0.8.7"
+version = "0.9.0"
 description = "Pure-Python/PyTorch FF-HEDM transforms (drop-in for MergeOverlappingPeaksAllZarr / CalcRadiusAllZarr / FitSetupZarr / SaveBinData)"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -31,7 +31,10 @@ dependencies = [
     "numcodecs>=0.12",
     "midas-distortion>=0.2.0",            # shared distortion model (single source)
     "midas-calibrate>=0.2.1",
-    "midas-stress>=0.6.0",              # frames: the MIDAS/APS/tomo-grid affine
+    # >=0.11.0: frames.TOMO_IN_PLANE and tomo_grid_to_midas, which
+    # geometry/sample_shape.py imports. Below the floor that import fails at
+    # call time, after a reconstruction has already been read.
+    "midas-stress>=0.11.0",             # frames: the MIDAS/APS/tomo-grid affine
 ]
 
 [project.optional-dependencies]
