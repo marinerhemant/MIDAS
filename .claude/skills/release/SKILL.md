@@ -76,6 +76,20 @@ Record the baseline. A failure that is **byte-identical to the previous sweep**
 is pre-existing, not yours — say so, with the evidence, rather than fixing or
 hiding it.
 
+**A green local sweep does NOT prove the dependency declarations are complete.**
+Your environment satisfies imports that a clean install does not, so a missing
+`dependencies` entry is invisible locally and fails only on CI's fresh runner.
+
+> `midas_calibrate_v2` imported `skimage` at the top of `make_seed` — the normal
+> autocalibrate path — and never declared `scikit-image`. Every local sweep
+> passed because the env had it via another package. A clean
+> `pip install midas-calibrate-v2` had raised ModuleNotFoundError the first time
+> anyone seeded a geometry, for as long as the seeder had existed. It surfaced
+> only when new tests became the first to call `make_seed` on CI.
+
+For any NEW top-level import added this batch, check it is declared. Blocking the
+module at the import hook and re-running the entry point is the cheap proof.
+
 ## Phase 2 — commit
 
 **Explicit paths only.** Not `git add <dir>`, and not a glob.
@@ -103,6 +117,43 @@ of the same release, keep them in one commit and say so in the message.
   Pseudonymise it, record the mapping in `BEAMTIME_KEY.md` (git-excluded), and
   **verify both sides**: the name is gone from the tree *and* the mapping landed.
   It also fires on **test files and code comments**, not just manuals.
+
+  **Scrub the WHOLE batch before the first commit, not commit by commit.**
+  `scrub_check` only sees *staged* files, so committing in groups reveals the
+  hits one group at a time and each fix is a fresh interruption.
+
+  ```bash
+  git add -A -- packages/ manuals/ utils/ .claude/   # stage everything
+  python utils/scrub_check.py --staged               # one pass, all hits
+  git reset -q                                       # unstage, then commit properly
+  ```
+
+  > Measured: a first pass reported 5 hits. Doing it group-by-group turned into
+  > **six rounds** — 5 in one package, then 22 files of a new capability, then a
+  > *filename* (`phase3_<name>.py`, where `\b` does not match after `_`), then
+  > **uppercase constants** a case-sensitive pattern missed, then two more
+  > beamtimes one at a time. 26 hits total.
+
+  Then stop iterating: sweep the staged tree yourself for the whole token shape,
+  so the remaining set is known rather than discovered.
+
+  ```bash
+  git diff --cached --name-only | while read -r f; do [ -f "$f" ] && \
+    grep -ohE '\b[a-zA-Z][a-zA-Z0-9]*_(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[0-9]{2}[a-z]?\b' "$f"; \
+  done | sort -u
+  ```
+
+  Match **case-insensitively and inside identifiers** — one name appeared as
+  lowercase prose, an ALL-CAPS test constant, Title-case, and embedded in a
+  script filename. A `\bname\b` pattern misses the last two.
+
+  **Disambiguate before mapping.** Two beamtimes can share a surname, differing
+  only in the month suffix; read the full path in context and pick the right
+  pseudonym rather than the first matching row in the key.
+
+  **Re-run the affected test suites afterwards.** A scrub edits source and test
+  files — renaming a constant inside a test is exactly the kind of change that
+  breaks quietly.
 - **doc-citation-check** — a `path:line` citation that no longer resolves. Read
   the cited line and confirm it still supports the claim *before* editing the
   citation. Do not delete a citation to silence it.
@@ -137,6 +188,25 @@ below which the answer is wrong and does not say so.
 > The `c_src` row is the dangerous one. A `MargStrain` fix to `FitUnified.c` was
 > the only change in `midas_fit_grain`; the audit reported it in sync. Trusting
 > it would have stranded the C fix at the old version, silently and forever.
+
+**Vendored C is duplicated on purpose — sync it, never centralise it.** Eight
+files (`forward.{c,h}`, `MIDAS_Math.{c,h}`, `GetMisorientation.{c,h}`,
+`IndexerConsolidatedIO.h`, `nelder_mead.c`) exist byte-identically in
+`midas_ckernel`, `midas_fit_grain` and `midas_index`. They must: the latter two
+compile from their OWN sdists, so a build reaching into a sibling package works
+in a checkout and fails for every pip user, and `midas-ckernel` is deliberately
+unpublished so it cannot be a build-time dependency either.
+
+`midas_ckernel/c_src` is canonical. Edit there, then:
+
+```bash
+python utils/sync_vendored_c.py            # canonical -> mirrors
+python utils/sync_vendored_c.py --check    # CI/test mode, exit 1 on drift
+```
+
+A one-copy fix leaves three packages computing different forward models with
+every test green — `test_forward_parity.py` compares ckernel against the LEGACY
+bodies, a different axis, and stays green with the mirrors diverged.
 
 Then, in dependency order:
 
@@ -180,10 +250,28 @@ have none.
 
 Diagnose *what* failed, not *that* it failed:
 
-| failure | fix |
-|---|---|
-| **code** — a test failed | the tag points at broken code. Fix, then **retarget the tag** (delete release + tag, recreate at the fix commit). `gh run rerun` re-tests the same broken commit. |
-| **infrastructure** — network, Sigstore/Rekor reset, 503 | the artifact and tag are fine. **`gh run rerun --failed`.** Retargeting is pointless churn. |
+Read the failing JOB, not just the run. There are **three** classes, not two:
+
+| failure | meaning | fix |
+|---|---|---|
+| **code** — a `test` job failed | the tag points at broken code | fix, then **retarget the tag** (delete release + tag, recreate at the fix commit). `gh run rerun` re-tests the same broken commit. |
+| **infrastructure** — network, Sigstore/Rekor reset, 503 | artifact and tag are fine | **`gh run rerun --failed`** |
+| **`400 File already exists`** | the package **ALREADY PUBLISHED**; this is a second, redundant upload being refused | **nothing.** A rerun fails identically. Confirm it is live and move on. |
+
+**Re-check publication state immediately before EACH retarget, not once for the
+batch.** PyPI files are immutable, so retargeting a tag whose version already
+published fires a duplicate upload that can only fail.
+
+> Measured: a batch-wide "nothing has published" check, then several minutes
+> rebuilding 16 wheels, then the deletes. Packages published during that window.
+> Result: 7 red runs, every one a duplicate-upload refusal on a version that had
+> already succeeded. Zero broken packages, but the wall of red is indistinguish-
+> able at a glance from a real cascade.
+
+When a retarget does collide, prove the damage is nil rather than asserting it:
+`git diff --name-only <old> <new>` to show which packages' content actually
+differs, and download a published wheel to check CRC, RECORD, and that it
+contains the feature it was released for.
 
 ## Phase 6 — a release is not finished until the environments are
 
@@ -241,6 +329,26 @@ report("c-omp indexer available", backend_c.available())
 > to reach the forward model. Plumbing tests do not catch this class; asserting
 > the parameter has an **effect** does.
 
+**Check the API the probe uses; do not guess it.** A probe that reports a false
+FAIL costs the same investigation as a real one, and erodes trust in the whole
+set.
+
+> `backend_c.BINARY` does not exist — the accessor is `binary_path()`. The probe
+> reported "c-omp binary located: False" on all three environments. The binaries
+> were fine.
+
+**For C, probe the binary, not the version.** C recompiles only on reinstall, so
+a stale binary reports the correct package version while running the old parser.
+Grep the executable for the new key:
+
+```python
+raw = open(backend_c.binary_path(), "rb").read()
+report("refiner binary parses MargStrain", b"MargStrain" in raw)
+```
+
+and force the reinstall rather than trusting the version check:
+`pip install --no-cache-dir --force-reinstall --no-deps midas-index==X midas-fit-grain==Y`.
+
 Finish with `git fetch --tags --force && python utils/pypi_audit.py --ignore midas-ckernel`
 and confirm **0 mismatch / 0 stale**. Note the audit reads the *working tree*, so
 in-progress edits show as a mismatch that is not a release problem.
@@ -257,6 +365,22 @@ An exit code is not evidence the change landed.
 > clean, having installed one of three.
 
 Re-read the file, re-query the environment, diff the result. Every time.
+
+## If this batch touches a SKILL
+
+A skill's `description` is a **routing surface** — it decides when the skill
+fires, and it reads as a support claim. Check it against that doc set's own
+`ENVELOPE.md` before committing: a class listed there flatly is one the model
+will accept work for.
+
+> Measured: `calibrate-integrate` listed EIGER2 alongside GE (67 verified) and
+> Pilatus (32 verified). Its own envelope records EIGER2 at **0 verified of 6**,
+> 1.078 px median ring scatter against 0.07–0.2 px elsewhere, and says in
+> writing "recoverable, not yet to spec". Qualified in the frontmatter rather
+> than dropped, so the skill still engages but does not imply support.
+
+Also verify every path and section the skill cites actually resolves, and that
+counts it quotes ("13 rules") match. Those are cheap to check and silently rot.
 
 ## Diagnosis
 

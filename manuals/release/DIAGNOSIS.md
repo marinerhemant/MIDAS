@@ -199,6 +199,72 @@ message this way.
 
 ---
 
+## A wall of red release runs, all saying "File already exists"
+
+**Test.** For each failed run, `gh run view <id> --json jobs` — is the failing
+job `test` or `publish`? Then check whether that exact version is live:
+`curl -o /dev/null -w '%{http_code}' https://pypi.org/pypi/<dist>/<ver>/json`.
+
+**Cause.** PyPI files are immutable. The package already published; retargeting
+its tag fired a second release event, and the duplicate upload was refused. The
+run that "failed" is the redundant one.
+
+**Measured.** 7 of 16 in one batch. Zero broken packages — the wall of red is
+visually indistinguishable from a real cascade, which is the whole problem.
+
+**Lever.** Nothing to fix; a rerun fails identically. Prove the damage is nil:
+`git diff --name-only <old-commit> <new-commit>` to show whose content actually
+changed, then download a published wheel and check CRC, RECORD, and that it
+contains the feature it was released for.
+
+**Prevent.** Re-check publication state immediately before EACH retarget, not
+once for the batch. A batch-wide check goes stale during the minutes spent
+rebuilding wheels.
+
+---
+
+## CI fails on an import that works fine locally
+
+**Test.** Block the module at the import hook and call the entry point:
+
+```python
+import builtins; real = builtins.__import__
+builtins.__import__ = lambda n,*a,**k: (_ for _ in ()).throw(
+    ModuleNotFoundError(n)) if n.split(".")[0]=="<mod>" else real(n,*a,**k)
+```
+
+**Cause.** The import is undeclared, and your environment satisfies it via
+another package. Only a clean install shows it.
+
+**Measured.** `midas_calibrate_v2` imported `skimage` at the top of `make_seed`
+and never declared `scikit-image`. Every local sweep passed; a fresh
+`pip install` had raised ModuleNotFoundError the first time anyone seeded a
+geometry, for as long as the seeder had existed.
+
+**Lever.** Declare it. Base `dependencies` if the import is on a normal path, an
+extra only if the branch is genuinely optional. A green local sweep is not
+evidence about dependency completeness.
+
+---
+
+## The vendored C copies have drifted
+
+**Test.** `python utils/sync_vendored_c.py --check`.
+
+**Cause.** Eight files are duplicated byte-identically across `midas_ckernel`,
+`midas_fit_grain` and `midas_index`, and a fix landed in only one.
+
+**Why not centralise.** The mirrors compile from their OWN sdists, so reaching
+into a sibling package works in a checkout and fails for every pip user;
+`midas-ckernel` is unpublished so it cannot be a build dependency either.
+
+**Lever.** Edit `midas_ckernel/c_src` (canonical), then run the syncer without
+`--check`. Note `test_forward_parity.py` compares ckernel against the LEGACY
+bodies — a different axis — and stays green with the mirrors diverged, so it is
+not a substitute for this check.
+
+---
+
 ## `git stash -u` and the owner's untracked files
 
 Isolating the committed state with `git stash -u` touches untracked files —
