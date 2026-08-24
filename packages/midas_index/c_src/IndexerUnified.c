@@ -151,7 +151,56 @@ struct TParams {
   int RingsToReject[MAX_N_RINGS];
   int nRingsToRejectCalc;
   int RingToIndex;               /* PF seed-ring restriction */
+  int BigDetSize;                /* detector active-area grid; 0 => no mask */
+  /* Completeness metric (mirrors NF's ConfidenceMetric):
+   *   0 = raw      w = 1 for every reflection. Bit-identical to the
+   *                historical count ratio. DEFAULT.
+   *   1 = filtered w = 1 if F2 > ForbiddenF2Threshold else 0. Removes
+   *                reflections no crystal of this phase can produce.
+   *   2 = weighted w = F2. Down-weights the merely faint as well.
+   * Applied to BOTH the numerator and the denominator, so a uniform weight
+   * is exactly a no-op. */
+  int ConfidenceMetric;
+  RealType ForbiddenF2Threshold;
   RealType ScanPosTol;           /* PF override for BeamSize/2 */
+  /* PF seed-strength floor, expressed in the units of Spots.bin col 3
+   * (GrainRadius). A spot below this is not tried AS A SEED; it stays in
+   * ObsSpotsLab and is still available to CompareSpots, so no grain's
+   * completeness can fall because of it.
+   *
+   * WHAT THIS QUANTITY IS, AND IS NOT. From midas_transforms/radius/core.py:
+   *
+   *   GrainVolume = 0.5 * m_hkl * dTheta * cos(Theta) * Vgauge
+   *                 * IntegratedIntensity / (NImgs * powder_int)
+   *
+   * Dividing by the ring's powder_int removes the structure factor, and
+   * m_hkl / dTheta*cos(Theta) handle multiplicity and the Lorentz geometry,
+   * so the value IS comparable BETWEEN RINGS -- which a raw intensity cut is
+   * not, since that conflates a small grain with a low-|F| reflection of a
+   * large one. That ring-comparability is the whole reason to use it.
+   *
+   * It is NOT a calibrated grain size. Vgauge is a guessed gauge volume and
+   * there is no polarization term, so the absolute micrometre value is
+   * uncalibrated -- treat it as a RELATIVE, monotone proxy for the
+   * LP-corrected integrated intensity share, i.e. "how much diffracting
+   * volume made this spot". Do not report a floor as a physical grain size.
+   *
+   * Under OneSolPerVox only the highest-completeness solution per voxel
+   * survives, so seeds too weak to ever win are pure cost. Measured on
+   * bt_1id_jun25b s1: winning seeds sit at ~2.1-2.9x the bulk median, and on the
+   * densest layer (L9, 1.45M ring-5 spots, 9.95 h) a floor at 19.2 removes
+   * 60 % of seed trials while every one of the 361 winning grains keeps a
+   * ring-5 spot.
+   *
+   * 0.0 (default) disables it and is bit-identical to the historical path. */
+  RealType MinSeedGrainRadius;
+  /* Preferred form of the same floor: drop the weakest FRACTION of the
+   * RingToIndex seed pool, resolved once into MinSeedGrainRadius against that
+   * pool's own distribution. Because the absolute scale is uncalibrated, a
+   * fraction is the only form that means the same thing on every layer, and
+   * it is the statement that is actually reportable -- "the weakest N % of
+   * candidate seed spots were not used as seeds". 0.0 (default) = off. */
+  RealType SeedDropWeakestFrac;
   /* Soft beam attribution (Phase 8). SoftAttrMode:
    *   0 = none / hard window (legacy scan_pos_tol_um filter, default)
    *   1 = top_hat   (trapezoidal: 1 inside SoftAttrFwhm/2, linear ramp
@@ -206,8 +255,16 @@ size_t n_spots = 0;             /* PF type (size_t) — superset */
 int32_t *SpotsDetID = NULL;
 size_t SpotsDetID_size = 0;
 
-/* hkls in PF format (10 cols: H K L Rnr Ds tht RRd sin(tht) v vSq). */
-double hkls[MAX_N_HKLS][10];
+/* hkls in PF format (11 cols: H K L Rnr Ds tht RRd sin(tht) v vSq F2).
+ *
+ * Col 10 is the per-reflection completeness WEIGHT: |F|^2 normalised to its
+ * maximum, read from the optional 12th column of hkls.csv (written by
+ * midas_hkls when an atom basis is declared). It defaults to 1.0 when the
+ * column is absent, which reproduces the unweighted behaviour exactly.
+ *
+ * The shared forward model reads only cols 0-9, so widening the row here does
+ * not touch forward.c or its two byte-identical copies. */
+double hkls[MAX_N_HKLS][11];
 int n_hkls = 0;
 /* Row-pointer view of the contiguous hkls[][10] table, so the shared forward
  * model (midas_ck_calc_diffraction_spots, double**) can index it. Populated
@@ -239,6 +296,30 @@ static inline int RingInRange(int rnr) {
 double pixelsize;
 double BeamSize = 0.0;
 int numScans = 1;
+
+/* ----------------------------------------------------------------------------
+ * Detector active-area mask (reverses plan ruling #5, which dropped BigDet
+ * from the indexer entirely).
+ *
+ * The shared forward model has always been able to drop a predicted spot whose
+ * detector cell fails a bit test (forward.c:181). The refiner wired it; the
+ * indexer did not — and since Grains.csv's Confidence is the indexer's own
+ * nMatches/nTspots carried through the refiner (FitUnified.c:1767), the
+ * detector mask had NO effect on completeness at all.
+ *
+ * Reinstating it here means a reflection predicted onto a dead pixel, a panel
+ * gap, or off the panel leaves BOTH sides of the ratio, instead of being
+ * counted as a reflection we failed to find.
+ *
+ * The bitset is produced by midas_transforms.geometry.detector_mask, which
+ * pushes `exchange/mask` forward through the same tilt+distortion model that
+ * places observed spots. Absent file => mask disabled => bit-identical to the
+ * previous behaviour.
+ *
+ * Read-only after startup; the forwarder is called from OpenMP regions. */
+static unsigned int *gBigDetMask = NULL;
+static MidasCkBigDet gBigDet = {0, NULL, 0.0};
+static const MidasCkBigDet *gBigDetP = NULL;
 
 /* int64 bins always (plan ruling #10). */
 size_t *data;
@@ -279,6 +360,7 @@ struct IndexerScratch {
 static int ReadParams(char FileName[], struct TParams *Params);
 static int ReadBins(char *cwd);
 static int ReadSpots(char *cwd);
+static int ReadBigDetMask(const char *cwd, const struct TParams *Params);
 
 /* ----------------------------------------------------------------------------
  * Comparators / helpers.
@@ -773,12 +855,15 @@ static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant
   (void)LatticeConstant;
   (void)Wavelength;
   /* Forward to the shared model (single source of truth). Indexer passes its
-   * param-file RingRadii[]; no BigDetector mask; orient_id = 0 (legacy). The
-   * shared row width (MIDAS_CK_NCOLS) means GCr lands in cols 16-18, unused
-   * here. */
+   * param-file RingRadii[]; orient_id = 0 (legacy). The shared row width
+   * (MIDAS_CK_NCOLS) means GCr lands in cols 16-18, unused here.
+   *
+   * gBigDetP is NULL unless BigDetSize > 0 AND BigDetectorMask.bin loaded, so
+   * the default path is bit-identical to the pre-mask indexer. */
   midas_ck_calc_diffraction_spots(OrientMatrix, distance, RingRadii, hkls_rows,
       n_hkls, OmegaRange, BoxSizes, NOmegaRanges, ExcludePoleAngle,
-      ringsToReject, nRingsToReject, NULL, 0, spots, nspots, nSpotsFracCalc);
+      ringsToReject, nRingsToReject, gBigDetP, 0, spots, nspots,
+      nSpotsFracCalc);
   return;
 }
 #if 0 /* legacy CalcDiffrSpots body — superseded by shared forward.c */
@@ -902,10 +987,20 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
                          const struct TParams *Params, int *nMatch,
                          RealType **GrainSpots,
                          int *nMatchesFracCalc,
-                         const int ringsToReject[], int nRingsToReject) {
+                         const int ringsToReject[], int nRingsToReject,
+                         double *wMatchesFracCalc, double *wTspotsFracCalc) {
   int nMatched = 0;
   int nNonMatched = 0;
   *nMatchesFracCalc = 0;
+  /* Weighted twins of nMatchesFracCalc / nTspotsFracCalc. Accumulated in the
+   * same loop and under the same skipRadialFilter test, so with every weight
+   * equal to 1 they are exactly the integer counts and the ratio is unchanged
+   * bit-for-bit. The weight comes from the reflection that produced the
+   * theoretical spot: TheorSpots[sp][2] is the hkl row index (forward.c:195),
+   * so this is an identity join, not a positional guess. */
+  const int cmetric = Params->ConfidenceMetric;
+  const double f2thr = Params->ForbiddenF2Threshold;
+  double wMatched = 0.0, wTspots = 0.0;
   int doRefRadFilter = (nScans_ == 1);
   int doScanFilter = (nScans_ > 1);
   RealType scanTol = (Params->ScanPosTol > 0) ? Params->ScanPosTol
@@ -942,6 +1037,15 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
         break;
       }
     }
+    /* Per-reflection weight. skipRadialFilter is exactly !SpotToFrac from
+     * forward.c:144, so this denominator tracks nTspotsFracCalc term for term. */
+    double wThis = 1.0;
+    if (cmetric != 0) {
+      int ihkl = (int)TheorSpots[sp][2];
+      double f2 = (ihkl >= 0 && ihkl < n_hkls) ? hkls[ihkl][10] : 1.0;
+      wThis = (cmetric == 1) ? ((f2 > f2thr) ? 1.0 : 0.0) : f2;
+    }
+    if (!skipRadialFilter) wTspots += wThis;
     int iEta = (int)floor((180 + TheorSpots[sp][12]) * Params->InvEtaBinSize);
     int iOme = (int)floor((180 + TheorSpots[sp][6]) * Params->InvOmeBinSize);
     RealType etamargin = etamargins_[RingNr];
@@ -1055,6 +1159,7 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
       GrainSpots[nMatched][15] = weight;  /* Phase 8: soft-attribution weight */
       nMatched++;
       (*nMatchesFracCalc)++;
+      if (!skipRadialFilter) wMatched += wThis;
       for (int i = 0; i < nRingsToReject; i++) {
         if (RingNr == ringsToReject[i]) {
           (*nMatchesFracCalc)--;
@@ -1082,6 +1187,34 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
     }
   }
   *nMatch = nMatched;
+  if (wMatchesFracCalc) *wMatchesFracCalc = wMatched;
+  if (wTspotsFracCalc) *wTspotsFracCalc = wTspots;
+}
+
+/* Completeness ratio for one candidate.
+ *
+ * In `raw` mode this returns the integer ratio the indexer has always
+ * computed, from the integer counters, so nothing about the default path
+ * changes — not the arithmetic, not the rounding, not the order of
+ * operations. Only when a metric is selected does it switch to the weighted
+ * sums, which are accumulated under the identical skipRadialFilter test.
+ *
+ * A zero denominator means every predicted reflection was excluded (all
+ * forbidden, or all on rejected rings). Returning 0 rather than dividing
+ * keeps such a candidate un-acceptable instead of NaN-propagating into the
+ * comparison, where NaN >= bestFracTillNow is false but NaN ordering is a
+ * trap not worth leaving in. */
+static inline RealType FracMatched(const struct TParams *Params,
+                                   int nMatchesFrac, int nTspotsFrac,
+                                   double wMatchesFrac, double wTspotsFrac) {
+  if (Params->ConfidenceMetric == 0) {
+    return (nTspotsFrac > 0)
+               ? (RealType)nMatchesFrac / (RealType)nTspotsFrac
+               : (RealType)0.0;
+  }
+  return (wTspotsFrac > 0.0)
+             ? (RealType)(wMatchesFrac / wTspotsFrac)
+             : (RealType)0.0;
 }
 
 /* ----------------------------------------------------------------------------
@@ -1575,18 +1708,20 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
                                 TheorSpots[sp][11] * TheorSpots[sp][11]) -
                            Params->RingRadii[(int)TheorSpots[sp][9]];
     }
+    double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
     CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
                  Params->MarginRadial, etamargins, Params->MarginOme,
                  Params->StepsizeOrient, numScans, xThis, yThis, Params,
                  &nMatches, GrainSpots, &nMatchesFracCalc,
-                 Params->RingsToReject, Params->nRingsToRejectCalc);
+                 Params->RingsToReject, Params->nRingsToRejectCalc,
+                 &wMatchesFrac, &wTspotsFrac);
     /* Use FracCalc denominators when RingsToReject is active (ruling #4 +
      * N5 resolution). When nRingsToReject==0, FracCalc denominators equal
      * raw counts → PF bit-identity vs legacy IndexerScanningOMP preserved. */
     int nMatchesAccept = (Params->nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
     int nTspotsAccept  = (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc  : nTspots;
-    FracThis = (nTspotsAccept > 0)
-               ? (double)nMatchesAccept / (double)nTspotsAccept : 0.0;
+    FracThis = FracMatched(Params, nMatchesAccept, nTspotsAccept,
+                           wMatchesFrac, wTspotsFrac);
     if (FracThis > Params->MinMatchesToAcceptFrac) {
       if (FracThis >= bestConfidence) {
         RealType prevBestConfidence = bestConfidence;
@@ -1703,16 +1838,18 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
                               TheorSpots[sp][11] * TheorSpots[sp][11]) -
                          Params->RingRadii[(int)TheorSpots[sp][9]];
   }
+  double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
   CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
                Params->MarginRadial, etamargins, Params->MarginOme,
                Params->StepsizeOrient, numScans, xThis, yThis, Params,
                &nMatches, GrainSpots, &nMatchesFracCalc,
-               Params->RingsToReject, Params->nRingsToRejectCalc);
+               Params->RingsToReject, Params->nRingsToRejectCalc,
+               &wMatchesFrac, &wTspotsFrac);
   /* N5: use FracCalc denominators when RingsToReject is active. */
   int nMatchesAccept = (Params->nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
   int nTspotsAccept  = (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc  : nTspots;
-  FracThis = (nTspotsAccept > 0)
-             ? (double)nMatchesAccept / (double)nTspotsAccept : 0.0;
+  FracThis = FracMatched(Params, nMatchesAccept, nTspotsAccept,
+                         wMatchesFrac, wTspotsFrac);
   if (FracThis <= Params->MinMatchesToAcceptFrac) return 0;
   for (i = 0; i < 9; i++)
     GrainMatches[0][i] = OM[i / 3][i % 3];
@@ -1894,20 +2031,20 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
                                     TheorSpots[sp][11] * TheorSpots[sp][11]) -
                                Params->RingRadii[(int)TheorSpots[sp][9]];
         }
+        double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
         CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
                      Params->MarginRadial, etamargins, Params->MarginOme,
                      Params->StepsizeOrient, /*nScans=*/1, 0.0, 0.0, Params,
                      &nMatches, GrainSpots, &nMatchesFracCalc,
-                     Params->RingsToReject, Params->nRingsToRejectCalc);
+                     Params->RingsToReject, Params->nRingsToRejectCalc,
+                     &wMatchesFrac, &wTspotsFrac);
         if (nMatchesFracCalc > bestnMatchesPos) {
           bestnMatchesPos = nMatchesFracCalc;
           bestnTspotsPos = nTspotsFracCalc;
         }
-        double fracMatchesThis;
-        if (nTspotsFracCalc > 0)
-          fracMatchesThis = (RealType)nMatchesFracCalc / (RealType)nTspotsFracCalc;
-        else
-          fracMatchesThis = 0.0;
+        double fracMatchesThis = FracMatched(Params, nMatchesFracCalc,
+                                             nTspotsFracCalc, wMatchesFrac,
+                                             wTspotsFrac);
         if (nMatchesFracCalc >= MinMatchesToAccept &&
             fracMatchesThis >= bestFracTillNow) {
           bestMatchFound = 1;
@@ -2000,7 +2137,10 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
 /* ----------------------------------------------------------------------------
  * ReadParams — unified, all aliases (plan ruling #13).
  *
- * BigDet entirely dropped (plan ruling #5).
+ * BigDetSize is parsed again as of 2026-08-22, reversing plan ruling #5: the
+ * detector active-area mask is how a reflection predicted onto dead silicon
+ * leaves the completeness denominator. 0 (the default) disables it and keeps
+ * the previous behaviour bit-identical.
  * --------------------------------------------------------------------------*/
 static int ReadParams(char FileName[], struct TParams *Params) {
 #define MAX_LINE_LENGTH 4096
@@ -2016,7 +2156,12 @@ static int ReadParams(char FileName[], struct TParams *Params) {
   Params->isGrainsInput = 0;
   Params->nRingsToRejectCalc = 0;
   Params->ScanPosTol = 0.0;
+  Params->MinSeedGrainRadius = 0.0;      /* off => historical seed set */
+  Params->SeedDropWeakestFrac = 0.0;     /* off => historical seed set */
   Params->RingToIndex = 0;
+  Params->BigDetSize = 0;
+  Params->ConfidenceMetric = 0;          /* raw */
+  Params->ForbiddenF2Threshold = 1e-6;
   Params->UseFriedelPairs = 0;
   Params->SoftAttrMode = 0;        /* legacy hard window by default */
   Params->SoftAttrFwhm = 0.0;
@@ -2089,6 +2234,36 @@ static int ReadParams(char FileName[], struct TParams *Params) {
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
       sscanf(line, "%s %lf", dummy, &pixelsize);
+      continue;
+    }
+    str = "BigDetSize ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %d", dummy, &(Params->BigDetSize));
+      continue;
+    }
+    str = "ConfidenceMetric ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      char mval[MAX_LINE_LENGTH];
+      if (sscanf(line, "%s %s", dummy, mval) == 2) {
+        if (!strncmp(mval, "raw", 3)) Params->ConfidenceMetric = 0;
+        else if (!strncmp(mval, "filtered", 8)) Params->ConfidenceMetric = 1;
+        else if (!strncmp(mval, "weighted", 8)) Params->ConfidenceMetric = 2;
+        else {
+          fprintf(stderr,
+                  "Error: ConfidenceMetric must be raw|filtered|weighted, "
+                  "got '%s'.\n", mval);
+          fclose(fp);
+          return 1;
+        }
+      }
+      continue;
+    }
+    str = "ForbiddenF2Threshold ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %lf", dummy, &(Params->ForbiddenF2Threshold));
       continue;
     }
     str = "BeamSize ";
@@ -2311,6 +2486,18 @@ static int ReadParams(char FileName[], struct TParams *Params) {
       sscanf(line, "%s %lf", dummy, &(Params->ScanPosTol));
       continue;
     }
+    str = "MinSeedGrainRadius ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %lf", dummy, &(Params->MinSeedGrainRadius));
+      continue;
+    }
+    str = "SeedDropWeakestFrac ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %lf", dummy, &(Params->SeedDropWeakestFrac));
+      continue;
+    }
     str = "SoftAttrMode ";
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
@@ -2452,6 +2639,109 @@ static int ReadParams(char FileName[], struct TParams *Params) {
      * a bad ring number into a wild store. */
     if (!RingInRange(Params->RingNumbers[i])) continue;
     Params->RingRadii[Params->RingNumbers[i]] = Params->RingRadiiUser[i];
+  }
+  return 0;
+}
+
+/* ----------------------------------------------------------------------------
+ * ReadBigDetMask — load the detector active-area bitset, if one was asked for.
+ *
+ * Same file name and layout the refiner already reads (FitUnified.c:1036-1053):
+ * a raw little-endian uint32 bitset of BigDetSize^2/32 + 1 words, in which a
+ * SET bit means the cell is usable. Produced by
+ * midas_transforms.geometry.detector_mask.write_big_detector_mask.
+ *
+ * Returns 0 on success or when no mask was requested. A requested-but-missing
+ * or short file is a hard error: silently continuing would report a
+ * completeness computed against a denominator the user did not ask for, and
+ * that number is indistinguishable from a correct one.
+ * --------------------------------------------------------------------------*/
+static int ReadBigDetMask(const char *cwd, const struct TParams *Params) {
+  if (Params->BigDetSize <= 0) return 0;
+
+  long long int s = (long long int)Params->BigDetSize;
+  size_t want_words = (size_t)((s * s) / 32 + 1);
+  size_t want_bytes = want_words * sizeof(unsigned int);
+
+  char filename[4096];
+  snprintf(filename, sizeof(filename), "%s/BigDetectorMask.bin", cwd);
+  FILE *f = fopen(filename, "rb");
+  if (f == NULL) {
+    fprintf(stderr,
+            "Error: BigDetSize %d was set but %s could not be opened: %s.\n"
+            "Generate it with midas_transforms.geometry.detector_mask, or "
+            "remove BigDetSize from the parameter file.\n",
+            Params->BigDetSize, filename, strerror(errno));
+    return 1;
+  }
+  if (fseek(f, 0, SEEK_END) != 0) {
+    fprintf(stderr, "Error: seek failed on %s.\n", filename);
+    fclose(f);
+    return 1;
+  }
+  long got_bytes = ftell(f);
+  rewind(f);
+  if (got_bytes < 0 || (size_t)got_bytes < want_bytes) {
+    fprintf(stderr,
+            "Error: %s is %ld bytes but BigDetSize %d needs %zu "
+            "(%zu uint32 words). The mask and the parameter file disagree "
+            "about the grid size.\n",
+            filename, got_bytes, Params->BigDetSize, want_bytes, want_words);
+    fclose(f);
+    return 1;
+  }
+
+  gBigDetMask = (unsigned int *)malloc(want_bytes);
+  if (gBigDetMask == NULL) {
+    fprintf(stderr, "Error: out of memory allocating %zu bytes for %s.\n",
+            want_bytes, filename);
+    fclose(f);
+    return 1;
+  }
+  size_t nread = fread(gBigDetMask, 1, want_bytes, f);
+  fclose(f);
+  if (nread != want_bytes) {
+    fprintf(stderr, "Error: short read on %s (%zu of %zu bytes).\n", filename,
+            nread, want_bytes);
+    free(gBigDetMask);
+    gBigDetMask = NULL;
+    return 1;
+  }
+
+  if (pixelsize <= 0.0) {
+    fprintf(stderr,
+            "Error: BigDetSize %d was set but px is %g. The mask indexes "
+            "cells as yl/px, so a zero pixel size cannot be used.\n",
+            Params->BigDetSize, pixelsize);
+    free(gBigDetMask);
+    gBigDetMask = NULL;
+    return 1;
+  }
+
+  gBigDet.big_det_size = Params->BigDetSize;
+  gBigDet.mask = gBigDetMask;
+  gBigDet.pixelsize = pixelsize;
+  gBigDetP = &gBigDet;
+
+  /* Report the active fraction. A mask that keeps ~everything, or ~nothing,
+   * is almost always a producer bug rather than a detector property, and it
+   * is invisible in the grain output. */
+  long long int n_set = 0;
+  for (long long int k = 0; k < s * s; k++) {
+    if (gBigDetMask[k / 32] & (1u << (k % 32))) n_set++;
+  }
+  printf("BigDetectorMask: %s, %dx%d cells, %lld active (%.2f%%).\n", filename,
+         Params->BigDetSize, Params->BigDetSize, n_set,
+         100.0 * (double)n_set / (double)(s * s));
+  if (n_set == 0) {
+    fprintf(stderr,
+            "Error: the detector mask marks ZERO cells active; every "
+            "predicted spot would be rejected and the run would index "
+            "nothing. Refusing to continue.\n");
+    free(gBigDetMask);
+    gBigDetMask = NULL;
+    gBigDetP = NULL;
+    return 1;
   }
   return 0;
 }
@@ -2612,6 +2902,9 @@ int main(int argc, char *argv[]) {
   strcpy(outputFolderTmp, Params.OutputFolder);
   char *cwdstr = dirname(outputFolderTmp);
 
+  /* Detector active-area mask. No-op unless BigDetSize > 0. */
+  if (ReadBigDetMask(cwdstr, &Params) != 0) return 1;
+
   /* Mode auto-detect: PF iff positions.csv has >1 row. FF if it has 1 row
    * (with "0.000000" — the convention for the unified format) or is absent.
    * In PF mode, numScans = number of rows in positions.csv (NOT nWork).
@@ -2661,15 +2954,34 @@ int main(int argc, char *argv[]) {
   int nRingsOutOfRange = 0, maxRingNrSeen = 0;
   double hc, kc, lc, RRd, Ds, tht, tth;
   while (fgets(aline, 1000, hklf) != NULL) {
+    /* Col 12 (F2) is OPTIONAL. midas_hkls appends it only when an atom basis
+     * is declared, and every historical file lacks it. Default 1.0 => the
+     * weighted ratio collapses to the plain count ratio, bit-identically. */
+    double f2w = 1.0;
     /* Accept FF 11-col (numeric ringRad) format. */
-    if (sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %lf %lf", &hi, &ki, &li,
-               &Ds, &Rnr, &hc, &kc, &lc, &tht, &tth, &RRd) < 11) {
+    int nconv = sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %lf %lf %lf",
+                       &hi, &ki, &li, &Ds, &Rnr, &hc, &kc, &lc, &tht, &tth,
+                       &RRd, &f2w);
+    if (nconv < 11) {
       /* Fall back to PF format with a string in col 10 (legacy variant). */
       if (sscanf(aline, "%d %d %d %lf %d %lf %lf %lf %lf %s %lf", &hi, &ki, &li,
                  &Ds, &Rnr, &hc, &kc, &lc, &tht, dummy_h, &RRd) < 11) {
         continue;
       }
       tth = 2.0 * tht;
+      f2w = 1.0;
+    } else if (nconv < 12) {
+      f2w = 1.0;                       /* 11-column file: unweighted */
+    }
+    /* A non-finite or non-positive weight would silently zero a reflection's
+     * contribution to BOTH sides of the ratio, which is indistinguishable
+     * from the reflection not existing. Refuse it rather than absorb it. */
+    if (!isfinite(f2w) || f2w < 0.0) {
+      fprintf(stderr,
+              "Error: hkls.csv reflection %d %d %d has F2 = %g; the weight "
+              "must be finite and >= 0.\n", hi, ki, li, f2w);
+      fclose(hklf);
+      exit(EXIT_FAILURE);
     }
     if (!RingInRange(Rnr)) {
       /* Out of table range. Such a ring can never be requested either, since
@@ -2701,6 +3013,7 @@ int main(int argc, char *argv[]) {
         RealType v = hkls[n_hkls][7] * len;
         hkls[n_hkls][8] = v;
         hkls[n_hkls][9] = v * v;
+        hkls[n_hkls][10] = f2w;      /* completeness weight; 1.0 if unweighted */
         n_hkls++;
       }
     }
@@ -2894,6 +3207,48 @@ int main(int argc, char *argv[]) {
       spotSinOme[i] = sin(omeRad);
       spotCosOme[i] = cos(omeRad);
     }
+
+    /* Resolve SeedDropWeakestFrac into an absolute floor.
+     *
+     * This is the knob to prefer. The absolute GrainRadius scale is NOT
+     * calibrated (guessed Vgauge, no polarization term), so a fixed number
+     * means "the weakest 60 % here, but 0 % over there" -- on bt_1id_jun25b s1 the
+     * per-layer median ranged 16.5 to 68.8 for exactly that reason. A FRACTION
+     * is the quantity that is actually reportable: "the weakest N % of
+     * candidate seed spots were not used as seeds".
+     *
+     * Resolved once, here, over the RingToIndex row range only -- the same
+     * pool the seed loop walks. Cost is one sort of that range (~0.2 s for
+     * 1.45M spots) against hours of indexing. The resolved absolute value is
+     * printed so a run remains reproducible from its log.
+     *
+     * Both knobs together = the stricter of the two, so neither can silently
+     * weaken the other. */
+    if (Params.SeedDropWeakestFrac > 0.0 && endRowNrSp >= startRowNrSp) {
+      size_t nSeedPool = endRowNrSp - startRowNrSp + 1;
+      double *gr = (double *)malloc(nSeedPool * sizeof(double));
+      if (gr == NULL) {
+        fprintf(stderr, "SeedDropWeakestFrac: alloc of %zu doubles failed.\n",
+                nSeedPool);
+        exit(EXIT_FAILURE);
+      }
+      for (size_t i = 0; i < nSeedPool; i++)
+        gr[i] = ObsSpotsLab[(startRowNrSp + i) * 10 + 3];
+      qsort(gr, nSeedPool, sizeof(double), cmp_double_asc);
+      double f = Params.SeedDropWeakestFrac;
+      if (f > 1.0) f = 1.0;
+      size_t k = (size_t)(f * (double)nSeedPool);
+      if (k >= nSeedPool) k = nSeedPool - 1;
+      double resolved = gr[k];
+      free(gr);
+      if (resolved > Params.MinSeedGrainRadius)
+        Params.MinSeedGrainRadius = resolved;
+      printf("SeedDropWeakestFrac %.4f over %zu ring-%d spots -> "
+             "MinSeedGrainRadius %.4f\n",
+             Params.SeedDropWeakestFrac, nSeedPool, Params.RingToIndex,
+             Params.MinSeedGrainRadius);
+      fflush(stdout);
+    }
   }
 
   /* ---- FF-only: load SpotsToIndex.csv or, when isGrainsInput, the seeded
@@ -2986,10 +3341,31 @@ int main(int argc, char *argv[]) {
    * required: stdout is a pipe here, so without it the whole thing arrives
    * at exit and defeats the purpose. */
   long long nDoneVox = 0;
+  const long long nVoxLocal = (long long)(endVoxel - startVoxel);
   const long long voxReportEvery =
-      (long long)((endVoxel - startVoxel) / 200) > 0
-          ? (long long)((endVoxel - startVoxel) / 200)
-          : 1;
+      (nVoxLocal / 200) > 0 ? (nVoxLocal / 200) : 1;
+  /* PF sub-voxel progress. Voxels alone are far too coarse here: a PF layer is
+   * n_scans^2 voxels (361 for 19 scans) and one voxel costs ~2 thread-hours on
+   * a dense s1 layer, so with 64 threads NOTHING completes for the first ~2 h
+   * and the last ~2 h are spent finishing voxels already counted. Measured on
+   * bt_1id_jun25b s1: copland L9 ran >9 h for 361 voxels on 80 cores; chutoro L7
+   * completed 0 voxels in its first 16 min.
+   *
+   * The inner spot-driven seed loop gives a much finer, and exactly bounded,
+   * unit: startRowNrSp/endRowNrSp are computed once before this parallel
+   * region, so EVERY voxel iterates the same count and the denominator is
+   * known up front. Threads accumulate locally and flush every
+   * SEED_FLUSH_EVERY to keep this off the hot path -- a per-iteration atomic
+   * across 64 threads would be pure contention. */
+#define SEED_FLUSH_EVERY 4096LL
+  long long nDoneSeeds = 0;
+  const long long seedsPerVox =
+      (isPF && endRowNrSp >= startRowNrSp)
+          ? (long long)(endRowNrSp - startRowNrSp + 1)
+          : 0;
+  const long long nSeedsTotal = nVoxLocal * seedsPerVox;
+  const long long seedReportEvery =
+      (nSeedsTotal / 500) > 0 ? (nSeedsTotal / 500) : 1;
   double vox_t0 = omp_get_wtime();
 #pragma omp parallel num_threads(numProcs) private(thisRowNr)
   {
@@ -3015,27 +3391,15 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
 
+    /* Thread-local seed tally, flushed into the shared counter every
+     * SEED_FLUSH_EVERY iterations. Declared outside the omp for so it spans
+     * every voxel this thread handles. */
+    long long seedsLocal = 0;
+
     /* (Outer #pragma must enclose the for loop; schedule(dynamic) matches PF
      * legacy.) */
 #pragma omp for schedule(dynamic)
     for (thisRowNr = startVoxel; thisRowNr < endVoxel; thisRowNr++) {
-      /* Counted on ENTRY, not on completion: the FF branch below can
-       * `continue` past the end of the body, so a bottom-of-loop counter
-       * would never reach 100%. Overstates by at most numProcs voxels in
-       * flight (64 of ~36000 here), which is immaterial for a progress bar. */
-      {
-        long long doneNow;
-#pragma omp atomic capture
-        doneNow = ++nDoneVox;
-        if (doneNow % voxReportEvery == 0 ||
-            doneNow == (long long)(endVoxel - startVoxel)) {
-          double el = omp_get_wtime() - vox_t0;
-          printf("  progress: %lld/%d voxels, %.1f vox/s, elapsed %.1fs\n",
-                 doneNow, endVoxel - startVoxel,
-                 (double)doneNow / (el > 1e-9 ? el : 1e-9), el);
-          fflush(stdout);
-        }
-      }
       VoxelAccumulator *acc = &accs[thisRowNr - startVoxel];
       if (isPF) {
         double xThis = grid[thisRowNr * 2 + 0];
@@ -3081,13 +3445,48 @@ int main(int argc, char *argv[]) {
           /* spot-driven seed mode (PF default). */
           RealType seedTol =
               (Params.ScanPosTol > 0) ? Params.ScanPosTol : (BeamSize / 2);
+          const RealType seedGRMin = Params.MinSeedGrainRadius;
           for (size_t idnr = startRowNrSp; idnr <= endRowNrSp; idnr++) {
-            int thisID = (int)ObsSpotsLab[idnr * 10 + 4];
-            double newY = xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
-            if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * 10 + 9]]) <=
-                seedTol) {
-              DoIndexing_PF(thisID, thisRowNr, xThis, yThis, 0, &Params,
-                            (int)idnr, acc, &scratch);
+            /* Seed-strength floor, tested before the beam gate because it is
+             * the cheaper of the two. This skips the spot AS A SEED only: it
+             * stays in ObsSpotsLab and CompareSpots can still match it, so no
+             * grain's completeness can change. Written as a guard rather than
+             * a `continue` so the progress counter below still sees every
+             * iteration -- the denominator counts spots inspected. */
+            if (seedGRMin <= 0.0 ||
+                ObsSpotsLab[idnr * 10 + 3] >= seedGRMin) {
+              int thisID = (int)ObsSpotsLab[idnr * 10 + 4];
+              double newY =
+                  xThis * spotSinOme[idnr] + yThis * spotCosOme[idnr];
+              if (fabs(newY - ypos[(int)ObsSpotsLab[idnr * 10 + 9]]) <=
+                  seedTol) {
+                DoIndexing_PF(thisID, thisRowNr, xThis, yThis, 0, &Params,
+                              (int)idnr, acc, &scratch);
+              }
+            }
+            /* Sub-voxel progress. Batched so the atomic is amortised ~1/4096
+             * iterations instead of contending on every one. */
+            if (++seedsLocal >= SEED_FLUSH_EVERY) {
+              long long seedsNow;
+#pragma omp atomic capture
+              {
+                nDoneSeeds += seedsLocal;
+                seedsNow = nDoneSeeds;
+              }
+              seedsLocal = 0;
+              if (seedsNow / seedReportEvery !=
+                  (seedsNow - SEED_FLUSH_EVERY) / seedReportEvery) {
+                double el = omp_get_wtime() - vox_t0;
+                long long vDone;
+#pragma omp atomic read
+                vDone = nDoneVox;
+                printf("  progress: %lld/%lld seeds, %.1f seeds/s, "
+                       "elapsed %.1fs (voxels done %lld/%lld)\n",
+                       seedsNow, nSeedsTotal,
+                       (double)seedsNow / (el > 1e-9 ? el : 1e-9), el,
+                       vDone, nVoxLocal);
+                fflush(stdout);
+              }
             }
           }
         }
@@ -3105,10 +3504,40 @@ int main(int argc, char *argv[]) {
         } else {
           int spotID = FF_SpotIDs[thisRowNr];
           int spotRowNo = FF_SpotRowNos[thisRowNr];
-          if (spotID == -1 || spotRowNo < 0) continue;
-          DoIndexing_FF(spotID, spotRowNo, &Params, acc, &scratch);
+          /* An `if`, not a `continue`: a skipped row must still fall through
+           * to the completion counter below, or the bar never reaches 100 %.
+           * That hazard is why this used to be counted on entry. */
+          if (spotID != -1 && spotRowNo >= 0)
+            DoIndexing_FF(spotID, spotRowNo, &Params, acc, &scratch);
         }
       }
+      /* Counted on COMPLETION. Counting on ENTRY made the bar read
+       * numProcs/nVoxels the instant the loop started (18 % of a 361-voxel PF
+       * layer on 64 threads) and 100 % for the last ~2 h while the in-flight
+       * voxels finished. There is no `continue` in this body any more, so the
+       * bottom of the loop is reached exactly once per voxel. */
+      {
+        long long doneNow;
+#pragma omp atomic capture
+        doneNow = ++nDoneVox;
+        /* PF reports through the finer seed line above; emitting a second
+         * `progress:` line here would fight it for the one progress slot
+         * midas-pipeline keeps. */
+        if (!isPF &&
+            (doneNow % voxReportEvery == 0 || doneNow == nVoxLocal)) {
+          double el = omp_get_wtime() - vox_t0;
+          printf("  progress: %lld/%lld voxels, %.1f vox/s, elapsed %.1fs\n",
+                 doneNow, nVoxLocal,
+                 (double)doneNow / (el > 1e-9 ? el : 1e-9), el);
+          fflush(stdout);
+        }
+      }
+    }
+    /* Flush this thread's seed remainder so the final line reaches 100 %. */
+    if (seedsLocal > 0) {
+#pragma omp atomic
+      nDoneSeeds += seedsLocal;
+      seedsLocal = 0;
     }
     FreeMemMatrix(scratch.GrainMatches, MAX_N_MATCHES);
     FreeMemMatrix(scratch.GrainMatchesT, MAX_N_MATCHES);
@@ -3119,6 +3548,20 @@ int main(int argc, char *argv[]) {
     free(scratch.IAgrainspots);
     free(scratch.OrMat);
   }
+
+  /* Final tick. The per-thread remainders are flushed by now, but the last
+   * flush need not have crossed a reporting boundary, so without this the bar
+   * can stop just short of 100 % and look stalled at the finish. */
+  if (isPF && nSeedsTotal > 0) {
+    double el = omp_get_wtime() - vox_t0;
+    printf("  progress: %lld/%lld seeds, %.1f seeds/s, elapsed %.1fs "
+           "(voxels done %lld/%lld)\n",
+           nDoneSeeds, nSeedsTotal,
+           (double)nDoneSeeds / (el > 1e-9 ? el : 1e-9), el,
+           nDoneVox, nVoxLocal);
+    fflush(stdout);
+  }
+#undef SEED_FLUSH_EVERY
 
   /* Always write consolidated output (plan ruling #8). */
   printf("Writing consolidated output files...\n");

@@ -49,6 +49,8 @@ _FLOAT_KEYS: dict[str, str] = {
     "MinEta": "ExcludePoleAngle",   # IndexerOMP.c:1454 — aliases ExcludePoleAngle
     # --- pf-HEDM scan-aware keys (P5) ---
     "ScanPosTol": "scan_pos_tol_um",
+    "MinSeedGrainRadius": "MinSeedGrainRadius",
+    "SeedDropWeakestFrac": "SeedDropWeakestFrac",
     "BeamSize": "_beam_size_for_default_scan_tol",   # post-processed below
 }
 
@@ -175,7 +177,40 @@ def read_params(path: str | Path) -> IndexerParams:
                     p.LatticeConstant = (a, a, a, 90.0, 90.0, 90.0)
                 continue
             if key == "BigDetSize":
-                # Deprecated; parsed for backward compat then ignored.
+                # The C indexer reinstated this on 2026-08-22 to enable the
+                # detector active-area mask (a reflection predicted onto dead
+                # silicon leaves BOTH sides of the completeness ratio). The
+                # Python backends do not implement it. Ignoring it silently
+                # would report a completeness computed against a denominator
+                # the user did not ask for, and that number is
+                # indistinguishable from a correct one.
+                if args and int(float(args[0])) > 0:
+                    raise ValueError(
+                        f"BigDetSize {args[0]} requests the detector "
+                        "active-area mask, which only the C indexer "
+                        "implements. Run the c-omp backend, or remove "
+                        "BigDetSize to index without the mask."
+                    )
+                continue
+            if key == "ConfidenceMetric":
+                # Same argument as BigDetSize: 'weighted'/'filtered' change the
+                # SCALE of completeness, and a backend that quietly returns the
+                # unweighted number would be reporting a different quantity
+                # under the same name — including through the acceptance gate.
+                mval = (args[0] if args else "raw").strip().lower()
+                if mval not in ("raw", "filtered", "weighted"):
+                    raise ValueError(
+                        f"ConfidenceMetric must be raw|filtered|weighted, "
+                        f"got {args[0]!r}"
+                    )
+                if mval != "raw":
+                    raise ValueError(
+                        f"ConfidenceMetric {mval!r} is implemented only in the "
+                        "C indexer. The torch and numba fraction paths compute "
+                        "the unweighted ratio, so honouring this silently is "
+                        "not possible. Run the c-omp backend, or set "
+                        "ConfidenceMetric raw."
+                    )
                 continue
 
             # --- multi-detector (pinwheel) per-panel blocks ---

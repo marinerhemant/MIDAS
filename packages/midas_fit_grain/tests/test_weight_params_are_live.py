@@ -62,6 +62,46 @@ def test_they_are_parsed_from_paramstest(tmp_path):
     assert "WeightFitRMSE" in _FLOAT_KEYS
 
 
+def test_registry_default_matches_the_live_chain():
+    """The registry seeds the wizard; a value that disagrees with the runtime
+    default is a trap, not a preference.
+
+    Four places carry a default for these two knobs:
+
+      * ``midas_params.registry``          -> seeds the wizard / notebook / the
+                                              validator's "add a line like" hint
+      * ``midas_transforms.params``        -> writes the value into EVERY
+                                              paramstest.txt (params.py:443)
+      * ``midas_fit_grain.config.FitConfig`` -> the parse-time fallback
+      * ``FitUnified.c`` global            -> the C fallback
+
+    Until 2026-08-22 the registry said ``WeightMask 0`` while the other three
+    said ``1.0``. Nothing computed with the 0 -- it reached only the wizard --
+    but a user who accepted the wizard's suggestion would have had every
+    mask-touched spot silently dropped from the refinement objective, with no
+    error and no log line. ``WeightFitRMSE`` legitimately defaults to 0 (that
+    is its "disabled" value, gated by ``if (WeightFitRMSE > 0.0)``), which is
+    why only one of the two moved.
+    """
+    from midas_params.registry import by_name
+    from midas_transforms.params import ParamsTest
+
+    from midas_fit_grain.config import FitConfig
+
+    specs, cfg, pt = by_name(), FitConfig(), ParamsTest()
+    for name in ("WeightMask", "WeightFitRMSE"):
+        reg = float(specs[name].default)
+        assert reg == float(getattr(cfg, name)), (
+            f"{name}: registry default {reg} != FitConfig default "
+            f"{getattr(cfg, name)} -- the wizard would seed a value the "
+            f"refiner does not use"
+        )
+        assert reg == float(getattr(pt, name)), (
+            f"{name}: registry default {reg} != the value midas-transforms "
+            f"writes into paramstest.txt ({getattr(pt, name)})"
+        )
+
+
 def test_they_are_no_longer_on_the_ignore_list():
     src = inspect.getsource(FitConfig.__module__ and __import__(
         "midas_fit_grain.config", fromlist=["x"]))

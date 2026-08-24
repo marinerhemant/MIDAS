@@ -109,6 +109,24 @@ class IndexerParams:
     # ObsSpotsLab[5] == RingToIndex). FF mode ignores this and uses
     # SpotsToIndex.csv directly.
     RingToIndex: int = 0
+    # PF seed-strength floor, in micrometres of equivalent grain radius
+    # (``Spots.bin`` col 3, ``GrainRadius``). A spot below this is not tried as
+    # a SEED but stays available for matching, so no grain's completeness can
+    # change. GrainRadius is used rather than raw intensity because
+    # ``midas_transforms/radius`` divides out the ring's ``powder_int`` and
+    # ``m_hkl``, making it comparable across rings — a raw cut would conflate a
+    # small grain with a low-|F| reflection of a large one.
+    # 0.0 ⇒ disabled, historical seed set.
+    MinSeedGrainRadius: float = 0.0
+    # PREFERRED form of the same floor: drop the weakest fraction of the
+    # RingToIndex seed pool, resolved once against that pool's own
+    # distribution. The absolute GrainRadius scale is uncalibrated (guessed
+    # ``Vgauge``, no polarization term), so a fixed number means a different
+    # cut on every layer — on bt_1id_jun25b s1 the per-layer median ranged 16.5 to
+    # 68.8. A fraction is the only form that means the same thing everywhere,
+    # and it is the reportable statement: "the weakest N % of candidate seed
+    # spots were not used as seeds". 0.0 ⇒ disabled.
+    SeedDropWeakestFrac: float = 0.0
 
     def get_ring_radius(self, ring_nr: int) -> float:
         """Sparse lookup mirroring `Params.RingRadii[ring_nr]` in C."""

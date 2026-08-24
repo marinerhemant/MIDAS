@@ -122,11 +122,63 @@ def test_blank_and_comment_lines_skipped(tmp_path):
     assert p.Distance == 999.0
 
 
-def test_big_det_size_silently_ignored(tmp_path):
+def test_big_det_size_zero_is_still_ignored(tmp_path):
+    """0 means "no mask", which the Python backends can honour honestly."""
     p = read_params(_write(tmp_path, """
-        BigDetSize 8192
+        BigDetSize 0
         Wavelength 0.17
     """))
     assert p.Wavelength == 0.17
     # No attribute leak for BigDet
     assert not hasattr(p, "BigDetSize")
+
+
+def test_big_det_size_nonzero_is_refused_not_ignored(tmp_path):
+    """Changed 2026-08-23. This test previously asserted the opposite.
+
+    ``BigDetSize > 0`` now enables the detector active-area mask in the C
+    indexer: a reflection predicted onto a dead pixel or off the panel leaves
+    BOTH sides of the completeness ratio. The torch and numba backends do not
+    implement it.
+
+    Silently ignoring it would report a completeness computed against a
+    denominator the user did not ask for — and that number is
+    indistinguishable from a correct one, so nothing downstream could catch
+    it. Refusing is the only honest option while the two backends differ.
+    """
+    with pytest.raises(ValueError, match="only the C indexer"):
+        read_params(_write(tmp_path, """
+            BigDetSize 8192
+            Wavelength 0.17
+        """))
+
+
+def test_confidence_metric_raw_is_accepted(tmp_path):
+    p = read_params(_write(tmp_path, """
+        ConfidenceMetric raw
+        Wavelength 0.17
+    """))
+    assert p.Wavelength == 0.17
+
+
+@pytest.mark.parametrize("metric", ["filtered", "weighted"])
+def test_confidence_metric_non_raw_is_refused(tmp_path, metric):
+    """Weighting changes the SCALE of completeness, including at the gate.
+
+    A backend that quietly returned the unweighted ratio would be reporting a
+    different quantity under the same name, and ``Completeness`` /
+    ``MinMatchesToAcceptFrac`` would then be compared against it.
+    """
+    with pytest.raises(ValueError, match="only in the C indexer"):
+        read_params(_write(tmp_path, f"""
+            ConfidenceMetric {metric}
+            Wavelength 0.17
+        """))
+
+
+def test_confidence_metric_garbage_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="raw\\|filtered\\|weighted"):
+        read_params(_write(tmp_path, """
+            ConfidenceMetric sometimes
+            Wavelength 0.17
+        """))

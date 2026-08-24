@@ -26,7 +26,9 @@ from __future__ import annotations
 import importlib.resources
 import os
 import subprocess
+import tempfile
 from pathlib import Path
+from typing import Callable, Optional
 
 __all__ = ["available", "binary_path", "run_refiner", "CBackendUnavailableError"]
 
@@ -79,6 +81,7 @@ def run_refiner(
     num_procs: int = 1,
     extra_env: dict[str, str] | None = None,
     cwd: str | os.PathLike[str] | None = None,
+    line_cb: Optional[Callable[[str], None]] = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """Invoke the unified ``midas_fitgrain`` binary.
 
@@ -86,6 +89,12 @@ def run_refiner(
     ``nSpotsToIndex`` (FF) or ``numScans`` (PF). ``cwd`` defaults to
     ``dirname(paramstest)`` so relative paths in paramstest resolve as the C
     ReadParams expects.
+
+    ``line_cb`` streams stdout line by line instead of buffering it to exit.
+    ``FitUnified.c`` prints ``  progress: N/M seeds, R seeds/s`` ~200 times per
+    run and ``fflush``es each because stdout is a pipe; the default
+    ``capture_output`` path discards that liveness by holding everything until
+    the process ends.
 
     Raises
     ------
@@ -117,4 +126,43 @@ def run_refiner(
     env = os.environ.copy()
     if extra_env:
         env.update(extra_env)
-    return subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True, check=False)
+    if line_cb is None:
+        return subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True,
+                              check=False)
+    return _run_streaming(cmd, cwd=str(cwd), env=env, line_cb=line_cb)
+
+
+def _run_streaming(
+    cmd: list[str], *, cwd: str, env: dict[str, str],
+    line_cb: Callable[[str], None],
+) -> subprocess.CompletedProcess[bytes]:
+    """Run ``cmd``, feeding each stdout line to ``line_cb`` as it arrives.
+
+    Returns the same ``CompletedProcess`` shape as the buffered path, stdout
+    included. stderr is spooled to a temp file rather than a second pipe --
+    draining one pipe while the other fills is how these deadlock.
+
+    (Copy of ``midas_index.backend_c._run_streaming``: the two packages are
+    independent by design and neither should depend on the other for a
+    twenty-line subprocess helper. Fix both together.)
+    """
+    chunks: list[bytes] = []
+    with tempfile.TemporaryFile() as errf:
+        popen = subprocess.Popen(cmd, cwd=cwd, env=env,
+                                 stdout=subprocess.PIPE, stderr=errf)
+        try:
+            assert popen.stdout is not None
+            for raw in iter(popen.stdout.readline, b""):
+                chunks.append(raw)
+                try:
+                    line_cb(raw.decode("utf-8", errors="replace"))
+                except Exception:
+                    pass            # progress reporting must never fail a run
+        finally:
+            if popen.stdout is not None:
+                popen.stdout.close()
+            popen.wait()
+        errf.seek(0)
+        err = errf.read()
+    return subprocess.CompletedProcess(
+        cmd, popen.returncode, stdout=b"".join(chunks), stderr=err)

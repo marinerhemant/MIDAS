@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 import numpy as np
 import torch
@@ -212,6 +212,7 @@ class Indexer:
         voxel_n_blocks: int = 1,
         backend: str = "python",
         paramstest_path: str | os.PathLike | None = None,
+        line_cb: Optional[Callable[[str], None]] = None,
     ) -> int:
         """Run the per-voxel scanning indexer (pf-HEDM mode).
 
@@ -225,10 +226,15 @@ class Indexer:
 
         Notes
         -----
-        - The voxel grid layout matches
-          ``IndexerScanningOMP.c:1667-1683``: ``grid[i*nScans + j] =
-          (scan_positions[j], scan_positions[i])`` — Cartesian product
-          of sorted 1-D Y positions (scan-axis is Y only per P0 audit).
+        - The voxel grid layout is ``grid[i*nScans + j] =
+          (scan_positions_sorted[i], scan_positions_sorted[j])`` — i.e.
+          ``x = sorted[v // nScans]``, ``y = sorted[v % nScans]`` — a Cartesian
+          product of sorted 1-D Y positions (scan-axis is Y only per P0 audit).
+          This matches ``IndexerUnified.c:3106-3107`` and the implementation
+          below; an earlier version of this line had the two indices the wrong
+          way round. Verified against the C by a self-test: with this
+          convention all 361 of s1/L9's winning seeds satisfy their own
+          voxel's beam gate, versus 46 under the transpose.
         - ``params.scan_pos_tol_um`` and
           ``params.friedel_symmetric_scan_filter`` drive the per-voxel
           filter inside ``compare_spots``. ``scan_pos_tol_um == 0`` ⇒
@@ -236,6 +242,10 @@ class Indexer:
           for sanity).
         - For very large grids the per-voxel cost is significant — call
           with ``voxel_block_nr/voxel_n_blocks > 1`` to shard.
+        - ``line_cb`` (``backend='c-omp'`` only) receives the binary's stdout
+          line by line while it runs, so a caller can surface the
+          ``progress: N/M voxels`` reports. Without it the whole stage is
+          silent until it exits, which for a dense PF layer is many hours.
 
         Returns
         -------
@@ -253,7 +263,7 @@ class Indexer:
             return self._run_scanning_c_omp(
                 scan_positions=scan_positions, num_procs=num_procs,
                 voxel_block_nr=voxel_block_nr, voxel_n_blocks=voxel_n_blocks,
-                paramstest_path=paramstest_path,
+                paramstest_path=paramstest_path, line_cb=line_cb,
             )
         if backend != "python":
             raise ValueError(
@@ -617,10 +627,18 @@ class Indexer:
 
         ring_to_index = int(getattr(self.params, "RingToIndex", 0) or 0)
         scan_pos_tol = float(getattr(self.params, "scan_pos_tol_um", 0.0) or 0.0)
+        # Same reason as RingToIndex/ScanPosTol: the binary reads this only
+        # from the file, so an in-memory setting must be written through or it
+        # is silently ignored — the seed floor would appear to do nothing.
+        seed_gr_min = float(
+            getattr(self.params, "MinSeedGrainRadius", 0.0) or 0.0)
+        seed_drop_frac = float(
+            getattr(self.params, "SeedDropWeakestFrac", 0.0) or 0.0)
 
         # Drop any existing copies of the keys we override, keep the rest.
         _OVERRIDDEN = ("OutputFolder", "RingToIndex", "OverAllRingToIndex",
-                       "ScanPosTol")
+                       "ScanPosTol", "MinSeedGrainRadius",
+                       "SeedDropWeakestFrac")
         kept: list[str] = []
         for raw in pp.read_text().splitlines():
             first = raw.strip().split()[:1]
@@ -633,6 +651,10 @@ class Indexer:
             kept.append(f"RingToIndex {ring_to_index};")
         if scan_pos_tol > 0:
             kept.append(f"ScanPosTol {scan_pos_tol:f};")
+        if seed_gr_min > 0:
+            kept.append(f"MinSeedGrainRadius {seed_gr_min:f};")
+        if seed_drop_frac > 0:
+            kept.append(f"SeedDropWeakestFrac {seed_drop_frac:f};")
 
         run_pp = input_dir / "paramstest_comp.txt"
         run_pp.write_text("\n".join(kept) + "\n")
@@ -687,6 +709,7 @@ class Indexer:
         voxel_block_nr: int,
         voxel_n_blocks: int,
         paramstest_path: str | os.PathLike | None,
+        line_cb: Optional[Callable[[str], None]] = None,
     ) -> int:
         """C-backend PF dispatch. Verifies positions.csv matches the supplied
         scan_positions (sanity), then shells out to the binary."""
@@ -721,7 +744,7 @@ class Indexer:
 
         proc = backend_c.run_indexer(
             run_pp, block_nr=voxel_block_nr, n_blocks=voxel_n_blocks,
-            n_work=n_scans, num_procs=num_procs,
+            n_work=n_scans, num_procs=num_procs, line_cb=line_cb,
         )
         if proc.returncode != 0:
             raise RuntimeError(

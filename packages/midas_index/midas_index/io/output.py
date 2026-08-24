@@ -11,8 +11,23 @@ Layout of the 15 doubles in IndexBest.bin (per IndexerOMP.c:1620-1628):
     [0]      avg_ia
     [1..9]   orientation matrix flat row-major (O11..O33)
     [10..12] best position (ga, gb, gc)
-    [13]     n_matches (stored as double)
-    [14]     n_t_spots / score encoding
+    [13]     n_t_spots   — total PREDICTED reflections  (denominator)
+    [14]     n_matches   — reflections actually matched (numerator)
+
+.. warning::
+
+   Until 2026-08-23 the two lines above were stated in the OPPOSITE order —
+   ``[13] n_matches``, ``[14] n_t_spots``. Every writer and reader in the tree
+   already used the order shown here (``_seed_record`` below writes
+   n_t_spots at 13; ``midas_fit_grain.driver`` reads n_expected from 13 and
+   n_observed from 14), so nothing ever computed the wrong number — but the
+   docstring was a trap for anyone implementing a new reader against it, and
+   swapping the two silently inverts every completeness.
+
+   Do not confuse this with the CONSOLIDATED record in ``consolidated.py``,
+   which is a different, 16-double layout: ``[0] SpotID, [1] avgIA,
+   [2..10] OM, [11..13] pos, [14] n_t_spots, [15] n_matches``. Both put
+   n_t_spots before n_matches, but at different offsets.
 
 The seed's slot is `offset_loc`, which is its row in `SpotsToIndex.csv`.
 Empty slots (no result) read as zeros (the file is `ftruncate`-zeroed at
