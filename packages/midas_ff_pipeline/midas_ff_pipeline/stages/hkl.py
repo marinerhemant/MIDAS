@@ -20,6 +20,36 @@ def run(ctx: StageContext) -> HKLResult:
     inputs: dict[str, str] = {}
     outputs: dict[str, str] = {}
 
+    # Atom basis, if Parameters.txt declares one. This stage shells out to the
+    # midas-hkls CLI (unlike midas_pipeline, which calls the function), so the
+    # basis has to be re-expressed as flags. Absent a basis the argv is
+    # unchanged and hkls.csv stays the historical 11-column file; present, it
+    # gains an F2 column, which by itself changes nothing — the weighting is a
+    # separate opt-in (ConfidenceMetric) and trailing columns are ignored by
+    # every existing reader.
+    basis_args: list[str] = []
+    try:
+        from midas_hkls import read_phase_basis
+
+        basis = read_phase_basis(ctx.config.params_file)
+        for a in (basis.get("atoms") or []):
+            basis_args += [
+                "--phase-atom",
+                f"{a.element} {a.fract[0]!r} {a.fract[1]!r} {a.fract[2]!r} "
+                f"{a.occupancy!r} {a.B_iso!r}",
+            ]
+        if basis.get("cif_path"):
+            basis_args += ["--phase-cif", str(basis["cif_path"])]
+        if basis.get("drop_forbidden"):
+            basis_args += [
+                "--drop-forbidden",
+                "--forbidden-f2", repr(basis.get("forbidden_f2_threshold", 1e-6)),
+            ]
+        if basis_args:
+            LOG.info("hkl: atom basis declared; hkls.csv will carry F2.")
+    except ImportError:
+        pass
+
     with stage_timer("hkl"):
         # Run midas-hkls per zarr file (each detector has its own zarr).
         for det in ctx.detectors:
@@ -29,7 +59,8 @@ def run(ctx: StageContext) -> HKLResult:
                     f"detector {det.det_id} zarr not found: {zarr_path}"
                 )
             inputs[str(zarr_path)] = ""    # actual hash filled in by caller if needed
-            cmd = [sys.executable, "-m", "midas_hkls", "zarr", str(zarr_path)]
+            cmd = ([sys.executable, "-m", "midas_hkls", "zarr", str(zarr_path)]
+                   + basis_args)
             run_subprocess(
                 cmd,
                 cwd=ctx.stage_dir(det),

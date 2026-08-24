@@ -896,7 +896,29 @@ PARAMS: list[ParamSpec] = [
               "Zarr to FitSetupParamsAllZarr → paramstest.txt → "
               "IndexerScanningOMP. If omitted, FitSetupParamsAllZarr.c uses "
               "its internal default (0 = accept everything). MaxAng/TolEta/"
-              "TolOme are separate PF-specific tolerances, not replacements.",
+              "TolOme are separate PF-specific tolerances, not replacements. "
+              "\n\n"
+              "THIS KEY GATES TWICE, AT TWO STAGES, AGAINST TWO DIFFERENT "
+              "NUMBERS. (1) Indexing: as MinMatchesToAcceptFrac it decides "
+              "which candidate orientation is accepted, tested against "
+              "nMatchesFracCalc/nTspotsFracCalc (IndexerUnified.c:1907). "
+              "(2) process-grains: aliased to ConfidenceTol, it drops finished "
+              "grains from Grains.csv (midas_process_grains/pipeline.py:731), "
+              "tested against Grains.csv col 23 — which the refiner computes "
+              "as the RAW nMatches/nTspots the indexer stored "
+              "(IndexerUnified.c:1919-1920 → FitUnified.c:1767), NOT the "
+              "FracCalc ratio it accepted on. The two ratios are equal unless "
+              "RingsToExcludeFraction is set; when it is, the pipeline accepts "
+              "on one number and reports/re-gates on another. "
+              "\n\n"
+              "Consequence: anything that changes the SCALE of completeness "
+              "(a weighted ConfidenceMetric, a structure-factor or "
+              "detector-mask denominator) must re-tune BOTH gates, or grains "
+              "silently survive or vanish with no error and no log line. "
+              "Note also that the runtime default is 0.0 at both stages "
+              "(midas_index/params.py:56; ConfidenceTol 0.0), i.e. omitting "
+              "the key means no gate anywhere — this spec deliberately carries "
+              "no `default`, only `typical`.",
     ),
     ParamSpec(
         name="MinNrSpots", type=ParamType.INT, category="Indexing",
@@ -1022,25 +1044,48 @@ PARAMS: list[ParamSpec] = [
         name="DropForbiddenReflections", type=ParamType.BOOL,
         category="Indexing",
         description="Remove |F|^2 = 0 reflections from hkls.csv before use.",
-        applies_to=frozenset({NF}), default=0, stages=S_INDEX,
-        notes="Needs PhaseAtom. Fixes the SEARCH as well as the reported "
-              "number, because every downstream stage reads hkls.csv. "
-              "Measured on sample B: max confidence 0.4938 -> 0.5962 and "
-              "voxels above MinConfidence 0.5 went 0 -> 213.",
+        applies_to=frozenset({NF, FF, PF}), default=0, stages=S_INDEX,
+        notes="Needs PhaseAtom (or PhaseCIF on FF/PF). Fixes the SEARCH as "
+              "well as the reported number, because every downstream stage "
+              "reads hkls.csv. Measured on NF sample B: max confidence "
+              "0.4938 -> 0.5962 and voxels above MinConfidence 0.5 went "
+              "0 -> 213. "
+              "FF/PF as of 2026-08-23. Ring numbers are assigned BEFORE the "
+              "filter, so surviving rows keep the numbers RingThresh and "
+              "OverAllRingToIndex refer to; but a ring whose every reflection "
+              "is forbidden disappears from hkls.csv entirely, and must then "
+              "be removed from RingThresh by hand. Note this removes only "
+              "EXACTLY-forbidden reflections: on corundum, which has none "
+              "within a 200 mm detector, it is a no-op and ConfidenceMetric "
+              "weighted is the setting that matters.",
     ),
     ParamSpec(
         name="ForbiddenF2Threshold", type=ParamType.FLOAT, category="Indexing",
         description="|F|^2 (relative to max) at or below which a reflection "
                     "counts as forbidden.",
-        applies_to=frozenset({NF}), default=1e-6, stages=S_INDEX,
+        applies_to=frozenset({NF, FF, PF}), default=1e-6, stages=S_INDEX,
+        notes="Raising this to cull merely-faint reflections is tempting and "
+              "measures badly: on Al2O3 a 1e-2 cut removes 44 of 238 "
+              "reflections but takes 5 of 27 rings with it, and fewer rings "
+              "means a worse-conditioned strain tensor. Down-weight with "
+              "ConfidenceMetric weighted instead — it keeps the ring.",
     ),
     ParamSpec(
         name="ConfidenceMetric", type=ParamType.STR, category="Indexing",
         description="How |F|^2 enters confidence: raw | filtered | weighted.",
-        applies_to=frozenset({NF}), default="raw", stages=S_INDEX,
-        notes="No effect unless PhaseAtom is declared. 'weighted' changes the "
-              "SCALE of confidence, so MinConfidence and any downstream "
-              "threshold need re-tuning before adopting it.",
+        applies_to=frozenset({NF, FF, PF}), default="raw", stages=S_INDEX,
+        notes="No effect unless an atom basis is declared (PhaseAtom, or "
+              "PhaseCIF on FF/PF) — without one every weight is 1 and all "
+              "three modes agree exactly. The weight multiplies BOTH the "
+              "numerator and the denominator, so a uniform weight is a no-op "
+              "by construction. "
+              "'weighted' changes the SCALE of confidence, so every threshold "
+              "on it needs re-tuning first — and on FF/PF that means TWO: the "
+              "indexer's Completeness/MinMatchesToAcceptFrac and "
+              "process-grains' ConfidenceTol, which are the same user key "
+              "applied at two stages against two different numbers. "
+              "FF/PF as of 2026-08-23; 'raw' is the default and is "
+              "bit-identical to the historical count ratio.",
     ),
     ParamSpec(
         name="OrientTol", type=ParamType.FLOAT, category="Indexing",
@@ -1231,6 +1276,55 @@ PARAMS: list[ParamSpec] = [
               "OverAllRingToIndex + RingThresh.",
     ),
     ParamSpec(
+        name="SeedDropWeakestFrac", type=ParamType.FLOAT, category="Indexing",
+        description="PF: drop the weakest fraction of the seed pool (0-1).",
+        applies_to=FF_PF, stages=S_INDEX, typical=0.0,
+        notes="PREFER THIS over MinSeedGrainRadius. Resolved once, before "
+              "indexing, into an absolute floor against the RingToIndex pool's "
+              "own GrainRadius distribution; the resolved value is printed so "
+              "a run stays reproducible from its log. A fraction is the right "
+              "form because the absolute GrainRadius scale is UNCALIBRATED "
+              "(guessed Vgauge, no polarization term), so one fixed number is "
+              "a different cut on every layer — on bt_1id_jun25b s1 the per-layer "
+              "median ranged 16.5 to 68.8. It is also the only reportable "
+              "statement: 'the weakest N % of candidate seed spots were not "
+              "used as seeds'. Measured 0-risk fractions were 0.5-0.8 across "
+              "six banked layers, so 0.5 is safe campaign-wide; at 0.5 on "
+              "s5/L1, 0 voxels were lost and 2 of 94 near-tied voxels flipped "
+              "to a different grain. Combined with MinSeedGrainRadius the "
+              "stricter of the two applies. 0 (default) disables it.",
+    ),
+    ParamSpec(
+        name="MinSeedGrainRadius", type=ParamType.FLOAT, category="Indexing",
+        description="PF seed-strength floor, in Spots.bin GrainRadius units.",
+        applies_to=FF_PF, stages=S_INDEX, typical=0.0,
+        notes="Parsed by the shared ReadParams, but only the PF spot-driven "
+              "seed loop acts on it; FF seeds from SpotsToIndex.csv and "
+              "ignores it. "
+              "A spot whose GrainRadius (Spots.bin col 3) is below this is not "
+              "tried as a SEED, but stays available for matching, so no "
+              "grain's completeness can change. 0 (default) disables it and is "
+              "bit-identical to the historical seed set. "
+              "NOT A CALIBRATED GRAIN SIZE: GrainVolume carries a guessed "
+              "Vgauge and no polarization term, so the absolute value is "
+              "uncalibrated. Treat it as a relative, monotone proxy for the "
+              "LP-corrected integrated-intensity share, and do NOT report a "
+              "floor as a physical grain size. It is used rather than raw "
+              "intensity because dividing by the ring's powder_int (with "
+              "m_hkl and the Lorentz geometry) makes it comparable ACROSS "
+              "RINGS — a raw cut conflates a small grain with a low-|F| "
+              "reflection of a large one. Under OneSolPerVox only the "
+              "highest-completeness solution per voxel survives, so seeds too "
+              "weak to win are pure cost: on bt_1id_jun25b s1/L9 (1.45M ring-5 "
+              "spots, 9.95 h) a 19.2 floor removed 60 % of seed trials with "
+              "every one of the 361 winning grains keeping a ring-5 spot. "
+              "Set it for the DENSEST layer in a campaign — safe floors track "
+              "the local grain population, so a sparse layer tolerates a much "
+              "larger one. An A/B on a banked layer is the only sufficiency "
+              "check: on s5/L1 a 50 % floor left 0 voxels lost but flipped "
+              "2/94 near-tied voxels to a different grain.",
+    ),
+    ParamSpec(
         name="PositionsFile", type=ParamType.PATH, category="Data source",
         description="Path to positions.csv (per-scan sample positions).",
         applies_to=FF_PF, stages=S_INDEX,
@@ -1347,8 +1441,18 @@ PARAMS: list[ParamSpec] = [
     ),
     ParamSpec(
         name="WeightMask", type=ParamType.FLOAT, category="Refinement",
-        description="Weight applied to masked regions in the refinement objective.",
-        applies_to=FF_PF, default=0, units="fraction", stages=S_REFINE, hidden_in_wizard=True,
+        description=(
+            "Residual multiplier for a spot whose peak touched the detector mask "
+            "(ExtraInfo maskTouched == 1). 1.0 = no down-weighting; 0 drops the "
+            "spot from the objective entirely. Default is 1.0 because that is "
+            "what every run has actually done: midas-transforms writes 1.0 into "
+            "every paramstest.txt (params.py:443), the C global initialises to "
+            "1.0 (FitUnified.c:62), and FitConfig defaults to 1.0. This entry "
+            "read 0 until 2026-08-22 — the only 0 in the chain — which would "
+            "have had the wizard seed a value that silently deletes every "
+            "mask-touched residual."
+        ),
+        applies_to=FF_PF, default=1.0, units="fraction", stages=S_REFINE, hidden_in_wizard=True,
     ),
     ParamSpec(
         name="WeightFitRMSE", type=ParamType.FLOAT, category="Refinement",
@@ -1686,8 +1790,29 @@ PARAMS: list[ParamSpec] = [
     ),
     ParamSpec(
         name="BigDetSize", type=ParamType.INT, category="Multi-panel",
-        description="Size of assembled detector (multi-detector mode).",
+        description=(
+            "Side of the square ideal-lab cell grid used for the detector "
+            "ACTIVE-AREA mask, in pixel-pitch units. 0 (default) disables the "
+            "mask entirely and is bit-identical to having none."
+        ),
         applies_to=FF_PF, default=0, units="pixels", stages=S_INDEX, hidden_in_wizard=True,
+        notes="Two distinct uses share this key. Historically it sized the "
+              "assembled multi-detector canvas. Since 2026-08-22 it also "
+              "enables the active-area mask in the INDEXER (reversing plan "
+              "ruling #5, which had dropped BigDet from IndexerUnified.c): a "
+              "reflection predicted onto a dead pixel, a panel gap, or off the "
+              "panel fails a bit test in the shared forward model "
+              "(forward.c:181) and leaves BOTH the numerator and the "
+              "denominator of the completeness ratio, instead of being "
+              "counted as a reflection that was looked for and not found. "
+              "Set it together with a BigDetectorMask.bin produced by "
+              "midas_transforms.geometry.detector_mask.build_active_area_bitset "
+              "(the value must equal the big_det_size that call returns); the "
+              "indexer errors out if the file is missing, short, or marks zero "
+              "cells active, because a silently-wrong denominator is "
+              "indistinguishable from a correct one. Note the polarity: the "
+              "bitset marks cells to KEEP, the inverse of MaskFile/"
+              "exchange/mask, where non-zero means bad.",
     ),
     ParamSpec(
         name="LsdMean", type=ParamType.FLOAT, category="Multi-panel",

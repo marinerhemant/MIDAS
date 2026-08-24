@@ -132,24 +132,13 @@ def _parse_phase_atoms(param_file: str | Path):
     Returns None when no atoms are declared, which keeps ``hkls.csv``
     byte-identical to the historical output.
     """
-    from midas_hkls import Atom
+    from midas_hkls.crystal import parse_phase_atoms
+
     from .params import collect_multiline
 
-    rows = collect_multiline(param_file, "PhaseAtom")
-    if not rows:
-        return None
-    atoms = []
-    for r in rows:
-        toks = r.split()
-        if len(toks) < 4:
-            raise ValueError(
-                f"PhaseAtom needs '<element> <x> <y> <z>', got {r!r}")
-        atoms.append(Atom(
-            str(toks[0]), (float(toks[1]), float(toks[2]), float(toks[3])),
-            occupancy=float(toks[4]) if len(toks) > 4 else 1.0,
-            B_iso=float(toks[5]) if len(toks) > 5 else 0.0,
-        ))
-    return atoms
+    # Collection is NF-specific (parameter-file format); PARSING is shared with
+    # FF/PF via midas_hkls so the two cannot drift into different defaults.
+    return parse_phase_atoms(collect_multiline(param_file, "PhaseAtom"))
 
 
 def run_get_hkls(p: Dict[str, Any], param_file: str | Path) -> str:

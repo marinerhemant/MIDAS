@@ -35,9 +35,30 @@ def run(ctx: StageContext) -> StageResult:
         LOG.warning("hkl: midas_hkls not importable (%s); skipping.", e)
         return stub_run("hkl", ctx)
 
+    # Atom basis, if the parameter file declares one (PhaseAtom / PhaseCIF).
+    # With none this is {} and hkls.csv is byte-identical to the historical
+    # 11-column file. With one, an F2 column is appended — which on its own
+    # changes nothing: the weighting is a separate opt-in (ConfidenceMetric),
+    # and every existing reader ignores trailing columns.
+    try:
+        from midas_hkls import read_phase_basis
+        basis = read_phase_basis(ctx.config.params_file)
+    except ImportError:
+        basis = {}
+    if basis:
+        LOG.info("hkl: atom basis declared (%s); hkls.csv will carry F2%s.",
+                 "PhaseCIF" if "cif_path" in basis else
+                 f"{len(basis.get('atoms') or [])} PhaseAtom",
+                 " and drop forbidden reflections"
+                 if basis.get("drop_forbidden") else "")
+
+    def gen(zip_path, result_folder):
+        return generate_hkls_from_zarr(zip_path, result_folder=result_folder,
+                                       **basis)
+
     if ctx.is_pf:
-        return _run_pf(ctx, started, generate_hkls_from_zarr)
-    return _run_ff(ctx, started, generate_hkls_from_zarr)
+        return _run_pf(ctx, started, gen)
+    return _run_ff(ctx, started, gen)
 
 
 def _run_ff(ctx: StageContext, started: float, gen_fn) -> StageResult:
