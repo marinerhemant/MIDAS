@@ -96,6 +96,27 @@ def filter_regions_by_size(
     Note: both bounds are STRICT, matching C ``processImageFrame`` line 1465-1466:
         if (nrPixelsThisRegion <= minNrPx || nrPixelsThisRegion >= maxNrPx)
             continue;
+
+    So the default ``minNrPx = 1`` already drops single-pixel regions, and
+    raising it to 2 drops the 2-pixel ones. That step is expensive and, on the
+    evidence, unjustified. Measured on one bt_1id_jun25b s1 scan (8069 peaks):
+
+    * 2-pixel regions are **25.8 %** of all peaks -- a quarter of the spot list.
+    * They are not noise: median ``IMax - BG`` is 701 counts over a background
+      of 192. The *5*-pixel regions are the weakest (407), so region size is not
+      a proxy for signal.
+    * They are not positioned worse. The fit is formally underdetermined
+      (``nPeaks * 8 + 1`` free parameters, so even a 5-px region interpolates
+      exactly, median ``FitRMSE`` 3e-11), but the seeder box-bounds the centre
+      to R +/- 1 px and Eta +/- dEta, so no fit can travel further than
+      sqrt(2) px from a genuine local maximum. Measured travel from the seed is
+      a median of 0.42 px for 2-px regions versus 0.50 px for >12-px regions,
+      and 2-px regions rail against the bound *less* often (2.3 % vs 19.2 %).
+
+    An underdetermined least-squares fit is not the same thing as an
+    uninformative one when the parameter is boxed. Raise ``minNrPx`` because
+    small regions are demonstrably spurious in *your* data, not on the
+    identifiability argument.
     """
     return [r for r in regions if min_n_px < r.n_pixels < max_n_px]
 

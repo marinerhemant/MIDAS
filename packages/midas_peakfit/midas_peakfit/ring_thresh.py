@@ -37,6 +37,30 @@ lowest threshold whose expected false-positive count over the scan is below
 regime -- a 2-grain dataset has ~1-2 real peaks per frame against ~3e5 in-band
 pixels per frame, so even a 1e-6 per-pixel false rate swamps the signal.
 
+**C. Peak resolvability (segmentation).** A and B are both *detection*
+criteria: they ask whether a blob is real. Neither can see a blob that is real
+but is actually SEVERAL spots fused into one connected component, because
+merging changes neither the blob's SNR nor the noise statistics -- only what
+the blob CONTAINS. Lower the threshold far enough and every peak finder
+percolates: on bt_1id_jun25b s1 the A/B recommendation of 20-30 produced regions
+holding >=400 peaks (the ``maxNPeaks`` cap), against a healthy 1-15 on the
+other three samples of the same experiment, and a 400-peak coupled fit is a
+blob decomposition rather than a peak fit. So each surviving region is passed
+to the PRODUCTION seeder (``find_regional_maxima`` -- the very call the fitter
+makes, so the count here IS the fitter's ``n_peaks``) and the recommendation is
+the lowest threshold whose 99th-percentile peaks-per-region stays at or below
+``p99_peaks_max``. The threshold maximising the number of cleanly-resolved
+single-peak regions is reported too: lowering the threshold gains real spots
+until percolation and then loses them again, so that maximum is a physical
+operating point that needs no per-dataset tuning.
+
+The final recommendation is the strictest of A, B and C -- all three are lower
+bounds, for independent reasons.
+
+Run it **per scan**. Crowding is a property of the scan, not the experiment: a
+sparse scan should not be forced to the higher threshold that a dense one
+needs.
+
 Everything runs through the *production* peak-search path
 (``compute_good_coords`` -> ``preprocess_frame`` -> ``find_regions`` ->
 ``filter_regions_by_size``). That is deliberate: an independent
@@ -84,6 +108,12 @@ class RingSweepPoint:
     median_snr: float
     frac_snr_ok: float
     expected_false_positives: float   # over the WHOLE scan
+    # Criterion C — peak resolvability. Counted with the PRODUCTION seeder
+    # (find_regional_maxima), so these are the same n_peaks the fitter will see.
+    n_resolved: float = 0.0      # per frame, ONE maximum AND above snr_min
+    frac_merged: float = 0.0     # fraction of kept regions holding >= 2 maxima
+    p99_peaks: float = 0.0       # 99th pct of peaks-per-region
+    max_peaks: float = 0.0       # worst region (CLIPPED at p.maxNPeaks)
 
 
 @dataclass
@@ -93,14 +123,27 @@ class RingRecommendation:
     sweep: List[RingSweepPoint] = field(default_factory=list)
     thresh_snr: Optional[float] = None
     thresh_fp: Optional[float] = None
+    thresh_merge: Optional[float] = None    # criterion C: segmentation floor
+    thresh_best_resolved: Optional[float] = None   # argmax n_resolved
     noise_sigma: float = 0.0
     bg_spread: float = 0.0
     warnings: List[str] = field(default_factory=list)
 
     @property
     def recommended(self) -> Optional[float]:
-        """The stricter of the two criteria; whichever exists if only one does."""
-        vals = [v for v in (self.thresh_snr, self.thresh_fp) if v is not None]
+        """The strictest of the three criteria; whichever exist.
+
+        All three are LOWER bounds on the threshold and for different reasons:
+        A and B say "below this you admit noise"; C says "below this, distinct
+        spots merge into one connected component and stop being separately
+        fittable". A and B are blind to C — merging changes neither a blob's
+        SNR nor the noise statistics, only what the blob CONTAINS — which is
+        how bt_1id_jun25b s1 was recommended 20-30 and produced regions of >=400
+        peaks (the cap), against a healthy 1-15 elsewhere in the same
+        experiment.
+        """
+        vals = [v for v in (self.thresh_snr, self.thresh_fp, self.thresh_merge)
+                if v is not None]
         return max(vals) if vals else None
 
     @property
@@ -110,6 +153,13 @@ class RingRecommendation:
         lo = min(self.thresh_snr, self.thresh_fp)
         hi = max(self.thresh_snr, self.thresh_fp)
         return hi <= 2.0 * max(lo, 1e-9)
+
+
+#: Criterion C tolerance: the 99th percentile of peaks-per-region must stay
+#: at or below this. 3 is deliberately loose — a genuinely uncrowded band
+#: sits at 1-2 (bt_1id_jun25b s5 measured median 1 / p90 3), while a merged one
+#: runs to hundreds, so anything in 2..10 separates the two regimes.
+DEFAULT_P99_PEAKS_MAX = 3.0
 
 
 def blob_snr(
@@ -203,6 +253,37 @@ def _pick_snr(sweep: Sequence[RingSweepPoint], frac: float) -> Optional[float]:
     return None
 
 
+def _pick_merge(sweep: Sequence[RingSweepPoint], p99_max: float) -> Optional[float]:
+    """Segmentation floor: lowest threshold whose regions are still resolvable.
+
+    Sweep is ascending in threshold. Merging is a LOW-threshold failure, so the
+    acceptable set is an upper tail: return the first threshold from which
+    p99 peaks-per-region stays at or below ``p99_max`` for every higher
+    threshold too. Requiring the whole tail (not just the first crossing) stops
+    a single noisy sweep point from being read as the floor.
+    """
+    n = len(sweep)
+    for i in range(n):
+        if all(sweep[j].p99_peaks <= p99_max for j in range(i, n)):
+            # Nothing merged anywhere: the floor does not bind.
+            return None if i == 0 else float(sweep[i].threshold)
+    return None
+
+
+def _pick_best_resolved(sweep: Sequence[RingSweepPoint]) -> Optional[float]:
+    """Threshold maximising cleanly-resolved (single-maximum) regions.
+
+    Lowering the threshold gains real spots until percolation, then loses them
+    to merging, so ``n_resolved`` has an interior maximum. That maximum is a
+    physical operating point and needs no per-dataset tuning. Reported for
+    inspection; the recommendation itself stays conservative (the floor).
+    """
+    best = [pt for pt in sweep if pt.n_resolved > 0]
+    if not best:
+        return None
+    return float(max(best, key=lambda pt: pt.n_resolved).threshold)
+
+
 def _pick_fp(sweep: Sequence[RingSweepPoint], max_fp: float) -> Optional[float]:
     for pt in sweep:
         if pt.expected_false_positives <= max_fp:
@@ -220,19 +301,30 @@ def format_recommendations(recs: Sequence[RingRecommendation]) -> str:
                    f"background spread {rec.bg_spread:.1f})")
         out.append(f"  {'thr':>7s} {'blobs/fr':>9s} {'kept/fr':>8s} "
                    f"{'largest':>8s} {'med SNR':>9s} {'frac SNR ok':>12s} "
-                   f"{'exp. false/scan':>16s}")
+                   f"{'exp. false/scan':>16s} {'p99 pk/reg':>11s} "
+                   f"{'resolved/fr':>12s}")
         for pt in rec.sweep:
             out.append(f"  {pt.threshold:7.0f} {pt.n_blobs:9.1f} "
                        f"{pt.n_kept:8.1f} {pt.largest:8.0f} "
                        f"{pt.median_snr:9.1f} {pt.frac_snr_ok:11.0%} "
-                       f"{pt.expected_false_positives:16.3g}")
+                       f"{pt.expected_false_positives:16.3g} "
+                       f"{pt.p99_peaks:11.0f} {pt.n_resolved:12.1f}")
         a = "n/a" if rec.thresh_snr is None else f"{rec.thresh_snr:.0f}"
         b = "n/a" if rec.thresh_fp is None else f"{rec.thresh_fp:.0f}"
         out.append(f"  criterion A (blob SNR)          -> {a}")
         out.append(f"  criterion B (expected false +)  -> {b}")
+        c = "does not bind" if rec.thresh_merge is None else f"{rec.thresh_merge:.0f}"
+        out.append(f"  criterion C (peak resolvability) -> {c}")
+        if rec.thresh_best_resolved is not None:
+            out.append(f"      (most cleanly-resolved spots at threshold "
+                       f"{rec.thresh_best_resolved:.0f})")
+        if rec.thresh_merge is not None:
+            out.append("      C BINDS: below this, distinct spots merge into one "
+                       "connected component. A and B cannot see this — merging "
+                       "changes neither blob SNR nor the noise floor.")
         if rec.thresh_snr is not None and rec.thresh_fp is not None:
-            out.append("  the two criteria AGREE (within 2x)" if rec.criteria_agree
-                       else "  ** the two criteria DISAGREE by >2x — inspect the "
+            out.append("  criteria A and B AGREE (within 2x)" if rec.criteria_agree
+                       else "  ** criteria A and B DISAGREE by >2x — inspect the "
                             "band and the dark before trusting either **")
         for w in rec.warnings:
             out.append(f"  WARNING: {w}")
@@ -271,6 +363,7 @@ def analyze(
     snr_clean_frac: float = DEFAULT_SNR_CLEAN_FRAC,
     max_false_positives: float = DEFAULT_MAX_FALSE_POSITIVES,
     n_sectors: int = 36,
+    p99_peaks_max: float = DEFAULT_P99_PEAKS_MAX,
 ) -> List[RingRecommendation]:
     """Sweep thresholds through the production peak-search path.
 
@@ -279,6 +372,7 @@ def analyze(
     """
     from midas_peakfit.background import build_background_bins, estimate_cell_stats
     from midas_peakfit.connected import filter_regions_by_size, find_regions
+    from midas_peakfit.seeds import find_regional_maxima
     from midas_peakfit.geometry import compute_good_coords, compute_rt_eta, load_ring_radii
     from midas_peakfit.orchestrator import _build_panels
     from midas_peakfit.preprocess import (
@@ -329,7 +423,10 @@ def analyze(
 
     dark = prepare_dark(p.dark, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
     flood = prepare_flood(p.flood, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
-    prepare_mask(p.mask, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
+    # Captured, not discarded: criterion C needs it to call the production
+    # seeder (find_regional_maxima) exactly as the fitter does.
+    mask_prepared = prepare_mask(
+        p.mask, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
 
     n_take = max(1, min(int(n_frames), int(p.nFrames)))
     idxs = np.unique(np.linspace(0, p.nFrames - 1, n_take).astype(int))
@@ -404,7 +501,8 @@ def analyze(
     for thr in sweep:
         p.Thresholds = np.full_like(orig, float(thr))
         gc = compute_good_coords(p, panels, ring_rads)
-        acc = {r: {"n": [], "k": [], "mx": [], "snr": []} for r in range(len(rads))}
+        acc = {r: {"n": [], "k": [], "mx": [], "snr": [], "pk": [], "res": []}
+               for r in range(len(rads))}
         for raw_img, snr_img in zip(ungated, ungated_full):
             # Gate the already-corrected frame: identical to what
             # preprocess_frame would return at this threshold, but the ungated
@@ -412,7 +510,8 @@ def analyze(
             img = apply_threshold(raw_img, gc)
             regs = find_regions(img, gc)
             kept = filter_regions_by_size(regs, p.minNrPx, p.maxNrPx)
-            per = {r: {"n": 0, "k": 0, "mx": 0, "snr": []} for r in range(len(rads))}
+            per = {r: {"n": 0, "k": 0, "mx": 0, "snr": [], "pk": [], "res": 0}
+                   for r in range(len(rads))}
             for reg in regs:
                 r = int(ring_idx[reg.pixel_rows[0], reg.pixel_cols[0]])
                 if r < 0:
@@ -424,13 +523,33 @@ def analyze(
                 if r < 0:
                     continue
                 per[r]["k"] += 1
-                per[r]["snr"].append(
-                    blob_snr(snr_img, reg.pixel_rows, reg.pixel_cols))
+                _snr = blob_snr(snr_img, reg.pixel_rows, reg.pixel_cols)
+                per[r]["snr"].append(_snr)
+                # Criterion C: how many peaks will the fitter see in this
+                # region? Same call, same image, same caps as the production
+                # seeder, so the number here IS the fitter's n_peaks.
+                fm = find_regional_maxima(
+                    reg, img, mask_prepared, p.IntSat, p.maxNPeaks)
+                if fm is not None:
+                    n_pk = int(len(fm[0]))
+                    per[r]["pk"].append(n_pk)
+                    # "Resolved" must mean a real spot that is cleanly
+                    # separated, so require BOTH one maximum and SNR. Without
+                    # the SNR gate this count is dominated by noise: on
+                    # bt_1id_jun25b s1 ring 5 at threshold 20 there were 3067
+                    # blobs/frame at median SNR 2.2 with 3% clearing snr_min,
+                    # and every one of those noise specks is a single-maximum
+                    # region — which put the "best resolved" operating point
+                    # at the noisiest threshold swept.
+                    if n_pk == 1 and _snr > snr_min:
+                        per[r]["res"] += 1
             for r in range(len(rads)):
                 acc[r]["n"].append(per[r]["n"])
                 acc[r]["k"].append(per[r]["k"])
                 acc[r]["mx"].append(per[r]["mx"])
                 acc[r]["snr"].extend(per[r]["snr"])
+                acc[r]["pk"].extend(per[r]["pk"])
+                acc[r]["res"].append(per[r]["res"])
         per_ring_counts[float(thr)] = acc
 
         for r, rec in enumerate(recs):
@@ -450,6 +569,12 @@ def analyze(
                     float(thr), sig_per_ring[r], n_band_px[r], int(p.nFrames),
                     min_n_px=p.minNrPx,
                 ),
+                n_resolved=float(np.mean(acc[r]["res"])) if acc[r]["res"] else 0.0,
+                frac_merged=(float(np.mean(np.asarray(acc[r]["pk"]) >= 2))
+                             if acc[r]["pk"] else 0.0),
+                p99_peaks=(float(np.percentile(acc[r]["pk"], 99))
+                           if acc[r]["pk"] else 0.0),
+                max_peaks=float(np.max(acc[r]["pk"])) if acc[r]["pk"] else 0.0,
             ))
 
     p.Thresholds = orig
@@ -457,6 +582,8 @@ def analyze(
     for rec in recs:
         rec.thresh_snr = _pick_snr(rec.sweep, snr_clean_frac)
         rec.thresh_fp = _pick_fp(rec.sweep, max_false_positives)
+        rec.thresh_merge = _pick_merge(rec.sweep, p99_peaks_max)
+        rec.thresh_best_resolved = _pick_best_resolved(rec.sweep)
 
         counts = [pt.n_kept for pt in rec.sweep]
         if len(set(counts)) == 1 and counts[0] > 0:

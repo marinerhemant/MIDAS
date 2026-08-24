@@ -84,7 +84,9 @@ def init_worker(
     )
 
 
-def process_frame_in_worker(local_idx: int) -> Tuple[int, float, int, List[SeededRegion]]:
+def process_frame_in_worker(
+    local_idx: int,
+) -> Tuple[int, float, int, List[SeededRegion], int]:
     """Process one frame inside a worker process.
 
     ``local_idx`` is the position within the block's frame range (already
@@ -105,7 +107,7 @@ def process_frame_in_worker(local_idx: int) -> Tuple[int, float, int, List[Seede
     try:
         raw = np.asarray(data[local_idx], dtype=np.float64)
     except Exception:
-        return local_idx, 0.0, 0, []
+        return local_idx, 0.0, 0, [], 0
 
     corrected = correct_frame(
         raw,
@@ -132,6 +134,7 @@ def process_frame_in_worker(local_idx: int) -> Tuple[int, float, int, List[Seede
         regions, _ = filter_regions_by_snr(
             regions, corrected, snr_bins, min_peak_snr)
     seeded_list: List[SeededRegion] = []
+    n_saturated = 0
     for reg in regions:
         sr = seed_region(
             reg, img_corr, mask,
@@ -142,7 +145,9 @@ def process_frame_in_worker(local_idx: int) -> Tuple[int, float, int, List[Seede
         )
         if sr is not None:
             seeded_list.append(sr)
-    return local_idx, 0.0, len(regions_all), seeded_list
+        else:
+            n_saturated += 1   # saturation is the only None case
+    return local_idx, 0.0, len(regions_all), seeded_list, n_saturated
 
 
 __all__ = ["init_worker", "process_frame_in_worker"]

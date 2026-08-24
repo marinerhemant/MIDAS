@@ -134,6 +134,23 @@ def find_regional_maxima(
     Replicates ``findRegionalMaxima`` in PeaksFittingOMPZarrRefactor.c, including
     fallback to the middle pixel when no local maxima are found, and the
     cap at ``max_n_peaks`` (greedy by intensity).
+
+    **Saturation discards the WHOLE region, and nothing records it.** One pixel
+    over ``IntSat`` (from ``UpperBoundThreshold``) drops every peak in the
+    region, with no flag column and, until 2026-08-22, no count either. That
+    cuts two ways and both are invisible downstream:
+
+    * a saturated reflection is a *strong* one, so its absence is scored as
+      incompleteness -- the grain is penalised for having produced too much
+      signal;
+    * it is also the brightest contributor to that ring's ``powder_int``
+      normalisation (``midas_transforms/radius/core.py:153``), so removing it
+      biases every grain volume on the ring upward.
+
+    Callers now count these (``sr is None`` is the saturation case and the only
+    one) and the per-frame total is reported. Emitting the peaks *with* a
+    saturated flag instead of dropping them would be the fuller fix, but it
+    changes spot counts on every existing dataset and needs its own decision.
     """
     z = region.intensities
     if (z > int_sat).any():
@@ -205,7 +222,10 @@ def seed_region(
 ) -> Optional[SeededRegion]:
     """Build a fully-seeded ``SeededRegion`` ready for batched LM fitting.
 
-    Returns ``None`` if the region should be skipped (saturated).
+    Returns ``None`` if the region should be skipped. Saturation is the **only**
+    reason this returns ``None``, which is what lets callers count saturated
+    regions without re-testing — see :func:`find_regional_maxima` for why that
+    loss is worth counting.
 
     ``compute_moments``: if True, additionally populate ``peak_M2_R``,
     ``peak_M2_Eta``, ``peak_M4_R``, ``peak_M4_Eta`` on the returned region
