@@ -22,6 +22,7 @@ Decision:
 |---|---|---|
 | `aero` / `Aero` | **recorded ω is opposite to MIDAS convention: ω_MIDAS = −ω_aero** | negate both `OmegaStart` and `OmegaStep` relative to the log |
 | anything else | not established by this session | **stop and ask.** Do not assume it matches MIDAS |
+| **no `.par` file exists** | you are not at 1-ID | 20-ID: **§2a** — settled, `aero`, negated. Any other beamline: **stop and ask** |
 
 Worked example, verified (`bt_1id_jun25`, copland):
 
@@ -49,14 +50,42 @@ OmegaStep -0.25
 this pair — `ps_au.txt:65` `OmegaStart 180`, `ps_au.txt:66` `OmegaStep -0.25` — for a
 360° Au scan (1440 frames × 0.25°, `ps_au.txt:70-74`).
 
+### 2a. At 20-ID-D there is no `.par` file — the sign came from the beamline
+
+**Determined 2026-08-28, instrument scientist: the 20-ID-D HT-HEDM rotation stage is `aero`,
+and the sign is negated — the same convention as 1-ID.** ω is recorded per frame in
+`exchange/theta` (§3h), so what the beamline supplied is the *sign*, not the values:
+
+```
+exchange/theta   -180 -> +180.25, step +0.25      # what the file records
+OmegaStart  180                                   # what the paramfile takes
+OmegaStep    -0.25
+NrFilesPerDistance 1440                           # from the omega RANGE, not the frame count
+```
+
+`180 + 1439 × (−0.25) = −179.75`, i.e. a full 360° sweep. **This is what the completed
+20-ID reconstructions already used** — `params_au0802.txt` and `params_ss316.txt` both
+carry `OmegaStart 180` / `OmegaStep -0.25` — so the determination *confirms* those maps
+rather than invalidating them. They were run on a correct assumption that had not yet
+been checked; it has now been checked.
+
+**What this closes.** Every 20-ID orientation map used to carry the label *handedness
+undetermined, map may be mirrored*. **That label is retired.** Do not re-apply it, and do
+not re-derive the sign from the data — the two results that look like they settle it
+cannot (a cube-2 **radius** is mirror-invariant, and `θ = −φ − 90°` was calibrated against
+the reconstructions themselves, so both are invariant under a global mirror). A sign is
+settled by the beamline or not at all, which is why this row reads *determined* and names
+who determined it.
+
 **Why you cannot check this later.** A sign flip in ω mirrors the reconstructed
 microstructure. Confidence values, grain counts and spot overlap are all unchanged. There
-is no self-consistency check inside the reconstruction that catches it.
+is no self-consistency check inside the reconstruction that catches it. That is true at
+both beamlines, and it is why §2a is a *provenance* record rather than a measurement.
 
 **Note for calibration work only:** an ω sign error *cancels* in a two-distance ray-bundle
 solve, because the flip applies identically at both distances and spots are matched by
 frame index within a sweep. It does **not** cancel in the paramfile or in forward
-simulation. Evidence: `/Users/hsharma/Desktop/analysis/bt_1id_jun25_nf/PREREGISTER.md:49-52`.
+simulation. Evidence: `$ANALYSIS/bt_1id_jun25_nf/PREREGISTER.md:49-52`.
 
 ---
 
@@ -319,7 +348,7 @@ either convention — the two differ by one ω step, which is invisible in the
 
 ---
 
-### 3h. 20-ID HT-HEDM (Bluesky + HDF5) — a different world; inherit nothing
+### 3h. 20-ID-D HT-HEDM (Bluesky + HDF5) — a different world; inherit nothing
 
 `§3a-§3g above are 1-ID.` At 20-ID (`/gdata/dm/20ID/HT_HEDM/<cycle>/<beamtime>/`) the
 acquisition is **Bluesky/ophyd running tomography-style fly scans**, the detector is a FLIR
@@ -354,15 +383,23 @@ grep -n "User input: RE(nfscan" $M/.logs/ipython_logger.log
 notebook §7a). Energy is an **absorption edge**; the foil table is printed in the log by
 `foilA.about` (element, thickness, position, K-edge keV).
 
+> **63.314 keV is CONFIRMED for `nfdev_jul26` and `bt_20id_jul26b`** — instrument scientist,
+> 2026-08-28. It is no longer a caveat on those two beamtimes, and reports quoting it need
+> not hedge. **The procedure gap that made it a caveat is still open**, so the next
+> beamtime starts in the same place:
+>
 > **The foil table is not a measurement of the energy, and 20-ID has no equivalent of
 > `fastsweep_Emon.txt` f10.** `foilA.about` prints a *static* 13-row reference table of
 > every foil in the wheel (Pr/Sm/Yb/Lu/Hf/Ta/W/Re/Pt/Au/Pb/Bi) and is never followed in
 > the log by a call recording which foil was selected. Checked 2026-08-12 on
-> `nfdev_jul26`: the only corroboration for 63.314 keV (Lu K-edge) is `_63keV` in the scan
-> *filenames*, which rounds to Lu rather than the neighbouring Yb (61.332) or Hf (65.351)
-> — plausible, and **exactly the inference hard rule 22 forbids** ("never take a number
-> from a name"). Record the 20-ID energy as **inferred, not measured**, and say so in any
-> report that quotes it. A rigorous value needs the foil selection logged, or an edge scan.
+> `nfdev_jul26`: the only corroboration *available in the data* for 63.314 keV (Lu K-edge)
+> was `_63keV` in the scan *filenames*, which rounds to Lu rather than the neighbouring Yb
+> (61.332) or Hf (65.351) — plausible, and **exactly the inference hard rule 22 forbids**
+> ("never take a number from a name"). The confirmation above came from **asking**, which
+> is the lever this row exists to point at. On a 20-ID beamtime nobody has confirmed,
+> record the energy as **inferred, not measured**, say so in any report that quotes it, and
+> ask. A value rigorous *from the data alone* still needs the foil selection logged, or an
+> edge scan.
 
 **Entering the pipeline at 20-ID.** This used to be impossible — `midas_nf_preprocess` had
 no HDF5 reader and `process_all` began by loading a whole layer into RAM, which is 141 GB at
@@ -401,18 +438,33 @@ Do **not** convert to TIFF to avoid any of this. The pixel scaling and the ω-si
 
 **Traps specific to this format:**
 
-1. **10-bit data stored ×64.** Values are multiples of 64 and saturation is 65472 = 1023×64.
-   **Divide by 64 to get ADU** or every threshold is 64× wrong.
+1. **The pixel encoding is PER SCAN, not per detector — measure it, never inherit it.**
+   `nfdev_jul26` is 10-bit stored ×64: values are multiples of 64 and saturation is
+   65472 = 1023×64. On the **same detector serial**, two weeks later, `NF_Au_cube_0802`
+   and the SS316L NF scan are 12-bit **unscaled** (max 4092, unique values 0, 2, 4, 6, …)
+   — while the SS316L *tomography taken the same day* is ×64 again. Declare it as
+   `PixelScale` (§10f); it defaults to 1, warns in both directions and **never infers**.
+
+   ```python
+   np.unique(frame)[:8], frame.max()      # multiples of 64 -> PixelScale 64; else 1
+   ```
+
+   A wrong `PixelScale` is the most expensive mistake recorded at this beamline: it turns
+   the §5d production threshold of "2 counts" into 128 counts, thresholds the **pedestal**
+   so the background reads as signal, and it produced three successive wrong distance
+   answers on SS316L before it was found (lab notebook §8b).
 2. **The frame count may exceed 360°.** `nfdev_jul26` has 1442 frames spanning
    −180 → +180.25; the last two duplicate the first two. Set `NrFilesPerDistance` from the
    ω range, not from the frame count.
 3. **Chunking wastes disk and I/O.** Chunks (1,1500,1960) on a 4600×5320 frame pad to
    6000×5880 — **44 % overhead** (101.77 GB file for 70.58 GB of payload). Reading a single
    frame costs ~35 MB of chunk reads, not 49 MB of frame.
-4. **`midas_nf_preprocess` cannot read any of this yet** — see the two blockers below.
+4. **The chunk layout is not the frame layout.** Read whole frames through the source
+   abstraction rather than slicing `exchange/data` by hand, or every read pays the
+   padding above.
 
 **The two blockers that used to sit here are CLOSED** (opened 2026-08-01, closed
-2026-08-19). They were: no HDF5 reader in `midas_nf_preprocess`, and `process_all` loading a
+2026-08-19; the shared env carries the fix — see `RUNBOOK.md` §R1). They were: no HDF5 reader in `midas_nf_preprocess`, and `process_all` loading a
 whole layer into RAM. Recorded because the *shape* of the fix matters —
 
 - The reader is chosen from `extOrig`, and one HDF5 holds one **distance**, so the file

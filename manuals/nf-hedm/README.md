@@ -13,11 +13,19 @@ Everything else the agent works out or asks for. **The order in §0 is not optio
 was confirmed with the instrument scientist, and getting it wrong is itself a documented
 failure mode.
 
-**Scope.** The metadata recipes (§3a–§3g) assume **1-ID**. 20-ID HT-HEDM is a different
-acquisition, detector and file format, and has its own route in §3h — the reduction now runs
+**Scope.** The metadata recipes (§3a–§3g) assume **1-ID**. 20-ID-D HT-HEDM is a different
+acquisition, detector and file format, and has its own route in §3h — the reduction runs
 on its HDF5 directly (`extOrig h5`), so the two blockers that used to close that door are
-gone. **What is NOT resolved at 20-ID is the ω sign**, and that one is not a code problem:
-see hard rule 1 for what it costs and how to report it.
+gone. **The ω sign at 20-ID is now settled too** — `aero`, negated, the same convention as
+1-ID, determined by the instrument scientist on 2026-08-28 (§2a). The mirror-ambiguity
+label that every 20-ID map used to carry is **retired**; do not re-apply it. Both 1-ID and
+20-ID-D are in scope end to end.
+
+**Which station.** At sector 20, **NF is at 20-ID-D**. FF and PF run at **both D and E**,
+and everything reconstructed to date — NF, FF and PF alike — is **D** data (instrument
+scientist, 2026-08-28). Say the station in the report: the beamtime name does not carry it,
+the data paths do not carry it, and one campaign's records were already mislabelled `E` on
+nothing more than an assumption.
 
 **On any other beamline, stop and ask rather than adapting a recipe.** The array→lab
 mapping has to be re-derived, not inherited, and getting it wrong **mirrors the
@@ -60,8 +68,18 @@ which file. A reference to the notebook is always written `Lab Notebook §n`, be
 notebook has its own numbering that collides with these.
 
 
-Citations are `path:line` relative to `$MIDAS = /Users/hsharma/opt/MIDAS`. Read them with
-absolute paths (`/Users/hsharma/opt/MIDAS/<path>`). Every non-obvious claim carries one,
+Citations are `path:line` relative to **`$MIDAS`, the root of whichever MIDAS checkout you
+are working in** — on a beamline host that is `~s1iduser/opt/MIDAS_canonical`. Build the
+absolute path from your own checkout (`$MIDAS/<path>`); no path here is tied to one machine.
+
+**`$ANALYSIS` means a campaign working directory that is NOT in this repo.** The harnesses
+that produced many of the numbers below are local analysis scripts, deliberately unversioned
+(see `.gitignore`). A `$ANALYSIS/...` path is therefore *provenance, not a link*: it names
+the exact script a number came from so the claim can be traced and re-run, and it makes no
+promise that you can open the file from where you are sitting. Ask for the harness if you
+need it.
+
+Every non-obvious claim carries one,
 and `utils/doc_citation_check.py` (wired into the pre-commit hook) fails the commit when a
 cited file, line or symbol no longer exists — so a citation here points at real code.
 **It cannot check the claim, only the pointer:** the line is right, the sentence about it
@@ -94,7 +112,7 @@ seems wrong:**
 |---|---|
 | par field 9 is **not** `aero` | no other value's ω sign has ever been established here (§2, §11) |
 | no folder with `FileCount.txt` + `fastsweep_Emon.txt` + `*_SequenceOfEvents.log` | you cannot write a paramfile at all (§3a) |
-| the data is **20-ID** and you are about to report an orientation map | the reduction runs (§3h), but the **ω sign is undetermined there**, so the map is mirror-ambiguous. Not a reason to stop working — a reason the label has to travel with the result (hard rule 1) |
+| the data is 20-ID and `np.unique` on a frame was **not** run | `PixelScale` is per SCAN and is never inferred. Unchecked, the threshold is 64× wrong and the pedestal reads as signal (§3h, §5d, §10f) |
 | any beamline **other than 1-ID or 20-ID** | the `2047 − index` BC convention encodes *this* detector; getting it wrong mirrors the microstructure invisibly. Re-derive it the way §3h did — both masks from one reduction — rather than inheriting it |
 | any package **below floor** after §1 | `SumFrames` units inverted; a mixed resolve is silently wrong (§1, §8j) |
 | `fit_axis(...).is_reliable` is **False** | the shadow tracker refused — branch on it, do not override (§6e) |
@@ -114,29 +132,28 @@ proceed. Everything not blocked by it should still be finished first.
    this wrong and the reconstruction is **mirrored**, which is **not detectable from the
    `.mic` alone**. This is step 1 of every new dataset, no exceptions.
 
-   > **This rule has a method at 1-ID only.** There is no `.par` file at 20-ID, and this
-   > doc set contains **no procedure for establishing the ω sign there** — `exchange/theta`
-   > is recorded per frame, but nothing here establishes whether its sign matches
-   > ω_MIDAS's convention. Masking all four sign candidates and letting the reconstruction
-   > settle handedness (`PARAMETERS.md`, Lab Notebook §7) resolves the *mask position*; it
-   > does **not** determine the sign for the paramfile or the forward model. Because a
-   > wrong sign mirrors the microstructure with confidence unchanged, no downstream check
-   > in this set — not confidence, not the neighbour-misorientation coherence test — can
-   > catch it.
+   > **At 20-ID there is no `.par` file, and the sign was settled by the beamline instead
+   > (§2a).** Determined 2026-08-28, instrument scientist: the stage is `aero` and the sign
+   > is **negated**, the same convention as 1-ID. ω itself is recorded per frame in
+   > `exchange/theta` (−180 → +180.25, step +0.25), so the paramfile takes
+   > `OmegaStart 180` / `OmegaStep -0.25` / `NrFilesPerDistance 1440`.
    >
-   > **This is no longer a reason to halt** — the geometry, the distances, the confidence
-   > distribution and the grain statistics are all invariant under the mirror, and three
-   > 20-ID campaigns were reduced and reconstructed without it. What it forbids is
-   > *reporting a 20-ID orientation map without the label*: **handedness undetermined,
-   > map may be mirrored.** Carry that into the report, not just the notes.
+   > **The completed 20-ID reconstructions already used exactly that** (`params_au0802.txt`,
+   > `params_ss316.txt`), so the determination confirms those maps rather than invalidating
+   > them — they ran on a correct assumption that had not yet been checked. **The
+   > "handedness undetermined, map may be mirrored" label is retired. Do not re-apply it.**
    >
-   > **Two results that look like they settle it and do not.** The cube-2 cross-check
-   > (diffraction r = 497.0 µm against the absorption shadow's 499.8 ± 2 µm, Lab Notebook
-   > §8g) compares a **radius**, which is mirror-invariant. The phase→position convention
-   > `θ = −φ − 90°` was *calibrated against the reconstructions themselves*, so it is
-   > self-consistent under a global mirror of both and cannot test handedness either.
-   > Filling this gap needs a determination at the beamline — a known rotation sense, or a
-   > sample with a known chirality — not a re-reading of these files.
+   > **Do not try to re-derive the sign from the data — two results look like they settle
+   > it and cannot.** The cube-2 cross-check (diffraction r = 497.0 µm against the
+   > absorption shadow's 499.8 ± 2 µm, Lab Notebook §8g) compares a **radius**, which is
+   > mirror-invariant. The phase→position convention `θ = −φ − 90°` was *calibrated against
+   > the reconstructions themselves*, so it is self-consistent under a global mirror of
+   > both. Masking all four sign candidates and letting the reconstruction settle
+   > handedness resolves the *mask position*, not the sign. A wrong sign mirrors the
+   > microstructure with confidence unchanged, so **no downstream check in this set — not
+   > confidence, not the neighbour-misorientation coherence test — can catch it.** That is
+   > why this rule is satisfied by a beamline determination with a name and a date on it,
+   > and by nothing else. On a **third** beamline you are back to stop-and-ask.
 2. **The TIFF tree does not contain the metadata (§3).** `/gdata/dm/1ID/<year>/<beamtime>/data/nf/`
    holds only images. Distances, ω, energy, exposure live in a *separate* acquisition-log
    folder. Find it or stop.

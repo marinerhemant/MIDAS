@@ -16,16 +16,19 @@ The shared env has no matplotlib (§1). Working example from this session:
 ```
 remote reducer  -> writes au4_reduced.npz  (keys: detz{9,13}_{max,med,f0,f360,f719})
 scp to Mac
-/Users/hsharma/Desktop/analysis/bt_1id_jun25_nf/plot_au4.py       -> 4 PNGs
-/Users/hsharma/Desktop/analysis/bt_1id_jun25_nf/check_artifacts.py -> the null-model check
+$ANALYSIS/bt_1id_jun25_nf/plot_au4.py       -> 4 PNGs
+$ANALYSIS/bt_1id_jun25_nf/check_artifacts.py -> the null-model check
 ```
 
-Both scripts are checked in at that path; `check_artifacts.py` re-runs in seconds and
-reproduces every number in §5b. Run it before trusting any spot count:
+Both scripts live in that campaign directory — **`$ANALYSIS` is not this repo** (README),
+so they travel with the campaign, not with a checkout. `check_artifacts.py` re-runs in
+seconds and reproduces every number in §5b. Run it before trusting any spot count:
 
 ```bash
-cd /Users/hsharma/Desktop/analysis/bt_1id_jun25_nf
-/Users/hsharma/miniconda3/envs/midas_env/bin/python check_artifacts.py
+export ANALYSIS=<the campaign dir; NOT in this repo, see README>
+cd "$ANALYSIS/bt_1id_jun25_nf"
+conda activate midas_env            # or whichever env carries this project
+python check_artifacts.py
 ```
 
 ### 5b. Reference sanity numbers for a real 1-ID NF dataset
@@ -79,7 +82,7 @@ reduction, not applied at fit time.
 Note the dynamic range: background ≈ 6.7, single-frame spot peaks ≈ 700–950, i.e. **~2
 decades**. The §5b reductions were computed over 72 of the 720 frames (every 10th) for the
 max projection and 18 frames for the temporal median
-(`/Users/hsharma/Desktop/analysis/bt_1id_jun25_nf/plot_au4.py:49,65`).
+(`$ANALYSIS/bt_1id_jun25_nf/plot_au4.py:49,65`).
 
 ### 5c. Decision tree on what you see
 
@@ -124,6 +127,24 @@ pixels **by chance**. At 3800 lit px on 4600×5320 that is ~1.75 within ±60 px 
 ±400 px — so "found something nearby" is the null result, not evidence. Compute it first.
 
 ### 5d. Check the counting regime before choosing a threshold
+
+**First fix the units the threshold is denominated in.** Every number in this section is
+in ADU, and whether a raw value *is* ADU is a per-**scan** fact that is never inferred:
+
+```python
+np.unique(frame)[:8], frame.max()
+#  multiples of 64, max 65472  -> 10-bit stored x64 -> PixelScale 64
+#  gap of 2 or 4,   max 4092   -> 12-bit unscaled   -> PixelScale 1  (the default)
+```
+
+Set `PixelScale` (§10f) and let the reader divide; do not divide in an analysis script,
+or the paramfile and your plots disagree. **Do not carry the answer over from another
+scan** — `nfdev_jul26` is ×64 and `NF_Au_cube_0802` is unscaled *on the same detector
+serial*, and the SS316L tomography taken the same day as the unscaled NF scan is ×64
+again. Get this wrong and the "2 counts" in the table below becomes 128 counts, which
+sits above the pedestal and makes the **background** read as signal — the failure looks
+like a sample that indexes everywhere rather than like a threshold error (§3h,
+lab notebook §8b).
 
 `BlanketSubtraction ≈ 0.7 σ` (§8f) assumes σ is meaningful. **On a photon-starved detector
 it is not.** Measure it before trusting it:

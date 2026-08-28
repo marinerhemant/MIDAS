@@ -32,8 +32,14 @@ Contents re-checked 2026-08-01 with `importlib.metadata` on chiltepin: `midas-nf
 0.1.1`, `midas-nf-preprocess 0.1.2`, `midas-nf-fitorientation 0.3.2`, `midas-hkls 0.5.0`,
 `numpy 2.4.6`, `tifffile 2026.3.3`, `h5py 3.16.0`, `scipy 1.17.1`, `torch 2.11.0+cu128`.
 
-> **The shared env is BEHIND this repo tree, and it still carries the `GridPoints`
-> off-by-one.** As of **2026-08-07** `packages/*/pyproject.toml` reads
+> **This paragraph is a worked example of the check, and its verdict is out of date.**
+> Measured **2026-08-28**, the shared env is **current** — all four packages match the
+> tree, `importlib.metadata` and `__version__` agree, and the HDF5 capability is present.
+> `RUNBOOK.md` §R1a has that measurement. What survives here is the *method*, because the
+> failure it describes is real and will recur. Read on for that, not for the versions.
+>
+> **[Historical, 2026-08-07] The shared env was BEHIND this repo tree, and still carried
+> the `GridPoints` off-by-one.** As of **2026-08-07** `packages/*/pyproject.toml` read
 > `midas_nf_pipeline 0.6.0`, `midas_nf_preprocess 0.6.0`, `midas_nf_fitorientation 0.8.0`,
 > `midas_hkls 0.7.0` — several releases past the env contents quoted above, which were
 > last read on 2026-08-01. **Treat every version number in this section as a worked
@@ -95,6 +101,25 @@ print("\n*** BELOW FLOOR ***" if bad else "\nall installed midas packages satisf
 PY
 ```
 
+**Then check the capability, not the number.** A version gate cannot tell you whether the
+code you need is present, and on this env it has been wrong in both directions. For 20-ID,
+the load-bearing capability is the HDF5 frame source — test for it directly:
+
+```python
+from midas_nf_preprocess.process_images import io, params, median
+import inspect
+print([hasattr(io, n) for n in ("is_hdf5", "Hdf5FrameSource",
+                               "check_pixel_scale", "open_source")])   # all True
+print(hasattr(median, "streaming_temporal_median"))                     # True
+src = inspect.getsource(params)
+print([k for k in ("extOrig", "DataLoc", "PixelScale", "StreamFrames",
+                   "MedianFrames", "MedianRowBlock") if k not in src])  # []
+```
+
+> Test for those **names**. A grep for `"h5"` over `dir(io)` returns nothing and means
+> nothing — the symbols are spelled `is_hdf5` and `Hdf5FrameSource`, neither of which
+> contains that substring. That false negative has already been reported once.
+
 **The gate has a blind spot. Read this before trusting a pass.** The check below compares
 metadata against the imported `__version__` and reports disagreement. That catches an
 *editable* install, where code runs ahead of stale metadata. It cannot catch the opposite,
@@ -138,15 +163,25 @@ log, or SIGHUP kills them.
 ### 1b. On your own machine or cluster
 
 ```bash
-pip install "midas-nf-pipeline>=0.6.1" "midas-hkls>=0.6.0" matplotlib
+pip install "midas-nf-pipeline>=0.6.6" "midas-nf-preprocess>=0.7.0" \
+            "midas-hkls>=0.6.0" matplotlib
 ```
 
-`midas-nf-pipeline >= 0.6.1` pulls `midas-nf-preprocess>=0.6.0` and
+`midas-nf-pipeline >= 0.6.1` pulls `midas-nf-preprocess` and
 `midas-nf-fitorientation>=0.8.0` transitively, which is what keeps `SumFrames` consistent
 (§8j). **Below 0.6.1 you must pin those two by hand:** 0.6.0's metadata floored them at
 0.4.0 and 0.6.0, so a plain `pip install midas-nf-pipeline` could resolve a mix where one
 package reads `NrFilesPerDistance`/`OmegaStep` as raw and another as post-sum — the resolve
 `9450901d` was written to prevent, which its own dependency list did not yet enforce.
+
+> **`midas-nf-preprocess>=0.7.0` is pinned explicitly on purpose, and for 20-ID it is not
+> optional.** The HDF5 frame source and the row-blocked streaming median first shipped in
+> **0.7.0**; below it `extOrig h5` cannot work at all, so the entire 20-ID route (§3h) is
+> absent. `midas-nf-pipeline` floored it at `>=0.6.0` until **0.6.6**, which means an
+> install of any earlier pipeline release can resolve an env with no HDF5 reader — **and
+> the floor gate below will pass it**, because the gate reads the floors out of the tree
+> and a floor that is too low makes the gate blind. Drop the explicit pin only once
+> `midas-nf-pipeline >= 0.6.6` is what you are installing.
 
 Then **run the floor gate above** and read its output. It is the check that catches this;
 do not infer a good install from `pip install` exiting 0.

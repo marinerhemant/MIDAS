@@ -121,9 +121,16 @@ Three things that will bite:
 
 **Tip — when a position is known only up to a convention**, put a dilated region at *each*
 candidate rather than guessing. On `nfdev_jul26` the second cube's sample-frame position is
-`±(406.4, 285.7) µm` — the magnitude is measured to ±0.7 µm but the sign pair depends on the
-ω sign and the detector Y handedness. Masking **both** candidates costs one extra disc and
-lets the reconstruction settle the handedness empirically.
+`±(406.4, 285.7) µm` — the magnitude is measured to ±0.7 µm but the sign pair depended on
+the ω sign and the detector Y handedness. Masking **both** candidates costs one extra disc
+and lets the reconstruction settle the *mask position* empirically.
+
+> **Both inputs to that ambiguity are now determined, so this is a fallback, not the
+> route.** The detector Y handedness was measured (the 1-ID flip transfers to the 20-ID
+> Oryx: maxC 0.000000 vs 0.6957 for the two candidates, §3h), and the 20-ID ω sign is
+> `aero`/negated from the instrument scientist (§2a). Use the known convention. Keep this
+> tip for a **new** beamline — and note what it can and cannot do: masking both candidates
+> settles which mask contains the particle, **never the ω sign itself** (hard rule 1).
 | `DataDirectory` | path — raw TIFFs | everything |
 | `OutputDirectory` | path — falls back to `DataDirectory` | everything |
 
@@ -291,7 +298,7 @@ pixel count up 0.1–3.8 %.
 
 That is one row band of one distance of one scan, and a median biased high suppresses weak
 spots **silently**. Hence the default stays at all frames. Provenance:
-`~/Desktop/analysis/nfdev_jul26_20id/validate_h5_reader.py`.
+`$ANALYSIS/nfdev_jul26_20id/validate_h5_reader.py`.
 | `WriteFinImage` | 0/1 | forced to 1 when `Deblur != 0` (`process_images/params.py:229`) |
 | `Deblur`, `WriteLegacyBin` | 0/1 | |
 | `SoftTemperature` | float or `auto` | **Python extension, not in the C** — sigmoid temperature for the differentiable spot-probability surrogate (`params.py:14-18`) |
@@ -369,6 +376,26 @@ appending a line to your parameter file** (`stages.py:108-111`). Keys: `Denoise`
 (`<DataDirectory>/denoised`), `DenoiseConfigFile`, `DenoiseCheckpoint`, `DenoisePattern`
 (`*.tif`), `DenoiseTrainJointly` (0), `DenoiseFinetune` (0), `DenoiseMaskThreshold`
 (unset ⇒ `None`), `DenoiseNoMedian` (0 — 1 disables the temporal median).
+
+#### Matched-filter detection — present, deliberately NOT the default
+
+`process_images/detect.py` implements matched-filter spot detection alongside the
+threshold and NLM paths. It is **not** enabled by default and should not be switched on
+casually, because what has been validated about it is narrower than it looks:
+
+- **Validated:** at an equal *measured* false-positive budget it finds **5.8–8.6×** more
+  spots than a raw threshold and roughly **10×** more than NLM, on three datasets.
+- **NOT validated:** that any of this improves a **reconstruction**. More blobs are not
+  better indexing — the extra detections may be weak spots that the fit already tolerated,
+  or noise that survived the FP accounting. The head-to-head test (matched filter vs NLM,
+  same geometry, through to the `.mic`) has never been run.
+- **The false-positive counts are a LOWER BOUND.** They come from a negated-residual null,
+  which under-counts for Poisson data. The *ranking* between methods is fair; the absolute
+  rate is not, so do not quote it as a detection error rate.
+
+Related: `NLMBackend` defaults to `skimage`, not `torch`, on purpose — the torch NLM is
+**not bit-equivalent** (correlation 0.988–0.9999, blob counts ±2, worst in saturated
+regions). Choose `torch` for speed knowing that, not by assuming parity.
 
 ### 10i. Keys in `ps_au.txt` that no Python NF module reads
 

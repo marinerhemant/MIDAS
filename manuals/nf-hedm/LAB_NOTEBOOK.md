@@ -19,6 +19,10 @@ as such.
 **Read §5 before re-opening any question here** — four attractive claims are recorded
 there as retracted, each with the measurement that killed it.
 
+**Section order is not reading order.** §8 (`bt_20id_jul26b` / `nf_sampleD`, the second
+20-ID campaign) was written after §9–§11 and sits below them in the file. §12 is the
+determinations log. Navigate by the numbers, not by scrolling.
+
 ---
 
 ## 1. What this campaign established
@@ -369,7 +373,7 @@ A **different beamline**: Bluesky/ophyd acquisition, tomography-style fly scans,
 optical camera, and HDF5 in DXchange layout. Almost nothing about the 1-ID file handling
 carries over. Data
 `/gdata/dm/20ID/HT_HEDM/2026-2/nfdev_jul26/data/or1/Au_cube`, reachable as `s1iduser` on
-chutoro. Working dir `~/Desktop/analysis/nfdev_jul26_20id/` (has its own `CHECKPOINT.md`).
+chutoro. Working dir `$ANALYSIS/nfdev_jul26_20id/` (has its own `CHECKPOINT.md`).
 
 ## 7a. What the data is
 
@@ -377,10 +381,10 @@ chutoro. Working dir `~/Desktop/analysis/nfdev_jul26_20id/` (has its own `CHECKP
 |---|---|
 | Detector | FLIR Oryx ORX-10G-245S8M, **5320 (Y) × 4600 (Z)**, 0.548 µm/px ⇒ FOV 2915 × 2521 µm |
 | Container | `exchange/data` (1442, 4600, 5320) uint16, chunks (1,1500,1960), **uncompressed** |
-| **Bit depth** | **10-bit stored ×64.** Values are multiples of 64; saturation 65472 = 1023×64. Divide by 64 for ADU |
+| **Bit depth** | **10-bit stored ×64** — *this scan*. Values are multiples of 64; saturation 65472 = 1023×64 ⇒ `PixelScale 64`. **Per SCAN, not per detector**: `NF_Au_cube_0802` on the same serial is unscaled (§8i) |
 | ω | `exchange/theta`, −180 → +180.25 step **+0.25°**, monotonic, no duplicates |
 | Frames | 1442 = 360.25°; frames 1440-1441 duplicate 0-1 ⇒ **`NrFilesPerDistance` 1440** |
-| Energy | **63.314 keV** (Lu K-edge), λ 0.195824 Å — from the `foilA.about` foil-wheel table in the Bluesky log |
+| Energy | **63.314 keV** (Lu K-edge), λ 0.195824 Å — read off the `foilA.about` foil-wheel table in the Bluesky log, and **CONFIRMED by the instrument scientist 2026-08-28** (§12). The log alone could not establish it |
 | Scan | `nfscan(0.2, nfz_start=7, nfz_end=11, ndz=3, y0=8.04, dy=0.01, y_nlayers=2)` ⇒ 3 distances × 2 layers = 6 files |
 | δ | 2000 µm (operator) ⇒ `Lsd` 9000 / 11000 / 13000 µm |
 
@@ -1076,8 +1080,9 @@ things did **not**.
 `exchange/data_dark`, `data_white`, `data_white_post` are all present and **all exactly
 zero** — placeholders, not flat fields. The separate dark file is zero too. The temporal
 median is the only background available. There is no acquisition log (the parent directory
-is permission-denied) and the HDF5 carries no energy, so **63.314 keV is inherited**, not
-measured, for this campaign.
+is permission-denied) and the HDF5 carries no energy, so 63.314 keV was **inherited** for
+this campaign rather than measured from it. **Confirmed by the instrument scientist
+2026-08-28** (§12) — the value stands; what it never had was corroboration inside the data.
 
 `AcqPeriod` reads 0.0339 s and is a stale PV; `NDArrayTimeStamp` gives the real 1325 ms
 period. Believe the timestamps.
@@ -1320,7 +1325,7 @@ gated the data out of the pipeline. Both are now in the package: `process_images
 `median.py::streaming_temporal_median`. Keys in `PARAMETERS.md` §10f.
 
 **Validated against the real file**, not just synthetic fixtures
-(`~/Desktop/analysis/nfdev_jul26_20id/validate_h5_reader.py`, log on chutoro at
+(`$ANALYSIS/nfdev_jul26_20id/validate_h5_reader.py`, log on chutoro at
 `~hsharma/nf20id_check/validate.log`). On `NF_Au_cube_0802_000708.h5`:
 
 | check | result |
@@ -1345,3 +1350,56 @@ more**; `hsharma@chutoro` is in both and is the working route. Also `~/nfdev_rec
 chutoro — including the 13 GB `SpotsInfo.bin` — **is gone**, while
 `/scratch/s1iduser/au0802_recon/` survives. The usual assumption is backwards here: check
 before relying on either.
+
+---
+
+## 12. Determinations log — facts that came from the beamline, not from the data
+
+Some quantities cannot be recovered from the files no matter how carefully they are read.
+When one of those is settled, it is settled by **asking someone who knows**, and the record
+of that is a name and a date — not a measurement. This section exists so those never decay
+back into assumptions, and so a later session can tell a *confirmed* value from an
+*inherited* one at a glance.
+
+| date | quantity | value | source | what it closed |
+|---|---|---|---|---|
+| 2026-08-28 | 20-ID HT-HEDM ω sign | stage is `aero`; **ω_MIDAS = −ω_aero** | instrument scientist (Hemant Sharma) | The mirror-ambiguity label on every 20-ID orientation map. Handbook §2a, hard rule 1 |
+| 2026-08-28 | Beam energy, `nfdev_jul26` + `bt_20id_jul26b` | **63.314 keV** (Lu K-edge), λ 0.195824 Å | instrument scientist | The "inferred from a filename" caveat on both beamtimes. Handbook §3h |
+
+### 12a. Why the ω determination did not invalidate anything
+
+The completed 20-ID reconstructions already ran with `OmegaStart 180` / `OmegaStep -0.25`
+— the negated convention — in `params_au0802.txt` and `params_ss316.txt`. That was an
+assumption carried over from 1-ID at the time, and the doc set correctly refused to bless
+it. The determination **confirms** those maps. Nothing needs re-running.
+
+That is the good outcome, and it is worth naming the bad one that was equally likely: had
+the sign come back positive, every 20-ID map would have been mirrored, and **nothing in
+the reconstruction would have shown it** — confidence, grain counts, distances, spot
+overlap and the neighbour-vs-random coherence test are all invariant under the mirror. The
+label was doing real work for the ~4 weeks it stood.
+
+### 12b. Two results that looked like they settled the sign, and did not
+
+Both were available before 2026-08-28 and neither is evidence, for the same reason:
+
+- **The cube-2 cross-check** (§8g) — diffraction r = 497.0 µm against the absorption
+  shadow's 499.8 ± 2 µm. Agreement to 2.8 µm from unrelated physics, and a genuinely good
+  test of the *geometry*. But it compares a **radius**, which is mirror-invariant.
+- **The `θ = −φ − 90°` phase→position convention** — pinned on two campaigns to 3 µm. It
+  was *calibrated against the reconstructions themselves*, so a global mirror of both the
+  convention and the maps is equally self-consistent.
+
+The general form: **a quantity fitted to the reconstruction cannot test a symmetry the
+reconstruction is invariant under.** Before offering any future result as evidence for a
+sign, check whether it survives the mirror. If it does, it is not evidence.
+
+### 12c. Still open — do not mistake these for determined
+
+- **Nominal detector positions (`nfz`) for `NF_Au_cube_0802`.** Only ΔD = 2000 µm was
+  supplied. δ between campaigns is meaningful (−837.9 vs −837.7 µm); δ against a motor
+  scale is not anchored.
+- **Which foil was selected**, on any 20-ID beamtime. The Bluesky log prints the static
+  13-row wheel table and never records the selection, so the energy question returns
+  intact on the next beamtime. Ask early — the wavelength sets every ring radius.
+- **20-ID tilts.** Two good SS316L refinements disagree on the sign of `ty`.

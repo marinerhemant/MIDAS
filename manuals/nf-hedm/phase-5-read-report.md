@@ -133,8 +133,9 @@ the row count before quoting this. **Use `/maps/grain_id`, or run `mic2grains`.*
 ### 9d. Viewer — `gui/nf_qt.py`
 
 ```bash
-cd <DATA_FOLDER>                    # required for BeamPos auto-detect (§3e)
-python /Users/hsharma/opt/MIDAS/gui/nf_qt.py &     # --dark for dark theme (nf_qt.py:2169)
+export MIDAS=<your MIDAS checkout>   # beamline host: ~s1iduser/opt/MIDAS_canonical
+cd <DATA_FOLDER>                     # required for BeamPos auto-detect (§3e)
+python "$MIDAS/gui/nf_qt.py" &       # --dark for dark theme (nf_qt.py:2169)
 ```
 
 What it is for, in priority order for an agent:
@@ -337,7 +338,14 @@ the file and the command that produced it.
 - The calibration: the paramfile used, `NumIterations` inside one invocation, and the
   §7b negatives you did *not* re-run.
 - The reduction settings, in σ: `BlanketSigma`, `SumFrames` (with the ω-width measurement
-  that chose it, §8j), NLM on/off.
+  that chose it, §8j), NLM on/off. **At 20-ID, the `PixelScale` you set and the
+  `np.unique` output that chose it** — a threshold in ADU means nothing without it (§5d).
+- **At 20-ID, where the numbers the files do not carry came from.** The HDF5 has no
+  energy, no distance and no pixel size. State the beam energy and say whether it was
+  *confirmed by the beamline* (63.314 keV is, for `nfdev_jul26` and `bt_20id_jul26b`) or
+  *inferred*; give the scan definition as read from the `nfscan(...)` call in the
+  ipython log; and say that only ΔD was supplied, so any δ against a motor scale is not
+  anchored (§3h, `RUNBOOK.md` §R2c).
 - The `.mic` result with the §9a caveats, and grain **counts** — not `mic2grains` radii
   unless `EdgeLength == GridSize` (§8a).
 - Every place this document said *stop and ask* and you proceeded anyway.
@@ -356,7 +364,13 @@ say it is overclaiming.
 ### 12c. Done means
 
 - [ ] §1 install gate run, output pasted, **no package below the strictest floor**
-- [ ] ω sign established from par field 9 — or **stopped and asked** if not `aero`
+- [ ] ω sign established — 1-ID: par field 9, or **stopped and asked** if not `aero`.
+      20-ID: §2a, `aero` and negated, so `OmegaStart 180` / `OmegaStep -0.25`. Any other
+      beamline: **stopped and asked**
+- [ ] **20-ID only:** `PixelScale` set from `np.unique` on a frame, **not inherited** from
+      another scan — the encoding is per scan (§5d, §3h)
+- [ ] **20-ID only:** `NrFilesPerDistance` taken from the ω **range**, not from the length
+      of `exchange/data` — the sweep can exceed 360° (1442 frames for 1440 real ones)
 - [ ] scan definition re-derived per scan (§3g); §3d's three checks all pass
 - [ ] `StartNr` = the first image; the GE skip-first-frame rule **not** carried over (§3g)
 - [ ] raw frames looked at before anything was built (§5), on the temporal-median + LoG
