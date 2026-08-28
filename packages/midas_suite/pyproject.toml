@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.10.2"
+version = "0.10.3"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -55,7 +55,8 @@ dependencies = [
     "midas-fit-grain>=0.7.0",      # >=0.6.0 refiner returns its seed positions; >=0.7.0 adds c_recipe
     "midas-tomo>=0.1.0",           # gridrec CT engine; installs Python-only when FFTW/OpenMP are absent
     "midas-dt>=0.1.0",             # XRD-CT: sinogram assembly + both branch orders (fit→recon, recon→fit)
-    "midas-nf-preprocess>=0.6.0",
+    "midas-nf-preprocess>=0.7.0",  # >=0.7.0 the 20-ID HDF5 frame source + streaming
+                                   # median; below it `extOrig h5` cannot work at all
     "midas-nf-fitorientation>=0.9.2",
     "midas-zipper>=0.2.0",         # raw → .MIDAS.zip ingest (pip-portable, no C/source-tree dep).
                                    # >=0.2.0 param_refresh, which midas-pipeline's zip_convert imports to
