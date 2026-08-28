@@ -45,6 +45,16 @@ Verify by reconstructing a **known feature** — a sample edge, a notch, a fiduc
 checking it lands where the microscope/tomo says it should. If it is mirrored, flip the
 order or sign and re-run from binning (cheap) — do **not** "fix" it downstream.
 
+> ⚠️ **If the feature you reach for is a sample edge, read
+> [`phase-1b-sample-boundary.md`](phase-1b-sample-boundary.md) first.** The completeness map
+> does *not* show it — vacuum voxels inherit a neighbour's orientation and score ~0.92 — and
+> the circular falloff that looks like a sample outline is the scan geometry. The boundary
+> comes from the spot-count sinogram. An edge is also a weaker handedness check than it
+> looks: its **distance** is measurable to ~1.5 µm while its **tilt is not** (three methods
+> gave +2.4°, −8.5°, +4.8°). And it may not be checkable at all — on the 20-ID reference
+> campaign the translation motor readbacks were constant across every file, so the
+> handedness rests on the descending convention and is **not a measurement**. Say so.
+
 > If a byte-exact original `positions.csv` is unavailable, it can be rebuilt from the scan
 > spec (n_scans, centre-file index, step, direction). Cross-check the rebuilt file's byte
 > length against the original if you have it; an off-by-one in the centre index shifts the

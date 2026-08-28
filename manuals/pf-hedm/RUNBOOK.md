@@ -33,6 +33,11 @@ under; outside those it is not a specification.
 | per-voxel strain fit | seconds–minutes / grain | GPU, adam ~60 steps; big grains need `chunk_size_g` |
 | full-layer strain extraction | I/O-bound, hours | reading the raw frames dominates; zarr ~1.6–2× faster than raw h5 |
 | c-omp vs python refine agreement | <0.2° miso, <0.01 Å lattice | cross-check on a few voxels |
+| a whole small layer, legacy C path | 2601 voxels (51²) in 9305 s on 64 cores | 20-ID Varex, `-doTomo 0 -numFrameChunks 100`; scale roughly with voxel count |
+| grain position from a sinogram | 1.3–2.1 µm rms, ~1.7 µm against the voxel map | clean single grains, after the concentration filter |
+| concentration filter, rows flagged | 1.7 % (fine scan) / 2.2–9.9 % (coarse, 5 layers) | threshold 0.35, unretuned across both |
+| sinogram occupancy | ≤ 0.51 for in-field grains; 0.84 / 0.78 for the two out-of-field | 0.65 is the cutoff, not a measured boundary |
+| shape reconstruction residual | **0.82–0.84, and it does not move** | invariant across FBP/SIRT/MLEM ± support and every variant — a known open problem, **not** a tuning target |
 
 ### R2c. Ranges that are NOT thresholds
 
@@ -48,18 +53,39 @@ under; outside those it is not a specification.
 
 > **Every session updates this before it ends.** A stale pick-up point is worse than none.
 
-**Last updated: 2026-08-12.**
+**Last updated: 2026-08-28.**
 
-**State.** Doc set created from the reference campaign (Handbook + phases 0–5 + parameters +
-diagnosis + envelope + notebook). The c-omp→pf-odf bridge (`midas_fit_grain.scan_seed` +
-`fitbest_adapter`, wired in `midas_pipeline.stages.refinement`) and pf-odf opt-in dark
-subtraction + zarr frame reader are in the packages. Verified end-to-end on the reference
-layer.
+**State.** The doc set now covers **both halves** of pf-HEDM and **both stations**.
+
+- Phases 0–5 (raw frames → grain map → per-voxel peak-shape strain) come from the 1-ID
+  campaign, notebook §1–§6. The c-omp→pf-odf bridge (`midas_fit_grain.scan_seed` +
+  `fitbest_adapter`, wired in `midas_pipeline.stages.refinement`), pf-odf opt-in dark
+  subtraction and the zarr frame reader are in the packages, verified end-to-end.
+- **Phase 1b (sample boundary) and phase 6 (reconstruction space) are new**, from the 20-ID
+  Varex campaign, notebook §7. `INSTRUMENT.md` carries the two-station split.
+- The two diagnostics that campaign produced are **shipped and documented**:
+  `--sino-conc-threshold` (default off, 0.35 calibrated) and `--out-of-field-occupancy`
+  (default 0.65, warn-only). The FBP crop registration fix is in `midas_pipeline` 0.11.0.
 
 **Open, not blocking:**
-1. Cross-modal (tomo) in-plane registration convention (flip + rotation-centre) — not yet
+1. **Grain shapes do not reconstruct and the cause is unknown** (notebook §7.5, envelope
+   §3b). Eleven mechanisms tested, four requalified; the modelled physics reaches the
+   artifact level of the grains that work and falls 2–4× short of the ones that do not.
+   **Do not score a new attempt with dice.**
+2. **Two `s(ω)` conventions were never reconciled** (notebook §7.5, phase 1b §1b.6). The
+   reconstruction code's convention is settled and tested; the spot-count sinogram's column
+   sense is not. Affects the edge *tilt* sign and handedness, not the distance.
+3. **`positions.csv` handedness on the 20-ID campaign is a convention, not a measurement** —
+   the translation motor was never logged (phase 1b §1b.7). Fixable next run.
+4. Stripe-row contamination from grains **outside the scanned field** is the one untested
+   hypothesis of that set (notebook §7.3).
+5. Cross-modal (tomo) in-plane registration convention (flip + rotation-centre) — not yet
    recorded; only Z is registered (notebook §5).
-2. Illumination-gated extraction remains unvalidated / not shipped (notebook §5).
+6. Illumination-gated extraction remains unvalidated / not shipped (notebook §5).
+
+**Not verified.** Nothing in notebook §7 has been through `/verify`, and everything
+positional in it rests on **one layer of one sample** — the out-of-sample test could not
+test position at all. Say so wherever those results are used.
 
 **Mid-run:** nothing.
 

@@ -16,9 +16,17 @@ indexing → refinement → [find_grains] → (voxel_cleanup, sinogen, reconstru
 
 `[…]` marks the **PF-only** stages. `merge_scans` + `seeding` sit between `transforms` and
 `binning`; `refinement` runs **before** `find_grains`. The tomo/vmap tail
-(`voxel_cleanup`…`em_refine`) is for reconstruction-space work and is normally **skipped**
-for a grain-map / pf-odf run — `--skip` it. Do **not** reach for `--only <stages>`: it drops
-the essential PF-only stages between the ones you name.
+(`voxel_cleanup`…`em_refine`) is reconstruction-space work and is normally **skipped** for a
+grain-map / pf-odf run — `--skip` it. Do **not** reach for `--only <stages>`: it drops the
+essential PF-only stages between the ones you name.
+
+> **The tail is documented, and it is not just "the part you skip":**
+> [`phase-6-reconstruction.md`](phase-6-reconstruction.md). Two of its diagnostics improve
+> the *point-by-point* result and are worth running even when shapes are not the goal — the
+> concentration filter took one grain's fitted position from 5.59 µm to 1.11 µm. Its other
+> job is to stop you quoting the shapes, which are a known open problem (§6.7). Note
+> `do_tomo=True` makes the point map **worse** (§6.3), so skipping the tail is the right
+> default for the map itself.
 
 Run naturally (no `--only`), on GPU, under `nohup`/`setsid` with a log. Outputs go under the
 run's own `LayerNr_<N>/` — never `/tmp`.

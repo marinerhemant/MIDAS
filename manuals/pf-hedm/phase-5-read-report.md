@@ -20,6 +20,11 @@ The voxel grid is `n_scans × n_scans`; infer `N = round(sqrt(n_voxels))` and la
 - **IPF orientation map** — per-voxel crystal orientation coloured by inverse pole figure
   (IPF-Z: ⟨001⟩→red, ⟨011⟩→green, ⟨111⟩→blue after cubic FZ reduction). Weight brightness by
   completeness so weak voxels read dark. This is the primary spatial result and is robust.
+  **Colour from the third ROW of the orientation matrix, not the third column** — MIDAS
+  stores `v_lab = OM · v_crystal`. Verified by measurement: within a single grain the rgb
+  standard deviation is 0.000 / 0.0015 / 0.0009 by row against 0.257 / 0.348 / 0.318 by
+  column. Getting it wrong produces a map that is colourful, spatially structured, and
+  wrong — a within-grain colour gradient is the tell.
   Clean isolated **salt-and-pepper** wrong-pick voxels with a neighbour-consensus filter
   before segmentation (they are wrong solutions that scored marginally higher, not sub-grains).
 - **Pole figure** — the layer's orientation distribution ({100} stereographic); compare
@@ -37,10 +42,19 @@ Every quantitative claim names the file and command that produced it and is re-d
 what is **robust** vs **provisional** on this dataset:
 
 - **Robust:** orientation map, pole figure, KAM/GROD deformation localisation, grain
-  statistics. These hold even on attenuated data.
+  statistics. These hold even on attenuated data. Grain **positions** fitted from sinograms
+  are robust too (1.3–2.1 µm rms).
 - **Provisional:** per-voxel absolute strain magnitudes when the scan is signal-limited
   (envelope §2). Report the *pattern* (does it localise where deformation is expected?) and
   the spatial-structure statistic (Moran's I), not calibrated magnitudes.
+- **Not reportable:** grain **shapes** from the sinogram reconstruction — a spine halt
+  condition and an open problem (envelope §3b, phase 6 §6.7). If shapes were asked for, say
+  what the measurement can give instead (positions, and absorption tomography for shape).
+
+**Two things to state explicitly if they apply**, because their absence is invisible in the
+figures: whether the **sample boundary was masked** (phase 1b — unmasked, every per-voxel
+statistic is averaged over vacuum that scores ~0.92 completeness), and whether the **grain
+map was compared against its majority-class null** (§5.4, hard rule 9).
 
 Produce the report through the `beamreport` framework (separate repo; see its `SPEC.md`).
 State the grain-segmentation path used (`find_grains` vs the fast-path), whether strain
@@ -56,6 +70,16 @@ frame, and neither is usually recorded — you need both to place a tomo feature
 diffraction map. Confirm the **layer height** (`samY` ↔ reconstructed slice) first; the
 in-plane registration is the harder half and may need a fiducial visible in both modalities.
 Report a cross-modal overlay only once the transform is pinned, not eyeballed.
+
+**Score any map-vs-map agreement against its majority-class null** (hard rule 9). Grain-ID
+maps are dominated by one or two large grains, so a raw voxel-wise percentage is mostly
+measuring "both maps found the big grain". Measured: a tomographic grain-ID map agreed with
+the point-by-point map on **60.1 %** of voxels against a constant-map null of **65.2 %** —
+Cohen's κ = 0.399. That is not weak agreement, it is none, and the bare 60 % hides it.
+
+⚠️ **A tomographic *grain-intensity* map is not a material map.** It answers "did one of the
+listed grains reconstruct here", so real material carrying no listed grain reads as dark.
+Do not use it to locate the sample boundary (phase 1b §1b.5) or to claim a void.
 
 ## 5.5 Update the runbook
 
