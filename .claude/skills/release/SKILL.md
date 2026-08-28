@@ -158,6 +158,26 @@ of the same release, keep them in one commit and say so in the message.
   the cited line and confirm it still supports the claim *before* editing the
   citation. Do not delete a citation to silence it.
 
+  Two ways a *newly written* citation fails on its first run, both cheap to avoid:
+
+  - **Path-qualify anything whose basename is not unique.** A bare
+    `registry.py:892` is AMBIGUOUS — `midas_params` and `midas_parsl_configs`
+    both have one, so the claim cannot be checked. Write the path.
+  - **The SYMBOL check reads backticked identifiers NEXT to the citation**, and
+    fails if none of them appears within ±40 lines of the cited range. Naming the
+    package — ``` `midas_params` (`registry.py:892`) ``` — fails, because
+    `midas_params` is not *in* the file. Put a symbol that is actually there
+    (`typical=0.8`) beside it, or drop the identifier.
+
+  **A green run means the pointer resolves, NOT that it points at the claim.**
+  The ±40-line symbol window is wide on purpose, and it will happily accept a
+  citation that is simply wrong.
+
+  > Measured, in this skill's own batch: a new citation read `registry.py:893`
+  > for the shipped default `typical=0.8`. Line 893 is `zarr_rename=…`; the value
+  > is on **892**. The checker passed it, because `typical` was inside the
+  > window. Open the cited line and read it — every new citation, once.
+
 **The scrub hook does not scan commit messages.** Keep real names out of them
 yourself.
 
@@ -380,6 +400,17 @@ An exit code is not evidence the change landed.
 
 Re-read the file, re-query the environment, diff the result. Every time.
 
+**Count the occurrences before AND after any bulk edit**, and make the loop print
+both. It is the only check that catches a rewrite which ran and changed nothing.
+
+> `FILES=$(grep -rl ...)` then `for f in $FILES` edited **zero** of 13 files:
+> **zsh does not word-split an unquoted parameter**, so `perl` was handed all
+> thirteen paths concatenated as a single filename. The failure was one
+> `Can't open` line in a wall of output, every exit code was 0, and the sweep
+> looked like it had worked. The before/after counts were identical — 26 paths
+> before, 26 after — which is what exposed it. Use
+> `while IFS= read -r f; do … done < list`.
+
 ## If this batch touches a SKILL
 
 A skill's `description` is a **routing surface** — it decides when the skill
@@ -393,8 +424,35 @@ will accept work for.
 > writing "recoverable, not yet to spec". Qualified in the frontmatter rather
 > than dropped, so the skill still engages but does not imply support.
 
+**Check the description against the envelope's HEADER, not only its rows.** The
+header is where a doc set names the configurations it covers, and it is the line
+that gets forgotten when a second instrument is added.
+
+> Measured: the `nf-hedm` description was widened to "1-ID and 20-ID-D HT-HEDM"
+> on the strength of real work — an HDF5 reader, a measured beamstop, a
+> re-derived ω sign. But `ENVELOPE.md` still opened **"Instrument: 1-ID
+> near-field HEDM"** while six of its own rows were tagged `[20-ID]`. The sibling
+> `ff-hedm` header had been updated in the same batch and this one was missed.
+> The rows were right and the header was stale — which is the direction that
+> reads as an overclaim.
+
 Also verify every path and section the skill cites actually resolves, and that
 counts it quotes ("13 rules") match. Those are cheap to check and silently rot.
+Bound the numbered cross-references too: the highest `hard rule N` referenced
+anywhere in the set must exist in that set's own rule table (measured this batch:
+ff 17 defined / 14 referenced, nf 23 / 22, pf 12 / 12).
+
+**A path that names one machine is a delivery defect.** These doc sets are meant
+to be run from a beamline host, so `/Users/<someone>/…` and `~/Desktop/…` are
+broken instructions there, not cosmetics. `$MIDAS` is the reader's own checkout;
+`$ANALYSIS` is a campaign directory that is deliberately **not** in this repo.
+
+> Do not *delete* such a path to fix it — for a harness that produced a quoted
+> number, the path IS the provenance, and deleting it leaves a number with
+> nothing behind it. Strip the machine-specific prefix, keep the filename, and
+> say in the doc set's README that a `$ANALYSIS/...` target is provenance, not a
+> link — it names the script a number came from and promises nothing about
+> reaching it. Measured: 29 such paths across 16 files, in four doc sets.
 
 ## Diagnosis
 
