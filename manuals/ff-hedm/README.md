@@ -15,30 +15,49 @@ checked after the fact.
 
 **Scope.** Two single-panel configurations, one layer at a time:
 
-| | **1-ID GE** | **20-ID HT-HEDM Varex** |
+| | **1-ID GE** | **20-ID-D HT-HEDM Varex** |
 |---|---|---|
 | files | DM-converted `.ge5.h5` | `.vrx.h5` |
 | detector | monolithic GE, 2048² @ 200 µm | Varex, 2880² @ 150 µm |
-| dark | `Dark` file, `darkLoc` | `Dark` file, **`darkLoc /exchange/bright`** — `/exchange/dark` exists and is all zeros |
-| ω sign | par field 9 = `aero` ⇒ negate (§2) | `OmegaStart 180`, `OmegaStep -0.25` already negated in the file |
+| dark | `Dark` file, `darkLoc` | `Dark` file, **`darkLoc` is per SCAN — measure it every time** (§3d). One beamtime carried all three of `/exchange/dark`, `/exchange/bright` and a scan already dark-subtracted at the DAQ |
+| ω sign | par field 9 = `aero` ⇒ negate (§2) | **no par file exists.** Settle ω sign *and* detector mirror together, from physical arguments (§2b). `OmegaStart 180` / `OmegaStep -0.25` is the answer for `bt_20id_jul26b`, **not** a property of the station |
 | frame 0 | throwaway, `SkipFrame 1` (rule 2) | same |
 | `ImTransOpt` | establish per detector (§3f) | **2** (flip-Z), verified on `bt_20id_jul26b` |
-| verified on | `bt_1id_jul26` | `bt_20id_jul26b` ti7al / nf709 / ruby |
+| verified on | `bt_1id_jul26` | `bt_20id_jul26b` ti7al / nf709 / ruby, and `nfdev_jul26` Au / alumina — **the two disagree, see §R2d vs §R2e** |
+| branch | — | **D.** FF and PF run at both 20-ID-D and 20-ID-E; NF only at D. Everything verified here is **D**. Confirm the branch, never infer it from "20-ID" — one campaign was filed as E for nine days (rule 13) |
 
 Multi-panel (GE1–4) and multi-layer scans are *not* covered: `cross_det_merge`
 appears in this document only as a no-op. If your data differs in detector count
 or layer count, **stop and ask** rather than adapting a recipe.
 
 **Where the two diverge, it is called out inline as “20-ID:”.** The geometry
-recipe, the ω sign discipline and every hard rule apply to both. Three things
-are genuinely different and each has cost a day: the dark group, `RhoD` (rule
-15), and the calibration entry point (§5, `midas-calibrate-v2 --mode ff`).
+recipe, the ω sign discipline and every hard rule apply to both. Four things
+are genuinely different and each has cost a day: the dark group (**per scan**,
+§3d), the **absent par file** and the ω-sign/mirror pair it leaves undetermined
+(§2b), `RhoD` (rule 15), and the calibration entry point (§5,
+`midas-calibrate-v2 --mode ff`).
+
+> **Two 20-ID beamtimes have now been through this doc set, and they disagreed
+> on the dark group.** `bt_20id_jul26b`'s numbers are a *reference* —
+> [`RUNBOOK.md`](RUNBOOK.md) §R2d and §R2e — never a template. The second
+> campaign's survey recorded four deltas from what the first established; three
+> were genuine, and the fourth was a claim this file had promoted from one
+> beamtime to a station property. **Re-measure per scan, and put a deltas table
+> in your `SURVEY.md`** rather than inheriting one.
 
 Not a tutorial. Follow the steps in order; each one names the file to read, the command to
 run, the field to look at, and the branch to take.
 
-Citations are `path:line` relative to `$MIDAS = /Users/hsharma/opt/MIDAS`. Read them with
-absolute paths. Every non-obvious claim carries one, and `utils/doc_citation_check.py`
+Citations are `path:line` relative to **`$MIDAS`, the root of whichever MIDAS checkout you
+are working in** — on a beamline host that is `~s1iduser/opt/MIDAS_canonical`. Build the
+absolute path from your own checkout; no path here is tied to one machine.
+
+**`$ANALYSIS` means a campaign working directory that is NOT in this repo.** The harnesses
+that produced many of the numbers below are local analysis scripts, deliberately unversioned
+(see `.gitignore`). A `$ANALYSIS/...` path is therefore *provenance, not a link*: it names
+the exact script a number came from so the claim can be traced and re-run, and it makes no
+promise that you can open the file from where you are sitting. Ask for the harness if you
+need it. Every non-obvious claim carries one, and `utils/doc_citation_check.py`
 (wired into the pre-commit hook) fails the commit when a cited file, line or symbol no
 longer exists — so a citation here points at real code. **It cannot check the claim, only
 the pointer:** the line is right, the sentence about it may still have gone stale.
@@ -72,7 +91,7 @@ else is opened when you reach it. Section numbers are continuous across the set.
 | [`phase-4-read-report.md`](phase-4-read-report.md) | §8–§8b, §11, §14–§14c — `Grains.csv` checks, validation buckets, report, done-means | when a result exists |
 | [`DIAGNOSIS.md`](DIAGNOSIS.md) | symptom → discriminating test → cause → lever | **when something looks wrong** — indexed by symptom, not by step |
 | [`RUNBOOK.md`](RUNBOOK.md) | §R1–§R3 — where it runs, what healthy looks like *with conditions*, and the current pick-up point | on resume, and before quoting any number as "normal" |
-| [`LAB_NOTEBOOK.md`](LAB_NOTEBOOK.md) | evidence, measurement ledger, **retracted claims** — Lab Notebook §1–§7 the 1-ID campaign, **Lab Notebook §8 the 20-ID Varex campaign** | before re-investigating anything |
+| [`LAB_NOTEBOOK.md`](LAB_NOTEBOOK.md) | evidence, measurement ledger, **retracted claims** — Lab Notebook §1–§7 the 1-ID campaign, **Lab Notebook §8 and Lab Notebook §9 the two 20-ID Varex campaigns** (the later one retracts a convention the earlier one established, which is why both are kept) | before re-investigating anything |
 | [`ENVELOPE.md`](ENVELOPE.md) | what this measurement can and cannot determine, sorted by whether anything can be done about it | before promising an answer, and **before suggesting a different measurement** |
 | [`C_REFERENCE.md`](C_REFERENCE.md) | §13–§13d — the C cross-check recipe | only when a python result looks wrong |
 
@@ -107,13 +126,15 @@ seems wrong:**
 | Condition | Why you cannot decide it yourself |
 |---|---|
 | par field 9 is **not** `aero` | no other value's ω sign has ever been established here (§2, §11) |
+| there is **no par file at all**, and no prior geometry you measured yourself | the ω sign and the detector mirror are **coupled**, and neither the calibration nor the grain list can break either one. Work §2b's three physical arguments and say which you used; adopting another run's answer is not a substitute — the two pre-existing 20-ID files disagree and both looked fine (§2b) |
 | `ImTransOpt` unknown for this detector, with no prior geometry and no asymmetric feature | a wrong flip mirrors the reconstruction and neither the grain list nor the calibrant strain shows it — the mirrored fit scored the *better* strain (§3f) |
 | the data is neither 1-ID GE nor 20-ID Varex, or is multi-panel / multi-layer | every field map and geometry recipe below assumes one of the two configurations in the scope table (header, §3) |
 | **no calibrant** file in the folder | there is no geometry without one, and `DetZ` is not a substitute (§0b, §4b) |
 | any package **below floor** after §0 | three of them produce plausible wrong answers, not errors (§0) |
 | calibrant strain **> 100 µε** after §5 | hard gate; a converged fit above it is not usable (rule 6) |
 | the ring overlay does not match the frame | the fit is on the wrong rings; nothing downstream can detect it (§5d) |
-| the dark reads all zero in the zarr **and the data frames still carry the pedestal** | every threshold returns 0 peaks; tuning `RingThresh` cannot fix it (§3d). **Check both halves.** On 20-ID Varex `exchange/dark` in the zarr is all zeros *by design* while the data is already dark-subtracted (raw frame mean ~1850 → zarr ~0.6): that is cosmetic, not the fault |
+| the dark reads all zero in the zarr **and the data frames still carry the pedestal** | every threshold returns 0 peaks; tuning `RingThresh` cannot fix it (§3d). **Check both halves.** On some 20-ID Varex scans `exchange/dark` in the zarr is all zeros *by design* while the data is already dark-subtracted at the DAQ (raw frame mean ~1850 → zarr ~0.6): that is cosmetic, not the fault |
+| the `darkLoc` group you were about to use was **not measured on this scan** | it is a per-scan property, not a beamline one. One 20-ID beamtime held all three cases at once — `/exchange/dark`, `/exchange/bright`, and data already dark-subtracted at the DAQ. Getting it wrong does not error: it leaves the pedestal, and every ring band becomes one ~42,000-px blob that reads as *"the sample is a powder"* (§3d) |
 | `nFrames` ≠ logged frames − `SkipFrame` | something is skipping twice or not at all; ω is shifted either way (§3e) |
 | `RhoD` is not ≈ `corner_px × px`, or `hkls.csv` reaches ring ≥ 500 | the indexer's ring tables are fixed at 500 and older builds write past them; you get 0 seeds indexed and exit 0 (rule 15, §6d) |
 | grain positions **pile up** at ±`Rsample` or ±`Hbeam`/2 | the envelope is binding — and the fix is forbidden to you by rule 9 (§6, §8b) |
@@ -130,6 +151,15 @@ proceed. Everything not blocked by it should still be finished first.
    `OmegaStart` *and* `OmegaStep`. Get this wrong and the reconstruction is **mirrored**,
    which is **not detectable from the grain list**. Step 1 of every new dataset, no
    exceptions.
+
+   **Where there is no par file (20-ID and anywhere else), ω and the detector mirror
+   must be settled together — §2b.** They are coupled: a powder calibrant converges
+   identically under `ImTransOpt` 1 and 2 because rings are centro-symmetric (only the
+   refined BC lands on `N-1 − BC`), and a wrong ω sign mirrors the microstructure with
+   completeness unchanged. So neither the calibration nor the grain list can break
+   either one, and **a wrong pair is self-consistent**. §2b's three arguments — stage
+   sense, an asymmetric feature in the frame, and a within-grain Friedel quadruplet —
+   are independent of each other and of the fit. Record which you used.
 2. **On the 1-ID GE detector, frame 0 of every acquisition is a throwaway — set
    `SkipFrame 1` (§3e).** This applies to the FF data sweep, the dark, and the calibrant.
    It is required for *correctness*, not tidiness: the frame is real data taken before the
@@ -271,6 +301,13 @@ file — but is numbered last so the references above keep their numbers:
 | `DetZ` used as `Lsd` | 11 % geometry error that still "converges" | §4b |
 | energy taken from the filename | 1 % λ error → 1 % `Lsd`, wrong absolute lattice parameter | §4a |
 | dark read from `exchange/dark` | that group does not exist in DM files; dark silently all-zero | §3d |
+| `darkLoc` carried over from another scan **in the same beamtime** | it is a per-scan property. Measured across one 20-ID folder: gold `/exchange/dark` (mean 7.95), alumina `/exchange/bright` (1946), CeO2 calibrant `/exchange/dark` (1484), and the gold *data* already DAQ-dark-subtracted (97 % exact zeros) while the calibrant's was not. Wrong ⇒ the pedestal survives and each ring band becomes one ~42,000-px blob | §3d |
+| ω sign or `ImTransOpt` adopted from a prior run rather than measured | the two pre-existing 20-ID parameter files disagree — one is `ImTransOpt 1` + ω positive, the other `ImTransOpt 2` + ω negated — and **both produced plausible reconstructions**. The pair is self-consistent when wrong | §2b |
+| a population `DiffPos` quoted as "the fit quality" | it can be a **mixture**. On a 20-ID alumina layer the population median was 655.7 µm while the 2.1 % of grains at `Confidence` ≥ 0.95 sat at **57.1 µm** — a 9.3× step across one 0.05 confidence bin. The median is a correct statistic *about a mixture* and describes neither population | DIAGNOSIS *A population `DiffPos` that will not come down* |
+| `Confidence` trusted, or dismissed, without checking whether it is **saturated** | on one alumina run 46.9 % of grains sit at ≥ 0.999 with `DiffPos` 619.7 µm against a 602.0 µm population — the column carries nothing. On another, 0.6 % sit there at **35.2 µm** against 655.7 — it is the sharpest discriminator in the file. Same sample, same station | DIAGNOSIS, same entry |
+| a matcher statistic quoted on a **censored** population | `CalcAngleErrors` drops any spot whose best candidate exceeds **1.0°** (`midas_fit_grain/c_port.py`), so the per-spot internal angle is truncated, not measured. Measured: alumina max exactly 1.0000 with p99 0.9878 and 0.82 % of spots at the cap; gold max 0.9427, uncensored. Read it from `residuals/spot_table` col 9 — `Grains.csv` `DiffAngle` is a per-grain *mean* and hides it | phase-3 §7 |
+| "distance to the nearest observed spot" compared **between samples** | it is a minimum over the candidates in the window, so it shrinks as the peak list gets denser. Raw it ranked alumina 21.9 µm against gold 106 µm — backwards. Against a random-orientation null the margins are gold 418×, alumina 18× | DIAGNOSIS, same entry |
+| `SigmaEta` from the peak fit read as a mosaicity | it is a Gaussian width and **under-reports a streaked spot by 18×** — 0.396 px where the second-moment principal axis measures 7.3 px. It was the basis of a retracted "mosaicity is refuted" claim | Lab Notebook §9d |
 | calibrant fit accepted on strain alone | wrong ring assignment fits beautifully | §5d |
 | E↔M loop returns its LAST iterate | ships a worse geometry than the run found (72 vs 18 µε) | §5c |
 | ring-ratio check skipped | innermost ring mis-assigned; Lsd off by a ring-spacing factor | §5b |

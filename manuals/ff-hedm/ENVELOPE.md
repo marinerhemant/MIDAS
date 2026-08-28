@@ -1,7 +1,9 @@
 # FF-HEDM — measurement envelope
 
-**Instrument:** 1-ID, single monolithic GE panel, one layer
-**Last checked:** 2026-08-23 · **Owner:** Hemant Sharma (hsharma@anl.gov)
+**Instrument:** 1-ID, single monolithic GE panel, one layer · **and** 20-ID HT-HEDM,
+single monolithic Varex, one layer — the spine's two scope-table configurations. Rows
+measured on only one of them say so.
+**Last checked:** 2026-08-28 · **Owner:** Hemant Sharma (hsharma@anl.gov)
 
 > Part of the **FF-HEDM doc set**. Spine: [`README.md`](README.md). Contract: `~/opt/beamreport/DOCS_SPEC.md` §6 (separate repo, not under `$MIDAS`).
 
@@ -29,6 +31,8 @@ No suggestions here. State the consequence and the substitute.
 | Detector mask / dead area in the denominator | not applied unless enabled | `IndexerUnified.c`, 2026-08-22 | A reflection predicted onto a masked pixel, a panel gap, or off the panel was counted as a reflection that was looked for and **not found**. The mask had no effect on completeness at all — `MaskFile` reached only the per-peak `maskTouched` flag. | Generate the active-area bitset with `midas-transforms detector-mask <zarr>` and set the `BigDetSize` it prints. The spot then leaves **both** sides of the ratio. Off by default because it moves a gating number. |
 | Absolute grain **size** scale | a canned constant | `radius/core.py:172`, measured 2026-08-23 | **Nothing in the pipeline measures the illuminated volume.** Grain volume is an intensity ratio against `V_gauge = Hbeam·π·Rsample²`, and `Hbeam`/`Rsample` are deliberately generous SEARCH BOUNDS (hard rule 9), never the specimen; `midas_calibrate_v2` templates write `Rsample 1000 / Hbeam 1000 / Vsample 50000000`. On the FF reference run (`ff_refiner_prepost/result/LayerNr_1`, 6112 grains) there is no `Vsample` line, so `V_gauge = 2000·π·2000² = 2.513e10 µm³` and all 6112 grains sum to **6.5 %** of it. Two runs with different search bounds are not comparable on absolute size. | Relative sizes within a ring are unaffected — use those. For an absolute number, supply a measured shape: `midas_transforms.geometry.SampleShape` (analytic cylinder/box needs no tomography, `geometry.tomo` reads a reconstruction) and `radius.shape_correction.correct_grain_volumes`. It emits `GrainRadius_shape` **alongside** `GrainRadius`, never over it. Do **not** put the measured volume in `Vsample` — that key is in the search-bound family. |
 | Per-spot absorption in the grain size | cancels to first order | measured 2026-08-23 | The powder reference `powder_int` is itself a sum of *observed* intensities, so any part of a correction common to a whole ring is already in it and **only the spread survives**. Correcting the numerator alone inflates every volume by `⟨1/A⟩` — ≈1.6× in volume, 17 % in radius at μD ≈ 0.5 — uniformly, in the direction people expect. | `normalise_per_ring` enforces `⟨f⟩_r = 1` by construction, so a uniform correction is bit-exactly no correction. Whether a spread exists at all is a property of the specimen: μD 0.05 on NMC811 at 52 keV is null against a ±2.5 % noise floor; μD 1.63 on bulk Ce at 95 keV is not. Measure μD before building the correction. |
+| **Beam energy — 20-ID only** | **not recorded anywhere** | exhaustive `visit()` of both calibrant and data `.vrx.h5`, dataset names *and* `NDAttrSource` PVs, for `energy\|mono\|undulator\|wave\|lambda\|keV\|dcm`: **none** | λ is an **assertion**, so every **absolute** lattice parameter inherits its error. The two campaigns on this station asserted 63.000 and 63.314 keV — 0.5 % apart, which is 0.5 % on every absolute `a` and, through the `Lsd·λ/a` degeneracy (§3), ≈ 4480 µm of `Lsd`. It is not recoverable from the pattern. | Relative strain mostly cancels it (rule 8) and is unaffected — report that. For an absolute cell, the λ half of the degeneracy needs several distances of known relative travel (`--mode multi --lsd-offsets`); a powder standard breaks only the `a` half. **Always state which energy was assumed.** |
+| **Matcher internal-angle acceptance** | **1.0°, hardcoded, with a ±5° ω window** | `midas_fit_grain/midas_fit_grain/c_port.py` `calc_angle_errors`, mirrored in the c-omp binary | A design constant, not a parameter — **and deliberately so**. Its consequence is not precision but **censoring**: the per-spot internal angle is truncated at 1.0°, so on a sample where many predictions have a chance candidate in the window (≈398 of them on 20-ID alumina, against ~30 on gold) every statistic derived from it is biased low, invisibly. | Test for it rather than working around it: per-spot max of exactly 1.0000 in `residuals/spot_table` col 9 ⇒ censored. See DIAGNOSIS *A population `DiffPos` that will not come down*. Report the uncensored population separately, or report the good sub-population and say which. |
 | Saturated reflections | dropped whole, unflagged | `midas_peakfit/seeds.py:156` | One pixel over `UpperBoundThreshold` discards the **entire region** — every peak in it — with no flag column. A saturated reflection is a *strong* one, so the loss reads downstream as incompleteness **and** inflates every grain volume on that ring (it was the brightest contributor to the ring's powder normalisation). | Since 2026-08-22 the count is reported per frame and per run. It is still a loss: re-acquire with more attenuation, or raise `UpperBoundThreshold` if the detector is not actually clipping. |
 
 > **Three different things are called "beam" in the parameters. Do not conflate them.**
@@ -78,6 +82,7 @@ No configuration helps.
 | Reducing per-grain strain **scatter** by correcting d0 | The d0 correction is purely isotropic. It moves the baseline and leaves deviatoric strain untouched. | It fixes **bias**, and bias is often the headline (hundreds of MPa). Scatter is set by ring coverage and geometry — a §2 question, not a d0 one. |
 | Grain shape | FF recovers centroids, not shapes. | NF-HEDM recovers spatially resolved orientation. Different measurement, different doc set. |
 | Grain **Z** to better than ~2–3× the beam height | The vertical coordinate is the badly-conditioned one for a thin beam: a grain's spots move little in Z as it moves in Z. Measured on 20-ID with a 100 µm beam (layer step 0.075 mm, so BH100/OL25 confirmed from the data, not the folder name): grain-Z scatter 153 µm where a uniform slab gives 29, improving to 76 after refining `tx`/`Wedge` (§5h). Only 28 % of grains sat within ±50 µm of the beam plane, rising to 44 %. | This is not a bounding-box artefact — the distribution is peaked at the beam and nowhere near the ±500 µm `Hbeam` bound, so rule 9 is not in play. X and Y are unaffected (271/265 µm before, 273/272 after), which is exactly how you tell a resolution limit from a fit absorbing error. **Use X and Y; treat Z as indicative.** |
+| "The fit quality" of a layer, from a single population residual | A population median describes a **mixture** as faithfully as a population. Measured on 20-ID alumina (1729 grains): median `DiffPos` 655.7 µm, while the 2.1 % of grains at `Confidence` ≥ 0.95 sit at 57.1 µm — a 9.3× step across one 0.05 bin. Neither number describes the layer; the layer is two things. | A genuinely instrumental residual shows **no split**: gold on the same detector and geometry gave 5 grains all at ~237 µm. Bin `DiffPos` by `Confidence` before quoting anything — cliff ⇒ mixture, flat ⇒ systematic. That test is the discriminator, and it is free (DIAGNOSIS `resid.population_mixture`). |
 | `Lsd` independently of the lattice and λ | The ring radius depends on the combination `Lsd·λ/a`, so any two of the three fix the third. Sweeping the assumed cell on nf709 (9077 grains) moved fitted `Lsd` **linearly** — 249 µm per mÅ — while the cost stayed flat to 0.05 %. Fixing `a` therefore *reports* an `Lsd`, but the number is a restatement of your assumption. | Breakable, but only with extra information: several detector distances whose **relative** travel is known (`midas-calibrate-v2 --mode multi --lsd-offsets`) share one `L0` and one λ, which is what makes λ identifiable rather than asserted. A powder standard breaks the `a` half, not the λ half. |
 
 ## 4. Derived limits
@@ -124,6 +129,27 @@ parameter file and mean the opposite.
   not restate the median agreement as agreement.
 - **Few rings because of saturation.** Recoverable by re-acquiring with a different exposure
   or attenuation; report as "not acquired", never "not available".
+- **More rings, where the phase has none left.** "Add higher-angle rings" is the §2 lever
+  and it is usually right — but on a low-symmetry phase it can be genuinely exhausted, and
+  that is a *did-not* only until you check. Measured on 20-ID corundum: the two remaining
+  rings clearing intensity, measured yield **and** radial isolation added 6441 genuine
+  spots and +9 % spots per grain, and moved the population `DiffPos` by **0.2 µm**
+  (655.7 → 655.5) on identical seeds. Report "exhausted, and here is the intervention that
+  showed it", not "not tried". Pick rings by structure factor, never by radius order — the
+  strongest corundum ring is the **8th** by radius (§6b, rule 16).
+- **The calibration is not bit-reproducible, and this is measured, not assumed.** Three
+  identical `--mode ff` runs on the same 20-ID CeO2 exposure gave `Lsd` 895409.47 /
+  895409.47 / 895423.84 µm at 61.3 / 61.3 / 58.2 µε — a **±15 µm, ±3 µε** spread. Even the
+  iteration-0 fit counts differ (1136 vs 1133), so the peak fitting is thread-dependent.
+  That is well inside tolerance and is **not** a defect, but two consequences follow: a
+  geometry difference below ~15 µm in `Lsd` is not evidence of anything, and a claim of
+  exact reproducibility needs a **third** run — this one was asserted on two agreeing runs
+  and had to be retracted (Lab Notebook §8h).
+- **The 20-ID ω zero-point carries a known one-step (0.25°) offset.** Documented and
+  accepted, not a limit: it is a rigid rotation of every orientation about ω, worth
+  ≤ 2.2 µm of position at r = 500 µm, and it cancels in every difference. It must be
+  **stated** when absolute orientations are compared against anything outside this
+  pipeline (§3e).
 
 ---
 

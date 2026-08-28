@@ -25,6 +25,7 @@ reads as coverage, which is exactly what the generic vocabulary existed to preve
 | `count.zero_indexed` | `n_seeds_indexed` in `<result>/LayerNr_N/midas_state.h5` (`stages/indexing/metrics`), written by the pipeline's indexing stage, read against the indexer's wall time |
 | `split.illumination_radial` | this entry's own two tests — per-grain `DiffPos` binned by `r = sqrt(X²+Y²)` from `Grains.csv`, and the per-grain lit-ω-arc duty-cycle enrichment (its own null) |
 | `systematic.mirrored_beam_centre` | this entry's comparison of the `midas_calibrate_v2` refined beam centre against its mirror `N-1 − BC`, since strain does not diagnose it |
+| `resid.population_mixture` | this entry's own test — per-grain `DiffPos` from `Grains.csv` binned by `Confidence`, with the per-spot internal angle from `residuals/spot_table` col 9 as the censoring check. Both read from files the default run already writes |
 
 Strain railing at the Kenesei `MargStrain` bound is **not** listed here: it is the
 generic `bound.pileup` (objects piling against a declared parameter bound), and both
@@ -323,10 +324,99 @@ the matching margins is *not* the cure and tightening them is worse — see rule
 trap table. To reconstruct the full cross-section you need a **translation scan**
 (scanning 3DXRD / pf-HEDM), not a re-run of the same data.
 
-**Do not use `Confidence` to find the good grains.** On the same layer it was flat at
-~0.72 from r = 0 to 600 µm and a grain with `Confidence` 1.000 carried `DiffPos` 688 µm.
-It is measuring the chance floor. `DiffPos` separates the populations; `Confidence`
-does not.
+**Check whether `Confidence` is SATURATED before you either trust it or dismiss it.**
+This entry used to say flatly "do not use `Confidence` to find the good grains — it
+measures the chance floor". That is true of some runs and false of others, on the *same
+sample at the same station*, so the rule is the check, not the verdict:
+
+| 20-ID alumina run | grains | `Confidence` median | frac ≥ 0.999 | `DiffPos` all | `DiffPos` of the ≥ 0.999 set |
+|---|---|---|---|---|---|
+| saturated | 7132 | 0.992 | **46.9 %** | 602.0 µm | **619.7 µm** — *worse* than the population |
+| not saturated | 1729 | 0.836 | **0.6 %** | 655.7 µm | **35.2 µm** |
+
+**The one-line test is the fraction of grains at `Confidence` ≥ 0.999.** Percent-level or
+below, the column is live and is the sharpest discriminator in `Grains.csv`; tens of
+percent, it is pinned and reading it will actively mislead — there, use `DiffPos`. Do not
+attribute the difference to any single setting: those two runs differ in `tx`,
+`MinNrSpots`, `MinNrPx` and `--pg-mode` at once. **The boring explanation was checked and
+fails** — neither run contains a single grain built from ≤ 2 spots (minimum 77 and 42
+spots respectively), so this is not the under-determined-grain artefact of the
+`MinNrSpots` rule.
+
+Re-derive both rows before quoting them:
+`$ANALYSIS/nfdev_jul26_20id_ff/scripts/verify_for_docs.py` (reads `Grains.csv`
+and `processgrains_diagnostics.h5` only, seconds to run).
+
+## A population `DiffPos` that will not come down
+
+symptom: resid.population_mixture
+coord: per-grain `DiffPos` from `Grains.csv`, binned by `Confidence`
+
+The station's residual has been "chronically high" for a while, geometry has been
+re-checked, and nothing moves it. Before attributing it to the instrument: **a population
+median describes a mixture as faithfully as it describes a population, and says nothing
+about which you have.**
+
+**Test — free, `Grains.csv` only, seconds.** Bin per-grain `DiffPos` by `Confidence` and
+read the shape. A gradient is a systematic; a **cliff** is a mixture. Measured on a 20-ID
+alumina layer (1729 grains, population median 655.7 µm):
+
+| `Confidence` | n | `DiffPos` (µm) | `DiffAngle` | n_spots |
+|---|---|---|---|---|
+| < 0.60 | 18 | 896.8 | 0.556 | 52 |
+| 0.70–0.80 | 172 | 744.2 | 0.572 | 73 |
+| **0.80–0.85** | **974** (the bulk) | **661.9** | 0.554 | 80 |
+| 0.90–0.95 | 65 | 531.6 | 0.501 | 96 |
+| **≥ 0.95** | **37 (2.1 %)** | **57.1** | **0.081** | **126** |
+
+A **9.3× step across one 0.05 bin** — bimodal, not a gradient — and the good grains carry
+a nearly complete spot set (126 against a population median of 80) while the bulk does
+not. **655.7 µm is a correct statistic and it describes neither population.** Never quote
+it as "the fit quality".
+
+**Run the control.** A sample whose residual *is* instrumental shows no such split: gold
+on the same detector and geometry gave 5 grains all at ~237 µm, uniformly. Its residual is
+real, and traceable to 0.43° azimuthal streaks measured on the raw frames. Alumina's
+*good* grains fit **4× better than gold**, which is what the raw frames say too — alumina
+spots are compact (NrPx 4–11), gold's are 350-lit-pixel streaks.
+
+**Cause — the matcher's 1.0° internal-angle cap is what ADMITS the bad grains**, not what
+censors good ones. `calc_angle_errors` (`midas_fit_grain/midas_fit_grain/c_port.py`,
+mirrored in the c-omp binary) keeps a spot only if its best candidate is within **1.0°**, searching
+the same ring within a **±5° ω** window. Both are hardcoded, deliberately, and are not
+parameters. With ~398 candidates per prediction in that window on this sample, a
+random-orientation null puts a chance spot within 500 µm **42 %** of the time — which
+passes 1° easily. So a wrong orientation accumulates enough accidental matches to clear
+completeness. Measured: the refiner picks the geometrically nearest candidate **41.5 %** of
+the time on a random alumina sample against **79.2 %** on the high-confidence grains.
+
+**Corollary — matcher statistics on such a population are CENSORED, and the censoring is
+invisible in `Grains.csv`.** The per-spot internal angle is truncated at the cap, so every
+statistic derived from it is biased low. Read it from `residuals/spot_table` column 9 in
+`processgrains_diagnostics.h5`, never from the `DiffAngle` column, which is a per-grain
+*mean* and smooths the truncation away:
+
+| run | per-spot max | p99 | frac at the cap | `Grains.csv` `DiffAngle` max |
+|---|---|---|---|---|
+| alumina | **1.0000** | 0.9878 | 0.82 % | 0.6977 |
+| gold | 0.9427 | 0.7070 | 0.00 % | 0.1956 |
+
+A per-spot max of exactly 1.0000 means truncated. Gold's 0.9427 is a real maximum.
+
+**Lever.** Filter, or tighten acceptance — do **not** chase a detector parameter, and do
+not tighten the matching margins to make the number look better (rule 9 and the trap
+table: the refiner never reads them, and what they actually change is which candidates
+survive indexing). If the split follows radial position rather than confidence, it is
+illumination and the entry above applies instead.
+
+> **Estimator warning — "distance to the nearest observed spot" needs its null.**
+> It is a minimum over the candidates in the window, so it shrinks as the peak list gets
+> denser and is **not comparable between samples**. Raw, it ranked alumina 21.9 µm against
+> gold 106 µm — backwards, because alumina had ~398 candidates per prediction and gold
+> ~30. Against a random-orientation null the margins invert correctly: gold chance
+> 44,358 µm (**418×**), alumina 392 µm (**18×**). Always run the null, and never select
+> grains by confidence while measuring a population residual — that alone moved alumina
+> 618 → 20 µm.
 
 ## Zero seeds indexed, run exits 0
 

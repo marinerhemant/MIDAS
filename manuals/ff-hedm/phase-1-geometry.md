@@ -19,6 +19,7 @@ awk '{print $9}' <METADATA_DIR>/<beamtime>_FF.par | sort | uniq -c
 |---|---|---|
 | `aero` / `Aero` | stage turns **clockwise**; **ω_MIDAS = −ω_logged** | negate `OmegaStart` **and** `OmegaStep` |
 | anything else | not established by this session | **stop and ask** |
+| *there is no par file* | 20-ID and anything else without one | **§2b** — settle ω and the detector mirror together |
 
 Verified on `bt_1id_jul26`: all **7297** FF rows read `aero`.
 
@@ -43,6 +44,88 @@ same beamline, and the bundled NF reference paramfile carries `OmegaStart 180` /
 
 ---
 
+### 2b. No par file — settle the ω sign and the detector mirror TOGETHER
+
+**20-ID HT-HEDM has no par file at all.** Metadata lives in EPICS NDAttributes inside
+each `.vrx.h5` (§3b-2). There is no field 9, so §2 has no input — and the problem is
+worse than one missing convention, because **the ω sign and the detector mirror are
+coupled and neither the calibration nor the grain list can break either one:**
+
+* **A powder calibrant cannot see the mirror.** Rings are centro-symmetric, so
+  `ImTransOpt 1` (flip-Y) and `ImTransOpt 2` (flip-Z) converge with the *same* `Lsd`,
+  the same tilts and the same strain. Only the refined beam centre differs, and it
+  lands exactly on `N-1 − BC` — which is why it reads as a plausible fit rather than a
+  failure. `midas_calibrate_v2/pipelines/ff_calibrate.py` `_check_not_mirrored` exists
+  for precisely this and is the gate that now warns. Worse, on `bt_20id_jul26b`
+  every wrong variant scored a *better* strain than the correct one (47.2 and 55.6 µε
+  against 58.2 — §3f, Lab Notebook §8f).
+* **A grain list cannot see the ω sign.** It mirrors the microstructure with
+  completeness, grain count and internal angles unchanged (§2).
+* So a **wrong pair is self-consistent**, and it is reached by exactly the route you
+  would take. Measured: the two pre-existing 20-ID parameter files disagree —
+  `ps_au.txt` is `ImTransOpt 1` with ω positive, the `bt_20id_jul26b` run is
+  `ImTransOpt 2` with ω negated — and **both produced plausible reconstructions**.
+  Adopting either is not evidence.
+
+**Do not proceed on a fitted quantity.** Every argument below is either a physical fact
+about the instrument or a parameter-free relation between observed spots. Use all three
+you can get; they are independent of each other and of the geometry fit.
+
+**Argument 1 — the stage's physical sense fixes ω.** Ask which way the rotation stage
+turns, viewed from above, and confirm it against the per-frame readback's *direction*.
+On `bt_20id_jul26b` the aero turns **clockwise viewed from above** ⇒ ω_MIDAS = −ω_logged,
+so a scan commanded −180.25 → +180.25 at step +0.25 becomes `OmegaStart 180.0`,
+`OmegaStep -0.25` after negating and dropping the throwaway frame 0 (§3e).
+
+> **Read the step from `scan_parameters`, not from the per-frame readback.** The readback
+> is asynchronous EPICS polling: on the alumina scan it alternates ≈0.2246 / 0.2695, stalls
+> (Δ = 0) and catches up (Δ up to 3.26°). Its *mean* is 360.234/1441 = 0.25006°/frame,
+> matching the commanded 0.25 exactly. The jitter is the PV, not the stage — see
+> §3e's per-frame roll measurement, which bounds real stage jitter at 0.0031°.
+
+**Argument 2 — an asymmetric feature in the frame fixes the flip axis.** The beamstop is
+the usual one, because its support tells you which way is physically down. On
+`bt_20id_jul26b` the rod is supported **from below**, so the high row index is physically
+down ⇒ flip Z ⇒ `ImTransOpt 2` (code 2 is `image[::-1, :]` in
+`midas_peakfit/midas_peakfit/preprocess.py` `apply_image_transformations` — §3f);
+confirmed by looking at the frame after `flipud` and seeing the rod point to low Z. A
+dead region, a panel notch or a known-asymmetric mask serves equally well. This fixes
+**z**.
+
+**Argument 3 — a within-grain Friedel quadruplet fixes y, given ω.** Parameter-free, and
+it uses only the spots you already have. Each reflection satisfies Bragg twice per turn,
+so **G** and **−G** give four spots; the two from the same **G** sit at equal z and
+opposite y, separated by 2α with `cos α = Gx0/ρ`. Pair them **inside one grain, over
+`SpotMatrix.csv`**, and compare the observed |Δω| against the prediction from each spot's
+own `G_z`.
+
+Measured on the gold scan, 24 pairs: median residual **+0.389°** against an ω step of
+0.25°, 21 of 24 within ~2.3°, and the **sign fraction ω(+y) > ω(−y) = 0.0417, i.e. 23 of
+24** — a definite handedness.
+
+> **Two ways to get this wrong, both hit here.**
+> **(a)** Pair over the ungrouped `InputAll.csv` and you get 22,588 "pairs" at sign
+> fraction 0.494 — pure noise. Friedel pairing is a *within-grain* operation.
+> **(b)** Note what the test proves: flipping **both** y and ω flips the sign twice, so
+> it cannot pick the absolute pair on its own. It fixes **y given ω**. That is why it is
+> argument 3 and not argument 1 — the chain is stage sense fixes ω, the beamstop fixes z,
+> the quadruplet fixes y.
+
+**Cross-check on the pixels once you have a candidate convention.** Grid-search all eight
+flip/frame combinations and score each by how much of a spot's reported `IMax` you actually
+recover at the patch it predicts. On the gold scan the winner —
+`row = 2879 − ZCen`, `col = YCen`, `frame = rint((ω − 180.25) / −0.25)` — recovered
+**44,539 counts** against a reported `IMax` of 50,476, while the un-flipped convention
+recovered **3**. That is not a marginal preference, and it is a cheap last gate before
+committing.
+
+**What does not settle it.** A near-field anchor on the same sample does not: a mirror
+**preserves a cube's radius**, and the NF azimuth convention was itself fitted to the
+reconstruction, so it cannot arbitrate without being re-derived from raw shadow geometry.
+Do not reach for it.
+
+---
+
 ## 3. STEP 2 — Metadata, and the scan definition
 
 ### 3a. Where things live
@@ -58,6 +141,17 @@ acquisition-log folder.
 | energy monitor | `<logs>/fastsweep_Emon.txt` |
 | spec log | `<logs>/FullLog.log` |
 | macros | `<logs>/macros_<user>/` |
+
+**20-ID HT-HEDM has no acquisition-log folder and no par file.** Everything is EPICS
+NDAttributes written inside each `.vrx.h5` — see §3b-2. The data tree is
+`/gdata/dm/20ID/HT_HEDM/<cycle>/<proposal>/data/varexD/`, one folder per scan, each
+holding a `_dark_before`, the data file, and a `_dark_after`.
+
+> **Access.** The DM tree is group-restricted (`drwxr-x---+`) and the owning group is
+> per proposal. A beamline account that reads it today may not tomorrow: on
+> `nfdev_jul26` the `s1iduser` ACL entry disappeared mid-campaign, and every stage that
+> touches raw data had to move to `s20hedm`. `ProxyJump` cannot reach that account —
+> nest the ssh instead. See [`RUNBOOK.md`](RUNBOOK.md) §R1.
 
 ### 3b. Par-file field map (1-ID FF)
 
@@ -81,6 +175,39 @@ Extract one scan's sweep:
 awk '$20=="000008" && $7=="Au3_cubes_ff" {print $21, $17}' <logs>/<beamtime>_FF.par
 ```
 
+### 3b-2. HDF5 metadata map (20-ID-D HT-HEDM Varex, `.vrx.h5`)
+
+There is no par file, so this table replaces §3b. Established by a full `visititems()`
+walk of both a calibrant and a data file on `bt_20id_jul26b`; **dump the file yourself
+before relying on it**, because it is a Bluesky/areaDetector layout and not a contract.
+
+```
+exchange/data                                   (nframes, 2880, 2880)  <- frames
+exchange/dark        )  which of these holds the dark is PER SCAN — §3d
+exchange/bright      )
+measurement/process/scan_parameters/{start,end,step}   <- the ω scan AS COMMANDED. Use this.
+measurement/process/scan_parameters/stage              <- e.g. '20idhedmA:m1'
+measurement/instrument/SMS/aero                        <- per-frame ω readback, degrees.
+                                                          JITTERY — direction only, never the step (§2b)
+measurement/instrument/SMS/sam{X,Y,Z}                  <- sample translations, mm
+measurement/instrument/SMS/sam{Rx,Rz}                  <- sample tilts, degrees
+measurement/instrument/Detector/detY                   <- detector STAGE position, mm — a SEED, not Lsd (rule 3, §4b)
+```
+
+Three things this layout does **not** carry, each of which has to come from elsewhere:
+
+| missing | consequence | what to do |
+|---|---|---|
+| **energy / wavelength** | nothing anywhere in the file records it — an exhaustive search of dataset names *and* `NDAttrSource` PVs for `energy\|mono\|undulator\|wave\|lambda\|keV\|dcm` returns **none** | it is user-supplied and stays **provisional** (§4a). `bt_20id_jul26b` ran at an asserted 63.000 keV in one campaign and 63.314 in the other — 0.5 % apart, which scales every absolute lattice parameter by 0.5 % and mostly cancels in relative strain (rule 8) |
+| **ω sign** | §2's input does not exist | §2b |
+| **the layer step** | the folder name claims it | read it: `samY` advanced 0.075 mm per scan across files 002569–002574, which is what confirmed BH100/OL25. Rule 13 |
+
+Use `detY` to pick the calibrant. On `nfdev_jul26` the Ceria/LaB6 **0723** sets read
+900.00000 mm and the 0721 sets 1040.00000 mm, while every `HPcat_aluminaRod_*` and
+`Au_FF_box_*` read 900.00000 — so 0723 is the calibrant for that data, decided on a
+measured readback rather than a date. (`ps_au.txt` had fitted `Lsd` 894264.41 µm against
+that 900 mm readback: a 5.7 mm offset, exactly the rule-3 point.)
+
 ### 3c. HDF5 layout (DM-converted `.ge5.h5`)
 
 ```
@@ -95,14 +222,47 @@ instrument/SMS/E/HR/samRy                             <- per-frame rotation read
 
 ### 3d. The dark — separate file, in `exchange/data`, and the key name is `darkLoc`
 
-> **20-ID Varex:** the dark is in **`/exchange/bright`**. `/exchange/dark` exists
-> in the same file and is all zeros, so pointing at the obvious name leaves the
-> ~1500-count pedestal in the image. Set `darkLoc /exchange/bright`.
+> ### 20-ID Varex: `darkLoc` is per SCAN. Measure it every time.
 >
-> Separately, `exchange/dark` **inside the zarr** also reads all zero on these
-> datasets, and that one is harmless: the data was already dark-subtracted at zip
-> time (raw frame mean ~1850 → zarr ~0.6). Check the data frames before chasing
-> it — see the halt-condition wording in the spine.
+> An earlier revision of this file said "on the 20-ID Varex the dark is in
+> `/exchange/bright`". **That was one scan's answer promoted to a station property, and
+> it is wrong.** Measured means across a single beamtime (`nfdev_jul26`, 10-frame dark
+> stacks):
+>
+> | file | `exchange/dark` | `exchange/bright` | `exchange/data` | ⇒ `darkLoc` |
+> |---|---|---|---|---|
+> | `Au_..._dark_before_001180` | **7.95** | 0.00 | 0.00 | `/exchange/dark` |
+> | `HPcat_aluminaRod_*` dark | 0.00 | **1946** | — | `/exchange/bright` |
+> | `Ceria_0723_..._001188` | **1484.07** | 0.00 | 1692.18 | `/exchange/dark` |
+>
+> Three cases in one folder, including a **calibrant and its sample disagreeing**. The
+> `bt_20id_jul26b` campaign in the same cycle measured `/exchange/bright` and was right —
+> for its scans.
+>
+> **Also per scan: whether the data is already dark-subtracted.** In the same folder the
+> Au *data* is DAQ-subtracted (mean 0.10, 97 % exact zeros, residual dark ≈ 7) while the
+> CeO2 calibrant is not (pedestal ≈ 1484). Pixel encoding was unscaled (min gap 1) on
+> both. So "the dark looks empty" is a statement about one scan and never about the next.
+>
+> **Check, don't inherit** — three numbers per scan, seconds to read:
+>
+> ```python
+> import h5py, numpy as np
+> with h5py.File(dark_before_file) as f:
+>     for g in ("exchange/dark", "exchange/bright", "exchange/data"):
+>         if g in f:
+>             print(g, float(np.asarray(f[g][:10]).mean()))
+> ```
+>
+> **What it costs to get wrong.** The pedestal survives, every pixel clears the
+> threshold, and each ring band labels as one ~42,000-px blob. It does not error, and it
+> does not read as a dark problem — it reads as *"this sample is a powder, not spots"*,
+> which is exactly the retraction it caused (Lab Notebook §9h).
+>
+> Separately, `exchange/dark` **inside the zarr** reads all zero on some of these
+> datasets, and that one is harmless: the data was already dark-subtracted at zip time
+> (raw frame mean ~1850 → zarr ~0.6). Check the *data frames* before chasing it — see the
+> halt-condition wording in the spine.
 
 **Use the separate dark file, not the in-file `exchange/data_dark`.** Pair it with its
 scan by acquisition number: the dark is `dark_before_<N-1>` for data file `<N>` —
@@ -196,6 +356,40 @@ Sanity check in the peakfit banner: `nFrames` must equal *logged frames − Skip
 
 For a hand-reduced average outside the pipeline (calibrant staging, quick looks) there is
 no consumer to do it for you, so drop it yourself: `data[1:].mean(axis=0)`, dark included.
+
+> #### 20-ID carries a known **one-step (0.25°) ω zero-point offset**. Quote it, do not chase it.
+>
+> **This is documented, accepted and not a defect to fix mid-analysis.** It is recorded
+> here because it is invisible in every output and would otherwise be rediscovered once
+> per campaign — it has already been found twice, on `bt_20id_jul26b` (symptom only) and
+> `nfdev_jul26` (symptom and a proposed mechanism).
+>
+> **What is measured.** On the same 20-ID data the current pipeline's spot ω range is
+> **[−179.75, +180.25]** where the legacy-C run gave **[−180, +180]** — a one-step shift
+> in the absolute ω zero-point between code generations. Frame accounting is correct in
+> both (`nrFramesDone: 1441` either way), so this is **not** a `SkipFrame` error and the
+> double-skip check above will not catch it.
+>
+> **What it costs, and why it is tolerable.** It rotates every orientation by 0.25° about
+> ω. Grain positions move **≤ 2.2 µm at r = 500 µm**. Relative orientations, misorientations
+> and every strain quantity are untouched, because they are differences. So:
+>
+> * **fine for** grain counts, positions, sizes, strain, misorientation, texture *shape*,
+>   and any comparison between layers or samples processed the same way;
+> * **state the offset** if you publish absolute orientations, or compare orientations
+>   against a measurement outside this pipeline (EBSD, NF, a legacy-C reconstruction).
+>   A 0.25° rigid rotation about ω is well inside most misorientation tolerances but is
+>   not zero.
+>
+> **Attribution — open, and it does not need closing to use the data.** The `nfdev_jul26`
+> campaign proposed that the zipper negates the raw commanded start (−180.25 → +180.25)
+> without advancing it one step for the dropped frame 0. Note that this sits at odds with
+> the back-dating contract described immediately above, under which a stored
+> `scan_parameters/start` of 180.25 is *correct* for `OmegaStart 180.0`, `OmegaStep −0.25`,
+> `SkipFrame 1`. Either the negated path does not honour that contract or the attribution
+> is wrong; the **symptom** is measured either way, and that is what a report quotes.
+> Do not "fix" one half of the chain on the strength of the attribution alone — §3e's
+> warning about changing either half by itself applies here more than anywhere.
 
 ---
 
@@ -317,7 +511,10 @@ Package: `midas_calibrate_v2`. Entry point `calibrate()` — image + λ + pixel 
 ```bash
 midas-calibrate-v2 <template paramstest> --mode ff \
   --image <calibrant file> \
-  --dark-group exchange/bright \        # 20-ID Varex; omit or change elsewhere
+  --dark-group exchange/dark \          # MEASURE IT on THIS calibrant (§3d) — per scan,
+                                        # not per station. On nfdev_jul26 the CeO2 dark
+                                        # was in exchange/dark while its own sample's
+                                        # was in exchange/bright
   --initial-lsd 900000 \
   --raw-folder <SAMPLE data folder> \
   --output calib/ps_calibrated.txt
@@ -487,6 +684,25 @@ midas-joint-ff-calibrate grain-tx \
   --refine tx,Wedge --max-grains 100 --max-iter 120 \
   --out ps_txwedge.txt
 ```
+
+> **`grain-tx` returns a RESIDUAL, not an absolute. Compose and iterate.**
+> It reports the roll left over from whatever `tx` the reconstruction already ran with,
+> so `tx_total = tx_applied + tx_reported`, then re-run from `transforms` and do it
+> again — each pass recovers only part of what remains
+> (`midas_joint_ff_calibrate/grain_refine.py`). Reading the reported number as the answer
+> silently under-corrects, and the under-correction looks like convergence.
+>
+> Measured on the `nfdev_jul26` gold scan: pass 1 **−0.158497**, pass 2 **−0.087265**,
+> composed **−0.245762**; an independent ring/η estimate gave −0.2455, and extrapolating
+> the zero-crossing of a 4-point scan gave ≈ **−0.267**. That last value is an
+> **extrapolation, not a converged fit** — a third pass would settle it. `Lsd`, `ty`,
+> `tz` and `BC` are **absolute** on the non-raw path and must *not* be composed.
+>
+> **Two independent samples agreeing is the check that it is real.** On gold, the tx scan
+> moved `DiffPos` 476 → 365 → 305 → 297 → **237 µm** monotonically, with the mean
+> tangential residual 337 → **13 µm** and `frac(dtan>0)` 0.806 → **0.517**. Feeding the
+> *same* tx to alumina moved its tangential bias 52.4 → **−2.6 µm** and `frac(dtan>0)`
+> 0.560 → **0.495**. A fit absorbing error does not transfer between samples.
 
 **Measured, 20-ID ti7al layer 1** — feeding the result back and re-running:
 

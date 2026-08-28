@@ -9,10 +9,10 @@ description: >-
   3DXRD beamtime, when handed a folder of .ge5.h5 / GE or .vrx.h5 / Varex
   detector frames, or when an FF reconstruction looks wrong — including a run
   that finishes with zero grains, zero seeds indexed, a crash in process-grains,
-  a refined parameter sitting on its bound, or every grain's strain railed at
-  its bound. Covers 1-ID with a monolithic GE
-  panel and 20-ID HT-HEDM with a Varex, single panel and one layer at a time;
-  stops and asks outside that.
+  a refined parameter sitting on its bound, a population residual that will not
+  come down, or every grain's strain railed at its bound. Covers 1-ID with a
+  monolithic GE panel and 20-ID-D HT-HEDM with a Varex, single panel and one
+  layer at a time; stops and asks outside that.
 ---
 
 # FF-HEDM reconstruction
@@ -53,13 +53,25 @@ Sample material: <e.g. gold cubes / unknown, tell me from the data>
 
 ## Two configurations
 
-**1-ID / GE** (`.ge5.h5`, 2048² @ 200 µm) and **20-ID HT-HEDM / Varex**
-(`.vrx.h5`, 2880² @ 150 µm). The spine's scope table lists what differs; the
-geometry recipe, the ω discipline and every hard rule apply to both. Three
+**1-ID / GE** (`.ge5.h5`, 2048² @ 200 µm) and **20-ID-D HT-HEDM / Varex**
+(`.vrx.h5`, 2880² @ 150 µm — the **D** branch; FF runs at D and E and
+everything verified here is D, so confirm the branch rather than infer it from
+"20-ID"). The spine's scope table lists what differs; the
+geometry recipe, the ω discipline and every hard rule apply to both. Four
 things are genuinely different and each has cost a day:
 
-* the dark lives in **`/exchange/bright`** on the Varex — `/exchange/dark`
-  exists and is all zeros;
+* **the dark group is per SCAN, not per beamline** (§3d). Measured inside one
+  20-ID beamtime: the gold scan's dark is in `/exchange/dark`, the alumina
+  scan's in `/exchange/bright`, the CeO2 calibrant's in `/exchange/dark`.
+  Carrying one scan's answer to the next left an 1850-count pedestal in place
+  and turned every ring band into a single blob, which reads as *"this sample
+  is a powder"*. Measure the three group means on every scan;
+* **there is no par file at 20-ID**, so the ω-sign source the 1-ID recipe
+  depends on does not exist — and the ω sign is *coupled* to the detector
+  mirror, which powder rings cannot break either. **§2b** settles both with
+  three independent physical arguments. Do not adopt another run's answer:
+  the two pre-existing 20-ID parameter files disagree, and both produced
+  plausible results;
 * **`RhoD`** must be computed, never copied (spine rule 15, §6d). Wrong, it
   indexes **zero seeds and exits 0**, and whether it bites at all depends on the
   sample's symmetry;
@@ -67,7 +79,8 @@ things are genuinely different and each has cost a day:
   parameter file and fixes `RhoD` for you.
 
 After a first reconstruction, **§5h** refines `tx` and `Wedge` from the grains —
-the two a powder calibrant is structurally blind to.
+the two a powder calibrant is structurally blind to. `grain-tx` returns a
+**residual**: compose it onto what the run already applied and iterate.
 
 ## When something looks wrong
 

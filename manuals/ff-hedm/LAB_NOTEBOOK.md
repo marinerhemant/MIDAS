@@ -1,4 +1,4 @@
-# FF-HEDM Lab Notebook — `bt_1id_jul26` (§1–§7) and `bt_20id_jul26b` (§8)
+# FF-HEDM Lab Notebook — `bt_1id_jul26` (§1–§7), `bt_20id_jul26b` ti7al (§8) and `nfdev_jul26` (§9)
 
 **Companion to `FF_HEDM_Handbook.md`.** The handbook says what to do; this records what
 was actually found, how it was measured, and what turned out to be wrong. They are kept
@@ -577,7 +577,7 @@ within ~1 % of the C reference's own residual (188.7 / 181.0 µm).
 ### 4d. RESOLVED — the "91 % unindexed" figure is noise; the reconstruction is complete
 
 *Measured 2026-07-31. Scripts:
-`~/Desktop/analysis/bt_1id_jul26_calib/spot_{noise_audit,noise_null,snr_all,frames_fixed}.py`
+`$ANALYSIS/bt_1id_jul26_calib/spot_{noise_audit,noise_null,snr_all,frames_fixed}.py`
 + `halo_check.py` + `residual44_check.py`; outputs under `<run>/spot_noise_audit/`.*
 
 **Bottom line: `Au3_cubes_ff_000008` is a COMPLETE reconstruction.** The specimen is one
@@ -1136,7 +1136,7 @@ assumed. Neither can explain any measurement above.
    = Lsd·tan(2θ). Inert here because the `RingNumbers` 1–5 filter bites first
    (ring 5 sits at 2θ = 5.01°, both cutoffs pass it).
 
-Harnesses: `~/Desktop/analysis/bt_1id_jul26c/{cbridge,reassign,matrix}.py`, deployed
+Harnesses: `$ANALYSIS/bt_1id_jul26c/{cbridge,reassign,matrix}.py`, deployed
 to `copland:~/`; logs `copland:~/{cbridge,reassign,matrix}.log`; per-grain
 arrays under `.../bt_1id_jul26c/cbridge/*_err.npy`.
 
@@ -1196,7 +1196,7 @@ beam. `BeamSize 400` / `Hbeam 800` are search bounds, and grains rail at the
 ±400 µm limit (c-orig min −399.9, max 400.0), so the true illuminated thickness
 is unknown. Z spread is used here only to compare implementations.
 
-Harness `~/Desktop/analysis/shade_LSHR/bench_refiners.py` →
+Harness `$ANALYSIS/shade_LSHR/bench_refiners.py` →
 `chutoro:~/bench_refiners.py`, log `chutoro:~/bench.log`, per-arm dirs under
 `.../sharma_work/shade_LSHR/bench/`.
 
@@ -1235,7 +1235,7 @@ build and v11.0, with the Z spread of grain centres tightening 7.70 → 5.78 µm
 2021 and 2024 are indistinguishable (157.4 / 157.9). Column layout was checked
 byte-identical across all three files, so this is not a column-shift artifact.
 
-Harness `~/Desktop/analysis/shade_LSHR/compare_runs.py`.
+Harness `$ANALYSIS/shade_LSHR/compare_runs.py`.
 
 ### 7i. Full python chain vs full C chain (2026-08-04)
 
@@ -1339,7 +1339,7 @@ precision (fp32 ≡ fp64) · loss selection · staging alone · geometry · dyna
 spot reassignment · frozen lattice block · matched-spot selection · the
 objective definition itself.
 
-Harnesses: `~/Desktop/analysis/shade_LSHR/{batch_sweep,match_diff,crosseval,
+Harnesses: `$ANALYSIS/shade_LSHR/{batch_sweep,match_diff,crosseval,
 exit_state}.py`.
 
 ### 7k. RETRACTION + the actual C algorithm, read out of the source (2026-08-04)
@@ -1471,7 +1471,7 @@ vertex.
 
 ### 7n. RESULT — the ported recipe reproduces the C refiner
 
-`~/Desktop/analysis/shade_LSHR/c_recipe.py`: FitUnified's four stages driven by
+`$ANALYSIS/shade_LSHR/c_recipe.py`: FitUnified's four stages driven by
 the ported NM, per grain, on the shade_LSHR seeds. 200 grains, reference
 **c-omp**:
 
@@ -1784,7 +1784,7 @@ while getting one layer of ti7al to reconstruct at all.
 | 6 | `Lsd` is degenerate with the lattice and λ; fixing `a` reports an `Lsd` that is a restatement of the assumption | ESTABLISHED | §8e |
 | 7 | A wrong `ImTransOpt` mirrors the geometry and scores a **better** calibrant strain | ESTABLISHED, gate added | §8f |
 | 8 | Distortion harmonics were "refined" with zero gradient in 0.1.8 — never moved | FIXED | §8g |
-| 9 | The calibration is **not bit-reproducible**: ±15 µm in `Lsd` across identical runs | ESTABLISHED — retraction, §8h |
+| 9 | The calibration is **not bit-reproducible**: ±15 µm in `Lsd` across identical runs | ESTABLISHED — retraction | §8h |
 | 10 | Four hypotheses of mine that were wrong, and what killed each | RETRACTED | §8h |
 
 ### 8a. The zero-grain run — evidence chain
@@ -1971,6 +1971,260 @@ samples every azimuth and a handful of grains does not.
 | Energy **not** in the files | full `visit()` of the calibrant HDF5: no energy, wavelength or mono field. 63 keV is from the filename and the parameter file | 4 |
 | 1441 of 1442 frames used | `nrFramesDone: 1441` in the peakfit log; raw `exchange/data` is (1442, 2880, 2880) | 3e |
 | Calibration repeatability ±15 µm | three identical runs, §8h | 5 |
-| ω zero-point differs by one 0.25° step from the legacy-C run | `[−179.75, 180]` vs `[−180, 180]` on the same data; frame accounting correct in both. **Open** | 11 |
+| ω zero-point differs by one 0.25° step from the legacy-C run | `[−179.75, 180]` vs `[−180, 180]` on the same data; frame accounting correct in both. **Symptom measured and reproduced on a second beamtime (§9a). Documented and accepted — Handbook §3e. Attribution still open; the offset is not being chased.** | 3e, 11 |
+
+---
+
+## 9. `nfdev_jul26` — 20-ID-D Varex, the DiffPos investigation (2026-08-17 → 08-19)
+
+Same station, same detector, same cycle as §8. Gold and an alumina rod, run to find out
+why 20-ID FF residuals are chronically ~500–650 µm (≈3 px). **The headline is that they
+mostly are not: the population number was describing a mixture.**
+
+The methodological lesson is separate from the physics and is the more transferable one:
+of the four conventions §8 had established, **one had been generalised from a single scan
+and was wrong here** — and it was wrong in the direction that looks like a sample result
+rather than a configuration error.
+
+### 9.0 What this campaign established
+
+| # | Finding | Status | Where |
+|---|---|---|---|
+| 1 | `darkLoc` is a **per-scan** property, not a station one. One folder held `/exchange/dark`, `/exchange/bright`, and a scan already DAQ-subtracted | ESTABLISHED — retracts a §8 claim | §9a, Handbook §3d |
+| 2 | The ω sign and the detector mirror are **coupled** and neither the calibration nor the grain list can break either; three independent physical arguments settle them | ESTABLISHED, procedure written | §9a, Handbook §2b |
+| 3 | Alumina's 655.7 µm residual is a **population mixture**, not an instrumental systematic — 9.3× step across one 0.05 confidence bin | ESTABLISHED | §9b |
+| 4 | The matcher's hardcoded 1.0° cap is what **admits** the bad grains, not what censors good ones; a chance spot clears it 42 % of the time | ESTABLISHED | §9b |
+| 5 | Matcher statistics on alumina are **censored** at the cap (per-spot max exactly 1.0000); gold is not (0.9427) | ESTABLISHED | §9b |
+| 6 | Detector roll `tx ≈ −0.25°` is a real systematic, confirmed on **two independent samples** | ESTABLISHED | §9c |
+| 7 | Gold spots are 0.43° azimuthal **streaks**; alumina's are compact. `SigmaEta` under-reports a streak by **18×** | ESTABLISHED | §9d |
+| 8 | Fourteen candidate causes ruled out, each by a measurement | ESTABLISHED | §9e |
+| 9 | Corundum's ring list is **exhausted**, shown by intervention rather than assumed | ESTABLISHED | §9f |
+| 10 | Seven claims of mine that were wrong, and what killed each | RETRACTED | §9h |
+
+### 9a. The conventions had to be re-derived — and one inherited answer was wrong
+
+The survey (`SURVEY.md` §0) recorded four deltas from the runbook's assumptions rather
+than adopting them. Three were expected. The fourth was not:
+
+| runbook said | actual here | how established |
+|---|---|---|
+| `.ge5.h5`, GE panel | `.vrx.h5`, Varex 2880², 150 µm | `exchange/data` shape |
+| metadata in `<beamtime>_FF.par` | no par file; EPICS NDAttributes in-file | `visititems` dump |
+| ω sign from par field 9 | **no par field 9 exists** | Handbook §2b |
+| dark in `exchange/bright` on the Varex | **per scan** — this beamtime has all three cases | measured pixel means |
+
+**The dark.** Measured means over 10-frame stacks: `Au_..._dark_before_001180` →
+`exchange/dark` 7.95, `bright` 0.00; alumina dark → `dark` 0.00, `bright` 1946;
+`Ceria_0723_..._001188` → `dark` 1484.07, `bright` 0.00. Additionally the Au *data* is
+already DAQ-dark-subtracted (mean 0.10, 97 % exact zeros) while the CeO2 calibrant is not
+(pedestal ≈ 1484). `ps_au.txt`'s `darkLoc /exchange/data_dark` names a dataset that exists
+in **no** file. Getting it wrong on alumina produced the §9h retraction.
+
+**`SkipFrame` was re-established on pixels**, because hard rule 2 is explicitly scoped to
+the 1-ID GE: on `Au_FF_box_..._001181`, frame 0 is **0.01 %** non-zero at p99 = 0, against
+2.63–3.24 % at p99 = 4–5 for frames 1, 2, 721, 1439, 1440, 1441. Frame 0 is ~300× emptier
+than every other frame ⇒ leading throwaway, `SkipFrame 1`, 1441 processed. The **last**
+frames are normal, so there is no trailing throwaway — that is the NF pattern and does not
+apply.
+
+**ω and the mirror.** Neither is determinable from the file, and the two pre-existing
+20-ID parameter files disagree on both while each having produced a plausible
+reconstruction. Settled by three independent arguments, written up as Handbook §2b: the aero's
+physical sense (CW from above ⇒ ω_MIDAS = −ω_logged), the beamstop rod's support direction
+(from below ⇒ high row is down ⇒ `ImTransOpt 2`), and a within-grain Friedel quadruplet on
+`SpotMatrix.csv` (**23/24** sign fraction, median |Δω| residual +0.389° against a 0.25°
+step). A pixel-level grid search over all 8 flip/frame combinations then recovered
+**44,539** of a reported `IMax` 50,476 for the winning convention against **3** for the
+un-flipped one.
+
+**The ω readback is not the ω step.** `measurement/instrument/SMS/aero` alternates
+≈0.2246/0.2695 per frame with stalls (Δ = 0) and catch-ups (Δ up to 3.26°) — asynchronous
+EPICS polling, not stage motion. Its mean is 360.234/1441 = 0.25006°/frame, matching the
+commanded 0.25 exactly. Real stage jitter was measured separately and is tiny: per-frame
+roll **0.0031°** (2σ upper limit 0.0345°) against a within-frame scatter of 0.42°.
+
+**The 0.25° ω zero-point offset reproduced here**, independently of §8's sighting of it —
+which is what turned it from a curiosity into something worth writing into Handbook §3e.
+
+### 9b. The residual is a MIXTURE — and the 1.0° cap is what admits the bad grains
+
+Everything in this section re-derives from `Grains.csv` and
+`processgrains_diagnostics.h5` alone, via `verify_for_docs.py` in the analysis folder.
+
+**The test.** Bin per-grain `DiffPos` by `Confidence`. On alumina (1729 grains, population
+median 655.7 µm): 896.8 µm below 0.60 → 661.9 in the 0.80–0.85 bulk (974 grains) → 531.6
+at 0.90–0.95 → **57.1 µm** at ≥ 0.95 (37 grains, 2.1 %), with `DiffAngle` 0.554 → **0.081**
+and the matched-spot count rising 80 → 126 against a population median of 80. A **9.3×
+step across one 0.05 bin** is bimodal, not a gradient.
+
+**The control.** Gold, same detector and geometry: 5 grains, all ~237 µm, no split. Its
+residual is genuinely instrumental. And alumina's *good* grains fit **4× better than
+gold** — consistent with the raw frames, where alumina spots are compact and gold's are
+streaked (§9d).
+
+**The mechanism.** `calc_angle_errors` keeps a spot if its best candidate is within 1.0°,
+over the same ring within ±5° in ω. Both bounds are hardcoded, by design. With ~398
+candidates per prediction in that window on alumina, a random-orientation null puts a
+chance spot within 500 µm **42 %** of the time — comfortably inside 1°. So a wrong
+orientation accumulates enough accidental matches to clear completeness. Measured: the
+refiner picks the geometrically nearest candidate **41.5 %** of the time on a random
+alumina sample against **79.2 %** on high-confidence grains (`which_spot.py`, using
+`SpotMatrix`'s own assignment). The cap is not censoring a good measurement; it is the
+admission criterion.
+
+**The censoring corollary.** The per-spot internal angle is therefore truncated:
+
+| run | n spots | max | p99 | p95 | frac ≥ 0.99 | `Grains.csv` `DiffAngle` max |
+|---|---|---|---|---|---|---|
+| alumina (1729 grains) | 140 575 | **1.0000** | 0.9878 | 0.9421 | 0.82 % | 0.6977 |
+| alumina (7132-grain run) | 848 582 | **1.0000** | 0.9707 | 0.8783 | 0.33 % | 0.5910 |
+| gold | 557 | 0.9427 | 0.7070 | 0.5063 | 0.00 % | 0.1956 |
+
+Read it from `residuals/spot_table` col 9. The `Grains.csv` `DiffAngle` column is a
+per-grain **mean** and hides the truncation completely — it maxes at 0.70 on a population
+whose per-spot values are pinned at 1.00.
+
+**`Confidence` is a live column in one run and a dead one in another.** 46.9 % of the
+7132-grain run sits at ≥ 0.999 with `DiffPos` 619.7 µm against a 602.0 µm population — the
+column carries nothing there, which is what an earlier DIAGNOSIS entry correctly reported.
+0.6 % of the 1729-grain run sits at ≥ 0.999, at **35.2 µm** against 655.7 — there it is the
+sharpest discriminator in the file. **The mundane explanation was tested and failed:**
+neither run has a single grain built from ≤ 2 spots (minima 77 and 42), so this is not the
+under-determined-grain artefact the `MinNrSpots` rule describes. The two runs differ in
+`tx`, `MinNrSpots`, `MinNrPx` and `--pg-mode` simultaneously, so no single attribution is
+available and none is claimed. What is established is the **check**, now in DIAGNOSIS.
+
+**The estimator needed a null and did not have one.** "Distance to the nearest observed
+spot" is a minimum over the window's candidates, so it shrinks with peak-list density.
+Raw, it ranked alumina 21.9 µm against gold 106 µm — backwards. Random-orientation null:
+gold chance 44,358 µm (**418×** margin), alumina 392 µm (**18×**). Separately, selecting
+grains by confidence *while* measuring a population residual moved alumina 618 → 20 µm on
+its own — the estimator and the selection have to be fixed together.
+
+### 9c. `tx` is the systematic, and it transfers between samples
+
+A four-point tx scan on gold: `DiffPos` 476 → 365 → 305 → 297 → **237 µm**, mean tangential
+residual `dtan` 337 → 191 → 101 → 47 → **13 µm**, and `frac(dtan > 0)` 0.806 → **0.517** —
+monotonic, and landing on symmetry. An independent ring/η estimate gave −0.2455.
+
+**The cross-check that makes it real:** feeding the same `tx` to *alumina* moved its
+tangential bias 52.4 → **−2.6 µm** and `frac(dtan > 0)` 0.560 → **0.495**. Two independent
+samples, same correction, both symmetrised. A fit absorbing error does not transfer.
+
+`grain-tx` returns a **residual**, so passes compose: −0.158497, then −0.087265, composed
+**−0.245762**. The −0.267 quoted in places is an **extrapolated zero-crossing, not a
+converged fit** — a third pass would settle it, and has not been run.
+
+`tx` is structurally unfittable from a powder (rings are invariant under rotation about
+the beam; `calibrate_v2` has no `tx` in its refine set), which is why it is chronic at this
+station rather than occasional.
+
+### 9d. Spot morphology — and `SigmaEta` under-reports a streak by 18×
+
+Measured on raw frames by second-moment principal axis (`streak_geometry.py`):
+
+* **Gold spots are azimuthal streaks.** 98.5 % lie within 20° of azimuthal (median 89.1°
+  from radial), length 7.3 px (p90 13), width 2.9 px, aspect 2.42, ~350 lit pixels. Their
+  absolute orientation spreads with position, i.e. it follows the **ring**, not the optics
+  ⇒ an orientation spread of ≈ **0.43°**.
+* **Alumina spots are compact** — NrPx 4–11, round, markers centred. Completely different
+  morphology. **The 0.43° mosaicity story does not transfer**, and assuming it did was a
+  retraction (§9h).
+* **`SigmaEta` from the peak fit is unreliable for streaked spots**: it reports 0.396 px
+  where the true azimuthal extent is 7.3 px — **18× under**. It is a Gaussian width fitted
+  to something that is not a Gaussian. This is what made "mosaicity is refuted because the
+  spots are sharp" survive as long as it did.
+
+**The gold tail is mis-assignment, confirmed.** 43 tail spots (7.7 %): matched-spot
+distance median **1199 µm**, nearest available candidate **172 µm**, and 90.7 % had a
+closer alternative by a median 1072 µm. The core (514 spots) matched at 161 µm against a
+nearest of 119 µm, with 29.8 % having a closer alternative. Both files in the raw lab frame
+— the first attempt at this test mixed frames and was withdrawn (§9h).
+
+### 9e. Ruled out, each by a measurement
+
+Outlier contamination (mean/median 1.15×) · `Lsd`, λ (±90 ppm across rings) · beam centre
+(η harmonics 44–59 µm on a 600 µm residual) · matching margins (**bit-identical** refiner
+output at 500 vs 1500) · ω zero-point (absorbed into orientations) · `Wedge`/axis tilt
+(1×ω amplitude 0.036°) · grain orientation error (between-grain variance 1.6 %) · ω
+quantisation (flat across `NImgs` 1/2/≥3) · **peak-fit quality** (3-px and 103-px spots
+give identical error) · **`RingThresh`** (20 → 10 made it worse: 357 → 612 µm) · saturation
+(**0 %** of tail spots ≥ 64000) · `maskTouched` (0.000 in both populations) · mosaic
+*blocks* (gold grains 1.4–59.9° apart) · spurious grains (confidence-1.000 grains show the
+same error) · **the pipeline itself** (inverse crime: 207 → 48 µm) · sample jitter and
+rotation (between-frame variance 0.05 %, per-frame roll 0.0031° against 0.42° within-frame
+scatter).
+
+### 9f. Rings: exhausted, shown by intervention
+
+Corundum's ring list was audited on measured SNR with hot pixels masked, |F|², and radial
+isolation (`ring_audit_v2.py`). Exactly two rings beyond the eight in use clear all three:
+19 and 29. Adding them is a **real intervention** — +6441 genuine spots, spots/grain
+81.3 → 88.7 (+9 %) — on the **same 5171 seeds**, so it is single-variable:
+
+| | grains | `DiffPos` med | good % | int. angle med | > 0.9° |
+|---|---|---|---|---|---|
+| 8-ring | 1729 | 655.7 | 2.7 | 0.544 | 8.9 |
+| **10-ring** | 1652 | **655.5** | 2.8 | 0.531 | 8.2 |
+
+Nil — identical to 0.2 µm. This lever is **exhausted, not untried**, and that distinction
+is an envelope statement (ENVELOPE §5).
+
+Two selection lessons, both now hard rules: the **strongest corundum ring is 8th by
+radius**, so "the first N rings" would miss it; and ring numbers must come from the run's
+own `hkls.csv` matched on (h,k,l) — an earlier 13-ring attempt requested rings believing
+they were 21 % and 2.7 % reflections and actually selected 2.7 % and 0.33 % ones. That
+attempt is **void as evidence** and its numbers must not be cited.
+
+### 9g. Provisional — do not upgrade
+
+* **Energy 63.314 keV is user-supplied and never measured.** Nothing in the `.vrx.h5`
+  records it; the other campaign on this station asserted 63.000. Scales absolute lattice
+  parameters by 0.5 %.
+* **`tx = −0.267` is an extrapolated zero-crossing**, not a converged fit (§9c).
+* **Why 97.9 % of alumina grains are poorly determined is NOT established.** The
+  bimodality is measured; its *cause* is not. Untested candidates: indexing over-producing
+  marginal grains, a sub-population genuinely under-constrained by 8 rings, a wrong shared
+  parameter that the good grains tolerate. Do not write the mechanism into a report.
+* **Grain positions within a cluster disagree by ~50 µm.** Do not quote a single grain's
+  position better than that.
+
+### 9h. RETRACTED — killed by measurement, must not resurface
+
+| Claim | What killed it |
+|---|---|
+| "The alumina is a powder, not spots" | a **`darkLoc` artefact**. The pedestal survived and every ring band labelled as one ~42,000-px blob. The sample is spots (§9a) |
+| "The beam is too wide / illuminating extra material" | built on an unaudited spot count |
+| "The peak list is ~7.5 fragments per reflection" | the clustering ignored ω — median ω spread *inside* a cluster was **24.7°**, i.e. different reflections. With ω constrained: ~1.3 rows/cluster. **`merge_overlaps` being a cross-frame no-op is not a bug** |
+| "Mosaicity is refuted because the spots are sharp" | used `SigmaEta`, which under-reports the streak by **18×** (§9d). Mosaicity is **real for gold** |
+| "r = 501.4 µm matches the NF cube's 501.6" | cherry-picked from a cluster spanning 472–539 µm. Honest value ≈ 517 ± 25 µm (tx = 0) / ≈ 495 µm (tx fitted) |
+| "The tail-spot test proved mis-assignment" *(first attempt)* | mixed `SpotMatrix` (grain-position-corrected) with `InputAll` (raw lab): `corr(dY, Y_lab(ω)) = −0.979`, slope −1.015. Withdrawn. The corrected version, both files in the raw lab frame, **did** confirm it (§9d) |
+| "Alumina and gold share the same 0.43° mosaicity problem" | raw frames show compact NrPx 4–11 spots in alumina, not 350-lit-pixel streaks |
+| *(from §8, refuted here)* "On the 20-ID Varex the dark is in `/exchange/bright`" | one scan's answer promoted to a station property. Per scan; this beamtime holds all three cases (§9a) |
+
+### 9i. Measurement ledger — `nfdev_jul26`
+
+| What | How it was established | Handbook § |
+|---|---|---|
+| `darkLoc` is per scan | 10-frame means of `exchange/{dark,bright,data}` on every file in the folder | 3d |
+| ω sign and mirror | aero sense + beamstop support + within-grain Friedel quadruplet (23/24), then an 8-way pixel grid search (44,539 vs 3 counts) | 2b |
+| `SkipFrame 1` | frame 0 is 0.01 % non-zero vs 2.6–3.2 % on frames 1, 2, 721, 1439–1441 | 3e |
+| Calibrant is the 0723 set | `measurement/instrument/Detector/detY` = 900.00000 mm on both it and the samples; the 0721 set reads 1040.00000 | 3b-2, 4b |
+| Geometry `Lsd` 899916.02, BC (1450.988, 1467.344), 60.4 µε | CeO2 `--mode ff`, 0/180 pair agreeing to 46 µm and 0.034 px; Handbook §5b 11/11 rings; Handbook §5d rms 0.467 px | R2e |
+| Energy **not** in the files | exhaustive `visit()` of dataset names *and* `NDAttrSource` PVs | 3b-2, 4a |
+| Alumina residual is a mixture | per-grain `DiffPos` binned by `Confidence`, `Grains.csv` only | DIAGNOSIS `resid.population_mixture` |
+| Matcher censored at 1.0° on alumina, not on gold | per-spot internal angle, `residuals/spot_table` col 9 | ENVELOPE §1 |
+| `tx` ≈ −0.246 (composed) | 4-point scan on gold + independent ring/η estimate + transfer to alumina | 5h |
+| Gold orientation spread 0.43° | second-moment principal axis on raw frames | 9d |
+| Corundum rings exhausted | +2 rings, +6441 spots, `DiffPos` moved 0.2 µm on identical seeds | ENVELOPE §5, 6b |
+| Only the near-axis core is reconstructable | zero grains under `DiffPos` 150 µm beyond r = 100 µm on a 1 mm rod with a 100 µm beam | DIAGNOSIS `split.illumination_radial`, rule 17 |
+
+**Where the evidence lives.** `copland:/home/s20a/nfdev_jul26_ff_hs/` (results, ~2 GB per
+tree; `au_m0267` and `alumina_fix` are the good ones) and
+`$ANALYSIS/nfdev_jul26_20id_ff/` locally — `CHECKPOINT.md`, `SURVEY.md`,
+`STATUS.md`, the `report_*/` copies of `Grains.csv` and `processgrains_diagnostics.h5`,
+and `scripts/verify_for_docs.py`, which re-derives every number in §9b from those copies.
+**`scripts/uncensored_residual.py` is broken** — only 9 % of its predictions find a
+candidate — and nothing it produced is cited here.
 
 ---

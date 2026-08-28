@@ -63,6 +63,14 @@ Leave the generous defaults (2000 µm here, matching `FF_HEDM/Example/Parameters
 >   not split** — two rings 3.9 px apart emitted all 2930 peaks *twice*, once under each
 >   label, with byte-identical `YLab`/`ZLab`/`Omega`. A spot mislabelled between them is
 >   unmatchable, which is worse than not adding the ring.
+> * **`Width` is the lever, and it is in µm.** It is the band half-width either side of
+>   each ring, so two rings collide once they are closer than `2·Width/px` pixels apart.
+>   Where they overlap the **later entry silently wins** — no warning, no duplicate count,
+>   just spots assigned to the wrong ring. Worked example, 20-ID alumina at 150 µm pixels:
+>   rings 12 and 13 sit at 842.6 and 861.7 px, **19.1 px apart**. The default `Width 1500`
+>   is ±10 px = 20 px of band and overlaps them; `Width 1200` (±8 px) does not, and is
+>   what that run used. Compute `2·Width/px` against your closest *adjacent used* pair
+>   before accepting a `Width`, not against the closest pair in `hkls.csv`.
 > * **Signal, measured with hot pixels rejected.** Do **not** judge a ring from a
 >   max-projection: one stuck pixel gives a full-amplitude "ring" at its own radius
 >   forever, which scored several dead rings at SNR > 30. Mask any pixel firing in more
