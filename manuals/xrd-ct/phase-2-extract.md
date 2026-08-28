@@ -174,7 +174,7 @@ baseline**, not amplitude variation:
 | **≳ +0.5** | the **amplitude** is genuinely changing while the position holds |
 
 Calibration on synthetics with Poisson noise, where the truth is known
-(`~/Desktop/analysis/11idc_ceo2_dt/peakfit/control_subpixel.py`):
+(`$ANALYSIS/11idc_ceo2_dt/peakfit/control_subpixel.py`):
 
 | planted | half-correlation |
 |---|---|

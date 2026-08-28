@@ -10,6 +10,13 @@ Sample material: <e.g. CeO2 / hcp Ti / unknown -- tell me from the data>
 Goal:            phase map | per-voxel strain | per-voxel texture (ODF)
 ```
 
+**Path conventions.** `$MIDAS` is the root of whichever MIDAS checkout you are working in
+(on a beamline host, `~s1iduser/opt/MIDAS_canonical`). **`$ANALYSIS` is a campaign working
+directory that is NOT in this repo** — the harnesses that produced numbers in
+`LAB_NOTEBOOK.md` are local, deliberately unversioned analysis scripts, so a `$ANALYSIS/...`
+path is *provenance, not a link*: it names the script a number came from, and promises
+nothing about reaching it from where you are sitting.
+
 **Scope.** Powder-like **XRD-CT**: the sample is translated across a beam at each of many
 ω rotations, rings are continuous and integrated azimuthally, and the reconstruction is a
 per-voxel diffraction pattern on a 2-D voxel grid. Handled through `midas_dt`. If the rings

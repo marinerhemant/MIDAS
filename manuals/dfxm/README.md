@@ -9,6 +9,13 @@ carries the scope gate, the install gate, the order of operations, the hard rule
 halt conditions. The detailed procedure lives in the phase files; the index below says
 which file holds which section.
 
+**Path conventions.** `$MIDAS` is the root of whichever MIDAS checkout you are working in
+(on a beamline host, `~s1iduser/opt/MIDAS_canonical`). **`$ANALYSIS` is a campaign working
+directory that is NOT in this repo** — the harnesses that produced numbers in
+`LAB_NOTEBOOK.md` are local, deliberately unversioned analysis scripts, so a `$ANALYSIS/...`
+path is *provenance, not a link*: it names the script a number came from, and promises
+nothing about reaching it from where you are sitting.
+
 > **Honesty about depth.** The far-field and near-field doc sets encode years of beamtime.
 > DFXM in this group has **one** real-data reduction campaign (the archived ESRF ID03
 > mosaicity sets and the ID06 multi-Bragg set) plus a simulation-and-inverse framework

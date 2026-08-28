@@ -213,7 +213,7 @@ ybc = 2047 - dip_centre
 ```
 
 Reference implementation: `axis_from_dip.py` (`dip_centre()`), alongside `beam_center.py`
-in `~/Desktop/analysis/bt_1id_jul26_beampos/`.
+in `$ANALYSIS/bt_1id_jul26_beampos/`.
 
 **ω = 90 is the cross-check**, not an input: `dip_centre(90) − axis` is the orthogonal
 component of the sample offset. In the reference dataset it came out −2.0 to −2.8 µm at

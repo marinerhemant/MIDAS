@@ -18,7 +18,7 @@ forward and capability inverses benefit from a GPU but run on CPU.
 |---|---|
 | package | `pip install "midas-dfxm>=0.3.2"` (public on PyPI since 2026-07-29) |
 | ESRF frame reduction | `pip install darling-pypi` — **imports as `darling`** (moment reduction reference). `pip install darling` fails: no such distribution. |
-| Mac env | project env, `midas_env` in use — `source /Users/hsharma/miniconda3/bin/activate midas_env; export KMP_DUPLICATE_LIB_OK=TRUE` |
+| local (Mac) env | the project's own conda env, **not a fixed name** — `midas_env` is the one in use here. `conda activate <env>; export KMP_DUPLICATE_LIB_OK=TRUE`. The `KMP` export is not optional on macOS: without it a duplicate OpenMP runtime aborts the process at import. |
 | APS host env | shared env by full path `/home/beams12/S1IDUSER/opt/envs/midas/bin/python` |
 | GPU prefix (dynamical/capability) | `CUDA_DEVICE_ORDER=PCI_BUS_ID KMP_DUPLICATE_LIB_OK=TRUE` |
 | outputs | a project / gdata directory you own — **never `/tmp`** |

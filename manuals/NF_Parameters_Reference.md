@@ -5,7 +5,7 @@ parameter file. Companion to [FF_Parameters_Reference.md](FF_Parameters_Referenc
 
 ## Architecture note (read this first)
 
-Although `/Users/hsharma/opt/MIDAS/NF_HEDM/src/MIDAS_ParamParser.c` is
+Although `$MIDAS/NF_HEDM/src/MIDAS_ParamParser.c` is
 **byte-identical** to the FF copy, almost no NF executable uses it. Only
 [GetHKLList.c](../NF_HEDM/src/GetHKLList.c) imports `midas_parse_params`.
 Every other NF executable has its **own inline** `fgets`+`strncmp` parameter

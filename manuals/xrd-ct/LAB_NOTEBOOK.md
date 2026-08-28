@@ -237,7 +237,7 @@ multiplet test, and this dataset shows you need both.** Added to the spine's hal
 >
 > **Died:** the attribution to grain counting (chord exponent, both lenses), and the claim that
 > the curve *plateaus*.
-> Evidence: `~/Desktop/analysis/11idc_ceo2_dt/peakfit/RESULTS_ceo2_{peakfit,area_origin,sqrtn,floor}.md`.
+> Evidence: `$ANALYSIS/11idc_ceo2_dt/peakfit/RESULTS_ceo2_{peakfit,area_origin,sqrtn,floor}.md`.
 
 **The structure is finite crystallite counting, at two levels:**
 
@@ -560,7 +560,7 @@ A per-voxel centre-to-rim apparent-d gradient (+1829…+4996 µε, claimed
 sign-consistent across five rings and two phases) was refuted by `/verify` on all
 **four** lenses, then refuted again by a **pre-registered** re-run after the
 extraction bugs were fixed. Both verdicts are in `~/.claude/skill-log.jsonl`;
-working directory `~/Desktop/analysis/dac_ti_strain/`.
+working directory `$ANALYSIS/dac_ti_strain/`.
 
 **Two extraction bugs, one of them inherited by §6's withdrawn number.**
 *BUG A* — `np.nan_to_num` maps a dead raw-η column's centroid to **0 px**, then
@@ -810,7 +810,7 @@ The finding that retires everything above, and the one that should have come fir
 
 Measured on raw frames, integrated with the verified geometry, at the **full 0.3° azimuthal
 resolution** (`ti_scope_gate.py`, `ti_scope_gate2.py` in
-`~/Desktop/analysis/dac_ti_strain/`):
+`$ANALYSIS/dac_ti_strain/`):
 
 | ring | cv_robust / cv_Poisson | crystallites per 0.3° column | % of ring intensity in >3 MAD spikes |
 |---|---|---|---|
@@ -862,7 +862,7 @@ drags that bin by ~34 px out of ~345. Measured on 12 real frames, bins that
 concentrates in the low-SNR outer translations. On a corrected re-extraction
 **α(012) reverses sign**. The "six reflections agree" argument is therefore void —
 they shared a common systematic, not a common measurement. See
-`~/Desktop/analysis/dac_ti_strain/` and §5h.
+`$ANALYSIS/dac_ti_strain/` and §5h.
 
 **Ti texture bound |S| ≲ 0.1** — from amplitude² scaling of the measured 0.17 % against a
 planted 25 %.

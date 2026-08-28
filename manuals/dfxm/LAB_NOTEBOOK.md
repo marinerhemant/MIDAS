@@ -680,7 +680,7 @@ class.
 
 Source: **Yay et al., Sci. Adv. 12, eaec8998 (2026)**, public Dryad **doi:10.5061/dryad.rfj6q57pj**
 (CC0) — Cu-Ba122 nematic, 040₁, 80 K, figure-level Δε_xy map (not raw frames). Scripts under
-`~/Desktop/analysis/yay_strainwaves_dryad/` (`robustness.py`, `compat_dilatation.py`,
+`$ANALYSIS/yay_strainwaves_dryad/` (`robustness.py`, `compat_dilatation.py`,
 `honest_analysis.py`, `build_artifact.py`). This campaign both **confirmed a real effect** and
 **caught our own overclaim via `/verify`** — the same pattern the whole notebook is about, this
 time on our own analysis rather than someone else's.
@@ -728,7 +728,7 @@ See DIAGNOSIS ("A claimed strain wave must be told from a non-periodic phase").
 
 We built a fast browser helper for "what does this reflection/plane image?", then rendered the same
 scenarios with the **validated `midas_dfxm` package forward model** (voxel-splat geometrical optics +
-Poulsen resolution + objective PSF; scripts `~/Desktop/analysis/yay_strainwaves_dryad/gt_render.py`,
+Poulsen resolution + objective PSF; scripts `$ANALYSIS/yay_strainwaves_dryad/gt_render.py`,
 `forward_h0l.py`, `plane_simulator.html`). The package reproduced the planted wave exactly (2.00 µm in
 2D; 2 µm × 3 µm in 3D, recovered from the arrays), and in doing so caught three things the fast
 approximation got wrong — the same value a `/verify` pass gives, applied to our own tool. Same-team
@@ -827,5 +827,5 @@ phase-1 §1c) — extend it to two transverse widths for full anisotropy. (2) **
 absent** — but FP is a phase-retrieval *inverse*, which fits midas's differentiable, inverse-heavy design
 (the aberration pupil PSF + `wave_imaging` + the optimizer already exist), so a **differentiable FP-DFXM**
 is a natural next build and a live ask from the 6-ID-C collaborator. Scope kept with the analysis campaign
-(`~/Desktop/analysis/yay_strainwaves_dryad/`). Carlsen's methods are published/citable — cite them; do not
+(`$ANALYSIS/yay_strainwaves_dryad/`). Carlsen's methods are published/citable — cite them; do not
 recruit (bilateral-collaboration rule).
