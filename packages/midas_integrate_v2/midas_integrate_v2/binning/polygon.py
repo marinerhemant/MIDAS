@@ -15,8 +15,18 @@ delegates to.
 
 Key properties:
 
-- **Exact** to fp64 precision per (pixel, bin) pair — no approximation,
-  no oversampling artefact at peak edges.
+- **Exact** polygon-vs-arc intersection to fp64 precision per (pixel, bin)
+  pair — no oversampling artefact at peak edges.
+
+  Read that precisely. Pixel corners are mapped into the corrected frame
+  through the package's shared geometry (tilt, distortion, parallax, panel
+  shifts, residual map) and the quad's edges are then taken as straight
+  chords. Where tilt or distortion is nonzero the true edge is slightly
+  curved, so the intersection is exact for the chord quad rather than for the
+  curved one — an error second order in pixel size. Before issue #69 this
+  kernel applied NO corrections at all, an error first order in the
+  correction itself (1.46 px at 5° tilt, 3.61 px for a ±2/±3 px panel
+  shift), so this is a large net gain, but "exact" is not unqualified.
 - **No numba** — v1's polygon math is pure numpy. The build is slower
   than the numba path (sub-second on a 24×24 demo, ~5-30 s on a 2.5 Mpx
   Pilatus), but is the only pure-Python route to v1-level accuracy.
@@ -45,10 +55,13 @@ from typing import Optional
 import numpy as np
 import torch
 
-from midas_integrate.geometry import pixel_bin_intersect, REta_to_YZ
-from midas_integrate.geometry import calc_eta_angle
+from midas_integrate.geometry import (
+    pixel_bin_intersect, REta_to_YZ, PIXEL_CORNER_OFFSETS, QUAD_ORDER,
+)
 
-from ..forward import eval_pixel_REta, pixel_to_REta_from_spec
+from ..forward import pixel_to_REta_from_spec
+from ..forward.pixels import _panel_inputs_from_spec
+from midas_calibrate_v2.forward.panels import panel_idx_for_points
 from ..spec import IntegrationSpec
 from .mask import normalise_mask
 from .trans_opt import apply_trans_opt_forward, needs_trans_opt
@@ -58,6 +71,7 @@ def _build_one_row(
     j: int,
     NY: int,
     corners_row: np.ndarray,             # (NY, 4, 2)
+    quad_row: np.ndarray,                # (NY,) mapped quad area per pixel
     in_range_row: np.ndarray,            # (NY,)
     r_lo_row: np.ndarray, r_hi_row: np.ndarray,
     e_lo_row: np.ndarray, e_hi_row: np.ndarray,
@@ -121,13 +135,20 @@ def _build_one_row(
     area_list:    list = []
     base = j * NY
 
-    # Fast path: trivial pixels emit one entry each with area = 1.0
+    # Fast path: a pixel entirely inside one bin contributes its whole area to
+    # that bin. That area is the pixel's MAPPED quad area, not 1.0: once the
+    # corners are corrected for tilt/distortion the quad is no longer a unit
+    # square, and hard-coding 1.0 here while the slow path below returns true
+    # geometric areas would mix two different area conventions in one output
+    # (measured: a fully-contained pixel reporting 1.000000 next to a quad of
+    # 0.988316). Callers wanting unit-weight pixels get that from
+    # ``area_weight="pixel"``, which divides by exactly this quantity.
     trivial_idx = np.where(trivial)[0]
     if trivial_idx.size > 0:
         pix_idx_list.extend((base + trivial_idx).tolist())
         bin_idx_list.extend((e_lo_row[trivial_idx] * n_r
                               + r_lo_row[trivial_idx]).tolist())
-        area_list.extend([1.0] * int(trivial_idx.size))
+        area_list.extend(quad_row[trivial_idx].tolist())
 
     # Slow path: only the pixels that straddle a bin boundary
     boundary_mask = in_range_row & ~trivial
@@ -163,12 +184,14 @@ def _build_one_row(
 
 # Pixel corner offsets (Y, Z) in pixel units — the four corners of a
 # unit-square pixel centred at integer (Y, Z). Same convention as v1.
-_PIXEL_CORNERS = np.array([
-    (-0.5, -0.5),
-    (+0.5, -0.5),
-    (+0.5, +0.5),
-    (-0.5, +0.5),
-], dtype=np.float64)
+#: Pixel corner offsets, taken from v1 rather than redefined here.
+#
+# The order MUST be the one ``pixel_bin_intersect`` and ``point_in_quad`` walk
+# with ``QUAD_ORDER``; see the note on ``PIXEL_CORNER_OFFSETS`` in
+# ``midas_integrate.geometry`` for why that is Z-order and what a bowtie
+# traversal costs. v2 used to declare its own boundary-CCW order here, which
+# was one of the two wrong ones.
+_PIXEL_CORNERS = PIXEL_CORNER_OFFSETS
 
 
 def _pixel_corner_YZ(spec: IntegrationSpec) -> np.ndarray:
@@ -199,39 +222,92 @@ def _pixel_corner_YZ(spec: IntegrationSpec) -> np.ndarray:
     return out
 
 
-def _candidate_bin_range(corners_YZ: np.ndarray, *, RMin: float,
-                          RMax: float, EtaMin: float, EtaMax: float,
-                          RBinSize: float, EtaBinSize: float,
-                          n_r: int, n_eta: int):
-    """For each pixel, return inclusive (r_lo, r_hi, e_lo, e_hi) bin
-    index ranges that the pixel could possibly overlap.
-
-    Computed from the bounding box of the pixel's 4 corners in (R, η)
-    space.  ``corners_YZ`` shape ``(NZ, NY, 4, 2)``. Returns 4 arrays
-    of shape ``(NZ, NY)`` each with int64 dtype.
-    """
-    Yc = corners_YZ[..., 0]                             # (NZ, NY, 4)
-    Zc = corners_YZ[..., 1]
-    R = np.sqrt(Yc * Yc + Zc * Zc)                       # in µm — wrong unit
-    # Wait: v1 stores YZ in µm and then computes R in µm. The bin edges
-    # are in pixels. Convert R from µm to px using the px_mean we have.
-    # Caller passes already-pixel-correct corners; here we just trust
-    # the caller. (Implementation detail: see _pixel_corner_YZ_px below.)
-    raise NotImplementedError("use _pixel_corner_YZ_px instead")
-
-
 def _pixel_corner_YZ_px(spec: IntegrationSpec) -> np.ndarray:
-    """Same as ``_pixel_corner_YZ`` but in pixel units (so R = sqrt(Y²+Z²)
-    is directly comparable to spec.RMin/RMax)."""
+    """Pixel corners in the CORRECTED (Y, Z) frame, in pixel units.
+
+    ``R = sqrt(Y² + Z²)`` on the result is directly comparable to
+    ``spec.RMin``/``RMax``, and — crucially — lives in the same frame as the
+    bin corners, which ``PolygonBinGeometry.from_spec`` builds with
+    :func:`REta_to_YZ`. Bins are exact circular arcs in that frame, so the
+    polygon-vs-arc intersection is well posed.
+
+    Each corner is mapped through the package's shared geometry,
+    :func:`pixel_to_REta_from_spec` — the same function ``HardBinGeometry``,
+    ``SubpixelBinGeometry`` and ``corrections.integrated`` use — and then back
+    into Cartesian with :func:`REta_to_YZ`::
+
+        (Y_pix, Z_pix) --pixel_to_REta_from_spec--> (R_px, η) --REta_to_YZ--> (Y, Z)
+
+    That picks up detector tilt, the distortion polynomial, parallax, per-panel
+    rigid shifts and the residual-correction map in one step, because the
+    shared function already applies all of them.
+
+    This used to read only ``spec.BC_y``/``spec.BC_z`` — a bare beam-centre
+    projection — so the polygon kernel silently discarded every one of those
+    corrections while being documented as the exact/reference kernel
+    (issue #69). Measured on a 200x200 synthetic detector, against the shared
+    function at the same sub-pixel positions: ``ty = 5°`` gave max |ΔR| =
+    1.4577 px, ``iso_R2 = 0.05`` gave 0.2871 px, and a ±2/±3 px two-panel
+    shift gave 3.6056 px = sqrt(2² + 3²), i.e. exactly the discarded shift.
+    With sub-pixel ``RBinSize`` — polygon's stated use case — those are many
+    bins wide.
+
+    Panel handling: ``panel_idx`` is looked up ONCE at each pixel's centre and
+    reused for its four corners. A panel shift is a rigid transform of the
+    whole pixel, and ``panel_idx_for_points`` rounds each point separately, so
+    letting it run per-corner would give the corners of a boundary-straddling
+    pixel different shifts and tear the quad.
+
+    Returns ``(NrPixelsZ, NrPixelsY, 4, 2)`` of float64.
+    """
     NY, NZ = spec.NrPixelsY, spec.NrPixelsZ
-    BC_y = float(spec.BC_y.detach())
-    BC_z = float(spec.BC_z.detach())
+    dt, dev = spec.dtype(), spec.device()
+
     Yidx, Zidx = np.meshgrid(np.arange(NY), np.arange(NZ), indexing="xy")
-    out = np.empty((NZ, NY, 4, 2), dtype=np.float64)
-    for c, (dy, dz) in enumerate(_PIXEL_CORNERS):
-        out[:, :, c, 0] = -(Yidx + dy - BC_y)
-        out[:, :, c, 1] = (Zidx + dz - BC_z)
-    return out
+    Yc_t = torch.as_tensor(Yidx, dtype=dt, device=dev)
+    Zc_t = torch.as_tensor(Zidx, dtype=dt, device=dev)
+
+    # One panel index per PIXEL (from its centre), broadcast to its corners.
+    panel_idx = None
+    panels = _panel_inputs_from_spec(spec)
+    if panels is not None:
+        layout = panels[0]
+        centre_idx = panel_idx_for_points(layout, Yc_t, Zc_t)      # (NZ, NY)
+        panel_idx = centre_idx.unsqueeze(0).expand(len(_PIXEL_CORNERS), NZ, NY)
+
+    # All four corners in a single batched call rather than four passes.
+    dY = torch.as_tensor([c[0] for c in _PIXEL_CORNERS], dtype=dt, device=dev)
+    dZ = torch.as_tensor([c[1] for c in _PIXEL_CORNERS], dtype=dt, device=dev)
+    Y_all = Yc_t.unsqueeze(0) + dY.view(-1, 1, 1)                  # (4, NZ, NY)
+    Z_all = Zc_t.unsqueeze(0) + dZ.view(-1, 1, 1)
+
+    with torch.no_grad():
+        out = pixel_to_REta_from_spec(Y_all, Z_all, spec, panel_idx=panel_idx)
+        R_px = out.R_px.detach().cpu().numpy()                     # (4, NZ, NY)
+        eta_deg = out.eta_deg.detach().cpu().numpy()
+
+    Yq, Zq = REta_to_YZ(R_px, eta_deg)          # back into the bins' frame
+    corners = np.empty((NZ, NY, len(_PIXEL_CORNERS), 2), dtype=np.float64)
+    corners[..., 0] = np.moveaxis(Yq, 0, -1)
+    corners[..., 1] = np.moveaxis(Zq, 0, -1)
+    return corners
+
+
+def _quad_area(corners: np.ndarray) -> np.ndarray:
+    """Shoelace area of each pixel quad, ``(NZ, NY, 4, 2)`` -> ``(NZ, NY)``.
+
+    The corners are stored in Z-order (see ``PIXEL_CORNER_OFFSETS``), which is
+    NOT boundary order, so the shoelace must walk them via ``QUAD_ORDER`` --
+    the same traversal ``pixel_bin_intersect`` uses. Rolling the stored order
+    directly would trace a bowtie and give the wrong area. The absolute value
+    then covers the orientation of the cycle, which is not meaningful here.
+    """
+    idx = list(QUAD_ORDER)
+    Y = corners[..., idx, 0]
+    Z = corners[..., idx, 1]
+    Yn = np.roll(Y, -1, axis=-1)
+    Zn = np.roll(Z, -1, axis=-1)
+    return 0.5 * np.abs((Y * Zn - Yn * Z).sum(axis=-1))
 
 
 @dataclass
@@ -263,7 +339,8 @@ class PolygonBinGeometry:
     def from_spec(cls, spec: IntegrationSpec, *,
                    verbose: bool = False,
                    n_jobs: int = 1,
-                   mask: Optional[np.ndarray] = None) -> "PolygonBinGeometry":
+                   mask: Optional[np.ndarray] = None,
+                   area_weight: str = "pixel") -> "PolygonBinGeometry":
         """Build the exact polygon-area geometry for ``spec``.
 
         Parameters
@@ -283,11 +360,31 @@ class PolygonBinGeometry:
             module gaps. v1 convention: 1.0 = masked. Masked pixels
             are dropped at build time (no per-bin contribution and no
             polygon math wasted on them).
+        area_weight :
+            How much weight each pixel carries once its corners are mapped
+            into the corrected frame, where its quad is no longer exactly
+            1 px².
+
+            ``"pixel"`` (default) renormalises by the pixel's own mapped quad
+            area, so every pixel still carries total weight 1 and the kernel
+            agrees with ``HardBinGeometry`` / ``SubpixelBinGeometry`` in the
+            fine-bin limit. This keeps the fix purely geometric.
+
+            ``"projected"`` keeps the mapped area, so a pixel is weighted by
+            the detector-plane area it actually subtends in the corrected
+            frame (solid-angle-like). Arguably the more physical weighting,
+            but it makes polygon differ from the other kernels by a smooth
+            factor, so it is opt-in rather than the default.
 
         The build delegates to v1's :func:`pixel_bin_intersect`
         (pure-numpy Green's-theorem kernel — no numba dependency); we
         wrap it in a ``joblib.Parallel`` over rows when ``n_jobs != 1``.
         """
+        if area_weight not in ("pixel", "projected"):
+            raise ValueError(
+                f"area_weight must be 'pixel' or 'projected', got "
+                f"{area_weight!r}"
+            )
         spec.validate()
         if getattr(spec, "lattice", "cartesian") != "cartesian":
             raise NotImplementedError(
@@ -300,8 +397,10 @@ class PolygonBinGeometry:
         n_r, n_eta = spec.n_r_bins, spec.n_eta_bins
         mask_np = normalise_mask(mask, NrPixelsY=NY, NrPixelsZ=NZ)
 
-        # Pixel corners in PX units, centred on BC.
+        # Pixel corners in PX units, in the corrected frame — the same frame
+        # the bin corners below are built in via REta_to_YZ.
         corners = _pixel_corner_YZ_px(spec)              # (NZ, NY, 4, 2)
+        quad = _quad_area(corners)                       # (NZ, NY)
 
         # Per-pixel R/η bounding box in px / deg.  η is computed via
         # v1's :func:`calc_eta_angle` (== ``atan2(-Yc, Zc) · 180/π``)
@@ -345,7 +444,7 @@ class PolygonBinGeometry:
             row_results = []
             for j in range(NZ):
                 row_results.append(_build_one_row(
-                    j, NY, corners[j], in_range[j],
+                    j, NY, corners[j], quad[j], in_range[j],
                     r_lo[j], r_hi[j], e_lo[j], e_hi[j],
                     *per_row_args,
                     _row_mask(j),
@@ -361,7 +460,7 @@ class PolygonBinGeometry:
                 ) from e
             row_results = Parallel(n_jobs=n_jobs, batch_size="auto")(
                 delayed(_build_one_row)(
-                    j, NY, corners[j], in_range[j],
+                    j, NY, corners[j], quad[j], in_range[j],
                     r_lo[j], r_hi[j], e_lo[j], e_hi[j],
                     *per_row_args,
                     _row_mask(j),
@@ -373,6 +472,20 @@ class PolygonBinGeometry:
         pix_np = np.concatenate(pix_arrs) if pix_arrs else np.empty(0, np.int64)
         bin_np = np.concatenate(bin_arrs) if bin_arrs else np.empty(0, np.int64)
         area_np = np.concatenate(area_arrs) if area_arrs else np.empty(0, np.float64)
+
+        if area_weight == "pixel" and pix_np.size:
+            # Restore "each pixel carries weight 1". In the corrected frame a
+            # pixel's quad is no longer exactly 1 px^2 -- tilt and distortion
+            # stretch it -- and integrate_polygon normalises per BIN by the
+            # summed area, so without this each pixel would silently be
+            # reweighted by its own Jacobian.
+            #
+            # Divide by the pixel's FULL mapped quad area, not by the sum of
+            # its in-range bin areas: a pixel lying partly outside
+            # [RMin, RMax] must keep only the fraction that is in range, not
+            # have that fraction renormalised back up to 1.
+            denom = quad.reshape(-1)[pix_np]
+            area_np = area_np / np.where(denom > 0.0, denom, 1.0)
 
         pix_idx = torch.from_numpy(pix_np).to(torch.long)
         bin_idx = torch.from_numpy(bin_np).to(torch.long)

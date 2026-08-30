@@ -191,6 +191,8 @@ def pixel_to_REta_from_spec(
     Y_pix: torch.Tensor,
     Z_pix: torch.Tensor,
     spec: IntegrationSpec,
+    *,
+    panel_idx: Optional[torch.Tensor] = None,
 ):
     """Differentiable pixel → (R_px, η_deg) via v2's torch geometry.
 
@@ -198,6 +200,17 @@ def pixel_to_REta_from_spec(
     the spec describes a multi-panel detector, matching the C
     ``DetectorMapper``. Without this a 48-panel Pilatus integrates with its
     panel calibration silently discarded.
+
+    ``panel_idx`` overrides the per-point panel lookup. Leave it ``None`` (the
+    default) and each point is assigned to the panel it rounds into, which is
+    what every per-pixel-centre caller wants.
+
+    Supply it when the points are not independent samples but the CORNERS of
+    one shape that must move rigidly -- the polygon kernel's pixel quads, for
+    instance. ``panel_idx_for_points`` rounds each point separately, so a pixel
+    straddling a panel boundary would otherwise have its corners shifted by
+    different panels and be torn in two. Pass the index looked up at the pixel
+    CENTRE, broadcast over that pixel's corners.
     """
     dt, dev = spec.dtype(), spec.device()
     lattice = getattr(spec, "lattice", "cartesian")
@@ -208,9 +221,11 @@ def pixel_to_REta_from_spec(
     panels = _panel_inputs_from_spec(spec)
     if panels is not None:
         layout, delta_yz, delta_theta, delta_lsd, delta_p2 = panels
+        if panel_idx is None:
+            panel_idx = panel_idx_for_points(layout, Y_pix, Z_pix)
         panel_kw = dict(
             panel_layout=layout,
-            panel_idx=panel_idx_for_points(layout, Y_pix, Z_pix),
+            panel_idx=panel_idx,
             delta_yz=delta_yz,
             delta_theta=delta_theta,
             delta_lsd_panel=delta_lsd,

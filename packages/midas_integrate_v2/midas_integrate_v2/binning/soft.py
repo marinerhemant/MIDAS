@@ -30,7 +30,7 @@ from typing import Optional
 
 import torch
 
-from ..diff.soft_bin import soft_bin_indices_weights
+from ..diff.soft_bin import soft_bin_indices_weights, eta_is_full_circle
 from ..forward import eval_pixel_REta
 from ..spec import IntegrationSpec
 from .trans_opt import apply_trans_opt_forward, needs_trans_opt
@@ -87,7 +87,7 @@ class SoftBinGeometry:
         )
         eb0, eb1, ew0, ew1 = soft_bin_indices_weights(
             Eta_flat, R_min=spec.EtaMin, R_bin_size=spec.EtaBinSize,
-            n_r=spec.n_eta_bins,
+            n_r=spec.n_eta_bins, periodic=eta_is_full_circle(spec),
         )
         return cls(
             R=R_flat, Eta=Eta_flat,

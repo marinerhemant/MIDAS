@@ -115,7 +115,12 @@ def test_integrate_soft_batch_matches_per_image_loop():
     batch = integrate_soft_batch(images, geom)
     expected = torch.stack([integrate_soft(images[k], geom)
                               for k in range(5)])
-    torch.testing.assert_close(batch, expected, rtol=0, atol=1e-15)
+    # rtol=0, atol=1e-15 was passing by luck: batch and per-image loops
+    # sum in different orders, so 1-2 ULP of float64 disagreement is
+    # expected and legitimate. Measured after the 2026-08-29 soft-bin
+    # centring fix: 2 of 330 elements differ by 1.78e-15 absolute,
+    # 3.7e-16 relative -- i.e. ~1 ULP (eps = 2.2e-16).
+    torch.testing.assert_close(batch, expected, rtol=1e-12, atol=1e-12)
 
 
 def test_integrate_soft_shape_mismatch_raises():
