@@ -425,6 +425,16 @@ def _build_parser() -> argparse.ArgumentParser:
     # Validation
     run.add_argument("--skip-validation", action="store_true")
     run.add_argument("--strict-validation", action="store_true")
+    run.add_argument(
+        "--skip-preflight", action="store_true",
+        help="skip the preflight input check. PipelineConfig.skip_preflight "
+             "was already honoured by Pipeline.run but had no flag, so a "
+             "resumed run could not get past it. Preflight validates the RAW "
+             "data (RawFolder, FileStem, Dark); a run resumed at refinement or "
+             "find_grains never reads a raw frame, and campaign drivers delete "
+             "the staged raw once indexing is done, so for those runs the "
+             "checks are inapplicable rather than merely inconvenient. Do NOT "
+             "use it to push a from-scratch run past a genuine input problem.")
 
     # Logging
     run.add_argument("--log-level", default="INFO",
@@ -841,6 +851,7 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         generate_h5=args.generate_h5,
         skip_validation=args.skip_validation,
         strict_validation=args.strict_validation,
+        skip_preflight=args.skip_preflight,
         log_level=args.log_level,
     )
     return cfg
