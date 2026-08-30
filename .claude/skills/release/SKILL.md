@@ -90,6 +90,29 @@ Your environment satisfies imports that a clean install does not, so a missing
 For any NEW top-level import added this batch, check it is declared. Blocking the
 module at the import hook and re-running the entry point is the cheap proof.
 
+**A green local sweep says nothing about platform NUMERICS either.** This Mac is
+the only machine in the loop running Apple's libm; CI is glibc. Any assertion of
+*exact* floating-point equality is therefore a platform assertion, whether or not
+it looks like one.
+
+> Measured: `midas_stress` passed 410/410 locally and failed CI on both 3.11 and
+> 3.12. `test_euler_values_unchanged` asserted
+> `np.abs(ref - got).max() == 0.0` — but `ref` is the NumPy/`math` backend and
+> `got` is the torch backend, two different implementations. glibc and Apple
+> libm differ by a few ULP: 1.609823385706477e-15 rad on 3.11,
+> 2.220446049250313e-15 on 3.12, in one or two of 1200 components. It blocked a
+> release that was otherwise finished. The same difference is already documented
+> for the `scanning_5grain_golden` fixture, whose Linux BASELINE differs from
+> the stored macOS golden at ~3e-15 while every discrete decision matches.
+
+Scan the batch's new tests for `== 0.0`, `== 0`, and bare `assert a == b` on
+floats **before** tagging. Where the two sides come from different backends or
+different libraries, bound it — and say in the docstring that the bound is
+*platform tolerance*, not a defect being admitted. That sentence is load-bearing:
+this project has caught two tests relaxing a tolerance to hide a real problem,
+and a later reader cannot distinguish the two cases without being told which
+one they are looking at.
+
 ## Phase 2 — commit
 
 **Explicit paths only.** Not `git add <dir>`, and not a glob.
@@ -168,6 +191,20 @@ of the same release, keep them in one commit and say so in the message.
     package — ``` `midas_params` (`registry.py:892`) ``` — fails, because
     `midas_params` is not *in* the file. Put a symbol that is actually there
     (`typical=0.8`) beside it, or drop the identifier.
+
+  **If a commit MOVES cited lines, the citations move in that same commit** —
+  the hook runs per commit, against the working tree, so a C insertion
+  invalidates every citation pointing past it *inside the commit that makes it*.
+  Two consequences, and they reorder the batch:
+
+  - **Commit the docs FIRST.** Otherwise staging a manual for a one-line
+    citation fix sweeps in all its unrelated content changes, and the guard
+    cannot help you — the file genuinely is in both sets.
+  - **One new line number may not cover every intermediate state.** The ±40
+    window is generous but finite. Measured: a `DetTx` citation moved
+    2567 → 2857 → 2906 → 2920 across three C commits. One value covered the last
+    two; the first needed its own. Compute where the symbol lands in EACH state
+    before deciding how many edits you need.
 
   **A green run means the pointer resolves, NOT that it points at the claim.**
   The ±40-line symbol window is wide on purpose, and it will happily accept a
@@ -271,10 +308,16 @@ full matrix. Verify two ways, because they disagree:
 1. PyPI `info.version` — the JSON API
 2. `pip install --dry-run --no-cache-dir <pkg>==<ver>` in a clean venv
 
-> The JSON reported `integrate-v2 0.5.0` live while pip's index could not yet
-> resolve it, and the prod install failed outright. pip resolves everything
-> before installing, so nothing was half-installed — but "the JSON says it's
-> there" is not "users can install it".
+**Neither is authoritative, and they disagree in BOTH directions.** The JSON
+reported `integrate-v2 0.5.0` live while pip's index could not yet resolve it,
+and the prod install failed outright. Six weeks later the reverse: `stress
+0.12.0` was `JSON=no, pip-resolve=yes`, the JSON cache trailing the index.
+
+> So do not learn "the JSON runs ahead". Learn that **pip-resolve is the one
+> that decides**, because it is what a user's install actually does. The JSON is
+> a second opinion worth having — a disagreement means one of them is stale and
+> you should wait — but it never overrules a clean resolve, and a clean JSON
+> never substitutes for one.
 
 **A release event tests dependents.** The `midas-stress` release ran 45 test
 jobs. Do not conclude otherwise from one green run of a package that happens to
@@ -291,6 +334,22 @@ Read the failing JOB, not just the run. There are **three** classes, not two:
 | **code** — a `test` job failed | the tag points at broken code | fix, then **retarget the tag** (delete release + tag, recreate at the fix commit). `gh run rerun` re-tests the same broken commit. |
 | **infrastructure** — network, Sigstore/Rekor reset, 503 | artifact and tag are fine | **`gh run rerun --failed`** |
 | **`400 File already exists`** | the package **ALREADY PUBLISHED**; this is a second, redundant upload being refused | **nothing.** A rerun fails identically. Confirm it is live and move on. |
+
+**Measure the blast radius before you retarget — do not assume it is the batch.**
+A release event tests the released package and its **dependents**, so most
+matrices never run a given package's own suite. Which releases come back GREEN
+tells you how far the failure actually reaches.
+
+> Measured: `midas-stress 0.12.0` failed on a bad test and 13 other tags were
+> pointing at the same commit. Retargeting all 13 looked like the obvious move.
+> Then `midas-suite 0.11.0` came back green from that same commit — `midas_stress`
+> is a dependency of suite, not a dependent, so suite's matrix never ran its
+> tests. Real blast radius: **one package**. And two of the 13 had already
+> published, so retargeting them would have fired duplicate uploads that can
+> only fail.
+
+Wait for enough of the matrix to report that you can see the shape, then retarget
+only what actually failed AND has not published.
 
 **Re-check publication state immediately before EACH retarget, not once for the
 batch.** PyPI files are immutable, so retargeting a tag whose version already

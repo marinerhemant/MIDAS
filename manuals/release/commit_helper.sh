@@ -39,8 +39,17 @@ commit() {
 
     # The hooks (scrub-check, doc-citation-check, ignore-check) run on commit and
     # are load-bearing -- do not bypass them with --no-verify.
+    #
+    # Unstage on hook rejection too. This used to reset only on GUARD failure,
+    # so a hook-rejected commit left its files staged and the NEXT commit
+    # inherited them: measured, a rejected C commit left IndexerUnified.c in the
+    # index and the following manuals commit picked it up. The guard caught it
+    # as `staged != intended`, but only because that commit named a different
+    # file set -- a same-package retry would have sailed through.
     git commit -q -m "$subject" -m "$body" || {
-        echo "COMMIT FAILED: $subject"; _RELEASE_FAIL=1; return 1; }
+        echo "COMMIT FAILED: $subject"
+        git reset -q
+        _RELEASE_FAIL=1; return 1; }
 
     printf "  %-9s %s\n" "$(git rev-parse --short HEAD)" "$subject"
 }
