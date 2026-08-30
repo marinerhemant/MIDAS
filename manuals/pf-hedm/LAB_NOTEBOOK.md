@@ -419,7 +419,7 @@ This campaign contributed [`phase-7-validation.md`](phase-7-validation.md).
 | # | Finding | Status | Where |
 |---|---|---|---|
 | 1 | **The PF per-voxel path passes an ω-shuffle null at campaign thresholds** — no null voxel exceeded completeness 0.6957 (sparse) / 0.8333 (dense) against real medians 0.9231 / 0.8943 | VERIFIED | §8.4 |
-| 2 | The **chance ceiling** is a measurable quantity, is **density-dependent**, and the shipped `MinMatchesToAcceptFrac 0.5` sits below it | VERIFIED | §8.4 |
+| 2 | The **chance ceiling** is measurable, is **NOT predictable from spot density**, and the shipped `MinMatchesToAcceptFrac 0.5` sits at or below it on every layer tested | VERIFIED | §8.4 |
 | 3 | **merged-FF carries no grain-count information on scanning data** — the null beat the real arm on every statistic | VERIFIED | §8.5 |
 | 4 | A genuine **line-focus far-field** run of the same layer passes cleanly (786 solutions real, **0** null) | VERIFIED | §8.5 |
 | 5 | **LF = Σ(13 PF frames) × 0.164 exactly** — superposition holds; the line focus delivers 1/6.1 the flux density | VERIFIED | §8.6 |
@@ -479,13 +479,28 @@ This campaign contributed [`phase-7-validation.md`](phase-7-validation.md).
 
 Both arms re-run fresh with one binary, production `per_voxel_cluster` winners:
 
-| layer | real vox / null vox | real best-comp median | **ceiling (null max)** | real at 1.0 | vox at/below ceiling | gate |
+| layer | spots | real vox / null vox | real best-comp median | **ceiling (null max)** | null p99 | vox at/below ceiling |
 |---|---|---|---|---|---|---|
-| sparse (13 scans, 169 vox, 936 k spots) | 143 / 73 | 0.9231 | **0.6957** | 22.4 % | **24.5 %** | 0.75 µm, matched |
-| dense (19 scans, 361 vox, 1.29 M spots) | 354 / 148 | 0.8943 | *0.8333* ⚠ | 26.3 % | **39.5 %** | 0.80 µm, over-estimate |
+| s4/L9 | 22 848 | 49 / **0** | 0.6481 | **none — null found NOTHING** | — | **0 %** |
+| s4/L4 | 418 783 | 80 / 10 | 0.9423 | **0.5333** | 0.5328 | **0.0 %** |
+| s5/L5 | 935 620 | 143 / 73 | 0.9231 | **0.6957** | — | 24.5 % |
+| s1/L3 | 1 294 542 | 354 / 139 | 0.8943 | **0.8333** | 0.7731 | 39.8 % |
+| s2/L5 | 1 391 165 | 169 / 115 | 0.9600 | **0.7500** | 0.7406 | 14.2 % |
 
-At the shipped gate 0.50 the null/real retention ratio was **0.51** (sparse) and
-**0.42** (dense). At 0.7083: **0.000** (sparse) and 0.155 (dense).
+All five with both arms at the correct 0.75 µm gate, banked real arm against a
+re-run null. At the shipped gate 0.50 the null/real retention ratio ran 0.00
+(s4/L9) to 0.68 (s2/L5).
+
+⚠ **The ceiling is NOT predictable from density.** A four-layer version of this
+table looked cleanly monotonic in spot count and an explicit prediction was made
+that s2/L5 — the densest, and the highest spots-per-voxel — would top it. It came
+in *below* s1/L3 on both the ceiling and the contaminated fraction. Neither total
+spots nor spots-per-voxel orders the table. Density is the mechanism (a sparse
+enough list has no chance floor at all) but **not a substitute for measuring**.
+
+⚠ **An empty null is a real outcome.** s4/L9's shuffled list produced zero
+accepted solutions in any voxel. The first version of these scripts crashed on
+the empty array instead of reporting it.
 
 **Both arms of the sparse row ran at the same 0.75 µm gate** — the banked real arm
 (which the pipeline had already run correctly) against a null re-run with

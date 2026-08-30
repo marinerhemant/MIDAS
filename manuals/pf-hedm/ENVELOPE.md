@@ -96,7 +96,7 @@ What follows arithmetically from §1–2. A report may quote these directly.
 | Grain **position** from a sinogram | ~1.3–2.1 µm rms on clean single grains; ~1.7 µm against the voxel map | §2 scan step, and the concentration filter (phase 6 §6.5) |
 | Grain **shape** | **not quotable** — cause unknown | §3b |
 | Sample **boundary** | ~1.5 µm, from two independent grain-free routes agreeing (14.50 and 16.04 µm) | phase 1b. The **tilt** of that boundary is *not* resolved (+2.4° / −8.5° / +4.8° from three methods) |
-| **Completeness as evidence** | only **above the measured chance ceiling** — 0.6957 on a 936 k-spot layer, 0.8333 (over-estimate, wider gate) on a 1.29 M-spot layer | phase 7. Below it real and chance overlap. The ceiling **rises with spot density** and must be measured per layer, so a denser scan does not make the map safer |
+| **Completeness as evidence** | only **above the measured chance ceiling** — five layers gave none / 0.5333 / 0.6957 / 0.7500 / 0.8333 | phase 7. Below it real and chance overlap. **Not predictable from spot density** (the densest layer came in mid-table) — it must be measured on the layer in hand, and a denser scan does not make the map safer |
 | **Grain count from a per-voxel map** | **not a census** — `OneSolPerVox` maps only the largest grains | phase 7 §7.5. One layer gave 284 voxels → 10 distinct orientations (≈42 µm/grain) against a ~0.29 µm primary-particle size |
 
 ## 5. Did not versus cannot

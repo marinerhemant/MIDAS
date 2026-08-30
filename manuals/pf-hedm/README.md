@@ -72,7 +72,7 @@ seems wrong:**
 | Indexing is about to run **unseeded** on a scanning dataset | Blind scanning indexing over tens of millions of merged spots is intractable (days, often no output). It needs an FF orientation seed. This is a resource cliff, not a bug. |
 | The pf-odf strain patches are **not dark-subtracted** and the frames are raw | The fit has no additive-background term; a flat pedestal biases magnitude ~30 % and reshapes the field. Silently plausible. |
 | The **strain reference cell** (`LatticeConstant`) has not been pinned from this sample's own rings | The refiner's strain fit measures against it inside a **±10000 µε** box, so a reference wrong by ~0.7 % rails components silently — and it also costs completeness. Un-noticeable after the fact: the map looks fine. See §"the reference-cell trap". |
-| A **per-voxel result, grain count, or acceptance threshold** is about to be quoted without a measured **chance ceiling** | On a dense layer completeness **saturates** — a quarter of voxels sit at exactly 1.0000 — so it cannot separate a grain from a coincidence, and nothing internal to the run exposes that. The shipped `MinMatchesToAcceptFrac 0.5` sat *below* the measured ceiling on both layers tested, admitting one null voxel per two real ones. The ceiling is **density-dependent and must be measured per layer**. Phase 7. |
+| A **per-voxel result, grain count, or acceptance threshold** is about to be quoted without a measured **chance ceiling** | On a dense layer completeness **saturates** — a quarter of voxels sit at exactly 1.0000 — so it cannot separate a grain from a coincidence, and nothing internal to the run exposes that. The shipped `MinMatchesToAcceptFrac 0.5` sat at or below the measured ceiling on **all five** layers tested, admitting up to one null voxel per 1.5 real ones. The ceiling is **not predictable from spot density and must be measured per layer**. Phase 7. |
 | A **merged-FF grain count** from scanning data is about to be quoted | A 1-row `positions.csv` sets `nScans_ == 1`, so `doScanFilter` is 0 and the beam gate is **off in the matching loop**. Measured: the ω-shuffle null *beat* the real arm. Phase 7 §7.6. |
 
 When you halt, say which row fired, what you measured, and what you would need to proceed.
@@ -148,9 +148,13 @@ Finish everything not blocked by it first.
 11. **Measure the chance ceiling before setting or trusting any acceptance
     threshold.** Run the ω-shuffle null (phase 7) and take the highest
     best-completeness any *null* voxel reaches. Below that value, real and chance
-    overlap. Measured 0.6957 on a 936 k-spot layer and **0.8333** on a 1.29 M-spot
-    layer — it rises with density, so the dense layers are the *more* contaminated
-    ones, and one layer's ceiling must never be quoted for another. Where
+    overlap. Measured across five layers as **none / 0.5333 / 0.6957 / 0.7500 /
+    0.8333** — a sparse enough layer has no chance floor at all, and the order is
+    NOT the order of spot density (the densest layer came in mid-table, against
+    an explicit prediction). Formerly quoted as 0.6957 on a 936 k-spot layer and 0.8333 on a 1.29 M-spot
+    layer — it is NOT ordered by spot density (the densest of five came in
+    mid-table, against an explicit prediction), so one layer's ceiling must never
+    be quoted for another. Where
     completeness has saturated, `CalcAvgIA` (separated 2.6×) and the threshold-free
     distinct-winners-per-voxel ratio (§7.5) still discriminate.
 
