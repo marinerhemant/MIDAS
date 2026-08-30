@@ -25,11 +25,14 @@ else FF.
 from __future__ import annotations
 
 import importlib.resources
+import logging
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Callable, Optional
+
+LOG = logging.getLogger(__name__)
 
 __all__ = ["available", "binary_path", "run_indexer", "CBackendUnavailableError"]
 
@@ -157,6 +160,12 @@ def run_indexer(
         str(int(n_work)),
         str(int(num_procs)),
     ]
+    # Provenance. A campaign's run logs recorded the paramstest path but never
+    # which binary produced the output; when two runs of "the same thing"
+    # disagreed later, the binary had been rebuilt and the question was
+    # unanswerable. Path + size + sha256 of the actual executable, and the
+    # parameter file it was handed, cost nothing and settle it.
+    _log_invocation(cmd, paramstest)
     env = os.environ.copy()
     if extra_env:
         env.update(extra_env)
@@ -164,6 +173,47 @@ def run_indexer(
         return subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True,
                               check=False)
     return _run_streaming(cmd, cwd=str(cwd), env=env, line_cb=line_cb)
+
+
+def binary_fingerprint() -> dict:
+    """Path, size and sha256 of the bundled ``midas_indexer``.
+
+    Provenance for a run. ``midas_index.__version__`` is NOT sufficient on its
+    own: a rebuild from a different tree can carry the same version string, and
+    on this project a released patch version was once (wrongly) blamed for a
+    result change that turned out to be an invocation difference. The hash is
+    what actually identifies the executable.
+    """
+    import hashlib
+
+    p = binary_path()
+    out = {"path": str(p), "exists": p.exists(), "sha256": None, "size": None}
+    if p.exists():
+        h = hashlib.sha256()
+        with open(p, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        out["sha256"] = h.hexdigest()
+        out["size"] = p.stat().st_size
+    return out
+
+
+def _log_invocation(cmd: list[str], paramstest: Path) -> None:
+    """Emit the binary's identity and the parameter file it was handed."""
+    try:
+        from . import __version__ as _v
+    except Exception:                                     # noqa: BLE001
+        _v = "unknown"
+    try:
+        fp = binary_fingerprint()
+        LOG.info("midas_indexer: %s (midas-index %s, %s bytes, sha256 %s)",
+                 fp["path"], _v, fp["size"],
+                 (fp["sha256"] or "?")[:16])
+        LOG.info("midas_indexer: paramstest=%s", paramstest)
+        LOG.info("midas_indexer: argv=%s", " ".join(cmd[1:]))
+    except Exception:                                     # noqa: BLE001
+        # Provenance logging must never be the reason a run fails.
+        pass
 
 
 def _run_streaming(
