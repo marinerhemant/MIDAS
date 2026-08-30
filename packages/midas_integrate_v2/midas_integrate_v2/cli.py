@@ -400,6 +400,21 @@ def batch_main(argv=None) -> int:
                    help="Per-pixel-across-stack outlier rejection at "
                         "this many σ. Requires --hdf5 or --zarr "
                         "(loads the whole stack to memory).")
+    p.add_argument("--reject-outliers-model", default="mad",
+                   choices=("mad", "std", "poisson"),
+                   help="How σ is estimated for outlier rejection. 'mad' "
+                        "(default) is robust but needs a DEEP stack — its "
+                        "measured false-positive rate at 5σ is 2.8e-2 on 5 "
+                        "frames and 8.0e-3 on 9, against a nominal 5.7e-7, so "
+                        "on a short stack it silently replaces good pixels. "
+                        "'poisson' uses the known photon-counting noise model "
+                        "(σ=sqrt(gain·counts)), works at any depth, and is the "
+                        "right choice for RAW counts. 'std' has no false "
+                        "positives but misses real spikes on short stacks.")
+    p.add_argument("--reject-outliers-gain", type=float, default=1.0,
+                   help="ADU per photon, used only by "
+                        "--reject-outliers-model=poisson. 1.0 for a "
+                        "photon-counting detector (Pilatus, Eiger).")
     p.add_argument("--eta-coverage-min", type=float, default=0.5,
                    help="Emit a stderr WARNING for any ring whose visible "
                         "fraction of η drops below this threshold. Set "
@@ -442,12 +457,27 @@ def batch_main(argv=None) -> int:
         for fid, img in source:
             ids.append(fid); frames.append(img)
         stack = np.stack(frames)
-        cleaned, _ = reject_cosmic_rays(
+        cleaned, rejected = reject_cosmic_rays(
             stack, n_sigma=args.reject_outliers_sigma,
+            sigma_model=args.reject_outliers_model,
+            gain=args.reject_outliers_gain,
         )
         source = NumpyArraySource(cleaned, ids=ids)
-        print(f"  rejected outliers at {args.reject_outliers_sigma}σ; "
-              f"{stack.shape[0]} frames in stack")
+        # Report WHAT IT DID, not just that it ran. The default mode
+        # overwrites every flagged pixel with the temporal median, so a
+        # silently high rejection fraction is good data being destroyed.
+        n_rej = int(rejected.sum())
+        frac = n_rej / max(rejected.size, 1)
+        print(f"  rejected outliers at {args.reject_outliers_sigma}σ "
+              f"(model={args.reject_outliers_model}); "
+              f"{stack.shape[0]} frames in stack; "
+              f"{n_rej} of {rejected.size} pixel-samples replaced "
+              f"({frac*100:.4f} %)")
+        if frac > 1e-3:
+            print(f"  WARNING: {frac*100:.2f} % is far above the "
+                  f"{args.reject_outliers_sigma}σ nominal rate — on a short "
+                  f"stack the 'mad' model flags good pixels. Consider "
+                  f"--reject-outliers-model=poisson.")
 
     # Optional mask
     mask = None

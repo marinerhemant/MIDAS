@@ -5,15 +5,19 @@ range carries one stripe of a pole figure for each ring. To build the
 full pole figure the user must rotate the sample (χ, φ) and stack
 slices; here we provide the mapping for one slice.
 
-For a Bragg ring at fixed 2θ on a flat detector, the η-coordinate of
-each pixel along the ring corresponds to a sample-frame angle β (with
-a fixed α set by the sample tilt and the ring 2θ). We emit
+For a Bragg ring at fixed 2θ on a flat detector, the η-coordinate of each pixel
+along the ring maps to the sample-frame azimuth β = η + φ, at the fixed
+declination **α = 90° − θ** set by the ring's Bragg angle alone. We emit
 ``(α, β, intensity)`` triples on a regular stereographic grid.
+
+Note α is NOT set by the sample tilt — that was the pre-2026-08-29 behaviour and
+it put every ring at the centre of the figure; see the warning on
+:func:`cake_to_pole_figure`.
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -24,12 +28,48 @@ def cake_to_pole_figure(
     R_axis: np.ndarray,
     *,
     hkl_R_px: float,
+    two_theta_deg: Optional[float] = None,
     capture_radius_px: float = 3.0,
     sample_rotation_chi_deg: float = 0.0,
     sample_rotation_phi_deg: float = 0.0,
     output_grid: Tuple[int, int] = (181, 91),
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Project one ring's η stripe onto a stereographic pole-figure grid.
+
+    The pole declination is set by the ring's BRAGG ANGLE, derived here rather
+    than recalled. With incident beam ``k_i = (0, 0, 1)`` and diffracted
+    ``k_f = (sin2θ cosη, sin2θ sinη, cos2θ)``::
+
+        Q ∝ k_f − k_i = 2 sinθ · (cosθ cosη, cosθ sinη, −sinθ)
+
+    so the unit pole direction is ``(cosθ cosη, cosθ sinη, −sinθ)``, whose angle
+    from the back-along-beam axis has cosine ``sinθ``. Therefore::
+
+        α (declination) = 90° − θ        β (azimuth) = η + φ
+
+    Every pole from ONE ring sits at a CONSTANT declination — but at
+    ``90° − θ``, near the rim for a typical powder ring, not at the centre.
+
+    .. warning::
+
+       **Before 2026-08-29 this function ignored the Bragg angle entirely.** It
+       set ``α = sample_rotation_chi_deg % 90`` and used ``hkl_R_px`` only to
+       select the η stripe, so with the default ``chi = 0`` every ring — at any
+       2θ — was dumped into the α = 0 bin at the centre of the pole figure.
+       Measured error, four rings at a 1000 px sample-detector distance:
+
+       ============  ==============  ================  =========
+       ring R (px)   correct α       α produced        error
+       ============  ==============  ================  =========
+       25            89.284°         0.000°            −89.284°
+       50            88.569°         0.000°            −88.569°
+       100           87.145°         0.000°            −87.145°
+       175           85.037°         0.000°            −85.037°
+       ============  ==============  ================  =========
+
+       The ``% 90`` also silently wrapped ``chi = 90°`` to 0. Output went
+       straight into :func:`write_popla_pol`, i.e. a real POPLA ``.pol`` file
+       that texture software would read as a genuine pole figure.
 
     Parameters
     ----------
@@ -40,12 +80,25 @@ def cake_to_pole_figure(
     R_axis :
         ``(n_R,)`` R axis.
     hkl_R_px :
-        Radius of the ring of interest in same units as R_axis.
+        Radius of the ring of interest in same units as R_axis. Selects the
+        η stripe; it does NOT set the declination (R units are arbitrary here,
+        so 2θ cannot be recovered from it without the geometry).
+    two_theta_deg :
+        Scattering angle 2θ of this ring, degrees. **Required** — the pole
+        declination is ``90° − θ`` and there is no way to get θ from
+        ``hkl_R_px`` alone. Omitting it raises rather than silently producing
+        the old, wrong, centre-of-the-figure result.
     capture_radius_px :
         ±window around the ring (R-axis units).
-    sample_rotation_chi_deg, sample_rotation_phi_deg :
-        Sample-stage rotations (degrees) added to (α, β) so users can
-        accumulate stripes from multiple frames.
+    sample_rotation_phi_deg :
+        Rotation about the beam axis, degrees. This is an unambiguous
+        azimuthal offset: it simply adds to β.
+    sample_rotation_chi_deg :
+        Sample tilt, degrees. **Not implemented** — a tilt rotates the pole
+        cone out of the beam-axis frame, and the result depends on which
+        stage axis χ turns about. Adding χ to α is only a first-order
+        approximation valid at one azimuth, not around the ring, so a nonzero
+        value raises instead of guessing a stage convention.
     output_grid :
         ``(n_alpha, n_beta)`` grid resolution for the output.
 
@@ -72,10 +125,37 @@ def cake_to_pole_figure(
             f"no R bins within {capture_radius_px} of ring at R={hkl_R_px}"
         )
     stripe = int2d[:, in_ring].sum(axis=1)              # (n_eta,)
-    # In the simplest geometry: α (declination) is set by the ring 2θ;
-    # β (azimuthal) is η + sample_phi. For now, treat α as a fixed-stripe
-    # angle and broadcast the η-dependence onto the β-axis.
-    alpha_value = float(sample_rotation_chi_deg) % 90.0
+
+    if two_theta_deg is None:
+        raise ValueError(
+            "cake_to_pole_figure needs two_theta_deg: the pole declination is "
+            "90 - theta, and theta cannot be recovered from hkl_R_px alone "
+            "(R_axis units are arbitrary here). Before 2026-08-29 this "
+            "argument did not exist and the declination was taken from "
+            "sample_rotation_chi_deg instead, which put every ring at the "
+            "CENTRE of the pole figure regardless of its 2theta - up to 89 deg "
+            "wrong. Pass the ring's 2theta."
+        )
+    if float(sample_rotation_chi_deg) != 0.0:
+        raise NotImplementedError(
+            "sample_rotation_chi_deg != 0 is not supported. A sample tilt "
+            "rotates the pole cone out of the beam-axis frame, and the result "
+            "depends on which stage axis chi turns about; adding chi to alpha "
+            "(what this function used to do) is a first-order approximation "
+            "valid at one azimuth only, not around the ring. Specify the stage "
+            "convention and this can be implemented properly."
+        )
+
+    # alpha = 90 - theta, constant around the ring (see the derivation in the
+    # docstring). beta = eta + phi.
+    theta_deg = 0.5 * float(two_theta_deg)
+    alpha_value = 90.0 - theta_deg
+    if not (0.0 <= alpha_value < 90.0):
+        raise ValueError(
+            f"two_theta_deg={two_theta_deg!r} gives a declination "
+            f"{alpha_value:.3f} deg outside [0, 90); 2theta must be in "
+            f"(0, 180]."
+        )
     alpha_grid_deg = np.linspace(0.0, 90.0, n_alpha, endpoint=False)
     beta_grid_deg = np.linspace(0.0, 360.0, n_beta, endpoint=False)
     # Resample η stripe onto β grid via linear interpolation (wrap)

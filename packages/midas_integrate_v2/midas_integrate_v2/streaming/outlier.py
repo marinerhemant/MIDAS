@@ -12,9 +12,44 @@ by the median or by NaN, and (b) the mask of detected outliers.
 """
 from __future__ import annotations
 
-from typing import Tuple
+import warnings
+from typing import Optional, Tuple
 
 import numpy as np
+
+
+class ShallowStackWarning(UserWarning):
+    """A robust estimator is being used on too few frames to support it.
+
+    Its own category so a caller can silence or escalate it without touching
+    every other warning — and so it is visible in a log rather than lost, which
+    matters because the default rejection mode OVERWRITES the pixels it flags.
+    """
+
+
+#: Measured false-positive rate of the per-pixel MAD sigma-clip on a CLEAN
+#: Poisson stack at ``n_sigma = 5``, versus stack depth N. Nominal (Gaussian,
+#: exact sigma) is 5.7e-7, so every entry here is orders of magnitude high.
+#:
+#: The cause is NOT discreteness — the rates are the same at lambda = 3000 as at
+#: lambda = 20 — and it is NOT bias, so rescaling does not fix it. It is the
+#: small-sample VARIANCE of the MAD: at N = 5 the 5th percentile of
+#: sigma_MAD/sigma_true is 0.210, i.e. 5 % of pixels get a sigma five times too
+#: small, and ordinary noise there reads as > 5 sigma. Bias-correcting so the
+#: MEDIAN of sigma_MAD matches truth only takes N=5 from 2.77 % to 1.49 %.
+#: The 1.4826 factor is the asymptotic consistency constant; short stacks need a
+#: different estimator, not a corrected one.
+#:
+#: Measured with 200k independent pixels per N (scratch: mad_fpr.py, mad_fix.py).
+_MAD_FALSE_POSITIVE_RATE_AT_5_SIGMA = {
+    5: 2.8e-2, 9: 8.0e-3, 15: 2.1e-3, 30: 2.8e-4, 60: 5.0e-5,
+}
+
+#: Below this stack depth the MAD estimator's false-positive rate at 5 sigma is
+#: worse than ~1e-4 (about 175x nominal), which on a megapixel detector means
+#: hundreds of good pixels silently replaced. Warn rather than fail: a shallow
+#: stack is a legitimate thing to want to clean, just not with this estimator.
+_MAD_MIN_RECOMMENDED_N = 30
 
 
 def reject_cosmic_rays(
@@ -23,6 +58,9 @@ def reject_cosmic_rays(
     n_sigma: float = 5.0,
     mode: str = "replace_with_median",
     use_mad: bool = True,
+    sigma_model: Optional[str] = None,
+    gain: float = 1.0,
+    warn_shallow_stack: bool = True,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Per-pixel sigma-clip outlier rejection along the stack axis.
 
@@ -41,10 +79,57 @@ def reject_cosmic_rays(
           can mask).
         - ``"flag_only"``: leave images unchanged; just return the mask.
     use_mad :
-        If True (default), estimate per-pixel σ via the median absolute
-        deviation (robust to multiple outliers in the same time series).
-        If False, use the standard deviation (faster but breaks if more
-        than one outlier per pixel).
+        Legacy selector, kept for backward compatibility. True (default)
+        means ``sigma_model="mad"``, False means ``sigma_model="std"``.
+        Ignored when ``sigma_model`` is given explicitly.
+    sigma_model :
+        How the per-pixel σ is estimated. Overrides ``use_mad``.
+
+        - ``"mad"`` — ``1.4826 · median|x − median|`` along the stack.
+          Robust to several outliers per pixel, but see the warning below:
+          it needs a DEEP stack.
+        - ``"std"`` — plain standard deviation along the stack. Not robust
+          (a real cosmic ray inflates σ and so partly hides itself), but its
+          measured false-positive rate is 0.000 at every depth tested.
+        - ``"poisson"`` — ``σ = sqrt(gain · max(median, 1))``, i.e. use the
+          KNOWN photon-counting noise model instead of estimating σ from a
+          handful of samples. Measured false-positive rate 7e-6 at N = 5,
+          1e-6 at N = 30 — within about one order of nominal, and four
+          orders better than ``"mad"``. **Correct only when the frames are
+          raw counts** (no dark subtraction, normalisation or flat-fielding
+          applied yet) and the detector is photon-counting; pass ``gain``
+          for an integrating detector, and do not use it at all if read
+          noise dominates.
+    gain :
+        ADU per photon, used only by ``sigma_model="poisson"``. 1.0 for a
+        photon-counting detector (Pilatus, Eiger).
+    warn_shallow_stack :
+        Emit a warning when ``sigma_model="mad"`` is used on a stack too
+        shallow for it. On by default because the failure is otherwise
+        SILENT — the default ``mode="replace_with_median"`` overwrites the
+        flagged pixels, so good data is replaced with no visible sign.
+
+    .. warning::
+
+       **The MAD estimator's false-positive rate is orders of magnitude above
+       the nominal Gaussian rate on short stacks.** Measured on a clean
+       Poisson stack at ``n_sigma=5`` (nominal 5.7e-7):
+
+       ====  ==========  ==========  ==========
+       N     ``"mad"``   ``"std"``   ``"poisson"``
+       ====  ==========  ==========  ==========
+       5     2.8e-2      0.0         7.0e-6
+       9     8.0e-3      0.0         4.4e-6
+       15    2.1e-3      0.0         2.7e-6
+       30    2.8e-4      0.0         1.0e-6
+       60    5.0e-5      0.0         1.3e-6
+       ====  ==========  ==========  ==========
+
+       So a 9-frame sweep cleaned at "5σ" has ~0.8 % of its pixels replaced
+       by the temporal median — on a 2880² Varex that is roughly 66 000 good
+       pixels, silently. The cause is the small-sample *variance* of the MAD,
+       not its bias; see ``_MAD_FALSE_POSITIVE_RATE_AT_5_SIGMA``. Prefer
+       ``sigma_model="poisson"`` for raw counts, or use a deep stack.
 
     Returns
     -------
@@ -61,14 +146,47 @@ def reject_cosmic_rays(
     if mode not in ("replace_with_median", "replace_with_nan", "flag_only"):
         raise ValueError(f"unknown mode {mode!r}")
 
+    if sigma_model is None:
+        sigma_model = "mad" if use_mad else "std"
+    if sigma_model not in ("mad", "std", "poisson"):
+        raise ValueError(
+            f"sigma_model must be 'mad', 'std' or 'poisson', got {sigma_model!r}")
+
+    N = int(images.shape[0])
+    if sigma_model == "mad" and warn_shallow_stack and N < _MAD_MIN_RECOMMENDED_N:
+        known = sorted(_MAD_FALSE_POSITIVE_RATE_AT_5_SIGMA)
+        nearest = min(known, key=lambda k: abs(k - N))
+        rate = _MAD_FALSE_POSITIVE_RATE_AT_5_SIGMA[nearest]
+        warnings.warn(
+            f"reject_cosmic_rays: sigma_model='mad' on a stack of only {N} "
+            f"frames. The MAD's small-sample variance makes its false-positive "
+            f"rate about {rate:.1e} at 5 sigma (measured at N={nearest}; "
+            f"nominal is 5.7e-07), so roughly {rate*100:.2f} % of GOOD pixels "
+            f"will be flagged"
+            + (" and overwritten with the temporal median"
+               if mode == "replace_with_median" else "")
+            + f". Use sigma_model='poisson' for raw counts, or a stack of at "
+              f"least {_MAD_MIN_RECOMMENDED_N} frames.",
+            ShallowStackWarning, stacklevel=2)
+
     images = images.astype(np.float64)
     median = np.median(images, axis=0)                   # (NZ, NY)
-    if use_mad:
-        # MAD-based σ: 1.4826 · median(|x - median|) is the unbiased
-        # estimator for Gaussian σ. Robust to ≤ 50% outliers per pixel.
+    if sigma_model == "mad":
+        # MAD-based σ: 1.4826 · median(|x - median|) is the consistency
+        # constant for Gaussian σ **asymptotically**. Robust to ≤ 50 %
+        # outliers per pixel, but high-variance on short stacks — see the
+        # warning in the docstring.
         mad = np.median(np.abs(images - median[None, :, :]), axis=0)
         sigma = 1.4826 * mad
         sigma[sigma == 0] = images.std(axis=0)[sigma == 0]   # fallback
+    elif sigma_model == "poisson":
+        # Do not estimate what is already known. For raw photon counts the
+        # variance IS the mean, so σ needs no stack depth at all. Floor the
+        # median at 1 count so an empty pixel gets σ = sqrt(gain) rather
+        # than 0 (which would flag any nonzero reading as infinitely many σ).
+        if gain <= 0:
+            raise ValueError(f"gain must be positive, got {gain!r}")
+        sigma = np.sqrt(float(gain) * np.maximum(median, 1.0))
     else:
         sigma = images.std(axis=0)
     sigma[sigma == 0] = 1e-30                             # avoid div-by-zero

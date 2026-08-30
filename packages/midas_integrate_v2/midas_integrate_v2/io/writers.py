@@ -134,6 +134,16 @@ def write_csv(
 
     Header is JSON inside ``# `` comment block. Easily reloaded by
     ``np.loadtxt`` or ``pandas.read_csv``.
+
+    .. note::
+
+       Values are written as ``%.6e`` — **7 significant figures, not full
+       float64**. Measured round-trip error on a synthetic profile: R exact
+       (its values happen to be representable), intensity and σ to
+       2.9e-07 and 1.3e-07 relative. That is far below counting statistics
+       (~1e-3 relative at best) so it is not a fidelity concern for data, but
+       do not use these files for a bit-exact comparison — use
+       :func:`write_stacked_h5` or the zarr writer for that.
     """
     path = Path(path)
     cols = [r_axis, intensity]

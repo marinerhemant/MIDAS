@@ -29,7 +29,26 @@ def pixel_to_qy_qz(
     incidence_angle_deg: float,
     sample_normal_axis: str = "Z",
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Map detector pixels to GISAXS reciprocal-space (qy, qz)."""
+    """Map detector pixels to GISAXS reciprocal-space (qy, qz).
+
+    **Sign convention**: the sample is tilted so that the specularly reflected
+    beam lands at NEGATIVE ``dz`` (below the beam centre) and therefore at
+    negative ``qz``. Most GISAXS plots put the specular rod at positive qz, so
+    flip the sign of ``qz`` (or of ``incidence_angle_deg``) to match them.
+
+    Verified against the two convention-free anchors (2026-08-29):
+
+    * direct beam, at ``(BC_y, BC_z)`` — ``q = 0`` to rounding (<= 1.1e-16) at
+      every incidence angle tested (0.1 deg to 5 deg);
+    * specular, at ``dz = -Lsd·tan(2α)/px`` — ``|qz| = 2k·sin(α)`` **exactly**
+      (ratio 1.0000 at 0.1, 0.2, 0.5, 1, 2 and 5 deg).
+
+    The opposite branch (``dz = +Lsd·tan(2α)/px``) is only correct to first
+    order in α — it evaluates to ``k(sin3α − sinα)``, which is 0.15 % low at
+    α = 1 deg and 1.5 % low at 5 deg. That branch is not the specular ray in
+    this convention; it is listed here so the asymmetry is not mistaken for an
+    error.
+    """
     if sample_normal_axis not in ("Z", "Y"):
         raise ValueError(f"sample_normal_axis must be 'Z' or 'Y'")
     Y = torch.as_tensor(Y_px, dtype=torch.float64)

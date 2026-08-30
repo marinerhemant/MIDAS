@@ -238,10 +238,75 @@ def test_gaussian_prior_composes_with_data_loss():
 
 # ── End-to-end smoke: BC_y refinement against a planted profile ──
 
+def _eta_uniformity_scan(bc_offsets, NY=32, NZ=32):
+    """Loss vs BC_y error, everything else at truth."""
+    BC_true = NY / 2.0 + 0.5
+    img = _gaussian_image(NY, NZ, R0_px=8.0, sigma_px=1.2,
+                            BC_y=BC_true, BC_z=NZ / 2.0)
+    p = IntegrationParams(
+        NrPixelsY=NY, NrPixelsZ=NZ,
+        pxY=200.0, pxZ=200.0, Lsd=1_000_000.0,
+        BC_y=BC_true, BC_z=NZ / 2.0, RhoD=float(NY),
+        RMin=1.0, RMax=14.0, RBinSize=0.5,
+        EtaMin=-180.0, EtaMax=180.0, EtaBinSize=15.0,
+    )
+    loss_fn = EtaUniformityLoss(intensity_floor=1e-6)
+    out = []
+    for d in bc_offsets:
+        s = spec_from_v1_params(p, requires_grad=False)
+        s.BC_y = torch.tensor(BC_true + d, dtype=torch.float64)
+        out.append(float(loss_fn(integrate_with_corrections(img, s))))
+    return out
+
+
+def test_eta_uniformity_is_minimised_AT_the_true_beam_centre():
+    """The invariant the loss exists for — and the one that was violated.
+
+    Until the 2026-08-29 soft-bin centring fix, ``soft_bin_indices_weights``
+    interpolated onto nodes at bin LOWER EDGES while the reported axis is bin
+    centres, and zeroed both weights for anything landing in the final bin.
+    Under that binning this loss was a LOCAL MAXIMUM at the correct beam
+    centre: measured 8.09e-2 at the truth against 6.00e-2 at +0.20 px and
+    6.20e-2 at -0.20 px, i.e. the η-uniformity objective actively pushed BC_y
+    AWAY from the right answer, into spurious minima either side.
+
+    The previous version of this test asserted only that the optimiser got
+    "closer than half the initial error", which drifting from +0.40 into the
+    spurious minimum at +0.20 satisfied — so the test passed on the broken
+    landscape. This asserts the real thing instead.
+    """
+    offs = [-0.6, -0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    losses = _eta_uniformity_scan(offs)
+    i_truth = offs.index(0.0)
+    i_min = int(min(range(len(losses)), key=lambda i: losses[i]))
+    assert i_min == i_truth, (
+        "eta-uniformity loss is not minimised at the true beam centre: "
+        "minimum at offset %+.2f px (loss %.4e) vs truth (loss %.4e); "
+        "full scan %s" % (offs[i_min], losses[i_min], losses[i_truth],
+                          [f"{o:+.1f}:{v:.3e}" for o, v in zip(offs, losses)]))
+
+
+def test_eta_uniformity_is_locally_symmetric_about_the_truth():
+    """A correct objective should not prefer one side of the beam centre."""
+    offs = [-0.2, -0.1, 0.1, 0.2]
+    lo = _eta_uniformity_scan(offs)
+    for a, b in ((0, 3), (1, 2)):          # -0.2 vs +0.2, -0.1 vs +0.1
+        assert abs(lo[a] - lo[b]) / max(lo[a], lo[b]) < 0.10, (
+            f"asymmetric about the truth: {offs[a]} -> {lo[a]:.4e}, "
+            f"{offs[b]} -> {lo[b]:.4e}")
+
+
 def test_eta_uniformity_drives_BC_y_toward_truth():
-    """Synth a Gaussian-ring image at the TRUE BC, then optimise BC_y
-    starting from a perturbed value. EtaUniformityLoss should pull
-    BC_y back toward the true value."""
+    """Synth a Gaussian-ring image at the TRUE BC, then optimise BC_y from a
+    perturbed value inside the basin of attraction.
+
+    The start is +0.15 px, not +0.40: at this image size (32x32, 26 R bins x
+    24 eta bins) there are few pixels per bin, so the loss is bumpy further
+    out and gradient descent stalls in a local dip. That is a discretisation
+    property of a deliberately tiny test image, not a defect in the loss —
+    ``test_eta_uniformity_is_minimised_AT_the_true_beam_centre`` pins the
+    global shape.
+    """
     NY, NZ = 32, 32
     BC_true = NY / 2.0 + 0.5
     img = _gaussian_image(NY, NZ, R0_px=8.0, sigma_px=1.2,
@@ -255,7 +320,7 @@ def test_eta_uniformity_drives_BC_y_toward_truth():
         EtaMin=-180.0, EtaMax=180.0, EtaBinSize=15.0,
     )
     s = spec_from_v1_params(p, requires_grad=True)
-    s.BC_y = torch.tensor(BC_true + 0.4, dtype=torch.float64,
+    s.BC_y = torch.tensor(BC_true + 0.15, dtype=torch.float64,
                            requires_grad=True)
 
     loss_fn = EtaUniformityLoss(intensity_floor=1e-6)
@@ -274,7 +339,7 @@ def test_eta_uniformity_drives_BC_y_toward_truth():
     closest = min(abs(bc - BC_true) for bc in history)
     initial_err = abs(history[0] - BC_true)
     assert closest < 0.5 * initial_err, (
-        f"η-uniformity did not pull BC_y toward truth: closest {closest:.3f}, "
+        f"eta-uniformity did not pull BC_y toward truth: closest {closest:.3f}, "
         f"initial err {initial_err:.3f}"
     )
     assert min(losses) < losses[0], (

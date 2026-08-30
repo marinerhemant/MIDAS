@@ -49,6 +49,25 @@ def build_gasket_mask(
         ``(eta_min, eta_max)`` of the *primary* open wedge in degrees,
         relative to detector +Y axis. The companion wedge (and any
         symmetric copies) are added automatically based on ``symmetry``.
+
+        .. warning::
+
+           **This is NOT MIDAS η.** This module measures the azimuth as
+           ``atan2(dz, dy)``, from the +Y (horizontal) axis, whereas MIDAS η is
+           ``atan2(-dy, dz)``, from +Z (vertical) — see
+           ``midas_integrate.geometry.calc_eta_angle``. The two differ by a
+           quarter turn::
+
+               eta_MIDAS = eta_here - 90
+
+           so a wedge copied from a cake's η axis, or from an
+           ``EtaMin``/``EtaMax`` in a param file, must be shifted by +90 before
+           being passed here. Mixing the two conventions is what produced the
+           ``PolarizationPlaneEtaDeg`` defect elsewhere in this package.
+           :func:`eta_coverage_per_ring` uses the same convention as this
+           function, so the pair is self-consistent, and coverage is a
+           rotation-invariant fraction — the offset only bites on the wedge
+           angles you supply.
     symmetry :
         - ``"single"``: only the primary wedge is open.
         - ``"two_fold"`` (default): primary + 180°-rotated copy.

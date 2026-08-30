@@ -32,6 +32,22 @@ from .compat import spec_from_v1_params
 from .spec import IntegrationSpec
 
 
+def _as_numpy(a):
+    """Accept a torch Tensor as readily as an ndarray.
+
+    This package's idiom is torch — ``IntegrationSpec`` fields are tensors and
+    ``integrate()`` returns one — so a tensor is the natural thing to hand these
+    functions, and doing so used to raise a bare TypeError from deep inside
+    (``'<=' not supported between instances of 'Tensor' and 'numpy.ndarray'``).
+    Coerce at the boundary instead. Added 2026-08-29.
+    """
+    if a is None:
+        return None
+    detach = getattr(a, "detach", None)
+    if detach is not None and hasattr(a, "cpu"):
+        return detach().cpu().numpy()
+    return np.asarray(a)
+
 def _ring_centroid(
     image: np.ndarray,
     *,
@@ -100,6 +116,8 @@ def estimate_BC_from_image(
     ``ring_radius_px`` may be supplied to skip step 2 (faster +
     deterministic when you already know the first ring's approximate R).
     """
+    image = _as_numpy(image)
+    mask = _as_numpy(mask)
     NZ, NY = image.shape
     if initial_BC is None:
         initial_BC = (NY / 2.0, NZ / 2.0)
