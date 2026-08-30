@@ -188,7 +188,7 @@ Finish everything not blocked by it first.
 | **`ScanPosTol` omitted on a hand-run**; the C's `BeamSize/2` fallback uses `BeamSize + 0.1` | beam gate 6.7 % wider than the parameter file says → **+14.7 % solutions**, winner changed in 10.5 % of voxels. Nothing errors | DIAGNOSIS |
 | **`paramstest_comp.txt` is written by two stages under one name** — indexing (`_emit_c_omp_paramstest`, carries `ScanPosTol`) then refinement (`comp_backend_paramstest`, does not), which overwrites it | the file on disk is **not** what the indexer read; reconstructing a run from it reproduces the wrong gate | DIAGNOSIS |
 | **`RingNumber == 0` placeholder rows counted as spots** — failed transforms are written as all-zero rows, not dropped | 20.1 % of rows on the reference campaign; counting them manufactures a fake "20 % collapsed on merge" against a real 0.09 % | DIAGNOSIS |
-| **`argv[4]` (`nWork`) is ignored in PF mode** — `nVoxels = numScans²` from `positions.csv` (`IndexerUnified.c:3142` prints "argv ignored for PF") | a voxel-limited test run silently processes the whole layer; use `blockNr`/`nBlocks` to slice | phase-7 §7.8 |
+| **`argv[4]` (`nWork`) is ignored in PF mode** — `nVoxels = numScans²` from `positions.csv` (`IndexerUnified.c:3200` prints "argv ignored for PF") | a voxel-limited test run silently processes the whole layer; use `blockNr`/`nBlocks` to slice | phase-7 §7.8 |
 
 ## 0. Verify the install
 

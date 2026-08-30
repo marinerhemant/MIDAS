@@ -10,7 +10,7 @@
 |---|---|---|
 | `scan_mode` | `"pf"` selects the scanning `STAGE_ORDER`; `"ff"` is single-scan | PF requires `n_scans ≥ 2` |
 | `n_scans` | number of translation positions (= scan files) | the voxel grid is `n_scans × n_scans`, not `n_scans` |
-| `BeamSize` | in-plane beam width (µm) | **the C adds 0.1 µm to it on parse** (`IndexerUnified.c:2564`), so the `BeamSize/2` fallback below is `(BeamSize+0.1)/2`, not half the beam. Never rely on the fallback |
+| `BeamSize` | in-plane beam width (µm) | **the C adds 0.1 µm to it on parse** (`IndexerUnified.c:2627`), so the `BeamSize/2` fallback below is `(BeamSize+0.1)/2`, not half the beam. Never rely on the fallback |
 | `scan_pos_tol_um` / `ScanPosTol` | half-width of the beam-position gate (µm) | **the gate is applied in the MATCHING loop, not just seeding** (`IndexerUnified.c:1006` and `3447`). Falls back to `(BeamSize+0.1)/2` when absent — 0.80 µm at `BeamSize 1.5`, where the pipeline writes 0.75. **Always pass it explicitly on a hand-run**: the 6.7 % difference measured +14.7 % accepted solutions and a changed winner in 10.5 % of voxels (spine hard rule 12) |
 | `Hbeam` / `BeamThickness` | per-layer beam height (µm) | **never the sample size** — an oversized value lets Z roam (hard rule) |
 | `friedel_symmetric_scan_filter` | use Friedel symmetry in the scan filter | affects which reflections seed each voxel |

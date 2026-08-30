@@ -1982,24 +1982,73 @@ static int DoIndexing_PF_multi(int SpotID, const int *served,
                    Params->RingsToReject, Params->nRingsToRejectCalc,
                    &nTspotsFracCalc);
 
+    /* F3a -- hoist the voxel-invariant half of displacement_spot_needed_COM.
+     *
+     * That routine begins by normalising (xi,yi,zi) = TheorSpots cols 3,4,5 =
+     * (distance, yl, zl), which CalcDiffrSpots wrote and the voxel loop never
+     * touches. The voxel only enters at `t = (a*cosOme - b*sinOme)/xi`. So the
+     * sqrt + reciprocal + 3 multiplies were being redone identically for each
+     * of the ~14 voxels a seed serves.
+     *
+     * Cached into cols 16-18: those carry GCr for the refiner and are dead in
+     * the indexer (:858 says so, and the AllGrainSpots copy at :1742 takes 16
+     * cols -- separately demonstrated by the byte-identical GCr-gate A/B).
+     * CalcDiffrSpots rewrites 16-18 every orientation, so this must sit AFTER
+     * it and inside the orientation loop. */
+    for (sp = 0; sp < nTspots; sp++) {
+      RealType xi_ = TheorSpots[sp][3];
+      RealType yi_ = TheorSpots[sp][4];
+      RealType zi_ = TheorSpots[sp][5];
+      RealType lenInv = 1 / sqrt(xi_ * xi_ + yi_ * yi_ + zi_ * zi_);
+      TheorSpots[sp][16] = xi_ * lenInv;
+      TheorSpots[sp][17] = yi_ * lenInv;
+      TheorSpots[sp][18] = zi_ * lenInv;
+    }
+
     for (s = 0; s < nServed; s++) {
       RealType ga = gridp[served[s] * 2 + 0];
       RealType gb = gridp[served[s] * 2 + 1];
       RealType gc = 0;
-      /* Rewrites cols 10-13 from the invariant 3,4,5,14,15 -- so the next
-       * voxel recomputes them from untouched inputs, exactly as a fresh
-       * CalcDiffrSpots would have left them. */
+      /* Rewrites cols 10-13 from the invariant 3,4,5,14,15 (and the hoisted
+       * 16-18) -- so the next voxel recomputes them from untouched inputs,
+       * exactly as a fresh CalcDiffrSpots would have left them. */
       for (sp = 0; sp < nTspots; sp++) {
-        displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3],
-                                     TheorSpots[sp][4], TheorSpots[sp][5],
-                                     TheorSpots[sp][14], TheorSpots[sp][15],
-                                     &Displ_y, &Displ_z);
-        TheorSpots[sp][10] = TheorSpots[sp][4] + Displ_y;
-        TheorSpots[sp][11] = TheorSpots[sp][5] + Displ_z;
+        /* displacement_spot_needed_COM inlined past its hoisted normalisation.
+         * Operand order and parenthesisation copied verbatim from the original
+         * so the arithmetic is unchanged. */
+        RealType xin = TheorSpots[sp][16];
+        RealType yin = TheorSpots[sp][17];
+        RealType zin = TheorSpots[sp][18];
+        RealType sinOme = TheorSpots[sp][14];
+        RealType cosOme = TheorSpots[sp][15];
+        RealType t = (ga * cosOme - gb * sinOme) / xin;
+        Displ_y = ((ga * sinOme) + (gb * cosOme)) - (t * yin);
+        Displ_z = gc - t * zin;
+        RealType yv = TheorSpots[sp][4] + Displ_y;
+        RealType zv = TheorSpots[sp][5] + Displ_z;
+        TheorSpots[sp][10] = yv;
+        TheorSpots[sp][11] = zv;
+#ifdef MIDAS_NO_ETA_INLINE
         CalcEtaAngle(TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12]);
         TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] +
                                   TheorSpots[sp][11] * TheorSpots[sp][11]) -
                              Params->RingRadii[(int)TheorSpots[sp][9]];
+#else
+        /* F3b -- CalcEtaAngle inlined so its sqrt(y*y + z*z) is shared with the
+         * radial deviation on the next line. gcc CANNOT eliminate the duplicate:
+         * CalcEtaAngle lives in MIDAS_Math.c, a separate translation unit, and
+         * the build has no -flto. Same expression, same operand order, so one
+         * value serves both. MIDAS_RAD2DEG and rad2deg are both (180.0/M_PI).
+         * ⚠ This is the higher parity risk of the two hoists: -ffp-contract is
+         * gcc's default `fast`, so moving the expression between TUs could
+         * change whether y*y + z*z contracts to an FMA. Build with
+         * -DMIDAS_NO_ETA_INLINE to drop back to F3a alone. */
+        RealType rv = sqrt(yv * yv + zv * zv);
+        RealType al = rad2deg * acos(zv / rv);
+        if (yv > 0) al = -al;
+        TheorSpots[sp][12] = al;
+        TheorSpots[sp][13] = rv - Params->RingRadii[(int)TheorSpots[sp][9]];
+#endif
       }
       double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
       CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,

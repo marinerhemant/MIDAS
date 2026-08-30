@@ -429,7 +429,7 @@ This campaign contributed [`phase-7-validation.md`](phase-7-validation.md).
 
 ## 8.2 Defects found
 
-- **`BeamSize += 0.1` before the gate fallback.** `IndexerUnified.c:2564` adds
+- **`BeamSize += 0.1` before the gate fallback.** `IndexerUnified.c:2627` adds
   0.1 µm to the parsed `BeamSize`; the gate is
   `scanTol = (ScanPosTol > 0) ? ScanPosTol : (BeamSize/2)` at lines 1006
   (**matching**) and 3447 (seeding). The pipeline computes `scan_pos_tol_um` in
@@ -448,7 +448,7 @@ This campaign contributed [`phase-7-validation.md`](phase-7-validation.md).
   all-zero rows rather than dropped — **235 334 of 1 170 954 (20.1 %)** on this
   campaign. Counting them fabricated a "20.2 % collapsed on merge" against a real
   **0.09 %**.
-- **`argv[4]` is ignored in PF mode** (`IndexerUnified.c:3142` prints "argv ignored
+- **`argv[4]` is ignored in PF mode** (`IndexerUnified.c:3200` prints "argv ignored
   for PF"); `nVoxels = numScans²`. A voxel-limited test run silently processes the
   whole layer. Use `blockNr`/`nBlocks`.
 - **LF/far-field peakfit percolation.** At PF thresholds on a line-focus frame the
