@@ -22,7 +22,8 @@ import torch
 import torch.nn as nn
 
 from ..binning.trans_opt import apply_trans_opt_forward, needs_trans_opt
-from ..diff.soft_bin import soft_bin_indices_weights
+from ..diff.soft_bin import soft_bin_indices_weights, eta_is_full_circle
+from .intensity import POL_PLANE_HORIZONTAL_ETA_DEG
 from ..forward import eval_pixel_REta, pixel_to_REta_from_spec
 from ..spec import IntegrationSpec
 
@@ -112,6 +113,35 @@ def integrate_with_corrections(
 
     # Per-pixel multiplicative corrections (divide raw counts by the
     # correction factor — same convention as v1 ``corrected /= sa`` etc).
+    # Honour the SPEC's correction flags when no module was passed explicitly.
+    #
+    # Before 2026-08-29 these fields were inert: `IntegrationSpec` carried
+    # PolarizationCorrection / PolarizationFraction / PolarizationPlaneEtaDeg /
+    # SolidAngleCorrection, `compat/from_v1.py` and `to_v1.py` faithfully
+    # round-tripped them (verified, including a non-default 37.5 deg plane), and
+    # then NOTHING read them — `PolarizationCorrection` was never constructed
+    # anywhere in the package, and none of integrate_soft/hard/subpixel/polygon
+    # applies a correction at all. Measured three ways: spec-flags-ON with no
+    # modules was byte-identical to spec-flags-OFF with no modules (max|d| = 0),
+    # while passing the modules explicitly differed by 1.047.
+    #
+    # The trap was that v1's mapper DOES honour `PolarizationCorrection = 1`, so
+    # converting a v1 param file to a v2 spec silently dropped the correction
+    # while every field still said it was on. Same family as issue #69.
+    #
+    # Precedence: an explicitly passed module wins; otherwise the spec decides.
+    # To force a correction OFF, set its flag to 0 on the spec.
+    if polarization is None and int(getattr(spec, "PolarizationCorrection", 0) or 0):
+        from .intensity import PolarizationCorrection as _PolCorr
+        polarization = _PolCorr(
+            pol_fraction=float(getattr(spec, "PolarizationFraction", 0.99)),
+            pol_plane_eta_deg=float(getattr(spec, "PolarizationPlaneEtaDeg",
+                                            POL_PLANE_HORIZONTAL_ETA_DEG)),
+        )
+    if solid_angle is None and int(getattr(spec, "SolidAngleCorrection", 0) or 0):
+        from .intensity import SolidAngleCorrection as _SaCorr
+        solid_angle = _SaCorr()
+
     if solid_angle is not None or polarization is not None:
         pxY_t = torch.as_tensor(spec.pxY, dtype=R_flat.dtype,
                                  device=R_flat.device)
@@ -142,6 +172,7 @@ def integrate_with_corrections(
     )
     eb0, eb1, ew0, ew1 = soft_bin_indices_weights(
         Eta_flat, R_min=spec.EtaMin, R_bin_size=spec.EtaBinSize, n_r=n_eta,
+        periodic=eta_is_full_circle(spec),
     )
     flat = torch.zeros(n_eta * n_r, dtype=img_flat.dtype, device=img_flat.device)
     for ei, ew in ((eb0, ew0), (eb1, ew1)):

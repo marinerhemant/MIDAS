@@ -75,7 +75,14 @@ def test_q_mode_bin_edges_differentiable_in_lsd_and_wavelength():
 # ── (2) per-pixel correction factor parity vs v1 ──
 
 def test_polarization_factor_matches_v1_pointwise():
-    """v1 uses ``1 - PF · sin²(2θ) · cos²(η - plane)``; same formula."""
+    """v2's default must equal what v1's map builders compute.
+
+    Both moved to the standard partially-polarized form on 2026-08-29:
+    ``P = 0.5 (1 + cos^2 2th - PF cos(2(eta-plane)) sin^2 2th)``. The previous
+    form, ``1 - PF sin^2 2th cos^2(eta-plane)``, scaled the fully-polarized
+    correction instead of mixing the two polarization states; the two are
+    identical at PF = 1 and differ by 1.48 % at the shipped PF = 0.99.
+    """
     Lsd_val = 1_000_000.0
     px_val = 200.0
     PF, plane = 0.99, 12.0
@@ -97,8 +104,24 @@ def test_polarization_factor_matches_v1_pointwise():
     pe_t = torch.tensor(plane, dtype=torch.float64)
     got = polarization_factor(R_t, eta_t, Lsd=Lsd_t, px=px_t,
                                 pol_fraction=pf_t, pol_plane_eta_deg=pe_t)
-    np.testing.assert_allclose(got.numpy().reshape(R_grid.shape), expect,
+    c2t = np.cos(twoTheta)
+    expect_mixture = 0.5 * (1.0 + c2t * c2t
+                            - PF * np.cos(2.0 * (eta_grid - plane) * math.pi / 180.0)
+                            * s2t * s2t)
+    np.testing.assert_allclose(got.numpy().reshape(R_grid.shape), expect_mixture,
                                 rtol=0, atol=1e-12)
+
+    # The pre-2026-08-29 form stays reachable so historical output can be
+    # reproduced exactly; it must still be the old formula, and must genuinely
+    # differ from the new default at PF < 1 or the switch was a no-op.
+    old = polarization_factor(R_t, eta_t, Lsd=Lsd_t, px=px_t,
+                              pol_fraction=pf_t, pol_plane_eta_deg=pe_t,
+                              model="midas")
+    np.testing.assert_allclose(old.numpy().reshape(R_grid.shape), expect,
+                                rtol=0, atol=1e-12)
+    # 4.1e-4 over this grid (2theta reaches 16.7 deg); the gap grows with
+    # 2theta -- 1.48 % at 60 deg -- so this bound is geometry-specific.
+    assert np.abs(got.numpy() - old.numpy()).max() > 1e-4
 
 
 def test_solid_angle_flat_matches_cos3_2theta():

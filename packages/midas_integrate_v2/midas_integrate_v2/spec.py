@@ -119,7 +119,11 @@ class IntegrationSpec:
     SolidAngleCorrection: int = 0
     PolarizationCorrection: int = 0
     PolarizationFraction: float = 0.99
-    PolarizationPlaneEtaDeg: float = 0.0
+    # 90 = HORIZONTAL in MIDAS eta (which is atan2(-y, z), i.e. measured from
+    # the VERTICAL). Was 0 until 2026-08-29, which put the correction a quarter
+    # turn from the beam's polarization. See
+    # midas_integrate_v2.corrections.intensity.POL_PLANE_HORIZONTAL_ETA_DEG.
+    PolarizationPlaneEtaDeg: float = 90.0
     GradientCorrection: int = 0
     NrTransOpt: int = 0
     TransOpt: List[int] = field(default_factory=list)
