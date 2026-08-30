@@ -296,7 +296,7 @@ the pipeline's exactly, voxel for voxel.
 
 **Cause.** Two things compound.
 
-1. `IndexerUnified.c:2269-2274` **adds 0.1 µm to the parsed `BeamSize`**:
+1. `IndexerUnified.c:2559-2564` **adds 0.1 µm to the parsed `BeamSize`**:
    ```c
    sscanf(line, "%s %lf", dummy, &BeamSize);
    BeamSize += 0.1;          /* silently inflates the parsed value */

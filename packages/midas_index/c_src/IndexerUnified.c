@@ -1797,6 +1797,296 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
 }
 
 /* ----------------------------------------------------------------------------
+ * F2 — per-seed forward-model reuse across the voxels one seed serves.
+ *
+ * WHY. GenerateCandidateOrientationsF and CalcDiffrSpots depend ONLY on the
+ * seed spot: the former on its g-vector and ring, the latter on an orientation
+ * matrix and the geometry (its signature takes no position). The voxel enters
+ * afterwards, via displacement_spot_needed_COM, which rewrites TheorSpots cols
+ * 10-13 from the invariant cols 3,4,5,14,15. A seed's beam gate
+ * |x sin w + y cos w - ypos[scan]| <= tol is a line through the voxel grid, so
+ * one seed serves ~n_scans voxels -- and the whole nOrient sweep was being
+ * recomputed, bit for bit, once per voxel.
+ *
+ * MEASURED (bt_1id_jun25b, one voxel, single thread): CalcDiffrSpots is 68.6 %
+ * of PF indexing wall time, displacement 15.9 %, CompareSpots 14.3 %. s5/L9
+ * issues 17.85e9 CalcDiffrSpots calls to produce 1.30e9 distinct results --
+ * mean 13.8 voxels per seed on a 13-scan layer, 21.7 on a 19-scan one.
+ * Ceiling is 1/(1-0.686) = 3.19x; expected 2.8x on these layers.
+ *
+ * WHAT. This is DoIndexing_PF with the two inner loops swapped -- orientation
+ * outer, voxel inner -- and per-voxel best state instead of scalars. Each
+ * voxel still visits orientations in ascending or_ order, so its
+ * bestConfidence / MinInternalAngle update sequence, its IA tiebreak and its
+ * emitted record are bit-identical to the voxel-at-a-time path. No cache is
+ * needed: cols 10-13 are recomputed per voxel from columns CalcDiffrSpots
+ * wrote and never revisits, so one TheorSpots buffer serves every voxel.
+ * --------------------------------------------------------------------------*/
+
+/* One buffered solution. Solutions are produced seed-outer, so they must be
+ * re-ordered to the voxel-outer/ascending-idnr order the accumulator sees
+ * today before they are committed -- see PFSolBuf_commit. */
+typedef struct {
+  int voxLocal;      /* voxel index relative to startVoxel */
+  size_t idnr;       /* seed row: the ordering key within a voxel */
+  double outArr[CONSOLIDATED_VALS_COLS];
+  size_t keyArr[CONSOLIDATED_KEY_COLS];
+  int nIDs;
+  int *ids;
+  double *weights;
+} PFSolution;
+
+typedef struct {
+  PFSolution *sol;
+  long long n, cap;
+} PFSolBuf;
+
+static void PFSolBuf_init(PFSolBuf *b) {
+  b->n = 0;
+  b->cap = 1024;
+  b->sol = (PFSolution *)malloc(b->cap * sizeof(PFSolution));
+  check(b->sol == NULL, "PFSolBuf_init: malloc failed");
+}
+
+static void PFSolBuf_free(PFSolBuf *b) {
+  for (long long i = 0; i < b->n; i++) {
+    free(b->sol[i].ids);
+    free(b->sol[i].weights);
+  }
+  free(b->sol);
+  b->sol = NULL;
+  b->n = b->cap = 0;
+}
+
+static PFSolution *PFSolBuf_next(PFSolBuf *b) {
+  if (b->n >= b->cap) {
+    b->cap *= 2;
+    b->sol = (PFSolution *)realloc(b->sol, b->cap * sizeof(PFSolution));
+    check(b->sol == NULL, "PFSolBuf_next: realloc failed");
+  }
+  return &b->sol[b->n++];
+}
+
+/* Order solutions exactly as the voxel-outer path emits them: voxel ascending,
+ * and within a voxel by ascending seed row. (voxel, idnr) is unique -- one
+ * solution per seed per voxel -- so this is a total order and the result is
+ * deterministic regardless of how the seeds were distributed over threads. */
+static int cmp_pfsol(const void *a, const void *b) {
+  const PFSolution *x = (const PFSolution *)a, *y = (const PFSolution *)b;
+  if (x->voxLocal != y->voxLocal) return x->voxLocal < y->voxLocal ? -1 : 1;
+  if (x->idnr != y->idnr) return x->idnr < y->idnr ? -1 : 1;
+  return 0;
+}
+
+/* Per-thread scratch for the voxel-inner loop. Sized to the largest served set
+ * seen so far; the gate admits a line through the grid, so this stays small
+ * (measured max 23 on 13- and 19-scan layers) and the realloc effectively
+ * never fires after the first seed. */
+struct PFVoxScratch {
+  int cap;
+  RealType *bestConfidence;      /* [cap] */
+  RealType *MinInternalAngle;    /* [cap] */
+  int *bestnMatchesIsp;          /* [cap] */
+  int *bestnTspotsIsp;           /* [cap] */
+  int *bestMatchFound;           /* [cap] */
+  RealType **GrainMatches;       /* [cap][N_COL_GRAINMATCHES] */
+  RealType ***AllGrainSpots;     /* [cap][nRowsOutput][N_COL_GRAINSPOTS] */
+};
+
+static void PFVoxScratch_grow(struct PFVoxScratch *s, int need, int nRowsOutput) {
+  if (need <= s->cap) return;
+  int old = s->cap;
+  int cap = s->cap ? s->cap : 64;
+  while (cap < need) cap *= 2;
+  s->bestConfidence = (RealType *)realloc(s->bestConfidence, cap * sizeof(RealType));
+  s->MinInternalAngle = (RealType *)realloc(s->MinInternalAngle, cap * sizeof(RealType));
+  s->bestnMatchesIsp = (int *)realloc(s->bestnMatchesIsp, cap * sizeof(int));
+  s->bestnTspotsIsp = (int *)realloc(s->bestnTspotsIsp, cap * sizeof(int));
+  s->bestMatchFound = (int *)realloc(s->bestMatchFound, cap * sizeof(int));
+  s->GrainMatches = (RealType **)realloc(s->GrainMatches, cap * sizeof(RealType *));
+  s->AllGrainSpots = (RealType ***)realloc(s->AllGrainSpots, cap * sizeof(RealType **));
+  check(!s->bestConfidence || !s->MinInternalAngle || !s->bestnMatchesIsp ||
+        !s->bestnTspotsIsp || !s->bestMatchFound || !s->GrainMatches ||
+        !s->AllGrainSpots, "PFVoxScratch_grow: realloc failed");
+  for (int i = old; i < cap; i++) {
+    s->GrainMatches[i] = (RealType *)malloc(N_COL_GRAINMATCHES * sizeof(RealType));
+    s->AllGrainSpots[i] = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
+    check(!s->GrainMatches[i] || !s->AllGrainSpots[i],
+          "PFVoxScratch_grow: per-voxel alloc failed");
+  }
+  s->cap = cap;
+}
+
+static void PFVoxScratch_free(struct PFVoxScratch *s, int nRowsOutput) {
+  for (int i = 0; i < s->cap; i++) {
+    free(s->GrainMatches[i]);
+    FreeMemMatrix(s->AllGrainSpots[i], nRowsOutput);
+  }
+  free(s->bestConfidence); free(s->MinInternalAngle);
+  free(s->bestnMatchesIsp); free(s->bestnTspotsIsp); free(s->bestMatchFound);
+  free(s->GrainMatches); free(s->AllGrainSpots);
+  memset(s, 0, sizeof(*s));
+}
+
+/* DoIndexing_PF over a set of voxels sharing one seed spot. `served` holds
+ * absolute voxel numbers; `servedLocal` the same minus startVoxel. */
+static int DoIndexing_PF_multi(int SpotID, const int *served,
+                               const int *servedLocal, int nServed,
+                               const struct TParams *Params, int SpotRowNo,
+                               size_t idnr, const double *gridp,
+                               PFSolBuf *out, struct IndexerScratch *scratch,
+                               struct PFVoxScratch *vs) {
+  int i, s;
+  RealType y0 = ObsSpotsLab[SpotRowNo * 10 + 0];
+  RealType z0 = ObsSpotsLab[SpotRowNo * 10 + 1];
+  RealType omega = ObsSpotsLab[SpotRowNo * 10 + 2];
+  int ringnr = (int)ObsSpotsLab[SpotRowNo * 10 + 5];
+  RealType xi, yi, zi, g1, g2, g3, hklnormal[3], hkl[3];
+  MakeUnitLength(Params->Distance, y0, z0, &xi, &yi, &zi);
+  spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
+  hklnormal[0] = g1;
+  hklnormal[1] = g2;
+  hklnormal[2] = g3;
+  int nOrient, or_ = 0, orDelta = 1;
+  RealType RefRad = ObsSpotsLab[SpotRowNo * 10 + 3];
+  hkl[0] = RingHKL[ringnr][0];
+  hkl[1] = RingHKL[ringnr][1];
+  hkl[2] = RingHKL[ringnr][2];
+  /* ONCE per seed, not once per (seed, voxel). */
+  GenerateCandidateOrientationsF(hkl, hklnormal, Params->StepsizeOrient,
+                                 scratch->OrMat, &nOrient, ringnr);
+
+  RealType **TheorSpots = scratch->TheorSpots;
+  RealType **GrainSpots = scratch->GrainSpots;
+  RealType **GrainMatchesT = scratch->GrainMatchesT;
+  RealType **AllGrainSpotsT = scratch->AllGrainSpotsT;
+  int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
+  int nTspots, nTspotsFracCalc, nMatchesFracCalc, nMatches, r, sp;
+  RealType Displ_y, Displ_z, FracThis;
+
+  PFVoxScratch_grow(vs, nServed, nRowsOutput);
+  for (s = 0; s < nServed; s++) {
+    vs->bestConfidence[s] = 0;
+    vs->MinInternalAngle[s] = 1000;
+    vs->bestnMatchesIsp[s] = -1;
+    vs->bestnTspotsIsp[s] = -1;
+    vs->bestMatchFound[s] = 0;
+  }
+
+  while (or_ < nOrient) {
+    /* THE POINT OF THIS FUNCTION: one forward model, nServed voxels. */
+    CalcDiffrSpots(scratch->OrMat[or_], Params->LatticeConstant,
+                   Params->Wavelength, Params->Distance, Params->RingRadii,
+                   Params->OmegaRanges, Params->BoxSizes, Params->NoOfOmegaRanges,
+                   Params->ExcludePoleAngle, TheorSpots, &nTspots,
+                   Params->RingsToReject, Params->nRingsToRejectCalc,
+                   &nTspotsFracCalc);
+
+    for (s = 0; s < nServed; s++) {
+      RealType ga = gridp[served[s] * 2 + 0];
+      RealType gb = gridp[served[s] * 2 + 1];
+      RealType gc = 0;
+      /* Rewrites cols 10-13 from the invariant 3,4,5,14,15 -- so the next
+       * voxel recomputes them from untouched inputs, exactly as a fresh
+       * CalcDiffrSpots would have left them. */
+      for (sp = 0; sp < nTspots; sp++) {
+        displacement_spot_needed_COM(ga, gb, gc, TheorSpots[sp][3],
+                                     TheorSpots[sp][4], TheorSpots[sp][5],
+                                     TheorSpots[sp][14], TheorSpots[sp][15],
+                                     &Displ_y, &Displ_z);
+        TheorSpots[sp][10] = TheorSpots[sp][4] + Displ_y;
+        TheorSpots[sp][11] = TheorSpots[sp][5] + Displ_z;
+        CalcEtaAngle(TheorSpots[sp][10], TheorSpots[sp][11], &TheorSpots[sp][12]);
+        TheorSpots[sp][13] = sqrt(TheorSpots[sp][10] * TheorSpots[sp][10] +
+                                  TheorSpots[sp][11] * TheorSpots[sp][11]) -
+                             Params->RingRadii[(int)TheorSpots[sp][9]];
+      }
+      double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
+      CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
+                   Params->MarginRadial, etamargins, Params->MarginOme,
+                   Params->StepsizeOrient, numScans, ga, gb, Params,
+                   &nMatches, GrainSpots, &nMatchesFracCalc,
+                   Params->RingsToReject, Params->nRingsToRejectCalc,
+                   &wMatchesFrac, &wTspotsFrac);
+      int nMatchesAccept =
+          (Params->nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
+      int nTspotsAccept =
+          (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc : nTspots;
+      FracThis = FracMatched(Params, nMatchesAccept, nTspotsAccept,
+                             wMatchesFrac, wTspotsFrac);
+      if (FracThis > Params->MinMatchesToAcceptFrac) {
+        if (FracThis >= vs->bestConfidence[s]) {
+          RealType prevBestConfidence = vs->bestConfidence[s];
+          vs->bestConfidence[s] = FracThis;
+          vs->bestMatchFound[s] = 1;
+          for (i = 0; i < 9; i++)
+            GrainMatchesT[0][i] = scratch->OrMat[or_][i / 3][i % 3];
+          GrainMatchesT[0][9] = ga;
+          GrainMatchesT[0][10] = gb;
+          GrainMatchesT[0][11] = gc;
+          GrainMatchesT[0][12] = nTspots;
+          GrainMatchesT[0][13] = nMatches;
+          GrainMatchesT[0][14] = 1;
+          for (r = 0; r < nTspots; r++)
+            memcpy(AllGrainSpotsT[r], GrainSpots[r], 16 * sizeof(RealType));
+          CalcIA(GrainMatchesT, 1, AllGrainSpotsT, Params->Distance, scratch);
+          if (FracThis == prevBestConfidence &&
+              GrainMatchesT[0][15] > vs->MinInternalAngle[s]) {
+            vs->bestConfidence[s] = prevBestConfidence;
+          } else {
+            vs->MinInternalAngle[s] = GrainMatchesT[0][15];
+            vs->bestnMatchesIsp[s] = nMatchesAccept;
+            vs->bestnTspotsIsp[s] = nTspotsAccept;
+            memcpy(vs->GrainMatches[s], GrainMatchesT[0],
+                   N_COL_GRAINMATCHES * sizeof(RealType));
+            for (r = 0; r < nTspots; r++)
+              memcpy(vs->AllGrainSpots[s][r], AllGrainSpotsT[r],
+                     N_COL_GRAINSPOTS * sizeof(RealType));
+            for (r = nTspots; r < nRowsOutput; r++)
+              memset(vs->AllGrainSpots[s][r], 0,
+                     N_COL_GRAINSPOTS * sizeof(RealType));
+          }
+        }
+      }
+    }
+    or_ += orDelta;
+  }
+
+  for (s = 0; s < nServed; s++) {
+    if (vs->bestnMatchesIsp[s] < 0) continue;
+    RealType fracMatches =
+        (RealType)vs->bestnMatchesIsp[s] / (RealType)vs->bestnTspotsIsp[s];
+    if ((fracMatches > 1 || fracMatches < 0 || (int)vs->bestnTspotsIsp[s] == 0 ||
+         (int)vs->bestnMatchesIsp[s] == -1 || vs->bestMatchFound[s] == 0) ||
+        fracMatches < Params->MinMatchesToAcceptFrac) {
+      continue;
+    }
+    RealType *GM = vs->GrainMatches[s];
+    PFSolution *o = PFSolBuf_next(out);
+    o->voxLocal = servedLocal[s];
+    o->idnr = idnr;
+    double vals[16] = {(double)SpotID, GM[15], GM[0], GM[1], GM[2], GM[3],
+                       GM[4],          GM[5],  GM[6], GM[7], GM[8], GM[9],
+                       GM[10],         GM[11], GM[12], GM[13]};
+    memcpy(o->outArr, vals, sizeof(vals));
+    int matchedNrSpots = (int)GM[13];
+    o->nIDs = matchedNrSpots;
+    o->keyArr[0] = (size_t)SpotID;
+    o->keyArr[1] = (size_t)matchedNrSpots;
+    o->keyArr[2] = 0;
+    o->keyArr[3] = 0;
+    o->ids = (int *)malloc((matchedNrSpots > 0 ? matchedNrSpots : 1) * sizeof(int));
+    o->weights = (double *)malloc((matchedNrSpots > 0 ? matchedNrSpots : 1) * sizeof(double));
+    check(!o->ids || !o->weights, "DoIndexing_PF_multi: solution alloc failed");
+    for (i = 0; i < matchedNrSpots; i++) {
+      o->ids[i] = (int)vs->AllGrainSpots[s][i][14];
+      o->weights[i] = vs->AllGrainSpots[s][i][15];
+    }
+  }
+  return 0;
+}
+
+/* ----------------------------------------------------------------------------
  * DoIndexing_Seeded — mic/grains-seeded path. Adapted from PF
  * DoIndexingSingle (lines 1074-1150). Used for both `MicFile` and PF-style
  * `GrainsFile`. Always writes through the consolidated accumulator path.
@@ -3363,10 +3653,179 @@ int main(int argc, char *argv[]) {
       (isPF && endRowNrSp >= startRowNrSp)
           ? (long long)(endRowNrSp - startRowNrSp + 1)
           : 0;
-  const long long nSeedsTotal = nVoxLocal * seedsPerVox;
-  const long long seedReportEvery =
+  /* Not const: the seed-outer path below walks each seed ONCE rather than once
+   * per voxel, so its denominator is seedsPerVox, not nVoxLocal*seedsPerVox.
+   * Left as-is the bar would top out at 1/nVoxLocal of full. Reporting only --
+   * no effect on Output/*.bin. */
+  long long nSeedsTotal = nVoxLocal * seedsPerVox;
+  long long seedReportEvery =
       (nSeedsTotal / 500) > 0 ? (nSeedsTotal / 500) : 1;
   double vox_t0 = omp_get_wtime();
+
+  /* ---- F2: seed-outer driver for the PF spot-driven path -------------------
+   * ONLY this path is rerouted. mic-seeded PF, GrainsFile-seeded PF and every
+   * FF mode fall through to the voxel-outer loop below, unchanged.
+   *
+   * Parallelising over SEEDS rather than voxels is what makes the reuse
+   * possible: the voxels a seed serves are a LINE through the grid, not a
+   * spatial neighbourhood, so no partition of the voxel loop can gather them.
+   * The price is that several threads now produce solutions for the same
+   * voxel, where today one thread owns a voxel and appends in ascending seed
+   * order -- so solutions are buffered per thread and re-sorted into exactly
+   * that order before being committed (cmp_pfsol).
+   *
+   * MIDAS_PF_NO_SEED_OUTER=1 forces the legacy path, so the two can be A/B'd
+   * from one binary.
+   * -----------------------------------------------------------------------*/
+  const int usePFMulti = (isPF && !hasMic && !hasGrainsPF &&
+                          endRowNrSp >= startRowNrSp &&
+                          getenv("MIDAS_PF_NO_SEED_OUTER") == NULL);
+  if (usePFMulti) {
+    const long long nSeedRows = (long long)(endRowNrSp - startRowNrSp + 1);
+    RealType seedTol =
+        (Params.ScanPosTol > 0) ? Params.ScanPosTol : (BeamSize / 2);
+    const RealType seedGRMin = Params.MinSeedGrainRadius;
+    const int nThreads = numProcs > 0 ? numProcs : 1;
+    /* One pass over the seeds, not one pass per voxel. */
+    nSeedsTotal = nSeedRows;
+    seedReportEvery = (nSeedsTotal / 500) > 0 ? (nSeedsTotal / 500) : 1;
+    PFSolBuf *bufs = (PFSolBuf *)calloc(nThreads, sizeof(PFSolBuf));
+    check(bufs == NULL, "seed-outer: buffer array alloc failed");
+    printf("PF seed-outer: %lld seed rows, %lld voxels, %d threads\n",
+           nSeedRows, nVoxLocal, nThreads);
+    fflush(stdout);
+
+#pragma omp parallel num_threads(nThreads)
+    {
+      int tid = omp_get_thread_num();
+      struct IndexerScratch scratch;
+      int nRowsOutput = MAX_N_MATCHES * 2 * n_hkls;
+      int nRowsPerGrain = 2 * n_hkls;
+      scratch.GrainMatches = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+      scratch.GrainMatchesT = allocMatrix(MAX_N_MATCHES, N_COL_GRAINMATCHES);
+      scratch.AllGrainSpots = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
+      scratch.AllGrainSpotsT = allocMatrix(nRowsOutput, N_COL_GRAINSPOTS);
+      scratch.GrainSpots = allocMatrix(nRowsPerGrain, N_COL_GRAINSPOTS);
+      scratch.TheorSpots = allocMatrix(nRowsPerGrain, N_COL_THEORSPOTS);
+      scratch.IAgrainspots = (RealType *)malloc(nRowsOutput * sizeof(RealType));
+      scratch.OrMat =
+          (RealType (*)[3][3])malloc(MAX_N_OR * sizeof(*scratch.OrMat));
+      check(!scratch.GrainMatches || !scratch.GrainMatchesT ||
+            !scratch.AllGrainSpots || !scratch.AllGrainSpotsT ||
+            !scratch.GrainSpots || !scratch.TheorSpots ||
+            !scratch.IAgrainspots || !scratch.OrMat,
+            "seed-outer: thread scratch alloc failed");
+      struct PFVoxScratch vs;
+      memset(&vs, 0, sizeof(vs));
+      PFSolBuf_init(&bufs[tid]);
+      int servedCap = 64;
+      int *served = (int *)malloc(servedCap * sizeof(int));
+      int *servedLocal = (int *)malloc(servedCap * sizeof(int));
+      check(!served || !servedLocal, "seed-outer: served alloc failed");
+      long long seedsLocalSO = 0;
+
+#pragma omp for schedule(dynamic, 64)
+      for (long long si = 0; si < nSeedRows; si++) {
+        size_t idnr = startRowNrSp + (size_t)si;
+        /* Seed floor first: same guard, same order, same semantics as the
+         * voxel-outer path -- a skipped seed is skipped AS A SEED only. */
+        if (seedGRMin <= 0.0 || ObsSpotsLab[idnr * 10 + 3] >= seedGRMin) {
+          int thisID = (int)ObsSpotsLab[idnr * 10 + 4];
+          RealType ys = ypos[(int)ObsSpotsLab[idnr * 10 + 9]];
+          RealType so = spotSinOme[idnr];
+          RealType co = spotCosOme[idnr];
+          int nServed = 0;
+          /* Same gate expression, same operand order, as the voxel-outer
+           * loop -- so the served set is bit-identical to the set of voxels
+           * that would have called DoIndexing_PF for this seed. */
+          for (int v = startVoxel; v < endVoxel; v++) {
+            double newY = grid[v * 2 + 0] * so + grid[v * 2 + 1] * co;
+            if (fabs(newY - ys) <= seedTol) {
+              if (nServed >= servedCap) {
+                servedCap *= 2;
+                served = (int *)realloc(served, servedCap * sizeof(int));
+                servedLocal =
+                    (int *)realloc(servedLocal, servedCap * sizeof(int));
+                check(!served || !servedLocal,
+                      "seed-outer: served realloc failed");
+              }
+              served[nServed] = v;
+              servedLocal[nServed] = v - startVoxel;
+              nServed++;
+            }
+          }
+          if (nServed > 0)
+            DoIndexing_PF_multi(thisID, served, servedLocal, nServed, &Params,
+                                (int)idnr, idnr, grid, &bufs[tid], &scratch,
+                                &vs);
+        }
+        if (++seedsLocalSO >= SEED_FLUSH_EVERY) {
+          long long seedsNow;
+#pragma omp atomic capture
+          {
+            nDoneSeeds += seedsLocalSO;
+            seedsNow = nDoneSeeds;
+          }
+          seedsLocalSO = 0;
+          if (seedsNow / seedReportEvery !=
+              (seedsNow - SEED_FLUSH_EVERY) / seedReportEvery) {
+            double el = omp_get_wtime() - vox_t0;
+            printf("  progress: %lld/%lld seeds, %.1f seeds/s, "
+                   "elapsed %.1fs (voxels done %lld/%lld)\n",
+                   seedsNow, nSeedsTotal,
+                   (double)seedsNow / (el > 1e-9 ? el : 1e-9), el,
+                   (long long)0, nVoxLocal);
+            fflush(stdout);
+          }
+        }
+      }
+      if (seedsLocalSO > 0) {
+#pragma omp atomic
+        nDoneSeeds += seedsLocalSO;
+        seedsLocalSO = 0;
+      }
+      free(served);
+      free(servedLocal);
+      PFVoxScratch_free(&vs, nRowsOutput);
+      FreeMemMatrix(scratch.GrainMatches, MAX_N_MATCHES);
+      FreeMemMatrix(scratch.GrainMatchesT, MAX_N_MATCHES);
+      FreeMemMatrix(scratch.AllGrainSpots, nRowsOutput);
+      FreeMemMatrix(scratch.AllGrainSpotsT, nRowsOutput);
+      FreeMemMatrix(scratch.GrainSpots, nRowsPerGrain);
+      FreeMemMatrix(scratch.TheorSpots, nRowsPerGrain);
+      free(scratch.IAgrainspots);
+      free(scratch.OrMat);
+    }
+
+    /* Commit in the voxel-outer / ascending-seed order the accumulator sees
+     * today. (voxLocal, idnr) is unique -- one solution per seed per voxel --
+     * so the sort is a total order and the committed sequence does not depend
+     * on how seeds were distributed across threads. */
+    long long totalSol = 0;
+    for (int t = 0; t < nThreads; t++) totalSol += bufs[t].n;
+    PFSolution *allSol =
+        (PFSolution *)malloc((totalSol > 0 ? totalSol : 1) * sizeof(PFSolution));
+    check(allSol == NULL, "seed-outer: merge alloc failed");
+    long long kSol = 0;
+    for (int t = 0; t < nThreads; t++)
+      for (long long i = 0; i < bufs[t].n; i++) allSol[kSol++] = bufs[t].sol[i];
+    qsort(allSol, (size_t)totalSol, sizeof(PFSolution), cmp_pfsol);
+    for (long long i = 0; i < totalSol; i++) {
+      VoxelAccum_addSolution(&accs[allSol[i].voxLocal], allSol[i].outArr,
+                             allSol[i].keyArr, allSol[i].ids,
+                             allSol[i].weights, allSol[i].nIDs);
+      free(allSol[i].ids);
+      free(allSol[i].weights);
+    }
+    free(allSol);
+    for (int t = 0; t < nThreads; t++) free(bufs[t].sol);
+    free(bufs);
+    nDoneVox = nVoxLocal;
+    printf("PF seed-outer: committed %lld solutions\n", totalSol);
+    fflush(stdout);
+  }
+
+  if (!usePFMulti) {
 #pragma omp parallel num_threads(numProcs) private(thisRowNr)
   {
     /* Thread-local IndexerScratch. Heap-allocated OrMat per plan risk note. */
@@ -3548,6 +4007,7 @@ int main(int argc, char *argv[]) {
     free(scratch.IAgrainspots);
     free(scratch.OrMat);
   }
+  } /* end if (!usePFMulti) */
 
   /* Final tick. The per-thread remainders are flushed by now, but the last
    * flush need not have crossed a reporting boundary, so without this the bar
