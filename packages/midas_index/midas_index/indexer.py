@@ -656,7 +656,11 @@ class Indexer:
         if seed_drop_frac > 0:
             kept.append(f"SeedDropWeakestFrac {seed_drop_frac:f};")
 
-        run_pp = input_dir / "paramstest_comp.txt"
+        # Role-specific name: refinement and process-grains also derive a
+        # paramstest for the C, and with one shared name the later stage
+        # overwrites this one -- leaving on disk a file that is NOT what the
+        # indexer was invoked with. Only this file carries ScanPosTol.
+        run_pp = input_dir / "paramstest_index_comp.txt"
         run_pp.write_text("\n".join(kept) + "\n")
         return run_pp
 

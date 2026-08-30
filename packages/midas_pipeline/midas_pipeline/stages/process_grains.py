@@ -59,7 +59,8 @@ def run(ctx: StageContext) -> StageResult:
         from ._comp_params import comp_backend_paramstest
         pg_paramstest = comp_backend_paramstest(
             paramstest, layer_dir,
-            params_file=getattr(ctx.config, "params_file", None))
+            params_file=getattr(ctx.config, "params_file", None),
+            stem="paramstest_pg_comp")
 
     # paramstest.txt is written for the indexer and refiner and carries none of
     # the grain-selection thresholds (MinNrSpots, Completeness, ...). Handing it

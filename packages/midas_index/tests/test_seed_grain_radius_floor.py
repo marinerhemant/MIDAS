@@ -57,7 +57,7 @@ def test_parsed_from_paramstest(tmp_path):
 
 
 def test_trailing_semicolon_flavour(tmp_path):
-    # paramstest_comp.txt is written with trailing ';' by _emit_c_omp_paramstest.
+    # paramstest_index_comp.txt is written with trailing ';' by _emit_c_omp_paramstest.
     p = read_params(_write(tmp_path, "MinSeedGrainRadius 24.300000;\n"))
     assert p.MinSeedGrainRadius == 24.3
 

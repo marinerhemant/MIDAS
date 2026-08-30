@@ -154,7 +154,8 @@ def _run_ff(ctx: StageContext) -> StageResult:
         from ._comp_params import comp_backend_paramstest
         fit_paramstest = comp_backend_paramstest(
             paramstest, layer_dir,
-            params_file=getattr(ctx.config, "params_file", None))
+            params_file=getattr(ctx.config, "params_file", None),
+            stem="paramstest_refine_comp")
         if ctx.config.refine_backend == "c-omp":
             _expose_legacy_seeds_for_c_refiner(layer_dir)
 
@@ -300,7 +301,8 @@ def run(ctx: StageContext) -> StageResult:
         # in consolidation_pf).
         fitbest_dir = layer_dir / "FitBest_comp"
         comp_pt = comp_backend_paramstest(paramstest, layer_dir,
-                                          result_folder=fitbest_dir)
+                                          result_folder=fitbest_dir,
+                                          stem="paramstest_refine_comp")
         log_dir = Path(ctx.log_dir); log_dir.mkdir(parents=True, exist_ok=True)
         LOG.info("refinement(PF, c-omp): %s  [%d voxels; seed synthesised]",
                  backend_c.binary_path(), n_vox)

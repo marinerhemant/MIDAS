@@ -178,7 +178,8 @@ def _run_ff(ctx: StageContext) -> StageResult:
         # emits into OutputFolder; hand it OutputFolder=<layer_dir>/Output.
         comp_paramstest = comp_backend_paramstest(
             paramstest, layer_dir,
-            params_file=getattr(ctx.config, "params_file", None))
+            params_file=getattr(ctx.config, "params_file", None),
+            stem="paramstest_index_comp")
         cmd = [
             str(backend_c.binary_path()),
             str(comp_paramstest),

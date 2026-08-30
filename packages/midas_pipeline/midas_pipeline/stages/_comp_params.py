@@ -77,7 +77,7 @@ def _propagate_keys(lines: list, params_file, keys, have: set) -> list:
 
 def comp_backend_paramstest(
     paramstest: Path, layer_dir: Path, result_folder: Path | None = None,
-    params_file: Path | str | None = None,
+    params_file: Path | str | None = None, stem: str = "paramstest_comp",
 ) -> Path:
     """Write ``paramstest_comp.txt`` next to *paramstest* with OutputFolder/
     ResultFolder pointed at ``<layer_dir>/Output`` and ``<layer_dir>/Results``.
@@ -96,6 +96,17 @@ def comp_backend_paramstest(
     :data:`_INDEXER_KEYS` it sets and *paramstest* lacks are propagated, so a
     feature the user asked for actually reaches the binary. Without it those
     keys are silently dropped — see the note on :data:`_INDEXER_KEYS`.
+
+    ``stem`` names the output file (``<stem>.txt``). **Pass a role-specific
+    stem.** indexing, refinement and process-grains all call this, and
+    ``Indexer._emit_c_omp_paramstest`` writes a file of its own for the PF
+    indexing path; with one shared name the later stage silently overwrites the
+    earlier one, and the file left on disk is NOT the one the binary was
+    invoked with. That cost a full session: an indexing run's ``ScanPosTol``
+    was overwritten by refinement's copy (which does not carry it), and the
+    resulting inability to reproduce the run was misattributed to a released
+    version change. Distinct names make a run reconstructible from its own
+    directory.
     """
     out_dir = layer_dir / "Output"
     res_dir = Path(result_folder) if result_folder is not None else layer_dir / "Results"
@@ -126,7 +137,7 @@ def comp_backend_paramstest(
                  ", ".join(a.split()[0] for a in added),
                  Path(params_file).name, Path(paramstest).name)
 
-    dst = Path(layer_dir) / "paramstest_comp.txt"
+    dst = Path(layer_dir) / f"{stem}.txt"
     dst.write_text("\n".join(lines) + "\n")
     return dst
 
