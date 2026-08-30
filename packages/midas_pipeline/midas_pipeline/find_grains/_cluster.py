@@ -71,6 +71,7 @@ def per_voxel_cluster(
     space_group: int,
     max_ang_deg: float,
     min_conf: float = 0.0,
+    need_uniques: bool = True,
 ) -> PerVoxelClusterResult:
     """Cluster one voxel's candidate orientations.
 
@@ -97,6 +98,21 @@ def per_voxel_cluster(
     min_conf : float — candidates below this confidence are skipped
         (``findMultipleSolutionsPF`` semantics; ``findSingleSolution``
         uses ``0.0`` for clustering and applies min_conf later).
+    need_uniques : bool — when ``False``, skip the within-voxel unique
+        grouping and return empty ``unique_keys`` / ``unique_OMs``.
+
+        ``best_row`` / ``best_conf`` / ``best_ia`` come from the O(n) scan in
+        step 1 and do **not** depend on the grouping in step 2, so a caller
+        that reads only those gets an identical answer for a fraction of the
+        cost. That is exactly ``find_grains_single``'s ``_pervoxel_worker``,
+        which never touches the unique arrays; on a dense layer the grouping
+        it discards measured 99.997 % of this call (57 008 ms/voxel against
+        1.54 ms, s1/L3, 2026-08-29) and find_grains overtook indexing as the
+        most expensive stage of a layer.
+
+        ``find_grains_multiple`` DOES consume the unique arrays and must keep
+        the default. Returning empty arrays rather than raising keeps the
+        dataclass shape stable for any caller that merely passes them through.
     """
     OMs = np.ascontiguousarray(OMs, dtype=np.float64)
     confs = np.ascontiguousarray(confs, dtype=np.float64)
@@ -138,6 +154,15 @@ def per_voxel_cluster(
     if best_row < 0:
         return PerVoxelClusterResult(
             best_row=-1, best_conf=-1.0, best_ia=100.0,
+            unique_keys=np.empty((0, 4), dtype=np.uint64),
+            unique_OMs=np.empty((0, 9), dtype=np.float64),
+        )
+
+    # Callers that read only best_row stop here: step 2 below cannot change
+    # best_row/best_conf/best_ia, it only builds the unique arrays.
+    if not need_uniques:
+        return PerVoxelClusterResult(
+            best_row=best_row, best_conf=best_conf, best_ia=best_ia,
             unique_keys=np.empty((0, 4), dtype=np.uint64),
             unique_OMs=np.empty((0, 9), dtype=np.float64),
         )

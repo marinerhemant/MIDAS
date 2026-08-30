@@ -139,3 +139,98 @@ def test_torch_per_voxel_matches_numpy(axis_angle_om):
     np.testing.assert_array_equal(res_np.unique_keys, res_t.unique_keys)
     # OMs in torch path should be tensors.
     assert isinstance(res_t.unique_OMs, torch.Tensor)
+
+
+# ---------------------------------------------------------------------------
+# need_uniques=False — the fast path find_grains_single takes
+# ---------------------------------------------------------------------------
+
+
+def _random_voxel(rng, n):
+    """A voxel's worth of candidates: random OMs via QR, random conf/IA."""
+    A = rng.normal(size=(n, 3, 3))
+    OMs = np.empty((n, 9), dtype=np.float64)
+    for i in range(n):
+        q, r = np.linalg.qr(A[i])
+        q = q * np.sign(np.diag(r))
+        if np.linalg.det(q) < 0:
+            q[:, 0] *= -1.0
+        OMs[i] = q.ravel()
+    confs = rng.random(n)
+    ias = rng.random(n)
+    keys = np.zeros((n, 4), dtype=np.uint64)
+    keys[:, 0] = np.arange(n, dtype=np.uint64)
+    return OMs, confs, ias, keys
+
+
+@pytest.mark.parametrize("n", [1, 2, 7, 50, 200])
+def test_need_uniques_false_gives_identical_best_row(n):
+    """The skipped grouping cannot move best_row/best_conf/best_ia.
+
+    This is the whole safety argument for the fast path: best_row comes from
+    an O(n) scan that runs BEFORE the O(n_sol^2) grouping, so dropping the
+    grouping must leave it bit-identical.
+    """
+    rng = np.random.default_rng(1234 + n)
+    OMs, confs, ias, keys = _random_voxel(rng, n)
+    full = per_voxel_cluster(OMs, confs, ias, keys,
+                             space_group=166, max_ang_deg=1.0)
+    fast = per_voxel_cluster(OMs, confs, ias, keys,
+                             space_group=166, max_ang_deg=1.0,
+                             need_uniques=False)
+    assert fast.best_row == full.best_row
+    assert fast.best_conf == full.best_conf
+    assert fast.best_ia == full.best_ia
+
+
+def test_need_uniques_false_holds_under_confidence_ties():
+    """Ties are where best_row selection is subtle — IA breaks them.
+
+    Random floats almost never tie, so force exact ties and duplicate
+    orientations, which is also what a saturated dense voxel looks like.
+    """
+    rng = np.random.default_rng(7)
+    OMs, _, _, keys = _random_voxel(rng, 12)
+    OMs[1] = OMs[0]
+    OMs[2] = OMs[0]
+    confs = np.array([0.5, 0.9, 0.9, 0.9, 0.5, 0.5,
+                      0.9, 0.2, 0.2, 0.5, 0.9, 0.5])
+    ias = np.array([0.4, 0.3, 0.1, 0.7, 0.2, 0.9,
+                    0.1, 0.5, 0.5, 0.8, 0.6, 0.3])
+    full = per_voxel_cluster(OMs, confs, ias, keys,
+                             space_group=166, max_ang_deg=1.0)
+    fast = per_voxel_cluster(OMs, confs, ias, keys,
+                             space_group=166, max_ang_deg=1.0,
+                             need_uniques=False)
+    assert fast.best_row == full.best_row
+    assert fast.best_conf == full.best_conf
+    assert fast.best_ia == full.best_ia
+
+
+def test_need_uniques_false_returns_empty_unique_arrays(axis_angle_om):
+    """Shapes stay valid so a pass-through caller does not crash."""
+    g1 = axis_angle_om(np.array([0, 0, 1]), 0.0)
+    OMs, confs, ias, keys = make_inputs(
+        np.vstack([g1, g1]), [0.9, 0.8], [0.1, 0.2])
+    fast = per_voxel_cluster(OMs, confs, ias, keys, space_group=225,
+                             max_ang_deg=1.0, need_uniques=False)
+    assert fast.unique_keys.shape == (0, 4)
+    assert fast.unique_OMs.shape == (0, 9)
+    assert fast.unique_keys.dtype == np.uint64
+    assert fast.unique_OMs.dtype == np.float64
+
+
+def test_default_still_groups(axis_angle_om):
+    """Guard the DEFAULT: find_grains_multiple depends on the unique arrays.
+
+    If need_uniques ever defaults to False, the multiple-solutions path
+    silently returns no orientations, so pin the default explicitly.
+    """
+    g1 = axis_angle_om(np.array([0, 0, 1]), 0.0)
+    g2 = axis_angle_om(np.array([0, 0, 1]), 30.0)
+    OMs, confs, ias, keys = make_inputs(
+        np.vstack([g1, g1, g2]), [0.9, 0.8, 0.7], [0.1, 0.2, 0.3])
+    res = per_voxel_cluster(OMs, confs, ias, keys, space_group=225,
+                            max_ang_deg=1.0)
+    assert res.unique_keys.shape[0] == 2
+    assert res.unique_OMs.shape[0] == 2

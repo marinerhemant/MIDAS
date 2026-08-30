@@ -168,9 +168,17 @@ def _pervoxel_worker(args):
         denom = vals_v[:, 14]
         with np.errstate(divide="ignore", invalid="ignore"):
             confs = np.where(denom > 0, vals_v[:, 15] / denom, 0.0)
+        # This worker reads ONLY best_row, which comes from an O(n) scan. The
+        # within-voxel unique grouping is O(n_sol^2) misorientation and feeds
+        # only unique_keys/unique_OMs, which nothing below touches — so skip
+        # it. Measured on s1/L3: 57 008 ms/voxel with, 1.54 ms without, and
+        # find_grains had overtaken indexing as the layer's costliest stage
+        # (s1/L5: 29 502 s vs 27 498 s). find_grains_multiple keeps the
+        # default because it genuinely consumes the unique arrays.
         result = per_voxel_cluster(
             vals_v[:, 2:11], confs, vals_v[:, 1], keys_v,
             space_group=space_group, max_ang_deg=max_ang_deg, min_conf=0.0,
+            need_uniques=False,
         )
         if result.best_row < 0:
             continue
