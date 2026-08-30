@@ -93,8 +93,22 @@ def test_inverter_chunked_parity():
                 / max(abs(fit_full.losses[-1]), 1e-15)
     assert eps_diff < 1e-3, f"ε diverged: max abs = {eps_diff:.3e}"
     assert R_diff < 1e-3, f"R diverged: max abs = {R_diff:.3e}"
-    # The recovery quantities (ε, R) are the physically meaningful gate and
-    # agree to <1e-3. The final-loss SCALAR is a chaotic-ish Adam trajectory:
-    # the v-sqrt update-rule amplifies machine-eps forward differences across
-    # 20 steps, so its relative drift routinely reaches ~6%. Gate at 10%.
-    assert loss_rel < 0.10, f"final loss diverged: rel = {loss_rel:.3e}"
+    # The recovery quantities (ε, R) above are the physically meaningful gate.
+    #
+    # The final-loss SCALAR is not a gate at all -- it is a chaotic Adam
+    # trajectory. The v-sqrt update rule amplifies machine-eps forward
+    # differences across 20 steps, and MEASURED by sweeping the planted strain
+    # amplitude over 1.6e-3 .. 3.0e-3 (a physically irrelevant knob), the
+    # relative drift swings over three orders of magnitude and reaches 32% at
+    # some amplitudes -- on BOTH sides of the 2026-08-28 omega-solver change:
+    #
+    #     eps_gradient_amp    1.6e-3  1.8e-3  2.0e-3  2.2e-3  2.4e-3
+    #     loss_rel (before)   6.0e-2  3.2e-1  6.1e-2  3.2e-1  2.7e-2
+    #     loss_rel (after)    4.2e-3  7.7e-7  2.8e-1  8.7e-4  2.5e-3
+    #
+    # The old 10% gate therefore only ever passed because this test hard-codes
+    # amp = 2.0e-3; it would have failed at 1.8e-3 or 2.2e-3 with the code it
+    # was written against. Do not re-tighten it -- that pins a lottery draw,
+    # not a property. This bound exists only to catch a gross blow-up.
+    # Reproduce with autograd_audit_probes/pf_odf_chunk_parity_chaos.py.
+    assert loss_rel < 0.5, f"final loss diverged grossly: rel = {loss_rel:.3e}"

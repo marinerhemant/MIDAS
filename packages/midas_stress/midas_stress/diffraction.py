@@ -8,7 +8,7 @@ packages (midas-transforms, midas-diffract).
 Backends:
   - NumPy (default).
   - PyTorch when any input is a torch.Tensor — returns a tensor on the
-    input's device/dtype, autograd-safe.
+    input's device/dtype, differentiable except where noted per function.
 
 All angles returned in DEGREES (matches the legacy MIDAS convention).
 """
@@ -47,9 +47,12 @@ def calc_eta_angle_all(y, z):
 
     Notes
     -----
-    - Undefined at y = z = 0; callers must filter before calling.
-    - For tensors, the function is autograd-safe; sign flipping uses a
-      smooth `torch.where`, not an in-place masked assignment.
+    - Undefined at y = z = 0 (no azimuth exists there); the torch backend
+      returns 0 with zero gradient rather than NaN, but callers should still
+      filter.
+    - The torch backend is differentiable everywhere except that origin.
+      It previously claimed to be "autograd-safe" while returning a NaN
+      gradient along the whole y = 0 axis -- every spot at eta = 0 or 180.
     """
     if _is_torch(y, z):
         return _calc_eta_angle_all_torch(y, z)
@@ -71,8 +74,23 @@ def _calc_eta_angle_all_torch(y, z) -> torch.Tensor:
     device = y.device if isinstance(y, torch.Tensor) else z.device
     y_t = torch.as_tensor(y, dtype=dtype, device=device)
     z_t = torch.as_tensor(z, dtype=dtype, device=device)
-    r = torch.sqrt(y_t * y_t + z_t * z_t)
-    safe_r = torch.where(r > 0, r, torch.ones_like(r))
-    cos_arg = torch.where(r > 0, z_t / safe_r, torch.ones_like(z_t))
-    alpha = (_RAD2DEG) * torch.arccos(cos_arg.clamp(-1.0, 1.0))
-    return torch.where(y_t > 0, -alpha, alpha)
+    # atan2, not acos(z/r) with a sign flip. They agree to ~5e-11 deg (the
+    # difference is the acos form's own precision loss near |z/r| = 1), but the
+    # acos form returned a NaN GRADIENT along the entire y = 0 axis -- every
+    # spot at eta = 0 or 180, a line on the detector rather than a point. Two
+    # separate causes, both of the guard-the-output-not-the-input kind:
+    # sqrt'(0) at the origin, and acos'(1) = -inf wherever z/r reaches +-1.
+    # MEASURED before the change: d(eta)/dy = d(eta)/dz = nan at (0, 1).
+    #
+    # ``0.0 - y`` rather than ``-y``: negating a positive zero gives NEGATIVE
+    # zero, and atan2(-0.0, z<0) is -pi where atan2(+0.0, z<0) is +pi. That
+    # would silently flip eta from +180 to -180 on the z < 0 half of the y = 0
+    # axis. The subtraction yields +0.0 and keeps the legacy convention.
+    #
+    # At the origin eta does not exist at all, so both components are forced to
+    # a constant: value 0 (matching the NumPy backend) and exactly zero
+    # gradient. atan2's own backward is NaN at (0, 0).
+    at_origin = (y_t * y_t + z_t * z_t) <= 0.0
+    y_arg = torch.where(at_origin, torch.zeros_like(y_t), 0.0 - y_t)
+    z_arg = torch.where(at_origin, torch.ones_like(z_t), z_t)
+    return _RAD2DEG * torch.atan2(y_arg, z_arg)

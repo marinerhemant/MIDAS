@@ -33,6 +33,11 @@ from .parallax import parallax_correction
 _DEG2RAD = 0.017453292519943295
 _RAD2DEG = 57.29577951308232
 
+# Radial floor (µm²) below which a pixel counts as sitting ON the beam centre.
+# 1e-6 µm = 1 fm, i.e. ~1e-11 of a pixel: far below any real BC displacement,
+# far above the float64 noise in XYZ_y/XYZ_z. See the note at the R/eta guard.
+_R2_FLOOR_UM2 = 1e-12
+
 
 def build_tilt_matrix(tx: torch.Tensor, ty: torch.Tensor, tz: torch.Tensor) -> torch.Tensor:
     """Intrinsic Z-Y-X Euler rotation R = Rx(tx) Ry(ty) Rz(tz)."""
@@ -176,12 +181,41 @@ def pixel_to_REta(
         torch.full_like(XYZ_x, 1e-30),
         XYZ_x,
     )
-    rad_um = (Lsd_eff / safe_x) * torch.sqrt(XYZ_y * XYZ_y + XYZ_z * XYZ_z)
-    eta = _RAD2DEG * torch.atan2(-XYZ_y, XYZ_z)
+    # A pixel sitting exactly ON the beam centre is not an observation: R = 0 is
+    # a cone point (the derivative depends on the approach direction) and eta is
+    # undefined there, not merely singular. Give it R = 0, eta = 0 and EXACTLY
+    # zero gradient.
+    #
+    # This is not cosmetic. sqrt'(0) and atan2(0,0) are infinite/NaN, and torch
+    # sums the per-pixel gradients, so a single such pixel makes dR/dBC NaN for
+    # the WHOLE detector -- and an integer beam centre (`BC 1022 1022` ships in
+    # the midas_ff_pipeline templates) puts a pixel there exactly, on the full
+    # pixel grid that midas_integrate_v2 evaluates. The guard therefore has to
+    # reach the inputs of sqrt/atan2; guarding their outputs still forms
+    # 0 * inf = NaN in the backward pass.
+    r2 = XYZ_y * XYZ_y + XYZ_z * XYZ_z
+    at_bc = r2 < _R2_FLOOR_UM2
+    ones = torch.ones_like(r2)
+    zeros = torch.zeros_like(r2)
+    r2_safe = torch.where(at_bc, ones, r2)
+    rad_um = (Lsd_eff / safe_x) * torch.where(at_bc, zeros, r2_safe.sqrt())
+    eta = _RAD2DEG * torch.atan2(
+        torch.where(at_bc, zeros, -XYZ_y),
+        torch.where(at_bc, ones, XYZ_z),
+    )
     two_theta = torch.atan(rad_um / Lsd_eff)
 
     # ---- Distortion (extensible harmonic basis)
-    if rho_d is None:
+    #
+    # A non-positive rho_d means "no normalisation radius supplied", and is
+    # treated exactly like None. Passing it through would make
+    # ρ = rad_um / rho_d infinite and then, multiplied by the (zero) distortion
+    # coefficients, NaN -- for EVERY pixel on the detector, not just one.
+    # ``RhoD = 0.0`` is a perfectly ordinary spec (it is what you get when no
+    # distortion was ever calibrated), and it silently NaN-ed the whole
+    # geometry: measured 262144/262144 pixels NaN from ``eval_pixel_REta`` on a
+    # 512x512 midas_pdf spec. Guard the divisor, not the result.
+    if rho_d is None or bool(torch.as_tensor(rho_d).reshape(-1)[0] <= 0):
         # Default normalisation: R itself (unit ρ = 1 at the rim).
         # Caller should supply rho_d if they want a fixed reference.
         rho_d_t = torch.ones_like(rad_um)

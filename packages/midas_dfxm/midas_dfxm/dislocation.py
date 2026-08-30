@@ -163,7 +163,13 @@ class StrohDislocation:
         # Lorentzian cutoff is off (see ``core_model``). Inside the core both fields are
         # regularized and neither is physical; mask that region.
         rc = self.core_radius_um
-        r = torch.sqrt(x1 * x1 + x2 * x2)
+        # Offset INSIDE the sqrt, not clamped after it. sqrt'(0) is infinite, and
+        # the ``on_line`` torch.where below would then form 0 * inf = nan in the
+        # backward pass even though the forward value is finite -- the guard has
+        # to reach the singular operation itself, not its output. The offset is
+        # (1e-9 * rc)^2, nine orders below the core cutoff that already governs
+        # this region, so no field value outside the core moves measurably.
+        r = torch.sqrt(x1 * x1 + x2 * x2 + (_CORE_EPS * rc) ** 2)
         # Push points inside the core radially OUT to r = rc, keeping direction, so
         # the radius is genuinely clamped: scale = rc/r inside (>1), 1 outside.
         # ``min=1.0`` is the operative bound -- with ``max=1.0`` the clamp is a no-op
@@ -186,6 +192,24 @@ class StrohDislocation:
         beta = self.displacement_gradient(positions)
         eye = torch.eye(3, device=positions.device, dtype=positions.dtype)
         return eye + beta
+
+    def core_mask(self, positions: torch.Tensor) -> torch.Tensor:
+        """``True`` where ``positions`` lie inside the core -> ``(N,)`` bool.
+
+        Inside the core radius linear elasticity has failed and neither ``u`` nor
+        ``beta`` is physical; every docstring in this class says to mask that
+        region, and this is the means. The fields are finite there, and so are
+        their gradients, but they are regularization artefacts, not elasticity.
+
+        Note that a point sitting EXACTLY on the dislocation line has zero
+        gradient with respect to ``core_position``: the field has no defined
+        direction there, so there is no derivative to return. That is a
+        deliberate convention, not an oversight.
+        """
+        rel = positions - self.core_position
+        rel_slip = rel @ self.M.transpose(-1, -2)
+        r2 = rel_slip[:, 0] ** 2 + rel_slip[:, 1] ** 2
+        return r2 < self.core_radius_um ** 2
 
 
 def _cartesian_geometry(burgers, slip_normal, line, *, crystal, dtype, device):

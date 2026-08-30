@@ -59,6 +59,10 @@ _EXPORTS = {
     # orientation
     "misorientation": "orientation", "misorientation_om": "orientation",
     "misorientation_om_batch": "orientation", "misorientation_quat_batch": "orientation",
+    # smooth (differentiable) misorientation surrogates -- use these in a loss
+    "misorientation_sq_om": "orientation",
+    "misorientation_sq_om_batch": "orientation",
+    "misorientation_sq_quat_batch": "orientation",
     "euler_to_orient_mat": "orientation", "euler_to_orient_mat_batch": "orientation",
     "orient_mat_to_quat": "orientation", "orient_mat_to_euler": "orientation",
     "quaternion_product": "orientation", "quat_to_orient_mat": "orientation",

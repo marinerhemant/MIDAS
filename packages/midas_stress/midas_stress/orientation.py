@@ -6,10 +6,32 @@ Two backends:
   - **NumPy** (default): pure-Python/NumPy implementations. No compiled
     dependency — works from a plain ``pip install`` with no MIDAS C build.
   - **PyTorch**: dispatched automatically when any input is a `torch.Tensor`.
-    Returns torch tensors on the input's device and dtype. No autograd
-    breakage — operations are differentiable end-to-end.
+    Returns torch tensors on the input's device and dtype.
 
 All Euler angles in RADIANS.  All misorientation angles returned in RADIANS.
+
+Differentiability — read before putting any of this in a loss
+-------------------------------------------------------------
+The torch backend is finite and NaN-free everywhere, but two quantities here
+are **not differentiable at particular orientations**, because the quantity
+itself has no derivative there — not because of an implementation shortcut:
+
+* ``misorientation*`` at zero misorientation (and at every symmetry-equivalent
+  pair). The angle behaves like ``|Δ|`` near the identity: a cone point, whose
+  derivative depends on the direction of approach. Use
+  :func:`misorientation_sq_om` (or ``_om_batch`` / ``_quat_batch``) in a loss —
+  it is smooth everywhere, has the same minimiser, and never forms ``acos'(1)``.
+  The ``misorientation*`` family is the reporting metric.
+
+* ``orient_mat_to_euler`` at gimbal lock (Φ = 0, i.e. the c-axis along z — the
+  whole fibre, not just the identity). Only ψ + θ is determined there; the
+  gradient returned is that of the ψ = 0 convention this module fixes, not of
+  "the Euler angles", which have none. Parameterise with matrices, quaternions
+  or axis-angle instead.
+
+An earlier version of this docstring claimed "No autograd breakage —
+operations are differentiable end-to-end". That was false, and it was the
+reason these functions ended up inside loss functions.
 """
 
 
@@ -501,6 +523,69 @@ def misorientation_om_batch(oms1, oms2, space_group: int) -> np.ndarray:
     return 2.0 * np.arccos(np.minimum(1.0, MisV[:, 0]))
 
 
+def _misorientation_sq_from_w(w):
+    """omega^2 surrogate from the fundamental-zone scalar part.
+
+    ``w = cos(omega/2)``, so ``4(1 - w^2) = 4 sin^2(omega/2) = 2(1 - cos omega)``.
+    """
+    return 4.0 * (1.0 - w * w)
+
+
+def misorientation_sq_om(om1, om2, space_group: int):
+    """Squared misorientation between two orientation matrices, rad^2.
+
+    **This is the differentiable one — use it in a loss.**
+    :func:`misorientation_om` is the reporting metric and is not
+    differentiable at zero misorientation, where the angle has a cone point.
+
+    Returns ``2(1 - cos omega) = 4 sin^2(omega/2)``, which
+
+    * equals ``omega^2`` to O(omega^4) as ``omega -> 0`` (so it is in rad^2 and
+      reads like a squared angle),
+    * is monotone in ``omega`` on ``[0, pi]``, hence has exactly the same
+      minimiser and the same ordering as the angle itself,
+    * is a polynomial in the quaternion components — no ``acos`` ever enters
+      the graph, so there is no singularity to guard and the gradient at zero
+      misorientation is 0, which is correct for a smooth squared distance.
+
+    Take ``sqrt`` of this only for reporting, never inside a loss: that
+    reintroduces the cone point it exists to avoid.
+
+    Parameters
+    ----------
+    om1, om2 : array-like or torch.Tensor — length 9 or shape (3, 3).
+    space_group : int
+
+    Returns
+    -------
+    float (NumPy backend) or torch.Tensor scalar (torch backend), in rad^2.
+    """
+    if _is_torch(om1, om2):
+        return _misorientation_sq_om_torch(om1, om2, space_group)
+    angle, _ = misorientation_om(om1, om2, space_group)
+    return float(2.0 * (1.0 - math.cos(angle)))
+
+
+def misorientation_sq_om_batch(oms1, oms2, space_group: int):
+    """Batch squared misorientation for n pairs of orientation matrices, rad^2.
+
+    Differentiable everywhere. See :func:`misorientation_sq_om`.
+    """
+    if _is_torch(oms1, oms2):
+        return _misorientation_sq_om_batch_torch(oms1, oms2, space_group)
+    return 2.0 * (1.0 - np.cos(misorientation_om_batch(oms1, oms2, space_group)))
+
+
+def misorientation_sq_quat_batch(quats1, quats2, space_group: int):
+    """Batch squared misorientation for n pairs of quaternions, rad^2.
+
+    Differentiable everywhere. See :func:`misorientation_sq_om`.
+    """
+    if _is_torch(quats1, quats2):
+        return _misorientation_sq_quat_batch_torch(quats1, quats2, space_group)
+    return 2.0 * (1.0 - np.cos(misorientation_quat_batch(quats1, quats2, space_group)))
+
+
 def misorientation_quat_batch(quats1, quats2, space_group: int) -> np.ndarray:
     """Batch misorientation for n pairs of quaternions.
 
@@ -735,7 +820,15 @@ def _orient_mat_to_euler_py(m):
 #  functions above. All implementations:
 #    - return torch.Tensor on the input's device and dtype
 #    - support batched inputs where the NumPy API is single-instance
-#    - are differentiable end-to-end
+#    - are finite and NaN-free everywhere, INCLUDING the identity, zero
+#      misorientation, and gimbal lock
+#
+#  They are NOT all differentiable everywhere, and the two exceptions are
+#  named in the module docstring: the misorientation angle at zero
+#  misorientation, and the Euler triple at gimbal lock. Both are cone
+#  points/degenerate charts -- the derivative does not exist, rather than
+#  being merely unimplemented. This comment used to claim "differentiable
+#  end-to-end", which is what put them inside loss functions.
 # ===================================================================
 
 
@@ -879,7 +972,13 @@ def _orient_mat_to_euler_torch(m: torch.Tensor) -> torch.Tensor:
     val = m[..., 2, 2].clamp(-1.0, 1.0)
     is_gimbal = (1.0 - val).abs() < EPS
 
-    phi = torch.acos(val)
+    # acos'(+-1) = -inf, and val == +-1 EXACTLY for the whole gimbal family --
+    # every orientation with the c-axis along z, not just the identity. The
+    # torch.where at the end of this function would then form 0 * -inf = nan,
+    # so the guard has to be on the INPUT to acos. Zero is an arbitrary safe
+    # value; the branch it feeds is discarded below.
+    val_safe = torch.where(is_gimbal, torch.zeros_like(val), val)
+    phi = torch.acos(val_safe)
     sph = torch.sin(phi)
     sph_safe = torch.where(is_gimbal, torch.ones_like(sph), sph)
 
@@ -894,14 +993,22 @@ def _orient_mat_to_euler_torch(m: torch.Tensor) -> torch.Tensor:
     th_pi = torch.acos(c_th)
     theta = torch.where(s_th_arg >= 0, th_pi, 2 * math.pi - th_pi)
 
-    # Gimbal branches:
+    # Gimbal branches. Only psi + theta is determined here; this module fixes
+    # the gauge psi = 0 and puts the whole rotation into theta.
     psi_g = torch.zeros_like(phi)
     # val ~ +1: phi=0, theta = atan2(m10, m00); val ~ -1: phi=pi, theta = atan2(-m10, m00)
     val_pos = (val - 1.0).abs() < EPS
-    th_pos_pi = torch.acos(m[..., 0, 0].clamp(-1.0, 1.0))
-    th_pos = torch.where(m[..., 1, 0] >= 0, th_pos_pi, 2 * math.pi - th_pos_pi)
-    th_neg_pi = torch.acos(m[..., 0, 0].clamp(-1.0, 1.0))
-    th_neg = torch.where(-m[..., 1, 0] >= 0, th_neg_pi, 2 * math.pi - th_neg_pi)
+    # atan2, not acos(m00): at the identity m00 == 1 exactly and acos'(1) = -inf,
+    # which the where below turns into nan. atan2 is smooth through m10 == 0 and
+    # gives the correct derivative of theta IN THE psi = 0 GAUGE -- finite and
+    # exact (d theta/d m10 = 1, d theta/d m00 = 0 at the identity). It is not a
+    # derivative of "the Euler angles", which have none here; see the module
+    # docstring. remainder() maps to [0, 2pi) to match the previous convention.
+    m00 = m[..., 0, 0]
+    m10 = m[..., 1, 0]
+    two_pi = 2 * math.pi
+    th_pos = torch.remainder(torch.atan2(m10, m00), two_pi)
+    th_neg = torch.remainder(torch.atan2(-m10, m00), two_pi)
     theta_g = torch.where(val_pos, th_pos, th_neg)
     phi_g = torch.where(val_pos, torch.zeros_like(phi), torch.full_like(phi, math.pi))
 
@@ -953,13 +1060,17 @@ def _rodrigues_to_orient_mat_torch(rod: torch.Tensor) -> torch.Tensor:
     """
     dtype, device = _torch_dtype_device(rod)
     r = _to_torch(rod, dtype=dtype, device=device)
-    norm = torch.linalg.vector_norm(r, dim=-1, keepdim=False)
-    th = 2.0 * torch.atan(norm)
     # w = n * th, with n = rod/|rod|. See the NumPy backend for why the old
     # quaternion route inflated the angle by 1/cos^2(th/2).
-    safe = norm > EPS
-    norm_safe = torch.where(safe, norm, torch.ones_like(norm))
-    scale = torch.where(safe, th / norm_safe, torch.zeros_like(th))
+    #
+    # scale = 2*atan(|r|)/|r| is ANALYTIC at r = 0, where its limit is 2 -- not
+    # 0. The previous form returned 0 below |r| <= EPS, i.e. the identity with a
+    # dead gradient over a 1e-12 ball; carrying the ratio through recovers the
+    # true limit (measured autograd [4, -8, 4] == FD, where it used to give
+    # [0, 0, 0]). The offset lives INSIDE the sqrt so sqrt'(0) is never formed;
+    # at 1e-30 it perturbs |r| by less than float64 epsilon for any |r| > 1e-11.
+    norm = ((r * r).sum(dim=-1) + 1e-30).sqrt()
+    scale = 2.0 * torch.atan(norm) / norm
     w = r * scale.unsqueeze(-1)
     wx, wy, wz = w[..., 0], w[..., 1], w[..., 2]
     zeros = torch.zeros_like(wx)
@@ -1032,8 +1143,23 @@ def _misorientation_quat_pair_torch(
     q1_inv = torch.stack([-q1FR[..., 0], q1FR[..., 1], q1FR[..., 2], q1FR[..., 3]], dim=-1)
     QP = _quaternion_product_torch(q1_inv, q2FR)
     MisV = _fz(QP, sym)
-    w = MisV[..., 0].clamp(max=1.0)
-    angle = 2.0 * torch.acos(w)
+    # acos'(1) = -inf, and w == 1 EXACTLY at zero misorientation and at every
+    # symmetry-equivalent pair. A plain clamp(max=1.0) passes the gradient
+    # straight through at w == 1, so the -inf reaches the graph and then
+    # 0 * -inf = nan -- which means a misorientation term at ZERO WEIGHT still
+    # destroys a shared parameter's gradient. Contain it with a safe input.
+    #
+    # This makes the angle finite; it does NOT make it differentiable at zero
+    # misorientation, because it is not (see the module docstring). For a loss,
+    # use misorientation_sq_*, which never forms an acos at all.
+    # acos(1) == 0 is the RIGHT value, so the guard is on the input only: the
+    # unselected branch evaluates acos(0), whose derivative is finite, and the
+    # output where restores the exact 0.0. Values are bit-identical to the
+    # unguarded form; only the -inf disappears.
+    w_raw = MisV[..., 0].clamp(max=1.0)
+    at_zero = w_raw >= 1.0
+    w = torch.where(at_zero, torch.zeros_like(w_raw), w_raw)
+    angle = torch.where(at_zero, torch.zeros_like(w_raw), 2.0 * torch.acos(w))
     half = angle / 2.0
     s = torch.sin(half)
     s_safe = torch.where(s.abs() > EPS, s, torch.ones_like(s))
@@ -1057,6 +1183,50 @@ def _misorientation_om_torch(om1, om2, space_group: int):
 def _misorientation_om_batch_torch(oms1, oms2, space_group: int) -> torch.Tensor:
     angle, _ = _misorientation_om_torch(oms1, oms2, space_group)
     return angle
+
+
+def _mis_fz_w_torch(q1, q2, sym):
+    """Scalar part w = cos(omega/2) of the FZ-reduced misorientation quaternion.
+
+    The smooth path: this is the last quantity before ``acos`` in
+    ``_misorientation_quat_pair_torch``, and it is a polynomial in the inputs.
+    """
+    def _fz(q, sym):
+        q_b = q.unsqueeze(-2).expand(*q.shape[:-1], sym.shape[0], 4)
+        s_b = sym.expand(*q.shape[:-1], sym.shape[0], 4)
+        qts = _quaternion_product_torch(q_b, s_b)
+        _, idx = torch.max(qts[..., 0], dim=-1, keepdim=True)
+        idx_b = idx.unsqueeze(-1).expand(*idx.shape, 4)
+        out = torch.gather(qts, dim=-2, index=idx_b).squeeze(-2)
+        return out / torch.linalg.vector_norm(out, dim=-1, keepdim=True).clamp_min(EPS)
+
+    q1FR = _fz(q1, sym)
+    q2FR = _fz(q2, sym)
+    q1_inv = torch.stack(
+        [-q1FR[..., 0], q1FR[..., 1], q1FR[..., 2], q1FR[..., 3]], dim=-1
+    )
+    MisV = _fz(_quaternion_product_torch(q1_inv, q2FR), sym)
+    return MisV[..., 0].clamp(max=1.0)
+
+
+def _misorientation_sq_om_torch(om1, om2, space_group: int) -> torch.Tensor:
+    dtype, device = _torch_dtype_device(om1, om2)
+    q1 = _orient_mat_to_quat_torch(_to_torch(om1, dtype=dtype, device=device))
+    q2 = _orient_mat_to_quat_torch(_to_torch(om2, dtype=dtype, device=device))
+    sym = _make_symmetries_torch(space_group, dtype, device)
+    return _misorientation_sq_from_w(_mis_fz_w_torch(q1, q2, sym))
+
+
+def _misorientation_sq_om_batch_torch(oms1, oms2, space_group: int) -> torch.Tensor:
+    return _misorientation_sq_om_torch(oms1, oms2, space_group)
+
+
+def _misorientation_sq_quat_batch_torch(quats1, quats2, space_group: int) -> torch.Tensor:
+    dtype, device = _torch_dtype_device(quats1, quats2)
+    q1 = _to_torch(quats1, dtype=dtype, device=device)
+    q2 = _to_torch(quats2, dtype=dtype, device=device)
+    sym = _make_symmetries_torch(space_group, dtype, device)
+    return _misorientation_sq_from_w(_mis_fz_w_torch(q1, q2, sym))
 
 
 def _misorientation_quat_batch_torch(quats1, quats2, space_group: int) -> torch.Tensor:

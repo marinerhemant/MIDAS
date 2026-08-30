@@ -129,7 +129,11 @@ def _make_closures(
 
     def _scalar_loss(res: torch.Tensor) -> torch.Tensor:
         if res.numel() == 0:
-            loss = torch.tensor(1e10, dtype=pos_scaled.dtype, device=pos_scaled.device)
+            # ``pos_scaled`` is a local of refine_grain(), not of this function's
+            # enclosing _make_closures() -- referencing it here raised NameError
+            # instead of producing the sentinel. ``res`` carries a valid dtype
+            # and device even when empty.
+            loss = torch.full((), float("inf"), dtype=res.dtype, device=res.device)
         else:
             loss = (res * res).sum()
         # Make sure every active param touches the autograd graph, even
@@ -280,19 +284,37 @@ def refine_grain(
     # No floor: paramstest values like MarginOme=0.5°, MarginEta=500µm
     # were silently inflated to 2°/5° before this fix (the 2°/5° were a
     # placeholder bound that turned out to defeat user-set tolerances).
+    # A zero margin empties the match mask unconditionally, which used to make
+    # the loss identically 0.0 and the fit report success without moving. The
+    # FitConfig defaults are 0.0, so an unset margin has to be caught here --
+    # NOT floored to a placeholder: refine.py deliberately removed the old 2°/5°
+    # floor because it silently defeated user-set tolerances (see the note
+    # below). Require a real value instead.
+    if float(cfg.MarginOme) <= 0.0 or float(cfg.MarginEta) <= 0.0:
+        raise ValueError(
+            f"MarginOme (deg) and MarginEta (µm) must both be > 0; got "
+            f"MarginOme={cfg.MarginOme}, MarginEta={cfg.MarginEta}. A zero "
+            f"margin matches no spots, which yields an empty residual and a "
+            f"fit that returns its seed."
+        )
     omega_tol = float(cfg.MarginOme) * DEG2RAD
-    if cfg.RingRadii:
-        import math
-        # Use the median positive ring radius — guards against any
-        # zero-padded entries from the param-parser.
-        radii_pos = [r for r in cfg.RingRadii if r > 0]
-        if radii_pos:
-            rep_radius = float(np.median(radii_pos))
-            eta_tol = float(math.atan(cfg.MarginEta / rep_radius))
-        else:
-            eta_tol = float(cfg.MarginEta) * DEG2RAD   # fallback: treat as deg
-    else:
-        eta_tol = float(cfg.MarginEta) * DEG2RAD       # fallback: treat as deg
+    # There is NO degree-interpretation of a micrometre tolerance. The old
+    # fallback multiplied MarginEta by DEG2RAD when no ring radii were
+    # available, turning the routine 500 µm into 8.727 rad -- four orders too
+    # large, silently, which matches everything and makes the fit meaningless.
+    # A missing RingRadii is a configuration error, so say so.
+    radii_pos = [r for r in (cfg.RingRadii or []) if r > 0]
+    if not radii_pos:
+        raise ValueError(
+            "cfg.RingRadii is empty, so MarginEta (micrometres) cannot be "
+            "converted to an angular tolerance. Supply RingRadii, or set "
+            "MarginEta from a known ring radius yourself."
+        )
+    import math
+    # Use the median positive ring radius — guards against any
+    # zero-padded entries from the param-parser.
+    rep_radius = float(np.median(radii_pos))
+    eta_tol = float(math.atan(cfg.MarginEta / rep_radius))
 
     # Initial association.
     if precomputed_match is not None:
@@ -450,16 +472,28 @@ def refine_grain(
             obs=obs, match=match, kind=cfg.loss,
             px=cfg.px, y_BC=model.y_BC, z_BC=model.z_BC,
         )
-        loss_final = float((res * res).sum().item()) if res.numel() else float("inf")
+        n_matched_final = int(match.mask.sum().item())
+        # With no matched spots there is no residual to minimise, so there is no
+        # gradient and no information -- the fit cannot have succeeded. The mask
+        # in grain_residuals zeroes every row, which makes (res*res).sum() come
+        # out as 0.0: the LOWEST POSSIBLE loss, so a total failure would outrank
+        # every real grain in any best-of-N or loss sort. Report +inf, not 0.0
+        # and not a large finite sentinel -- a sentinel can still win when every
+        # candidate failed, and silently become "the best grain". This keeps
+        # final_loss consistent with completeness, which already reads 0 here.
+        if n_matched_final == 0 or res.numel() == 0:
+            loss_final = float("inf")
+        else:
+            loss_final = float((res * res).sum().item())
 
     return GrainFitResult(
         position=pos_final,
         euler=euler_final,
         lattice=lattice_final,
         final_loss=loss_final,
-        n_matched=int(match.mask.sum().item()),
+        n_matched=n_matched_final,
         history=histories,
-        converged=any(converged_phases),
+        converged=bool(any(converged_phases)) and n_matched_final > 0,
         match=match,
         per_spot_residuals=res.detach(),
     )

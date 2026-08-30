@@ -39,7 +39,7 @@ from .forward import (
 )
 from .hkls import hkls_for_forward_model
 from .losses import SpotMatchingLoss
-from .optimize import optimize_single_grain, evaluate_recovery
+from .optimize import optimize_single_grain, evaluate_recovery, NoMatchError
 
 __all__ = [
     "HEDMForwardModel",
@@ -50,6 +50,7 @@ __all__ = [
     "SpotMatchingLoss",
     "hkls_for_forward_model",
     "optimize_single_grain",
+    "NoMatchError",
     "evaluate_recovery",
     "__version__",
 ]

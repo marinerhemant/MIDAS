@@ -171,6 +171,17 @@ def test_predict_spots_differentiable_in_quaternions():
     Identity + axis-aligned hkl pins the spot to eta = +/-90deg; perturbing q
     leaves the spot at the pole and (yl, zl) get zero gradient. A generic hkl
     like (1, 1, 0) gives a generic eta that varies with q.
+
+    The loss must NOT be ``yl**2 + zl**2``. That is the squared RING RADIUS,
+    ``(distance * tan(2 theta))**2``, which is fixed by the Bragg angle and is
+    invariant under orientation -- its true gradient is exactly zero. This test
+    used to assert that quantity's gradient was nonzero, and passed only on
+    floating-point noise: measured 5.2e-12, coming from the omega solver's old
+    ``y2 + 1e-7`` epsilon breaking the invariance. Once the solver became exact
+    the noise became a clean 0.0 and the assertion flipped.
+
+    A single spot's ``yl`` does depend on orientation -- d(yl)/dq is ~145 here,
+    unchanged by that fix -- so differentiate that instead.
     """
     q = torch.tensor(
         [[1.0, 0.0, 0.0, 0.0]],
@@ -181,10 +192,30 @@ def test_predict_spots_differentiable_in_quaternions():
     thetas = torch.tensor([5.0], dtype=torch.float64)
     out = predict_spots(q, hkls, thetas, distance=1000.0)
     assert out.valid.any(), "Test inputs degenerate: no valid Bragg solution"
-    loss = (out.yls ** 2 * out.valid.float()).sum() + (out.zls ** 2 * out.valid.float()).sum()
-    loss.backward()
+    out.yls.flatten()[0].backward()
     assert q.grad is not None
     assert q.grad.abs().sum() > 0
+
+
+def test_ring_radius_is_invariant_under_orientation():
+    """The invariance the test above used to violate.
+
+    ``yl**2 + zl**2`` must equal ``(distance * tan(2 theta))**2`` exactly, for
+    every orientation: a spot can move around its ring but not off it. The old
+    omega solver broke this at the 1e-12 level.
+    """
+    torch.manual_seed(0)
+    q = torch.nn.functional.normalize(torch.randn(8, 4, dtype=torch.float64), dim=-1)
+    hkls = torch.tensor([[1.0, 1.0, 1.0], [2.0, 0.0, 0.0]], dtype=torch.float64)
+    thetas = torch.tensor([5.0, 7.0], dtype=torch.float64)
+    out = predict_spots(q, hkls, thetas, distance=1000.0)
+    r = torch.sqrt(out.yls ** 2 + out.zls ** 2)[out.valid]
+    exact = 1000.0 * torch.tan(2.0 * thetas * math.pi / 180.0)
+    assert r.numel() > 0
+    # Layout-independent: every valid spot must sit on ONE of the rings.
+    off_ring = (r.unsqueeze(-1) - exact).abs().min(dim=-1).values
+    assert float(off_ring.max()) < 1e-9, (
+        f"spot off its ring by {float(off_ring.max()):.3e} um")
 
 
 # -----------------------------------------------------------------------------
