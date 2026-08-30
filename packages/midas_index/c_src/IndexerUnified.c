@@ -2609,7 +2609,21 @@ static int ReadParams(char FileName[], struct TParams *Params) {
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
       sscanf(line, "%s %lf", dummy, &BeamSize);
-      /* Match legacy PF: small relaxation. */
+      /* Match legacy PF: small relaxation.
+       *
+       * ⚠ CONSEQUENCE, and it is not cosmetic. `BeamSize` is used ONLY as the
+       * fallback for the beam-position gate when `ScanPosTol` is absent:
+       *   scanTol = (ScanPosTol > 0) ? ScanPosTol : (BeamSize / 2)
+       * at lines ~1006 (the MATCHING loop) and ~3447 (the seed loop). So the
+       * fallback gate is (BeamSize + 0.1)/2, NOT half the beam the parameter
+       * file declares: 0.80 um for a declared 1.5 um beam.
+       *
+       * midas_pipeline computes scan_pos_tol_um = BeamSize/2 in Python from
+       * the true value and writes ScanPosTol, so pipeline runs get 0.75 and
+       * never touch this path. A HAND-RUN of this binary without ScanPosTol
+       * gets 0.80 -- a 6.7 %% wider gate, measured at +14.7 %% accepted
+       * solutions and a changed per-voxel winner in 10.5 %% of voxels. A run
+       * that hits this fallback now says so on stderr (see main()). */
       BeamSize += 0.1;
       continue;
     }
@@ -3273,6 +3287,26 @@ int main(int argc, char *argv[]) {
             "WARNING: PF mode auto-detected with nPositions=%d, but argv "
             "nWork=%d. Using nPositions; argv ignored for PF.\n",
             nPositions, nWork);
+  }
+  /* The beam-position gate is the single most consequential PF parameter and
+   * its fallback is not what the parameter file appears to say: BeamSize is
+   * inflated by 0.1 um on parse (see ReadParams), so an absent ScanPosTol
+   * gives (BeamSize + 0.1)/2. Measured cost of taking this path unknowingly:
+   * +14.7 %% accepted solutions and a different winner in 10.5 %% of voxels.
+   * Say so, loudly, rather than let a hand-run differ from a pipeline run for
+   * a reason nothing prints. */
+  if (isPF) {
+    if (Params.ScanPosTol > 0) {
+      fprintf(stderr, "PF beam-position gate: ScanPosTol %.6f um (explicit).\n",
+              Params.ScanPosTol);
+    } else {
+      fprintf(stderr,
+              "WARNING: PF beam-position gate falling back to BeamSize/2 = "
+              "%.6f um. NOTE BeamSize was inflated by 0.1 um on parse, so this "
+              "is NOT half the declared beam (%.6f um would be). Pass "
+              "ScanPosTol explicitly to match what midas_pipeline does.\n",
+              BeamSize / 2.0, (BeamSize - 0.1) / 2.0);
+    }
   }
 
   /* hkls.csv — 11 cols, populate the PF 10-col layout. */
