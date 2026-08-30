@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.10.3"
+version = "0.11.0"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -35,10 +35,10 @@ dependencies = [
     "midas-hkls>=0.6.0",
     "midas-diffract>=0.7.0",
     "midas-peakfit>=0.5.0",
-    "midas-integrate>=0.5.0",
-    "midas-integrate-v2>=0.4.0",
+    "midas-integrate>=0.7.0",
+    "midas-integrate-v2>=0.7.0",
     "midas-calibrate>=0.4.0",
-    "midas-calibrate-v2>=0.8.0",
+    "midas-calibrate-v2>=0.11.0",
     "midas-index>=0.7.5",
     "midas-transforms>=0.8.6",
     "midas-propagate>=0.1.1",      # uncertainty propagation; load-bearing for process-grains v0.4.x Stage 7 σ
@@ -94,7 +94,7 @@ ff = [
     "midas-pipeline>=0.15.0",
     "midas-ff-pipeline>=0.6.0",    # DEPRECATED → use midas-pipeline --scan-mode ff; removed in suite 1.0
     "midas-calibrate>=0.4.0",          # >=0.2.7: paramstest parser strips ';' terminator
-    "midas-integrate>=0.5.0",
+    "midas-integrate>=0.7.0",
     "midas-joint-ff-calibrate>=0.4.0", # grain-tx + full-joint refine (IUCrJ 2026)
 ]
 nf = [
@@ -111,11 +111,11 @@ pf = [
     "midas-pipeline[fast]>=0.15.0",        # >=0.7.0: as above; fast = numba>=0.65;
                                            # >=0.12.0 preflight (see base deps)
     "midas-calibrate>=0.4.0",
-    "midas-integrate>=0.5.0",
+    "midas-integrate>=0.7.0",
 ]
 calib = [
     "midas-hkls>=0.6.0",
-    "midas-integrate>=0.5.0",
+    "midas-integrate>=0.7.0",
     "midas-peakfit>=0.5.0",
     "midas-calibrate>=0.4.0",
 ]
@@ -124,8 +124,8 @@ calib-v2 = [
     # Companion to ``calib`` (v1, C-backed) — both can be installed
     # side-by-side, the v2 spec ↔ v1 paramstest adapter handles handoff.
     "midas-hkls>=0.6.0",
-    "midas-calibrate-v2>=0.8.0",
-    "midas-integrate-v2>=0.4.0",
+    "midas-calibrate-v2>=0.11.0",
+    "midas-integrate-v2>=0.7.0",
     "midas-peakfit>=0.5.0",
 ]
 # --- Specialized-modality bundles (each published 0.1.0, 2026-07) ---

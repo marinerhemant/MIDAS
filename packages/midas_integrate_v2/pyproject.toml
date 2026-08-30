@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-integrate-v2"
-version = "0.6.0"
+version = "0.7.0"
 description = "Differentiable, autodiff-aware radial integration for area X-ray detectors. Joint refinement counterpart to midas-integrate."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -43,12 +43,12 @@ dependencies = [
     # package's spec.py carries the same default, and the v1<->v2 compat
     # round-trip moves the value across -- mismatched floors put the two codes
     # back to building different maps from one parameter file.
-    "midas-integrate>=0.5.0",
+    "midas-integrate>=0.7.0",
     # >=0.8.0: write_v1_paramstest emits the panel-shifts sidecar and points
     # PanelShiftsFile at it. This package now READS that file; below the floor
     # nothing writes it and multi-panel integration runs with zero shifts --
     # the exact silent-discard this release fixes on the consuming side.
-    "midas-calibrate-v2>=0.8.0",
+    "midas-calibrate-v2>=0.11.0",
     "midas-distortion>=0.2.0",
 ]
 

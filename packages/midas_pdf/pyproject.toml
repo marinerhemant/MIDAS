@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pdf"
-version = "0.1.3"
+version = "0.2.0"
 description = "Differentiable, error-propagating total-scattering / pair-distribution-function (PDF, G(r)) pipeline. Thin Faber-Ziman layer over midas-hkls (form factors) and midas-integrate-v2 (integration, Compton, sine FT)."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -45,7 +45,7 @@ dependencies = [
     # register its species INTO midas-hkls. The direction is pdf -> hkls, not
     # the reverse, so this is the only place the floor can live.
     "midas-hkls>=0.9.0",
-    "midas-integrate-v2>=0.1.0",
+    "midas-integrate-v2>=0.7.0",
 ]
 
 [project.optional-dependencies]
