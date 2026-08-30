@@ -79,11 +79,30 @@ class IntegrationParams:
     SolidAngleCorrection: int = 0
     PolarizationCorrection: int = 0
     PolarizationFraction: float = 0.99
-    # Azimuthal angle (degrees) of the polarization plane with respect to η = 0.
-    # 0° matches the legacy "horizontal polarization at η = 0" convention used
-    # by pyFAI; 90° rotates the plane to vertical. For unpolarized beams set
-    # PolarizationFraction = 0 (the η-dependence vanishes).
-    PolarizationPlaneEtaDeg: float = 0.0
+    # Azimuthal angle (degrees) of the polarization plane, in MIDAS η.
+    #
+    # 90 = HORIZONTAL, which is what every storage ring delivers, and is the
+    # default since 2026-08-29. It was 0 before that, with a comment claiming
+    # "0 matches the legacy 'horizontal polarization at eta = 0' convention
+    # used by pyFAI; 90 rotates the plane to vertical" — that had it exactly
+    # backwards. MIDAS eta is atan2(-y, z) (see geometry.calc_eta_angle, and
+    # _mapper_numba.py:97 / :665 where the eta bins this correction consumes
+    # are built), so eta = 0 is VERTICAL. pyFAI measures its azimuth from the
+    # horizontal detector axis instead; the number was carried over without
+    # the axis.
+    #
+    # The old value applied the right functional form a quarter turn away from
+    # the beam's polarization, which ADDS the azimuthal modulation it exists to
+    # remove: 3.1 % per-pixel error in P at 2theta = 10 deg, 13 % at 20, 33 %
+    # at 30, 98 % at 45. See
+    # midas_integrate_v2.corrections.intensity.POL_PLANE_HORIZONTAL_ETA_DEG for
+    # the evidence (source convention, a pyFAI cross-check, and real 1-ID CeO2
+    # with the detector-tilt confound refuted by a null model).
+    #
+    # Set 0.0 to reproduce pre-2026-08-29 output. For unpolarized beams set
+    # PolarizationFraction = 0 instead (the eta-dependence then vanishes and
+    # this angle stops mattering).
+    PolarizationPlaneEtaDeg: float = 90.0
     GradientCorrection: int = 0
     NrTransOpt: int = 0
     TransOpt: List[int] = field(default_factory=list)

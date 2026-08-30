@@ -86,6 +86,32 @@ class MapTruncationWarning(UserWarning):
 #: (NrPixelsZ × per_row_max × 6 × 8 bytes).
 DEFAULT_MAP_BUFFER_BYTES = 4 * 1024 ** 3
 
+#: Smallest (pixel, bin) overlap area kept in the map, in pixel².
+#:
+#: This was 1e-5, which discarded the thin slivers a pixel contributes to the
+#: bins it barely reaches — and those slivers are exactly what makes the map
+#: area-conserving. MEASURED on a 48x48 detector, comparing each pixel's summed
+#: area against its own mapped quad area (which is 1 px² only when there is no
+#: tilt; under tilt the mapped quad carries the Jacobian):
+#:
+#:     threshold   entries   max |sum - quad|, no tilt / ty=2 deg
+#:       1e-5        3309      9.6e-06  /  8.6e-06
+#:       1e-7        3316      2.9e-14  /  3.1e-08
+#:       1e-9        3316      2.9e-14  /  4.2e-14      <- saturated
+#:      1e-12        3316      2.9e-14  /  4.2e-14
+#:
+#: 1e-9 is where conservation reaches machine precision, and the entry count is
+#: already the same as at 1e-12 — the extra headroom buys nothing.
+#:
+#: Do NOT lower it further. Two mathematically equivalent configurations (zero
+#: distortion vs no distortion; panel shifts of zero vs no panels) evaluate the
+#: corners in different orders and so disagree at ~1e-13 of IEEE rounding
+#: noise. A threshold at or below that noise makes the map's SPARSITY PATTERN
+#: differ between them — the areas still agree, but the entry counts do not,
+#: which is both non-deterministic and a real headache for the parity tests
+#: that compare maps entry by entry. 1e-9 sits four orders above that floor.
+MIN_PIXEL_BIN_AREA = 1e-9
+
 
 def estimate_per_row_max(params,
                          max_bytes: int = DEFAULT_MAP_BUFFER_BYTES) -> int:
@@ -359,7 +385,7 @@ def _build_map_python(
                     EtaMin = float(eta_lo[l]); EtaMax = float(eta_hi[l])
                     area = pixel_bin_intersect(cornerYZ_pix, RMin, RMax,
                                                EtaMin, EtaMax)
-                    if area < 1e-5:
+                    if area < MIN_PIXEL_BIN_AREA:
                         continue
                     corrected = area
                     if solid_angle:
@@ -367,11 +393,29 @@ def _build_map_python(
                         if sa > 1e-12:
                             corrected /= sa
                     if polarization:
+                        # Standard partially-polarized factor (Kahn 1982), the
+                        # form pyFAI uses:
+                        #     P = 0.5 (1 + cos^2 2th - PF cos(2 deta) sin^2 2th)
+                        #
+                        # This was 1 - PF sin^2(2th) cos^2(deta), which SCALES
+                        # the fully-polarized correction rather than MIXING the
+                        # two orthogonal polarization states. The two are
+                        # algebraically identical at PF = 1 and diverge below
+                        # it: 1.48% at the shipped PF = 0.99, 6.98% at 0.95,
+                        # 42.9% at 0.5 (2th <= 60 deg). The physical tell is
+                        # that an unpolarized beam has no preferred azimuth, so
+                        # its correction cannot depend on eta -- the old form's
+                        # did, by 0.375 at 2th = 60 deg with PF = 0.5.
+                        #
+                        # Changed 2026-08-29. Integrated INTENSITIES move by up
+                        # to ~1.5% at high 2theta; peak positions do not.
                         twoTheta = math.atan(Rt_c * px / Lsd)
                         s2t = math.sin(twoTheta)
+                        c2t = math.cos(twoTheta)
                         eta_mid = ((EtaMin + EtaMax) * 0.5) * DEG2RAD
-                        ce = math.cos(eta_mid - pol_plane_eta_rad)
-                        polFactor = 1.0 - pol_fraction * s2t * s2t * ce * ce
+                        c2e = math.cos(2.0 * (eta_mid - pol_plane_eta_rad))
+                        polFactor = 0.5 * (1.0 + c2t * c2t
+                                           - pol_fraction * c2e * s2t * s2t)
                         if polFactor > 1e-6:
                             corrected /= polFactor
                     if flat is not None:
@@ -507,7 +551,11 @@ def build_map(
         TRs=TRs, Lsd=params.Lsd, px=px,
     )
     sa_factor = np.ascontiguousarray(sa_factor, dtype=np.float64)
-    pol_plane_eta_rad = float(getattr(params, "PolarizationPlaneEtaDeg", 0.0)) * (math.pi / 180.0)
+    # Fallback matches IntegrationParams' default: 90 deg = HORIZONTAL in MIDAS
+    # eta. A hand-built params object without the attribute must not silently
+    # fall back to the old, wrong, vertical plane.
+    pol_plane_eta_rad = float(
+        getattr(params, "PolarizationPlaneEtaDeg", 90.0)) * (math.pi / 180.0)
 
     # ── Auto-load panel / distortion / residual-correction arrays ──────
     if panels is None and auto_load:

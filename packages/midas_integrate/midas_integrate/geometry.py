@@ -26,10 +26,41 @@ DEG2RAD = math.pi / 180.0
 RAD2DEG = 180.0 / math.pi
 EPS = 1e-6
 
-# Pixel corner offsets (matches DG_PosMatrix)
+# Pixel corner offsets (matches DG_PosMatrix).
+#
+# ``QUAD_ORDER`` is the sequence in which ``point_in_quad`` and
+# ``pixel_bin_intersect`` walk the pixel's edges: 0->1, 1->3, 3->2, 2->0. That
+# is a closed boundary ONLY if the corners are stored in Z-order, i.e. index
+#
+#     0 = (-,-)   1 = (-,+)   2 = (+,-)   3 = (+,+)
+#
+# so the walk becomes (-,-) -> (-,+) -> (+,+) -> (+,-) -> back.
+#
+# These offsets used to be [(-,-), (-,+), (+,+), (+,-)] -- boundary order, not
+# Z-order -- under which the same walk traces two sides and two DIAGONALS: a
+# bowtie. ``point_in_quad`` then answered incorrectly for points inside the
+# pixel, and ``pixel_bin_intersect`` searched the wrong segments for arc and
+# ray crossings, so vertices were missed and the intersection polygon came out
+# incomplete or empty.
+#
+# MEASURED consequence, before the fix, on a pixel straddling both an R and an
+# eta bin boundary (true total = the pixel's area = 1.0):
+#
+#     r=24 eta=7: 0.007739
+#     r=24 eta=8: 0.083343
+#     r=25 eta=7: 0.000000   <- the pixel does overlap this cell
+#     r=25 eta=8: 0.404529
+#     TOTAL       0.495611
+#
+# Across a synthetic 64x64 detector (RBinSize 1 px, EtaBinSize 30 deg) interior
+# pixels retained a MEAN of 0.85 of their area, worst case 0.50. With Z-order
+# every interior pixel conserves exactly: mean 1.00000000, min = max = 1.0.
+#
+# Nothing else depends on the index order -- the other consumers take
+# ``min``/``max`` over the corner axis -- so this is safe to correct here.
 QUAD_ORDER = (0, 1, 3, 2)
 PIXEL_CORNER_OFFSETS = np.array(
-    [[-0.5, -0.5], [-0.5, 0.5], [0.5, 0.5], [0.5, -0.5]],
+    [[-0.5, -0.5], [-0.5, 0.5], [0.5, -0.5], [0.5, 0.5]],
     dtype=np.float64,
 )
 

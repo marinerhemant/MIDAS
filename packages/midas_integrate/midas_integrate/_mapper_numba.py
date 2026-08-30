@@ -67,6 +67,18 @@ DEG2RAD = math.pi / 180.0
 RAD2DEG = 180.0 / math.pi
 EPS = 1e-6
 QUAD_ORDER = (0, 1, 3, 2)
+
+#: Smallest (pixel, bin) overlap area kept, in pixel^2. Must match
+#: ``detector_mapper.MIN_PIXEL_BIN_AREA`` -- the numba and pure-python map
+#: builders have to produce the same map, and the parity tests compare them
+#: entry by entry. Duplicated rather than imported because an njit kernel
+#: cannot close over another module's value at compile time.
+#:
+#: Was 1e-5, which dropped the slivers that make the map area-conserving:
+#: max |sum over bins - pixel area| goes 9.6e-06 -> 2.9e-14 at 1e-9, for 0.2%
+#: more entries. See detector_mapper for why not lower than 1e-9.
+_MIN_PIXEL_BIN_AREA = 1e-9
+
 QUAD0 = 0
 QUAD1 = 1
 QUAD2 = 3
@@ -410,21 +422,22 @@ def map_kernel(
         quad_z = np.empty(4, dtype=np.float64)
         local = 0
         for i in range(NrPixelsY):
-            # Per-pixel quad corners in QUAD_ORDER traversal order:
-            # source corners are stored c=0..3 corresponding to PIXEL_CORNER_OFFSETS
-            # = [(-0.5,-0.5), (-0.5,0.5), (0.5,0.5), (0.5,-0.5)].
-            # Order 0,1,3,2 traces the perimeter (matches DG_QUAD_ORDER).
-            # cornerYZ has shape (NZ, NY, 4, 2) → here cornerYZ[j, i, c, 0/1] gives Y/Z.
-            # Source corner-index in cornerYZ comes from
-            # PIXEL_CORNER_OFFSETS = [(-0.5,-0.5),(-0.5,0.5),(0.5,0.5),(0.5,-0.5)]
-            # which is *already* in QUAD_ORDER (0→1→2→3 = QUAD0..3). Wait — let me
-            # double-check. The PIXEL_CORNER_OFFSETS in geometry.py is:
-            #   [[-0.5,-0.5],[-0.5,0.5],[0.5,0.5],[0.5,-0.5]]
-            # Indices 0,1,2,3 trace the perimeter counterclockwise. So we just
-            # use them in 0..3 order — no need to reorder.
+            # Permute the stored corners into perimeter order.
+            #
+            # ``cornerYZ`` is indexed by geometry.PIXEL_CORNER_OFFSETS, which is
+            # Z-ORDER: [(-,-), (-,+), (+,-), (+,+)]. QUAD_ORDER = (0, 1, 3, 2)
+            # is what turns that into a closed boundary walk. This kernel's
+            # ``_pixel_bin_intersect_njit`` walks its quad SEQUENTIALLY, so the
+            # permutation has to happen here rather than inside it.
+            #
+            # Copying k -> k straight through, as this used to, hands the njit
+            # kernel a Z-ordered quad that it then traces as a bowtie: two sides
+            # and two diagonals. That is the same defect the pure-python path
+            # had, and it costs a mean 16% of every straddling pixel's area.
             for k in range(4):
-                quad_y[k] = cornerYZ[j, i, k, 0]
-                quad_z[k] = cornerYZ[j, i, k, 1]
+                src = QUAD_ORDER[k]
+                quad_y[k] = cornerYZ[j, i, src, 0]
+                quad_z[k] = cornerYZ[j, i, src, 1]
 
             # bounding box in (R, Eta)
             rmi = R_corners[j, i, 0]; rma = R_corners[j, i, 0]
@@ -486,7 +499,7 @@ def map_kernel(
                     area = _pixel_bin_area(quad_y, quad_z, bin_y, bin_z,
                                            RMin, RMax, EtaMin, EtaMax,
                                            edges_scratch)
-                    if area < 1e-5:
+                    if area < _MIN_PIXEL_BIN_AREA:
                         continue
 
                     Rt_c = Rt_center[j, i]
@@ -497,10 +510,17 @@ def map_kernel(
                             corrected /= sa
                     if polarization == 1:
                         twoTheta = math.atan(Rt_c * px / Lsd)
+                        # Standard partially-polarized factor (Kahn 1982) --
+                        # see detector_mapper for why this replaced
+                        # 1 - PF sin^2(2th) cos^2(deta). Both map kernels and
+                        # midas_integrate_v2 must use the SAME model or the
+                        # parity tests break.
                         s2t = math.sin(twoTheta)
+                        c2t = math.cos(twoTheta)
                         eta_mid_rad = ((EtaMin + EtaMax) * 0.5) * DEG2RAD
-                        ce = math.cos(eta_mid_rad - pol_plane_eta_rad)
-                        polFactor = 1.0 - pol_fraction * s2t * s2t * ce * ce
+                        c2e = math.cos(2.0 * (eta_mid_rad - pol_plane_eta_rad))
+                        polFactor = 0.5 * (1.0 + c2t * c2t
+                                           - pol_fraction * c2e * s2t * s2t)
                         if polFactor > 1e-6:
                             corrected /= polFactor
                     if flat_present == 1:
@@ -805,9 +825,15 @@ def map_kernel_subpixel(
                     #   k=2 → (sp_dy_hi, sp_dz_hi)
                     #   k=3 → (sp_dy_hi, sp_dz_lo)
                     #
-                    # PIXEL_CORNER_OFFSETS in geometry.py is
-                    #   [(-0.5,-0.5),(-0.5,0.5),(0.5,0.5),(0.5,-0.5)]
-                    # which is already the QUAD-traversal order.
+                    # BOUNDARY order, and that is correct HERE.
+                    # ``_pixel_bin_intersect_njit`` walks its quad sequentially
+                    # (i0 = e, i1 = e+1), so it wants the perimeter already
+                    # permuted -- unlike the pure-python
+                    # ``geometry.pixel_bin_intersect``, which applies
+                    # QUAD_ORDER = (0, 1, 3, 2) itself and therefore wants
+                    # Z-ordered corners. The two kernels take DIFFERENT
+                    # conventions; do not "unify" them without changing the
+                    # traversal to match.
                     rmi = 1.0e30
                     rma = -1.0e30
                     emi = 1.0e30
@@ -902,7 +928,7 @@ def map_kernel_subpixel(
                                 RMin, RMax, EtaMin, EtaMax,
                                 edges_scratch,
                             )
-                            if area < 1e-5:
+                            if area < _MIN_PIXEL_BIN_AREA:
                                 continue
 
                             corrected = area
@@ -930,10 +956,15 @@ def map_kernel_subpixel(
                                         corrected /= sa
                             if polarization == 1:
                                 twoTheta = math.atan(Rt_sub * px / Lsd)
+                                # Standard partially-polarized factor
+                                # (Kahn 1982) -- see detector_mapper.
                                 s2t = math.sin(twoTheta)
+                                c2t = math.cos(twoTheta)
                                 eta_mid_rad = ((EtaMin + EtaMax) * 0.5) * DEG2RAD
-                                ce = math.cos(eta_mid_rad - pol_plane_eta_rad)
-                                polFactor = 1.0 - pol_fraction * s2t * s2t * ce * ce
+                                c2e = math.cos(2.0 * (eta_mid_rad
+                                                      - pol_plane_eta_rad))
+                                polFactor = 0.5 * (1.0 + c2t * c2t
+                                                   - pol_fraction * c2e * s2t * s2t)
                                 if polFactor > 1e-6:
                                     corrected /= polFactor
                             if flat_present == 1:
