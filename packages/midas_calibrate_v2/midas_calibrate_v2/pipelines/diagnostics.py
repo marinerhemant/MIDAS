@@ -301,11 +301,28 @@ def strain_cap_check(
     *,
     threshold_uE: float = 100.0,
     warn_uE: float = 50.0,
+    n_rings: Optional[int] = None,
+    min_rings_for_ok: int = 3,
 ) -> DiagnosticResult:
     """Strain-cap rejection.  B6 showed that all 24 basin-escape failures
     have converged strain ≥ 800 μϵ.  A 100 μϵ cap rejects every escape
     while never tripping on a real calibrant (all four reference
     datasets converge at < 35 μϵ).
+
+    ``n_rings`` is the number of distinct rings the fit actually rested on.
+    A low strain computed from one or two rings means nothing — there are as
+    many free parameters as constraints, so the residual can be driven to zero
+    at an arbitrary geometry.
+
+    MEASURED: a synthetic CeO2 image whose seeder locked onto a SINGLE ring
+    converged at **11.92 μϵ with Lsd wrong by a factor of 7.9**
+    (300 000 µm true, 2 362 886 µm fitted). The old gate returned "ok" on
+    that, and 11.92 μϵ reads as an excellent calibration to anyone applying
+    the <100 μϵ rule. The ring count was already known to the other gates --
+    ``cross_validation`` said "too few rings (1)" in the same run -- but the
+    headline number did not inherit their caution. It does now: below
+    ``min_rings_for_ok`` distinct rings this can return at best "warn", no
+    matter how small the strain.
     """
     if not history:
         return DiagnosticResult(
@@ -339,11 +356,28 @@ def strain_cap_check(
                      f"{warn_uE:.0f} μϵ — review residual distribution"),
             metrics={"strain_uE": strain, "warn_uE": warn_uE},
         )
+    if n_rings is not None and n_rings < min_rings_for_ok:
+        # A small strain on this little support is not evidence of a good
+        # calibration; it is evidence that the residual had nothing to
+        # disagree with. Do not let the number read as "ok".
+        return DiagnosticResult(
+            name="strain_cap",
+            severity="warn",
+            message=(f"converged strain {strain:.2f} μϵ, but the fit rests on "
+                     f"only {n_rings} ring{'s' if n_rings != 1 else ''} "
+                     f"(< {min_rings_for_ok}) — a low strain on this little "
+                     f"support does not mean the geometry is right; check the "
+                     f"ring overlay before using it"),
+            metrics={"strain_uE": strain, "n_rings": float(n_rings),
+                     "min_rings_for_ok": float(min_rings_for_ok)},
+        )
     return DiagnosticResult(
         name="strain_cap",
         severity="ok",
-        message=f"converged strain {strain:.2f} μϵ — within calibrant range",
-        metrics={"strain_uE": strain},
+        message=(f"converged strain {strain:.2f} μϵ — within calibrant range"
+                 + (f" ({n_rings} rings)" if n_rings is not None else "")),
+        metrics={"strain_uE": strain,
+                 **({"n_rings": float(n_rings)} if n_rings is not None else {})},
     )
 
 
@@ -625,6 +659,28 @@ def rho_d_scaling_gate(
                             metrics=metrics)
 
 
+def n_rings_from_fits(fits) -> Optional[int]:
+    """Number of DISTINCT rings a fitted dataset rests on, or None.
+
+    Feeds :func:`strain_cap_check` so the headline strain number carries the
+    same caution the coverage gates already have. Deliberately a named
+    function rather than three lines inside ``run_all_gates``: the first
+    version was inline, used a bare ``np.unique`` — numpy is imported
+    per-function in this module, not at module scope — and the resulting
+    ``NameError`` was swallowed by a blanket ``except``, so the count silently
+    stayed None and the gate went on reporting "ok". Pulled out so it can be
+    tested on its own.
+    """
+    import numpy as _np
+
+    ring_idx = getattr(fits, "ring_idx", None) if fits is not None else None
+    if ring_idx is None:
+        return None
+    arr = (ring_idx.detach().cpu().numpy()
+           if hasattr(ring_idx, "detach") else _np.asarray(ring_idx))
+    return int(_np.unique(arr).size)
+
+
 def run_all_gates(
     *,
     v1_init,
@@ -641,9 +697,13 @@ def run_all_gates(
     need fitted points are skipped if ``fits`` is None.
     """
     out: List[DiagnosticResult] = []
+    # Ring count feeds the strain gate so the headline number carries the same
+    # caution the coverage gates already have.
+    n_rings_used = n_rings_from_fits(fits)
     out.append(strain_cap_check(history,
                                   threshold_uE=strain_threshold_uE,
-                                  warn_uE=strain_warn_uE))
+                                  warn_uE=strain_warn_uE,
+                                  n_rings=n_rings_used))
     out.append(basin_check(v1_init, unpacked))
     if fits is not None:
         out.append(cross_validation_gate(fits, unpacked,
@@ -664,8 +724,22 @@ def summarise(diagnostics: List[DiagnosticResult]) -> str:
 
 
 def worst_severity(diagnostics: List[DiagnosticResult]) -> str:
-    """Return ``"fail"`` if any gate failed, else ``"warn"`` if any
-    warned, else ``"ok"``."""
+    """Return ``"fail"`` if any gate failed, else ``"warn"`` if any warned,
+    else ``"ok"`` — and ``"unknown"`` when NO gate ran.
+
+    The empty case used to return ``"ok"`` (``max(..., default=0)``), so a run
+    whose diagnostics failed to compute reported the same clean bill of health
+    as one that passed every gate. ``auto.py`` builds its gate list inside a
+    ``try/except`` that only prints under ``verbose``, so an exception there
+    left an empty list and a green "ok" with nothing on stdout — a gate that
+    could not fail, the same shape as the ``basin_check`` defect.
+
+    ``"unknown"`` sorts as neither pass nor fail; callers that test
+    ``!= "fail"`` still behave as before for a genuinely empty list, but the
+    string now says what happened.
+    """
+    if not diagnostics:
+        return "unknown"
     sev_rank = {"ok": 0, "warn": 1, "fail": 2}
     rank_sev = {0: "ok", 1: "warn", 2: "fail"}
     worst = max((sev_rank.get(d.severity, 0) for d in diagnostics), default=0)

@@ -566,12 +566,35 @@ def make_seed(img: np.ndarray, *,
         thr_pct = thr_sigma
     base_min_arc = (min_arc_pixels if min_arc_pixels is not None
                     else max(30, int(min_arc_fraction * min(img.shape))))
+    #   * the rings genuinely cover MORE of the frame than the cap allows, so
+    #     the percentile arm itself thresholds inside the peaks. Measured on a
+    #     512x512 CeO2 frame at 400 mm (10 rings, sigma 1.6 px): ring pixels are
+    #     29.3 % of the frame, so the 1 % cap puts the threshold at 3979 counts
+    #     against a 4196-count maximum. Only the peak tops survive and they
+    #     skeletonize into 1778 fragments of <= 11 px against a 51 px cut.
+    #     Relaxing the ARC LENGTH cannot repair this — the shape of the bright
+    #     set is already destroyed — which is why the ladder needs rungs that
+    #     relax the THRESHOLD too. At a 5 % cap the same frame yields 21 clean
+    #     arcs. The bright fraction scales with (ring width x circumference) /
+    #     area, so it rises as the detector gets smaller: a 1 % cap is a
+    #     large-detector assumption, not a universal one.
+    def _pct_thr(cap: float) -> float:
+        return float(np.percentile(diff, 100.0 * (1.0 - cap)))
+
     ladder = [
         (max(thr_sigma, thr_pct), base_min_arc, "strict"),
         (thr_pct, base_min_arc, "percentile threshold (sigma arm dropped)"),
         (thr_pct, max(30, base_min_arc // 2), "percentile threshold, half arc length"),
         (thr_pct, max(30, base_min_arc // 4), "percentile threshold, quarter arc length"),
     ]
+    # Wider-cap rungs, appended so they are reached ONLY after every rung above
+    # has failed. Nothing that seeds today can change behaviour.
+    for _cap in (0.05, 0.15):
+        if _cap > bright_fraction_cap:
+            ladder.append((_pct_thr(_cap), base_min_arc,
+                           f"{_cap:.0%} bright-fraction cap "
+                           f"(rings cover more of the frame than "
+                           f"{bright_fraction_cap:.0%})"))
 
     arcs, rung_used, rung_note = [], 0, "strict"
     for rung, (thr, min_arc_px, note) in enumerate(ladder):

@@ -62,6 +62,7 @@ def autocalibrate(
     image: np.ndarray,
     *,
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     spec: Optional[CalibrationSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
     n_iter: int = 5,
@@ -128,7 +129,7 @@ def autocalibrate(
 
     for it in range(n_iter):
         # E-step (v1, proven).  Uses current v1_params geometry.
-        fits = run_estep_v1(v1_params, image, dark=dark, spec=spec,
+        fits = run_estep_v1(v1_params, image, dark=dark, mask=mask, spec=spec,
                              dtype=dtype, device=device,
                              verbose=verbose and it == 0)
         # Multi-panel detectors: tag each fitted point with its panel so the
@@ -166,6 +167,35 @@ def autocalibrate(
                 except Exception:
                     setattr(v1_params, name, scalar)
 
+        # ...and into the SPEC, so the next M-step warm-starts from this
+        # iterate instead of restarting from the original seed.
+        #
+        # ``spec`` is built once before this loop; only ``v1_params`` was being
+        # updated, so the E-step improved each iteration while every LM call
+        # began again at the seed. MEASURED on a synthetic CeO2 round trip,
+        # truth Lsd = 800 000, seed 801 600 -- the LM's starting point across
+        # three iterations was 801600, 801600, 801600 while its answers were
+        # 800934.8, 800369.7, 799945.6. The refinement was being thrown away
+        # and re-derived from scratch every time.
+        #
+        # Bounds move with the value: they were built as init +- tol, so
+        # leaving them anchored to the original seed would let the trust
+        # region drift off-centre as the fit walks.
+        for name, val in unpacked.items():
+            if val.numel() != 1:
+                continue
+            try:
+                prm = spec.get(name)
+            except Exception:
+                continue
+            if prm is None or not prm.refined:
+                continue
+            new_init = float(val.detach().reshape(-1)[0])
+            if prm.bounds is not None and isinstance(prm.init, (int, float)):
+                half = 0.5 * (float(prm.bounds[1]) - float(prm.bounds[0]))
+                prm.bounds = (new_init - half, new_init + half)
+            prm.init = new_init
+
         # Strain at the converged unpacked dict, plus robust summaries
         # (median + 5%-trimmed mean) for ACZ-comparable reporting.
         #
@@ -181,7 +211,7 @@ def autocalibrate(
         # the iterate SELECTION is honest too.
         fits_scored = fits
         if honest_strain:
-            fits_scored = run_estep_v1(v1_params, image, dark=dark, spec=spec,
+            fits_scored = run_estep_v1(v1_params, image, dark=dark, mask=mask, spec=spec,
                                         dtype=dtype, device=device)
             if panel_layout is not None and fits_scored.panel_idx is None:
                 from ..forward.panels import panel_idx_for_points
@@ -335,7 +365,7 @@ def autocalibrate(
                             print(f"[v2] saved residual map -> {residual_corr_path}",
                                   flush=True)
                     # Honest post-residual strain at MAP.
-                    fits_post = run_estep_v1(v1_params, image, dark=dark,
+                    fits_post = run_estep_v1(v1_params, image, dark=dark, mask=mask,
                                               spec=spec,
                                               dtype=dtype, device=device)
                     if panel_layout is not None and fits_post.panel_idx is None:

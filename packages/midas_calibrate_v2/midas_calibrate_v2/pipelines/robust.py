@@ -127,6 +127,7 @@ def autocalibrate_robust(
     image: np.ndarray,
     *,
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     spec: Optional[CalibrationSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
     auto_seed: bool = False,                # opt-in: arc detection is slow

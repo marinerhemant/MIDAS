@@ -175,6 +175,7 @@ def autocalibrate_pv(
     image: np.ndarray,
     *,
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     spec: Optional[CalibrationSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
     n_iter: int = 5,
@@ -277,7 +278,7 @@ def autocalibrate_pv(
                 img_used = image - dark
             else:
                 img_used = image
-            cake = integrate_cake(v1_params, img_used, rt)
+            cake = integrate_cake(v1_params, img_used, rt, mask=mask)
 
             cake_t = torch.as_tensor(cake.intensity, dtype=dtype, device=device)
             R_centers = torch.as_tensor(cake.R_centers, dtype=dtype, device=device)

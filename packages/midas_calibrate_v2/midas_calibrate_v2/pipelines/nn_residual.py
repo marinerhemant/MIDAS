@@ -67,6 +67,7 @@ def autocalibrate_nn(
     image: np.ndarray,
     *,
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     spec: Optional[CalibrationSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
     nn_config: Optional[NNResidualConfig] = None,
@@ -97,7 +98,7 @@ def autocalibrate_nn(
     if verbose:
         print("[nn] seeding geometry via alternating engine...")
     seed_result = autocalibrate_single(
-        v1_params, image, dark=dark, spec=spec, panel_layout=panel_layout,
+        v1_params, image, dark=dark, mask=mask, spec=spec, panel_layout=panel_layout,
         n_iter=n_iter_seed, dtype=dtype, device=device, verbose=verbose,
     )
     fits = seed_result.fits_final

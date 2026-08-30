@@ -65,9 +65,15 @@ def autocalibrate(
     params: CalibrationParams,
     image: np.ndarray,
     *, dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     verbose: bool = True,
 ) -> CalibrationResult:
     """Full alternating E↔M calibration.
+
+    ``mask`` is an optional bad-pixel mask, same shape and orientation as
+    ``image`` (apply the same ImTransOpt to both). **Nonzero means BAD.**
+    Masked pixels are removed from both the numerator and the denominator of
+    every cake cell; see :func:`midas_calibrate.estep.integrate_cake`.
 
     Returns a CalibrationResult with refined parameters and per-iteration history.
     """
@@ -82,7 +88,7 @@ def autocalibrate(
         rt = build_ring_table(params)
 
         # E-step: integrate image, extract fitted (Y_pix, Z_pix) per ring × η.
-        cake, fits = run_estep(params, image, rt, dark=dark)
+        cake, fits = run_estep(params, image, rt, dark=dark, mask=mask)
 
         # Optional sigma-clip rejection: must have a previous iteration's fit
         # for the strain estimate.

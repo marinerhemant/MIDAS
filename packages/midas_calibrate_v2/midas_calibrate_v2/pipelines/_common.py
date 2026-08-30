@@ -269,13 +269,19 @@ def run_estep_v1(
     image: np.ndarray,
     *,
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     spec: Optional[CalibrationSpec] = None,
     dtype=torch.float64, device="cpu",
     verbose: bool = False,
 ) -> FittedDataset:
-    """Run v1's proven E-step and return a v2-friendly FittedDataset."""
+    """Run v1's proven E-step and return a v2-friendly FittedDataset.
+
+    ``mask`` is an optional bad-pixel mask already in the image's orientation;
+    nonzero means BAD. Masked pixels leave both the numerator and the
+    denominator of every cake cell.
+    """
     rt = ring_table_for(v1_params, spec=spec, verbose=verbose)
-    cake, fits = run_estep(v1_params, image, rt, dark=dark)
+    cake, fits = run_estep(v1_params, image, rt, dark=dark, mask=mask)
     if not fits:
         raise RuntimeError("E-step produced no fitted points")
 

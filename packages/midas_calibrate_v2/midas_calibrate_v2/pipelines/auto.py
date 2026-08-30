@@ -21,6 +21,7 @@ Typical usage::
 """
 from __future__ import annotations
 
+import copy
 import math
 import warnings
 from dataclasses import dataclass, field
@@ -123,6 +124,19 @@ class AutoCalibrationResult:
     # Quality + provenance
     post_residual_strain_uE: Optional[float] = None
     in_loop_strain_uE: Optional[float] = None
+    #: Robust summaries of the SAME residuals as ``post_residual_strain_uE``.
+    #:
+    #: ``post_residual_strain_uE`` is the plain mean over EVERY fitted point.
+    #: The v1 C tool (AutoCalibrateZarr / ``Mean_Difference_Refined``) rejects
+    #: outlier fits before reporting, so its published number is a TRIMMED
+    #: mean and is not comparable with the plain one — on the shipped 48-panel
+    #: Pilatus the C reference reports 18.27 µε where this pipeline reports
+    #: 40.76 µε for a geometry that agrees with it to 2.7 ppm in Lsd and
+    #: 0.07 px in BC.
+    #:
+    #: ``IterRecord`` has always computed these; they simply were not surfaced.
+    post_residual_strain_median_uE: Optional[float] = None
+    post_residual_strain_trim_uE: Optional[float] = None
     # Per-parameter 1σ from the Gauss-Newton covariance at MAP, keyed by v2
     # parameter name.  Empty when the Jacobian is singular.  A refined
     # parameter whose |value| is well under its σ is not measured by the data,
@@ -132,6 +146,27 @@ class AutoCalibrationResult:
     # sitting on a bound.  These are the ones to freeze and re-run.
     unconstrained: List[str] = field(default_factory=list)
     at_bounds: List[str] = field(default_factory=list)
+    #: Per-ELEMENT 1σ for vector-valued refined parameters (``panel_delta_yz``
+    #: is 48×2, ``panel_delta_lsd`` is 48, …), keyed by parameter name.
+    #:
+    #: ``sigma`` above holds scalars only, so before 2026-08-29 a run that
+    #: refined nothing but vectors — the panel stage freezes every global —
+    #: returned an EMPTY ``sigma`` and a trivially empty ``unconstrained``,
+    #: which is indistinguishable from "everything is well determined". The
+    #: Laplace always computed these numbers; they were simply not recorded.
+    sigma_vector: Dict[str, "np.ndarray"] = field(default_factory=dict)
+    #: Refined parameters (or vector ELEMENTS, named ``p[i]``) for which the
+    #: Laplace produced NO information: σ is 0 or non-finite.
+    #:
+    #: **σ = 0 does not mean infinite precision — it means the opposite.**
+    #: ``sigma_per_dim = sqrt(diag(cov).clamp(min=0))``, so a zero is a
+    #: NON-POSITIVE variance clamped away: the Hessian is indefinite in that
+    #: direction. A zero can also come from the bounded reparameterisation's
+    #: Jacobian ``span·s·(1−s)`` vanishing when a parameter is railed at a
+    #: bound. Either way the value is not measured, and the ``|value| < σ``
+    #: test that populates ``unconstrained`` cannot fire for it — which is why
+    #: these need their own list rather than being folded in.
+    undetermined: List[str] = field(default_factory=list)
     # Calibrant name(s) actually used.
     calibrants: List[str] = field(default_factory=list)
     # Diagnostic gate results (azimuth coverage, RhoD scaling, ...).
@@ -228,6 +263,7 @@ def calibrate(
     pxY: float,
     pxZ: Optional[float] = None,
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     im_trans: tuple = (),
     calibrant: Union[str, Dict, Sequence[Union[str, Dict]]] = "CeO2",
     min_ring_separation_px: float = 0.0,
@@ -253,6 +289,13 @@ def calibrate(
     panel_tol_shift_px: float = 3.0,
     panel_tol_rot_deg: float = 1.0,
     panel_tol_radius_px: float = 2.0,
+    eta_bin_size: Optional[float] = None,
+    r_bin_size: Optional[float] = None,
+    peak_width_um: Optional[float] = None,
+    weight_by_radius: Optional[bool] = None,
+    doublet_separation_px: Optional[float] = None,
+    outlier_factor: Optional[float] = None,
+    remove_outliers_between_iters: Optional[bool] = None,
     refine_panel_lsd: bool = False,
     refine_panel_p2: bool = False,
     device: str = "cpu",
@@ -267,6 +310,27 @@ def calibrate(
       passed it will be subtracted here).  MIDAS convention:
       ``image.shape = (NrPixelsZ, NrPixelsY)``.
     * ``wavelength`` — X-ray wavelength in Å.
+    * ``mask`` — optional bad-pixel mask in the RAW orientation, same shape as
+      ``image``; ``im_trans`` is applied to it here so pass it exactly as read
+      from disk. **Nonzero means BAD** (matching ``build_map`` and the shipped
+      ``mask_upd.tif``, whose nonzero pixels coincide exactly with the dead
+      pixels of the Pilatus frame — note the example ``parameters.txt`` comment
+      "0 = masked" is wrong; that would mask 92 % of the detector). Masked
+      pixels are removed from BOTH the numerator and the denominator of every
+      cake cell. **New 2026-08-29** — before that there was no way to pass a
+      mask into the calibration at all, so bad pixels entered the cake as
+      genuine zeros and diluted every cell they touched.
+    * ``eta_bin_size`` / ``r_bin_size`` / ``peak_width_um`` — cake binning for
+      the E-step, in degrees / pixels / µm. ``None`` keeps
+      ``CalibrationParams``' defaults (5.0 / 0.25 / 800.0). **New 2026-08-29**:
+      these existed on the params object but were unreachable from here, and
+      the shipped reference ``parameters.txt`` uses ``EtaBinSize 1`` — five
+      times finer than the default this entry point forced.
+    * ``weight_by_radius`` — weight fitted points by R/Rmax, emphasising the
+      outer rings that carry the tilt and distortion leverage. The reference
+      sets it; the default is off.
+    * ``doublet_separation_px``, ``outlier_factor``,
+      ``remove_outliers_between_iters`` — likewise previously unreachable.
     * ``pxY`` — pixel pitch in µm (square pixels assumed unless ``pxZ`` is
       also given).
     * ``dark`` — optional dark-frame array; subtracted from ``image``.
@@ -365,6 +429,15 @@ def calibrate(
         image = _imtrans(image)
         if dark is not None:
             dark = _imtrans(dark)
+        # The MASK must ride along. A mask left in the raw orientation while
+        # the image is flipped masks the wrong pixels — silently, and worse
+        # than no mask at all.
+        if mask is not None:
+            mask = _imtrans(mask)
+    if mask is not None and mask.shape != image.shape:
+        raise ValueError(
+            f"mask shape {tuple(np.shape(mask))} != image shape "
+            f"{tuple(image.shape)} (after im_trans={im_trans})")
     NZ, NY = image.shape
     if pxZ is None:
         pxZ = pxY
@@ -558,6 +631,38 @@ def calibrate(
     v1.MinRingSNR = float(min_ring_snr)
     v1.BlendExcludeCrossPhaseOnly = bool(blend_exclude_cross_phase_only)
 
+    # E-step / objective knobs that CalibrationParams has always carried but
+    # calibrate() could not reach. Left as None = keep the dataclass default,
+    # so nothing changes for existing callers.
+    #
+    # These matter: the shipped reference `parameters.txt` sets EtaBinSize 1
+    # against a default of 5 (five times coarser azimuthal binning) and
+    # WeightByRadius 1 against a default of False, and neither could be
+    # requested through this entry point.
+    for _attr, _val in (("EtaBinSize", eta_bin_size),
+                        ("RBinSize", r_bin_size),
+                        ("Width", peak_width_um),
+                        ("DoubletSeparation", doublet_separation_px),
+                        ("OutlierFactor", outlier_factor)):
+        if _val is not None:
+            setattr(v1, _attr, float(_val))
+    if weight_by_radius is not None:
+        # CalibrationParams.WeightByRadius (params.py:119) is DECLARED AND READ
+        # NOWHERE in the Python implementation — grepped 2026-08-29, the only
+        # other hits are v1-C output files. Setting it changes nothing, and
+        # measured: it gave a bit-identical 40.76 µε on the real Pilatus.
+        # Carry the value so the params object stays faithful, but say so.
+        v1.WeightByRadius = bool(weight_by_radius)
+        if weight_by_radius:
+            warnings.warn(
+                "calibrate(): weight_by_radius has NO effect — "
+                "CalibrationParams.WeightByRadius is not consumed anywhere in "
+                "the Python calibration (it is a v1-C parameter-file key). The "
+                "value is stored on the params object but no code reads it.",
+                UserWarning, stacklevel=2)
+    if remove_outliers_between_iters is not None:
+        v1.RemoveOutliersBetweenIters = bool(remove_outliers_between_iters)
+
     bin_path = None
     if output_dir is not None:
         out = Path(output_dir); out.mkdir(parents=True, exist_ok=True)
@@ -570,8 +675,14 @@ def calibrate(
     # detector this stalls in the few-hundred-µε range, but it locks the
     # global geometry and distortion that the panel phase builds on.  Defer
     # the residual map to the panel phase when one follows.
+    # Snapshot the SEED geometry. ``autocalibrate`` refines ``v1`` in place, so
+    # passing ``v1`` itself to ``basin_check`` later compares the final geometry
+    # with itself: the drift is identically zero and the gate can only ever
+    # report a pass. It has to hold the pre-refinement values to mean anything.
+    v1_seed = copy.deepcopy(v1)
+
     cr = autocalibrate(
-        v1, image, dark=dark,
+        v1, image, dark=dark, mask=mask,
         n_iter=n_iter, lm_max_iter=lm_max_iter,
         dtype=dtype, device=device, verbose=verbose,
         build_residual_corr=build_residual_corr and panel_layout is None,
@@ -597,6 +708,18 @@ def calibrate(
                 prm.init = float(cr.unpacked[name].detach().reshape(-1)[0])
             prm.refined = False
         if panel_mode == "radius":
+            # `refine_panel_lsd` / `refine_panel_p2` are only wired into the
+            # "shift" branch below. Silently ignoring them here is exactly the
+            # class of no-op flag this codebase has been bitten by, so say so.
+            if refine_panel_lsd or refine_panel_p2:
+                warnings.warn(
+                    "calibrate(): refine_panel_lsd / refine_panel_p2 have NO "
+                    "effect with panel_mode='radius' — they are only used by "
+                    "panel_mode='shift'. The per-(panel, ring) radial offset "
+                    "that 'radius' fits already subsumes a per-panel Lsd, but "
+                    "if you want the reference's PerPanelLsd / "
+                    "PerPanelDistortion behaviour, pass panel_mode='shift'.",
+                    UserWarning, stacklevel=2)
             # Per-(panel, ring) radial offset — nulls the radial calibrant
             # residual cell-by-cell.  The full ring table runs to high Q (200+
             # families); only the inner rings land on the detector, so probe
@@ -629,7 +752,7 @@ def calibrate(
         else:
             raise ValueError(f"panel_mode must be 'radius' or 'shift'; got {panel_mode!r}")
         cr = autocalibrate(
-            v1, image, dark=dark,
+            v1, image, dark=dark, mask=mask,
             spec=spec2, panel_layout=panel_layout,
             n_iter=n_iter, lm_max_iter=lm_max_iter,
             dtype=dtype, device=device, verbose=verbose,
@@ -648,7 +771,9 @@ def calibrate(
     # MAP and flag every refined parameter that is consistent with zero or is
     # sitting on a bound, so the caller can freeze it and re-run.
     sigma: Dict[str, float] = {}
+    sigma_vector: Dict[str, np.ndarray] = {}
     unconstrained: List[str] = []
+    undetermined: List[str] = []
     at_bounds: List[str] = []
     diag_results: List = []
     try:
@@ -667,14 +792,59 @@ def calibrate(
                 s2 = float((r * r).sum().detach()) / dof
                 return 0.5 * (r * r).sum() / max(s2, 1e-30)
             lap = laplace_at_map(cr.spec, _nll, u)
+            sig_all = lap.sigma_per_dim.detach().cpu().numpy()
             off = 0
             for nm, sz in zip(lap.refined_names, lap.refined_sizes):
+                blk = sig_all[off:off + sz]
                 if sz == 1:
-                    sigma[nm] = float(lap.sigma_per_dim[off])
+                    sigma[nm] = float(blk[0])
+                else:
+                    # Vector-valued: record every element. These were dropped
+                    # entirely before 2026-08-29 even though the Laplace
+                    # computes them (240 dims on the 48-panel Pilatus).
+                    sigma_vector[nm] = np.asarray(blk, dtype=float).copy()
+                    val_v = np.asarray(
+                        torch.as_tensor(u[nm]).detach().cpu().reshape(-1),
+                        dtype=float)
+                    for k in range(sz):
+                        sg_k = float(blk[k])
+                        if not np.isfinite(sg_k) or sg_k <= 0.0:
+                            undetermined.append(f"{nm}[{k}]")
+                        elif k < val_v.size and abs(val_v[k]) < sg_k:
+                            unconstrained.append(f"{nm}[{k}]")
                 off += sz
+            # A gate that CAN fire: if most refined degrees of freedom are
+            # not measured by the data, the model is over-parameterised and
+            # the extra DOF are fitting noise. Measured on the real 48-panel
+            # Pilatus with per-panel shift+Lsd+p2: of 240 refined DOF, 69 were
+            # undetermined and 133 more consistent with zero — only 38 carried
+            # information, and nothing said so.
+            n_dof = sum(lap.refined_sizes) if lap.refined_names else 0
+            n_dead = len(undetermined) + len(unconstrained)
+            if n_dof >= 10 and n_dead > 0.5 * n_dof:
+                warnings.warn(
+                    f"calibrate(): {n_dead} of {n_dof} refined degrees of "
+                    f"freedom are not measured by the data "
+                    f"({len(undetermined)} undetermined, {len(unconstrained)} "
+                    f"consistent with zero). The model is over-parameterised "
+                    f"for this dataset — the surplus DOF are fitting noise. "
+                    f"See `undetermined` / `unconstrained` / `sigma_vector`.",
+                    UserWarning, stacklevel=2)
+            if not sigma and not sigma_vector and lap.refined_names:
+                warnings.warn(
+                    "calibrate(): the Laplace produced no per-parameter sigma "
+                    f"at all for ({', '.join(lap.refined_names)}). `sigma`, "
+                    "`sigma_vector`, `unconstrained` and `at_bounds` are empty "
+                    "because nothing was measured, not because everything is "
+                    "fine.", UserWarning, stacklevel=2)
             for nm, sg_ in sigma.items():
                 val = float(torch.as_tensor(u[nm]).reshape(-1)[0])
-                if sg_ > 0 and abs(val) < sg_:
+                if not np.isfinite(sg_) or sg_ <= 0.0:
+                    # Not "perfectly determined" — see `undetermined`. The
+                    # |value| < σ test below cannot fire for these, so without
+                    # this they escaped every check silently.
+                    undetermined.append(nm)
+                elif abs(val) < sg_:
                     unconstrained.append(nm)
                 bnds = cr.spec.parameters[nm].bounds
                 if bnds:
@@ -684,7 +854,7 @@ def calibrate(
                         at_bounds.append(nm)
             from .diagnostics import run_all_gates
             diag_results = run_all_gates(
-                v1_init=v1, unpacked=u, history=cr.history, fits=fd,
+                v1_init=v1_seed, unpacked=u, history=cr.history, fits=fd,
                 spec=cr.spec, panel_layout=panel_layout)
             from .diagnostics import seed_provenance_gate
             diag_results.insert(0, seed_provenance_gate(
@@ -692,6 +862,18 @@ def calibrate(
                 seed_BC_y=seed.bc_y, seed_BC_z=seed.bc_z,
                 NrPixelsY=NY, NrPixelsZ=NZ))
     except Exception as e:                    # diagnostics must never fail a run
+        # ...but it must not fail SILENTLY either. This used to report only
+        # under `verbose`, so with the default verbose=False a failure here
+        # returned a result whose `sigma`, `unconstrained`, `at_bounds` and
+        # `diagnostics` were all empty, with nothing printed — and an empty
+        # gate list used to read back as "ok" (see
+        # diagnostics.worst_severity). Warn unconditionally.
+        warnings.warn(
+            f"calibrate(): uncertainty/diagnostics could not be computed "
+            f"({type(e).__name__}: {e}). The returned result has NO sigma, NO "
+            f"unconstrained/at_bounds list and NO gate results — do not read "
+            f"their emptiness as a clean bill of health.",
+            UserWarning, stacklevel=2)
         if verbose:
             print(f"[calibrate]   (uncertainty/diagnostics skipped: {e})",
                   flush=True)
@@ -770,16 +952,25 @@ def calibrate(
         pxY=pxY, pxZ=pxZ, NrPixelsY=NY, NrPixelsZ=NZ,
         wavelength_A=wavelength,
         post_residual_strain_uE=cr.post_residual_strain_uE,
+        post_residual_strain_median_uE=(
+            cr.history[-1].median_strain_uE if cr.history else None),
+        post_residual_strain_trim_uE=(
+            cr.history[-1].trim_strain_uE if cr.history else None),
         in_loop_strain_uE=(min(h.mean_strain_uE for h in cr.history)
                             if cr.history else None),
         residual_corr_map=cr.residual_corr_map,
         residual_corr_bin_path=bin_path,
-        sigma=sigma, unconstrained=unconstrained, at_bounds=at_bounds,
+        sigma=sigma, sigma_vector=sigma_vector,
+        unconstrained=unconstrained, undetermined=undetermined,
+        at_bounds=at_bounds,
         calibrants=cal_names, diagnostics=diag_results,
         seed_seconds=seed_time, refine_seconds=refine_time,
         seed_BC_y=seed.bc_y, seed_BC_z=seed.bc_z, seed_Lsd=seed.Lsd,
         seed_method=seed_method, seed_note=seed_note,
         iter_history=[{"iter": h.iteration, "strain_uE": h.mean_strain_uE,
+                       "median_strain_uE": h.median_strain_uE,
+                       "trim_strain_uE": h.trim_strain_uE,
+                       "n_fitted": h.n_fitted,
                        "Lsd": h.Lsd, "BC_y": h.BC_y, "BC_z": h.BC_z,
                        "ty": h.ty, "tz": h.tz} for h in cr.history],
     )

@@ -62,6 +62,7 @@ def autocalibrate_bayesian(
     *,
     mode: str = "laplace",
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     spec: Optional[CalibrationSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
     laplace_ridge: float = 1e-9,
@@ -84,7 +85,7 @@ def autocalibrate_bayesian(
     # Step 1: MAP via the alternating engine — gets us close to the posterior
     # mode quickly.
     map_result = autocalibrate_single(
-        v1_params, image, dark=dark, spec=spec, panel_layout=panel_layout,
+        v1_params, image, dark=dark, mask=mask, spec=spec, panel_layout=panel_layout,
         n_iter=n_iter_map, dtype=dtype, device=device, verbose=verbose,
     )
     map_unpacked = map_result.unpacked

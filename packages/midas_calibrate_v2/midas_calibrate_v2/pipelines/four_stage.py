@@ -132,14 +132,37 @@ def _restore_bounds(spec: CalibrationSpec, saved: dict) -> None:
                 p.transform = Identity()
 
 
-def _thaw_distortion(spec: CalibrationSpec, *, include_panels: bool = True) -> None:
-    """Stage 2: thaw the harmonics; optionally also panels."""
+def _thaw_distortion(spec: CalibrationSpec, *, include_panels: bool = True,
+                      include_panel_lsd: bool = False,
+                      include_panel_p2: bool = False) -> None:
+    """Stage 2: thaw the harmonics; optionally also panels.
+
+    ``include_panel_lsd`` / ``include_panel_p2`` extend that to the per-panel
+    distance and p2 terms.
+
+    **Leave them OFF here.** They help in the ``single`` path (62.16 -> 48.58
+    -> 41.81 uE on the real 48-panel Pilatus) because that path FREEZES the
+    global geometry for a separate locked panel stage. Stage 2 here refines
+    panels JOINTLY with the globals and the distortion, and giving that joint
+    fit more panel freedom lets the geometry run away — measured on the same
+    frame: stage 2 84.24 -> 106.83 uE, ty -0.1532 (0.371 deg from the
+    reference, against 0.124 without them) and Lsd 139 um out.
+
+    That is precisely the divergence ``pipelines/auto.py`` documents: "the
+    E-step (peak extraction) has no panel awareness, so the 5N panel DOF fight
+    the global tilts every iteration".
+    """
     from ..forward.distortion import P_COEF_NAMES
     for n in P_COEF_NAMES:
         if n in spec.parameters:
             spec.parameters[n].refined = True
+    extra = []
+    if include_panel_lsd:
+        extra.append("panel_delta_lsd")
+    if include_panel_p2:
+        extra.append("panel_delta_p2")
     if include_panels:
-        for n in ("panel_delta_yz", "panel_delta_theta"):
+        for n in ("panel_delta_yz", "panel_delta_theta", *extra):
             if n in spec.parameters:
                 spec.parameters[n].refined = True
 
@@ -244,8 +267,11 @@ def autocalibrate_four_stage(
     image: np.ndarray,
     *,
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     spec: Optional[CalibrationSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
+    refine_panel_lsd: bool = False,
+    refine_panel_p2: bool = False,
     n_iter_stage1: int = 2,
     n_iter_stage2: int = 3,
     stage1_tilt_tol_deg: float = 0.5,
@@ -269,6 +295,24 @@ def autocalibrate_four_stage(
     if common_kwargs is None:
         common_kwargs = {}
 
+    # Stage 2's docstring promises "release distortion harmonics + per-panel
+    # corrections", and `_thaw_distortion(include_panels=True)` thaws
+    # `panel_delta_yz` / `panel_delta_theta` — but `spec_from_v1_params` never
+    # CREATES those (auto.py calls `add_panel_parameters` explicitly for that).
+    # So passing `panel_layout` used to refine exactly zero panel parameters:
+    # measured on the real 48-panel Pilatus, stage 2 refined only the 20
+    # global + distortion parameters and the spec held no `panel_*` at all.
+    # That is why "four-stage + panels" was no better than without it (99.20 vs
+    # 64.28 µε) and why both lose to the panel-aware `single` path (41.81 µε):
+    # a smooth thin-plate spline cannot represent 48 discrete panel offsets.
+    # Add them here so the promise and the behaviour agree.  Added 2026-08-29.
+    if panel_layout is not None and not any(
+            n.startswith("panel_") for n in spec.parameters):
+        from ..compat.from_v1 import add_panel_parameters
+        add_panel_parameters(spec, panel_layout.n_panels(),
+                             enable_lsd=refine_panel_lsd,
+                             enable_p2=refine_panel_p2)
+
     # ------------------------------ Stage 1
     if verbose:
         print("\n========== Stage 1: geometry only (distortion / panels frozen) ==========",
@@ -278,7 +322,7 @@ def autocalibrate_four_stage(
         stage1_lsd_tol_um=stage1_lsd_tol_um,
     )
     s1 = autocalibrate_pv(
-        v1_params, image, dark=dark, spec=spec, panel_layout=panel_layout,
+        v1_params, image, dark=dark, mask=mask, spec=spec, panel_layout=panel_layout,
         n_iter=n_iter_stage1, dtype=dtype, device=device, verbose=verbose,
         **common_kwargs,
     )
@@ -297,9 +341,11 @@ def autocalibrate_four_stage(
         print("\n========== Stage 2: full distortion + panels ==========", flush=True)
     spec = s1.spec     # carry MAP forward
     _restore_bounds(spec, s1_overrides)
-    _thaw_distortion(spec, include_panels=(panel_layout is not None))
+    _thaw_distortion(spec, include_panels=(panel_layout is not None),
+                     include_panel_lsd=refine_panel_lsd,
+                     include_panel_p2=refine_panel_p2)
     s2 = autocalibrate_pv(
-        v1_params, image, dark=dark, spec=spec, panel_layout=panel_layout,
+        v1_params, image, dark=dark, mask=mask, spec=spec, panel_layout=panel_layout,
         n_iter=n_iter_stage2, dtype=dtype, device=device, verbose=verbose,
         **common_kwargs,
     )

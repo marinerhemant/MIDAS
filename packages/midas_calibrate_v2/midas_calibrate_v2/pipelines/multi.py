@@ -150,6 +150,7 @@ def autocalibrate_multi(
     v1_per_image: List[V1Params],
     images: List[np.ndarray],
     darks: Optional[List[Optional[np.ndarray]]] = None,
+    masks: Optional[List[Optional[np.ndarray]]] = None,
     *,
     multi_spec: Optional[MultiImageSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
@@ -217,6 +218,11 @@ def autocalibrate_multi(
         raise ValueError("len(images) must match len(v1_per_image)")
     if darks is None:
         darks = [None] * n_imgs
+    if masks is None:
+        masks = [None] * n_imgs
+    if len(masks) != n_imgs:
+        raise ValueError(
+            f"masks has {len(masks)} entries for {n_imgs} images")
 
     # ---- Known-distance-travel mode.  Delta_i are constants, not parameters:
     # they are re-centred to a zero-mean so the shared "Lsd" is L0 at the
@@ -274,8 +280,8 @@ def autocalibrate_multi(
     for it in range(n_iter):
         # E-step per image at current geometry.
         fits_per_image: List[FittedDataset] = []
-        for i_img, (v1, img, drk) in enumerate(zip(v1_per_image, images, darks)):
-            fd = run_estep_v1(v1, img, dark=drk, dtype=dtype, device=device)
+        for i_img, (v1, img, drk, msk) in enumerate(zip(v1_per_image, images, darks, masks)):
+            fd = run_estep_v1(v1, img, dark=drk, mask=msk, dtype=dtype, device=device)
             if fd.ring_d_spacing_A is None and fd.rt is not None:
                 # Refining Wavelength needs the autograd chain to run through
                 # lambda, which pseudo_strain_residual only does when per-point
@@ -401,9 +407,9 @@ def autocalibrate_multi(
             # positions and post-LM forward prediction — not fit quality.
             # v1_per_image has already been pushed to x_final above.
             with torch.no_grad():
-                fits_at_map = [run_estep_v1(v1, img, dark=drk,
+                fits_at_map = [run_estep_v1(v1, img, dark=drk, mask=msk,
                                              dtype=dtype, device=device)
-                                for v1, img, drk in zip(v1_per_image, images, darks)]
+                                for v1, img, drk, msk in zip(v1_per_image, images, darks, masks)]
                 r_pieces_map = []
                 for fits, per_d in zip(fits_at_map, per_dicts_final):
                     merged = {**shared_dict_final, **per_d}
@@ -489,9 +495,9 @@ def autocalibrate_multi(
             # Honest post-residual strain: rebuild E-step at MAP, evaluate
             # with the new map applied.
             with torch.no_grad():
-                fits_post = [run_estep_v1(v1, img, dark=drk,
+                fits_post = [run_estep_v1(v1, img, dark=drk, mask=msk,
                                            dtype=dtype, device=device)
-                              for v1, img, drk in zip(v1_per_image, images, darks)]
+                              for v1, img, drk, msk in zip(v1_per_image, images, darks, masks)]
                 for fits, per_d in zip(fits_post, per_dicts_final):
                     merged = {**shared_dict_final, **per_d,
                               "residual_corr_map": residual_map}

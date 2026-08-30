@@ -83,6 +83,7 @@ def sigma_cc_at_multi_map(
     v1_per_image: List[V1Params],
     images: List[np.ndarray],
     darks: Optional[List[Optional[np.ndarray]]] = None,
+    masks: Optional[List[Optional[np.ndarray]]] = None,
     *,
     panel_layout: Optional[PanelLayout] = None,
     method: str = "fisher",
@@ -102,10 +103,12 @@ def sigma_cc_at_multi_map(
         raise ValueError(f"method must be 'fisher' or 'hessian'; got {method!r}")
     if darks is None:
         darks = [None] * len(v1_per_image)
+    if masks is None:
+        masks = [None] * len(v1_per_image)
 
     fits_per_image = [
-        run_estep_v1(v1, img, dark=drk, dtype=dtype, device=device)
-        for v1, img, drk in zip(v1_per_image, images, darks)
+        run_estep_v1(v1, img, dark=drk, mask=msk, dtype=dtype, device=device)
+        for v1, img, drk, msk in zip(v1_per_image, images, darks, masks)
     ]
 
     x_full, info = pack_multi(multi_spec, dtype=dtype, device=device)
@@ -191,6 +194,7 @@ def autocalibrate_multi_bayesian(
     v1_per_image: List[V1Params],
     images: List[np.ndarray],
     darks: Optional[List[Optional[np.ndarray]]] = None,
+    masks: Optional[List[Optional[np.ndarray]]] = None,
     *,
     multi_spec: Optional[MultiImageSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
@@ -209,6 +213,7 @@ def autocalibrate_multi_bayesian(
     # Step 1: MAP via the existing LM driver.
     map_result = autocalibrate_multi(
         v1_per_image=v1_per_image,
+        masks=masks,
         images=images, darks=darks,
         multi_spec=multi_spec, panel_layout=panel_layout,
         n_iter=n_iter_map, lm_max_iter=lm_max_iter,

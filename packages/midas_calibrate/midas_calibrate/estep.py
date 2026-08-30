@@ -152,6 +152,20 @@ class CakeProfile:
     R_centers: np.ndarray
     eta_centers: np.ndarray
     intensity: np.ndarray  # [n_R, n_eta]
+    #: Per-cell detector coverage — the summed pixel weight binned into each
+    #: (R, η) cell, i.e. what you get by integrating an image of ones through
+    #: the same map. Zero means NO detector pixel reaches that cell: it is off
+    #: the edge, in a module gap, or masked.
+    #:
+    #: This exists so ``extract_fitted_points`` can tell an uncovered cell from
+    #: a covered one that happens to read zero. Distinguishing those matters:
+    #: a radial window containing uncovered cells yields a truncated peak and a
+    #: biased centroid, and that bias is what dragged the geometry.
+    #:
+    #: ``None`` for callers that build a CakeProfile by hand; the consumer then
+    #: falls back to treating an exactly-zero intensity as uncovered, which is
+    #: right for real data but cannot tell the two cases apart.
+    coverage: Optional[np.ndarray] = None  # [n_R, n_eta]
 
 
 def integrate_cake(
@@ -160,6 +174,7 @@ def integrate_cake(
     rt: RingTable,
     *, dark: Optional[np.ndarray] = None,
     cake_mode: str = "auto",
+    mask: Optional[np.ndarray] = None,
 ) -> CakeProfile:
     """Build CSR + integrate the image into a uniform (R, η) cake.
 
@@ -167,9 +182,50 @@ def integrate_cake(
     bilinear sub-pixel binning but falls back to floor binning when available
     RAM can't safely cover the bilinear CSR build (large detectors on
     memory-limited machines); ``"bilinear"`` / ``"floor"`` force the choice.
+
+    Parameters
+    ----------
+    mask :
+        Optional bad-pixel mask, same shape and ORIENTATION as ``image``
+        (apply the same ``ImTransOpt`` to both — this function does not
+        transform it for you). **Nonzero means BAD**, matching
+        ``midas_integrate.detector_mapper.build_map`` (``mask == 1.0`` is
+        masked) and the shipped ``mask_upd.tif``, whose nonzero pixels
+        coincide exactly with the dead pixels of the Pilatus frame.
+        (Note the comment in the example ``parameters.txt`` says "0 = masked";
+        that is wrong — it would mask 92 % of the detector.)
+
+        Added 2026-08-29. There was previously **no way to pass a mask into
+        the calibration at all**: ``CalibrationParams`` has no mask field and
+        neither this function nor :func:`run_estep` nor
+        ``midas_calibrate_v2.calibrate`` accepted one, even though
+        ``IntegrationParams`` carries ``MaskFile`` and ``build_map`` honours a
+        mask. Bad pixels therefore entered the cake as genuine zeros and
+        diluted every cell they touched, dragging the intensity-weighted
+        radial centroid off the ring.
+
+        Masked pixels are removed from the numerator AND the denominator.
+        Zeroing them alone would not help — that is exactly the state the code
+        was already in.
     """
     if dark is not None:
         image = image - dark
+    if mask is not None:
+        mask = np.asarray(mask)
+        if mask.shape != image.shape:
+            raise ValueError(
+                f"mask shape {mask.shape} != image shape {image.shape}; the "
+                f"mask must already carry the same ImTransOpt as the image")
+        bad = np.asarray(mask != 0, dtype=bool)
+        if not bad.any():
+            # An all-good mask must be an EXACT no-op. The masked path
+            # normalises by ``CSR @ good`` while the unmasked one uses the
+            # map's own ``area_per_bin``; those agree only to ~5e-8 relative,
+            # so without this the 9th significant figure would shift merely
+            # because a mask was supplied.
+            mask = None
+        else:
+            image = np.where(bad, 0.0, image)
 
     # R range: half-Width margin around min/max ring radius.
     px = 0.5 * (params.pxY + params.pxZ) if params.pxZ > 0 else params.pxY
@@ -202,7 +258,37 @@ def integrate_cake(
     )
 
     img_t = torch.as_tensor(image, dtype=torch.float64).contiguous()
-    cake = integrate(img_t, geom, mode=mode, normalize=True).numpy()
+
+    # Per-cell detector coverage: the summed weight of LIVE pixels reaching
+    # each cell. Zero means no live pixel does — off the detector, in a module
+    # gap, or masked.
+    #
+    # ``geom.area_per_bin`` is the Σ areaWeight per bin that ``normalize=True``
+    # would divide by. Using it rather than integrating an image of ones costs
+    # nothing and cannot drift from the normaliser — ``intensity`` and
+    # ``coverage`` are then guaranteed to be the same ratio's numerator and
+    # denominator. (Measured equal to ``CSR @ ones`` to 4.7e-8 relative, with
+    # exact agreement on which bins are zero, in both floor and bilinear modes.)
+    coverage = geom.area_per_bin.reshape(ip.n_r_bins, ip.n_eta_bins).numpy()
+
+    if mask is None:
+        cake = integrate(img_t, geom, mode=mode, normalize=True).numpy()
+    else:
+        # Masked pixels must leave the DENOMINATOR too. Normalising by the full
+        # ``area_per_bin`` would divide live signal by dead area — precisely
+        # the dilution this exists to remove.
+        #
+        # Push the GOOD-pixel indicator through the CSR rather than subtracting
+        # the bad one from ``area_per_bin``. Subtracting cancels two quantities
+        # computed by different routes (the map's accumulated area vs an SpMV),
+        # which agree only to ~5e-8 relative — so a fully masked cell came out
+        # at ~9e-8 instead of 0 and still read as "covered". Integrating the
+        # good indicator is exact: no live pixel, no coverage.
+        good_t = torch.as_tensor((~bad).astype(np.float64)).contiguous()
+        coverage = integrate(good_t, geom, mode=mode, normalize=False).numpy()
+        raw = integrate(img_t, geom, mode=mode, normalize=False).numpy()
+        cake = np.where(coverage > 0.0, raw / np.where(coverage > 0.0,
+                                                       coverage, 1.0), 0.0)
 
     R_edges = np.linspace(ip.RMin, ip.RMin + ip.RBinSize * ip.n_r_bins, ip.n_r_bins + 1)
     eta_edges = np.linspace(ip.EtaMin, ip.EtaMax, ip.n_eta_bins + 1)
@@ -210,12 +296,13 @@ def integrate_cake(
         R_centers=0.5 * (R_edges[:-1] + R_edges[1:]),
         eta_centers=0.5 * (eta_edges[:-1] + eta_edges[1:]),
         intensity=cake,
+        coverage=coverage,
     )
 
 
 def extract_fitted_points(
     cake: CakeProfile, rt: RingTable, params: CalibrationParams,
-    *, snr_min: float = 1.0,
+    *, snr_min: float = 1.0, min_cell_coverage: float = 0.5,
 ) -> List[FittedPoint]:
     """Per (ring × η-bin): centroid in the radial window → (R_fit, η) → (Y_pix, Z_pix).
 
@@ -241,6 +328,8 @@ def extract_fitted_points(
             continue
         R_window = cake.R_centers[idx].astype(np.float64)        # (n_R,)
         I_block = cake.intensity[idx, :].astype(np.float64)      # (n_R, n_eta)
+        cov_block = (cake.coverage[idx, :].astype(np.float64)
+                     if getattr(cake, "coverage", None) is not None else None)
         # Per-η baseline subtract across the radial window (matches the
         # ``I - I.min()`` per-η-bin step of the previous scalar loop).
         I = np.maximum(I_block - I_block.min(axis=0, keepdims=True), 0.0)
@@ -279,7 +368,57 @@ def extract_fitted_points(
             snr_base = height / noise
         else:
             snr_base = np.zeros_like(snr)
-        keep = valid_tot & (snr >= snr_min)
+
+        # Reject η-bins whose radial window is CLIPPED — by the detector edge,
+        # a module gap, or the mask.
+        #
+        # R_fit above is an intensity-weighted centroid over a FIXED radial
+        # window. Where the window runs off the detector the missing cake cells
+        # integrate to exactly 0.0, so the peak is truncated and the centroid is
+        # dragged toward the surviving side. Nothing caught that: ``valid_tot``
+        # only requires SOME signal in the window, so a half-truncated peak
+        # passed and contributed a biased point.
+        #
+        # This is why the OUTER rings were poisoning the fit — they are the ones
+        # whose windows leave the detector — and it is why simply capping the
+        # ring radius appeared to "fix" it. That cap is the wrong remedy: the
+        # outer rings carry the tilt and distortion leverage, and a partial arc
+        # is perfectly good data. Only the clipped BINS are bad, so only those
+        # are dropped; the rest of a partial ring is kept and used.
+        #
+        # MEASURED on a real 48-panel Pilatus against the C reference, this
+        # recovers most of what the radius cap bought while keeping the outer
+        # rings (see SCIENCE_AUDIT_integrate_calibrate.md).
+        #
+        # Coverage is the honest marker. ``cake.coverage`` is the same map
+        # applied to an image of ones, so a cell's value is the pixel weight
+        # that actually reached it; zero means no detector pixel does. That
+        # separates "uncovered" from "covered but reads zero", which an
+        # intensity test cannot do.
+        #
+        # A cell that is only PARTIALLY covered — the detector edge cuts
+        # through it, or a module gap clips it — is also bad: its intensity is
+        # the mean over the covered fraction, so it under-represents that
+        # radius and still skews the centroid, just less violently than an
+        # empty cell. Require each cell in the window to reach
+        # ``min_cell_coverage`` of the best-covered cell in the same window,
+        # which is scale-free (bin area grows with R, so an absolute threshold
+        # would not travel across the detector).
+        #
+        # The two tests are applied TOGETHER, not one instead of the other.
+        # They fail on different things and neither implies the other:
+        #   * a cell can be geometrically covered and still read exactly zero
+        #     (dead pixels, a mask applied to the image rather than to the map,
+        #     a panel that was not read out) — coverage cannot see that;
+        #   * a cell can carry stray counts and still lie off the detector
+        #     (scatter, a hot pixel bleeding into a corner bin) — the intensity
+        #     test cannot see that.
+        window_complete = ~(I_block <= 0.0).any(axis=0)
+        if cov_block is not None:
+            cov_ref = cov_block.max(axis=0, keepdims=True)
+            cov_ref = np.where(cov_ref > 0.0, cov_ref, 1.0)
+            window_complete &= (cov_block >= min_cell_coverage * cov_ref).all(axis=0)
+        keep = valid_tot & (snr >= snr_min) & window_complete
         if not keep.any():
             continue
         R_chunks.append(R_fit[keep])
@@ -320,7 +459,9 @@ def run_estep(
     rt: RingTable,
     *, dark: Optional[np.ndarray] = None,
     cake_mode: str = "auto",
+    mask: Optional[np.ndarray] = None,
 ) -> Tuple[CakeProfile, List[FittedPoint]]:
-    cake = integrate_cake(params, image, rt, dark=dark, cake_mode=cake_mode)
+    cake = integrate_cake(params, image, rt, dark=dark, cake_mode=cake_mode,
+                          mask=mask)
     fits = extract_fitted_points(cake, rt, params, snr_min=params.SNRMin)
     return cake, fits

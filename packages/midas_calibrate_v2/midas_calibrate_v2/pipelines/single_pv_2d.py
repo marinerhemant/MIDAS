@@ -114,6 +114,7 @@ def autocalibrate_pv_2d(
     image: np.ndarray,
     *,
     dark: Optional[np.ndarray] = None,
+    mask: Optional[np.ndarray] = None,
     spec: Optional[CalibrationSpec] = None,
     panel_layout: Optional[PanelLayout] = None,
     n_iter: int = 3,
@@ -169,7 +170,7 @@ def autocalibrate_pv_2d(
             max_ring_number=max_ring_eff,
         )
         img_used = (image - dark) if dark is not None else image
-        cake = integrate_cake(v1_params, img_used, rt)
+        cake = integrate_cake(v1_params, img_used, rt, mask=mask)
 
         cake_t = torch.as_tensor(cake.intensity, dtype=dtype, device=device)
         R_centers = torch.as_tensor(cake.R_centers, dtype=dtype, device=device)
