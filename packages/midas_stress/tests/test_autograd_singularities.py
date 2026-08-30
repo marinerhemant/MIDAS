@@ -108,13 +108,28 @@ def test_euler_theta_derivative_at_the_identity_is_the_gauge_derivative():
 
 
 def test_euler_values_unchanged():
-    """A gradient fix must not move the forward model."""
+    """A gradient fix must not move the forward model.
+
+    This compares two DIFFERENT backends -- the NumPy/``math`` path against the
+    torch path -- so exact bit-identity is not a property either one can
+    promise: it depends on the platform's libm. On macOS the two agree to the
+    last bit and this asserted ``== 0.0``; on Linux glibc they differ by a few
+    ULP, measured at 1.6e-15 rad on Python 3.11 and 2.2e-15 on 3.12 over these
+    same 400 matrices. Exactly the Apple-libm-against-glibc ``acos`` difference
+    that the PF golden fixture already carries.
+
+    So bound it instead, three orders above the observed spread. 1e-12 rad is
+    6e-11 degrees -- far below anything the forward model could care about, and
+    still tight enough that a real change in the model would blow straight
+    through it. This is a platform bound, NOT a tolerance relaxed to admit a
+    defect.
+    """
     rng = np.random.default_rng(0)
     Q, _ = np.linalg.qr(rng.normal(size=(400, 3, 3)))
     Q[np.linalg.det(Q) < 0] *= -1
     ref = np.stack([ms.orient_mat_to_euler(q) for q in Q])
     got = _orient_mat_to_euler_torch(torch.tensor(Q)).numpy()
-    assert np.abs(ref - got).max() == 0.0
+    assert np.abs(ref - got).max() < 1e-12
 
 
 def test_euler_roundtrip_at_gimbal():
