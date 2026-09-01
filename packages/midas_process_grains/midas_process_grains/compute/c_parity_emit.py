@@ -17,7 +17,10 @@ Grains.csv layout (53 columns; 47 before 2026-08-21)
   33..41  eKen[3][3] in microstrain (Kenesei in sample frame)
   42      RMSErrorStrain          (Kenesei RMSE in microstrain)
   43      PhaseNr
-  44..46  Eul0, Eul1, Eul2        (degrees)
+  44..46  Eul0, Eul1, Eul2        (RADIANS -- see orient_mat_to_euler_rad
+                                   below; this line said 'degrees' and was
+                                   wrong, which is a units trap for anyone
+                                   reading the columns positionally)
   47..49  DiffPosPre,  DiffOmePre,  DiffAnglePre    OPF[rep_pos][27..29]
   50..52  DiffPosPost, DiffOmePost, DiffAnglePost   OPF[rep_pos][30..32]
 

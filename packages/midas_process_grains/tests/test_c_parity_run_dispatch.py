@@ -37,7 +37,7 @@ def _write_grains_csv(path: Path, rows):
         for line in ("%NumGrains {}".format(len(rows)), "%BeamCenter 0 0",
                      "%BeamThickness 0", "%GlobalPosition 0", "%NumPhases 1",
                      "%PhaseInfo", "%\tSpaceGroup:225",
-                     "%\tLattice Parameter:0 0 0 0 0 0", "%ID\tO11"):
+                     "%\tLattice Parameter:0 0 0 0 0 0", "%GrainID\tO11"):
             f.write(line + "\n")
         for r in rows:
             f.write("\t".join(f"{v:.6f}" for v in r) + "\n")

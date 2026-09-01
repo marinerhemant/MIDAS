@@ -16,7 +16,9 @@ of 23 columns. We mirror the legacy column order:
 
 The "23-column legacy" form has more fields (lattice parameters, lab-frame
 strain, additional crystal-frame strain, etc.); we expose them as part of
-``Grains_extended.csv`` to avoid breaking existing consumers.
+``Grains_extended.csv``. NOTE: nothing ever wrote that file; the extra
+columns were appended to Grains.csv itself, which is why readers that
+assumed a fixed width drifted.
 
 ``SpotMatrix.csv``: tab-separated, 12 columns:
 
@@ -71,7 +73,7 @@ import numpy as np
 # for a measured one.
 GRAINS_CSV_NCOLS = 53
 GRAINS_HEADER_COLS = (
-    "%ID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\t"
+    "%GrainID\tO11\tO12\tO13\tO21\tO22\tO23\tO31\tO32\tO33\tX\tY\tZ\t"
     "a\tb\tc\talpha\tbeta\tgamma\tDiffPos\tDiffOme\tDiffAngle\tGrainRadius\tConfidence\t"
     "eFab11\teFab12\teFab13\teFab21\teFab22\teFab23\teFab31\teFab32\teFab33\t"
     "eKen11\teKen12\teKen13\teKen21\teKen22\teKen23\teKen31\teKen32\teKen33\t"

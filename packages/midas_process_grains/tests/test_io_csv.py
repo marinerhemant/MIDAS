@@ -43,7 +43,7 @@ def test_write_grains_csv_writes_headers_and_rows(tmp_path: Path):
     txt = p.read_text()
     assert "%NumGrains 2" in txt
     assert "%SpaceGroup:225" in txt or "SpaceGroup:225" in txt
-    assert "%ID\tO11" in txt
+    assert "%GrainID\tO11" in txt   # unified on %GrainID; readers accept both
     # Header has all the legacy column names
     for col in ("DiffPos", "DiffOme", "DiffAngle", "eFab11", "eKen33",
                 "RMSErrorStrain", "PhaseNr", "Eul0"):

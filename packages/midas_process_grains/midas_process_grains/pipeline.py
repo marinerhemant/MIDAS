@@ -85,7 +85,7 @@ def _result_from_grains_csv(
     disagree with the file on disk. Re-deriving the same quantities here would
     be a second implementation whose drift nothing would catch.
 
-    Column layout is the 47-column legacy schema documented in
+    Column layout is the current 53-column schema documented in
     ``io/csv.py`` — ``eFab`` (24..32) is the grain-frame strain and ``eKen``
     (33..41) the lab/sample-frame one, per that schema.
     """
