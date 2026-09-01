@@ -29,7 +29,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 # One-shot fully-automated entry point: image + wavelength -> calibration.
 from .pipelines.auto import calibrate, AutoCalibrationResult, CALIBRANTS

@@ -48,7 +48,7 @@ from .solutions import (
 )
 from .mic import MicMap, read_mic
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 __all__ = [
     "MicMap", "read_mic", "GrainList", "read_grains", "ff", "laue",
     "LaueSolutions", "LaueSpots", "read_solutions", "read_spots",
