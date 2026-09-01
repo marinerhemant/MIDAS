@@ -188,3 +188,84 @@ def test_mode_a_relative_grains_path_resolved_against_cwd(tmp_path: Path):
     sti = tmp_path / "SpotsToIndex.csv"
     assert sti.exists()
     assert indexer._observations["spot_ids"].tolist() == [17, 42, 99]
+
+
+# ---------------------------------------------------------------------------
+# Mode A on the CURRENT file format.
+#
+# _GRAINS_CSV above is 23 columns under %GrainID. Grains.csv is 53 columns
+# today and half the corpus is written under %ID (io/csv.py) rather than
+# %GrainID (c_parity_emit.py), so neither the current width nor the other
+# spelling was exercised through this path.
+# ---------------------------------------------------------------------------
+
+def _grains_csv_53(id_token: str, ids=(17, 42, 99)) -> str:
+    names = (
+        [f"O{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+        + ["X", "Y", "Z", "a", "b", "c", "alpha", "beta", "gamma",
+           "DiffPos", "DiffOme", "DiffAngle", "GrainRadius", "Confidence"]
+        + [f"eFab{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+        + [f"eKen{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+        + ["RMSErrorStrain", "PhaseNr", "Eul0", "Eul1", "Eul2",
+           "DiffPosPre", "DiffOmePre", "DiffAnglePre",
+           "DiffPosPost", "DiffOmePost", "DiffAnglePost"]
+    )
+    out = (f"%NumGrains {len(ids)}\n%BeamCenter 0.000000\n"
+           "%BeamThickness 200.000000\n%GlobalPosition 0.000000\n"
+           "%NumPhases 1\n%PhaseInfo\n%\tSpaceGroup:225\n"
+           "%\tLattice Parameter: 4.080000 4.080000 4.080000 "
+           "90.000000 90.000000 90.000000\n")
+    out += "%" + "\t".join([id_token] + names) + "\n"
+    for k, gid in enumerate(ids):
+        row = ([str(gid)]
+               + [f"{v:.6f}" for v in (1, 0, 0, 0, 1, 0, 0, 0, 1)]
+               + [f"{float(k):.6f}"] * 3
+               + [f"{v:.6f}" for v in (4.08, 4.08, 4.08, 90.0, 90.0, 90.0)]
+               + ["0.000000", "0.000000", "0.000000",
+                  f"{50.0 + k:.6f}", "1.000000"]
+               + ["0.000000"] * 19
+               + ["1", "0.100000", "0.200000", "0.300000"]
+               + ["0.000000"] * 6)
+        assert len(row) == 53, len(row)
+        # The C writer ends every row in a tab; keep that here.
+        out += "\t".join(row) + "\t\n"
+    return out
+
+
+@pytest.mark.parametrize("id_token", ["GrainID", "ID"])
+def test_mode_a_on_current_53_column_grains_csv(tmp_path: Path, id_token):
+    grains_path = tmp_path / "Grains.csv"
+    grains_path.write_text(_grains_csv_53(id_token))
+
+    params = _toy_params(grains_file=str(grains_path))
+    obs = _toy_obs()
+    bin_data, bin_ndata = _toy_bins(obs)
+    hkls_real, hkls_int = _toy_hkls()
+
+    indexer = Indexer(params, device="cpu", dtype="float64")
+    indexer.load_observations(
+        cwd=tmp_path, spots=obs, bins=(bin_data, bin_ndata),
+        hkls=(hkls_real, hkls_int),
+    )
+
+    sti = tmp_path / "SpotsToIndex.csv"
+    assert sti.exists()
+    grain_ids = [int(l.split()[0]) for l in sti.read_text().splitlines()
+                 if l.strip()]
+    assert grain_ids == [17, 42, 99]
+    assert indexer._observations["spot_ids"].tolist() == [17, 42, 99]
+
+
+@pytest.mark.parametrize("id_token", ["GrainID", "ID"])
+def test_grains_reader_gets_radius_from_a_53_column_file(tmp_path: Path,
+                                                         id_token):
+    """GrainRadius is column 22 at every width so far, but the file has been
+    widened four times; the reader now takes the index from the header."""
+    from midas_index.io import read_grains_csv
+
+    grains_path = tmp_path / "Grains.csv"
+    grains_path.write_text(_grains_csv_53(id_token))
+    g = read_grains_csv(grains_path)
+    assert g["ids"].tolist() == [17, 42, 99]
+    np.testing.assert_allclose(g["radii"], [50.0, 51.0, 52.0])
+    np.testing.assert_allclose(g["orient_mat"][0], np.eye(3))

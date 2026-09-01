@@ -133,3 +133,140 @@ def test_read_grains_csv_bad_header(tmp_path):
     p.write_text("not a numgrains line\n")
     with pytest.raises(ValueError, match="NumGrains"):
         read_grains_csv(p)
+
+
+# --------------------------------------------------- grains: current formats
+#
+# The fixture above is a 23-column %GrainID file. Grains.csv is 53 columns
+# today and is written under BOTH %GrainID (c_parity_emit) and %ID (io/csv),
+# and this reader had a fixed eight-line preamble skip plus a hard-coded
+# tokens[22] for GrainRadius. Both happen to be right at 53 columns, but
+# nothing here proved it.
+
+_GRAINS_53_NAMES = (
+    [f"O{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+    + ["X", "Y", "Z", "a", "b", "c", "alpha", "beta", "gamma",
+       "DiffPos", "DiffOme", "DiffAngle", "GrainRadius", "Confidence"]
+    + [f"eFab{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+    + [f"eKen{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+    + ["RMSErrorStrain", "PhaseNr", "Eul0", "Eul1", "Eul2",
+       "DiffPosPre", "DiffOmePre", "DiffAnglePre",
+       "DiffPosPost", "DiffOmePost", "DiffAnglePost"]
+)
+
+_PREAMBLE_9 = (
+    "%NumGrains {n}\n"
+    "%BeamCenter 0.000000\n"
+    "%BeamThickness 200.000000\n"
+    "%GlobalPosition 0.000000\n"
+    "%NumPhases 1\n"
+    "%PhaseInfo\n"
+    "%\tSpaceGroup:225\n"
+    "%\tLattice Parameter: 4.080000 4.080000 4.080000 90.000000 90.000000 90.000000\n"
+)
+
+
+def _grains_53(id_token="GrainID", *, trailing_tab=False, extra_preamble="",
+               grains=((7, 11.0, 22.0, 33.0, 61.5), (9, -4.0, 5.0, -6.0, 88.25))):
+    """A current-format 53-column Grains.csv under either ID spelling."""
+    head = "%" + "\t".join([id_token] + _GRAINS_53_NAMES) + "\n"
+    body = ""
+    for gid, x, y, z, radius in grains:
+        row = [str(gid)]
+        row += [f"{v:.6f}" for v in (1, 0, 0, 0, 1, 0, 0, 0, 1)]   # O11..O33
+        row += [f"{x:.6f}", f"{y:.6f}", f"{z:.6f}"]
+        row += [f"{v:.6f}" for v in (4.08, 4.08, 4.08, 90.0, 90.0, 90.0)]
+        row += ["0.500000", "0.100000", "0.200000",
+                f"{radius:.6f}", "0.970000"]
+        row += ["0.000000"] * 9 + ["0.000000"] * 9          # eFab, eKen
+        row += ["12.500000", "1", "0.100000", "0.200000", "0.300000"]
+        row += ["0.600000"] * 6                              # Diff*Pre/Post
+        assert len(row) == 53, len(row)
+        body += "\t".join(row) + ("\t\n" if trailing_tab else "\n")
+    return (_PREAMBLE_9.format(n=len(grains)) + extra_preamble + head + body)
+
+
+@pytest.mark.parametrize("id_token", ["GrainID", "ID"])
+@pytest.mark.parametrize("trailing_tab", [False, True])
+def test_read_grains_csv_53col_both_id_spellings(tmp_path, id_token,
+                                                 trailing_tab):
+    p = tmp_path / "Grains.csv"
+    p.write_text(_grains_53(id_token, trailing_tab=trailing_tab))
+    g = read_grains_csv(p)
+    assert g["ids"].tolist() == [7, 9]
+    np.testing.assert_allclose(g["orient_mat"][0], np.eye(3))
+    np.testing.assert_allclose(g["positions"][0], [11.0, 22.0, 33.0])
+    np.testing.assert_allclose(g["positions"][1], [-4.0, 5.0, -6.0])
+    # GrainRadius, NOT Confidence and NOT the first eFab component.
+    np.testing.assert_allclose(g["radii"], [61.5, 88.25])
+
+
+def test_read_grains_csv_tolerates_a_longer_preamble(tmp_path):
+    """The '%' block is nine lines today but is written per-phase.
+
+    A second phase adds a SpaceGroup + Lattice Parameter pair; the old fixed
+    eight-line skip would then have fed the column-header line to int() as a
+    data row and, past that, mis-set the grain count.
+    """
+    p = tmp_path / "Grains.csv"
+    p.write_text(_grains_53(extra_preamble="%\tSpaceGroup:229\n"
+                                           "%\tLattice Parameter: 2.87 2.87 2.87 90 90 90\n"))
+    g = read_grains_csv(p)
+    assert g["ids"].tolist() == [7, 9]
+    np.testing.assert_allclose(g["radii"], [61.5, 88.25])
+
+
+def test_read_grains_csv_finds_radius_when_it_is_not_column_22(tmp_path):
+    """21-column legacy files put GrainRadius at 19, not 22.
+
+    tokens[22] raised IndexError (swallowed, radius 0) and the flat
+    ``len(tokens) < 23`` guard skipped every row, so the reader returned zero
+    grains from a perfectly readable file -- silently.
+    """
+    cols = (["O11", "O12", "O13", "O21", "O22", "O23", "O31", "O32", "O33",
+             "X", "Y", "Z", "E11", "E22", "E33", "E12", "E13", "E23",
+             "GrainRadius", "Confidence"])
+    row = (["3"] + [f"{v}" for v in (1, 0, 0, 0, 1, 0, 0, 0, 1)]
+           + ["1.0", "2.0", "3.0"] + ["1e-4"] * 6 + ["44.0", "0.9"])
+    p = tmp_path / "Grains.csv"
+    p.write_text(_PREAMBLE_9.format(n=1)
+                 + "%" + "\t".join(["ID"] + cols) + "\n"
+                 + "\t".join(row) + "\n")
+    g = read_grains_csv(p)
+    assert g["ids"].tolist() == [3]
+    np.testing.assert_allclose(g["positions"][0], [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(g["radii"], [44.0])
+
+
+def test_read_grains_csv_refuses_a_reordered_orientation_block(tmp_path):
+    """C reads this same file with a fixed sscanf and cannot follow a header.
+
+    A moved OM/position block must therefore raise here rather than let the
+    two halves of mode A read different numbers out of one file.
+    """
+    names = ["X", "Y", "Z"] + [f"O{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+    p = tmp_path / "Grains.csv"
+    p.write_text(_PREAMBLE_9.format(n=1)
+                 + "%" + "\t".join(["GrainID"] + names) + "\n"
+                 + "\t".join(["1"] + ["0"] * 12) + "\n")
+    with pytest.raises(ValueError, match="column order has changed"):
+        read_grains_csv(p)
+
+
+def test_read_grains_csv_without_a_named_header_stays_positional(tmp_path):
+    """Old NF Mic2GrainsList wrote a prose header naming no columns.
+
+    There is nothing to resolve by name, so the reader must fall back to the
+    positional layout C uses -- exactly what it did before.
+    """
+    p = tmp_path / "Grains.csv"
+    p.write_text(
+        "%NumGrains 1\n"
+        "%GrainID OrientMat(9) X Y Z LatC(6) 0 0 0 Radius Confidence\n"
+        "%a\n%b\n%c\n%d\n%e\n%f\n%g\n"
+        "5 1 0 0 0 1 0 0 0 1 7 8 9 "
+        "4.08 4.08 4.08 90 90 90 0 0 0 33.0 1\n")
+    g = read_grains_csv(p)
+    assert g["ids"].tolist() == [5]
+    np.testing.assert_allclose(g["positions"][0], [7.0, 8.0, 9.0])
+    np.testing.assert_allclose(g["radii"], [33.0])

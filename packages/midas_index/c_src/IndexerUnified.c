@@ -3639,25 +3639,107 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "FF GrainsFile %s missing.\n", Params.GrainsFileName);
         exit(EXIT_FAILURE);
       }
+      /* Grains.csv is read POSITIONALLY here and it has to be: sscanf cannot
+       * follow a column header, and this file has been widened four times
+       * (19 -> 21 -> 47 -> 53 columns, 2026-08-21 for the last one).
+       *
+       * The two assumptions below are correct for every width so far, because
+       * every widening appended to the RIGHT of GrainRadius:
+       *
+       *   - The '%' preamble is 9 lines: %NumGrains, %BeamCenter,
+       *     %BeamThickness, %GlobalPosition, %NumPhases, %PhaseInfo,
+       *     %<tab>SpaceGroup, %<tab>Lattice Parameter, and the column header.
+       *     It is written per-phase, so a genuinely multi-phase %PhaseInfo
+       *     block would make it longer.
+       *   - Token 22 is GrainRadius (tokens 13..21 are a b c alpha beta gamma
+       *     DiffPos DiffOme DiffAngle), and tokens 1..9 are O11..O33 row-major
+       *     with 10..12 the position.
+       *
+       * The Python twin of this reader (midas_index/io/csv.py::read_grains_csv)
+       * now resolves GrainRadius by NAME and skips the preamble by '%'; it
+       * refuses a file whose OM/position block has moved, precisely because
+       * this function could not follow it. Keep the two in step.
+       *
+       * We verify the assumptions against the header we just skipped rather
+       * than trusting them, and we hard-fail a row that does not yield the 13
+       * fields actually USED (id + 9 orientation + 3 position). Such a row
+       * used to leave FF_orients at its calloc'd zeros for that grain, i.e. a
+       * singular orientation matrix indexed against as if it were real. */
       fgets(aline, 4096, inpF);
-      sscanf(aline, "%s %d", dummy_h, &FF_nGrains);
+      if (sscanf(aline, "%s %d", dummy_h, &FF_nGrains) != 2 ||
+          FF_nGrains <= 0) {
+        fprintf(stderr,
+                "FF GrainsFile %s: expected '%%NumGrains N' with N > 0 on line "
+                "1, got: %s",
+                Params.GrainsFileName, aline);
+        exit(EXIT_FAILURE);
+      }
       FF_orients = allocMatrix(FF_nGrains, 9);
       FF_positions = allocMatrix(FF_nGrains, 3);
-      for (int i = 0; i < 8; i++) fgets(aline, 4096, inpF);
+      if (FF_orients == NULL || FF_positions == NULL) {
+        fprintf(stderr, "FF GrainsFile: alloc for %d grains failed.\n",
+                FF_nGrains);
+        exit(EXIT_FAILURE);
+      }
+      char headerLine[4096];
+      headerLine[0] = '\0';
+      for (int i = 0; i < 8; i++) {
+        if (fgets(aline, 4096, inpF) == NULL) {
+          fprintf(stderr,
+                  "FF GrainsFile %s: '%%' preamble ended after %d of 9 lines.\n",
+                  Params.GrainsFileName, i + 1);
+          exit(EXIT_FAILURE);
+        }
+        strncpy(headerLine, aline, sizeof(headerLine) - 1);
+        headerLine[sizeof(headerLine) - 1] = '\0';
+      }
+      /* Warn, do not exit: an unexpected header means the positional layout
+       * below is probably wrong, but a file that has always worked must keep
+       * working. A stderr line is what makes the next widening visible. */
+      {
+        char hcopy[4096];
+        strncpy(hcopy, headerLine, sizeof(hcopy) - 1);
+        hcopy[sizeof(hcopy) - 1] = '\0';
+        int col = 0;
+        int sawO11 = 0, sawRadius = 0;
+        for (char *tok = strtok(hcopy, " \t\n"); tok != NULL;
+             tok = strtok(NULL, " \t\n"), col++) {
+          const char *name = (col == 0 && tok[0] == '%') ? tok + 1 : tok;
+          if (col == 1 && strcmp(name, "O11") == 0) sawO11 = 1;
+          if (col == 22 && strcmp(name, "GrainRadius") == 0) sawRadius = 1;
+        }
+        if (col > 1 && !(sawO11 && sawRadius)) {
+          fprintf(stderr,
+                  "WARNING: FF GrainsFile %s column header does not match the "
+                  "layout this reader assumes (O11 at token 1, GrainRadius at "
+                  "token 22; header has %d tokens). Orientations and positions "
+                  "are being read positionally and may be wrong.\n",
+                  Params.GrainsFileName, col);
+          fflush(stderr);
+        }
+      }
       int grainNr = 0;
       double tmpD;
       while (fgets(aline, 4096, inpF) != NULL && grainNr < FF_nGrains) {
-        sscanf(aline,
-               "%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s "
-               "%s %s %s %s %s %lf",
-               dummy_h, &FF_orients[grainNr][0], &FF_orients[grainNr][1],
-               &FF_orients[grainNr][2], &FF_orients[grainNr][3],
-               &FF_orients[grainNr][4], &FF_orients[grainNr][5],
-               &FF_orients[grainNr][6], &FF_orients[grainNr][7],
-               &FF_orients[grainNr][8], &FF_positions[grainNr][0],
-               &FF_positions[grainNr][1], &FF_positions[grainNr][2], dummy_h,
-               dummy_h, dummy_h, dummy_h, dummy_h, dummy_h, dummy_h, dummy_h,
-               dummy_h, &tmpD);
+        int nConv = sscanf(
+            aline,
+            "%s %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %s %s %s %s "
+            "%s %s %s %s %s %lf",
+            dummy_h, &FF_orients[grainNr][0], &FF_orients[grainNr][1],
+            &FF_orients[grainNr][2], &FF_orients[grainNr][3],
+            &FF_orients[grainNr][4], &FF_orients[grainNr][5],
+            &FF_orients[grainNr][6], &FF_orients[grainNr][7],
+            &FF_orients[grainNr][8], &FF_positions[grainNr][0],
+            &FF_positions[grainNr][1], &FF_positions[grainNr][2], dummy_h,
+            dummy_h, dummy_h, dummy_h, dummy_h, dummy_h, dummy_h, dummy_h,
+            dummy_h, &tmpD);
+        if (nConv < 13) {
+          fprintf(stderr,
+                  "FF GrainsFile %s: grain row %d yielded only %d of the 13 "
+                  "required fields (id + O11..O33 + X Y Z): %s",
+                  Params.GrainsFileName, grainNr, nConv, aline);
+          exit(EXIT_FAILURE);
+        }
         grainNr++;
       }
       fclose(inpF);
