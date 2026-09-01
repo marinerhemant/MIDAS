@@ -23,6 +23,13 @@ from .csv import (
     write_spot_matrix_csv,
     write_grain_ids_key_csv,
 )
+from .read import (
+    GrainsTable,
+    SpotMatrixTable,
+    GrainsFormatError,
+    read_grains_csv,
+    read_spot_matrix,
+)
 from .hkls import HklTable, load_hkl_table
 from .ids_hash import IDsHash, load_ids_hash
 from .spot_diag import (
@@ -34,6 +41,11 @@ from .spot_diag import (
 )
 
 __all__ = [
+    "read_spot_matrix",
+    "read_grains_csv",
+    "GrainsFormatError",
+    "SpotMatrixTable",
+    "GrainsTable",
     "BinaryInputs",
     "TailPaddedBinary",
     "materialize",
