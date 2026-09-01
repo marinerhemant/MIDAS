@@ -30,34 +30,53 @@ _AU_PARAM = _AU_DIR / "test_ps_au.txt"
 _AU_BIN = _AU_DIR / "Au_bin_Reconstructed.mic.c_ref"
 
 
-def _c_binary_runs(path) -> bool:
-    """True only if the C reference actually EXECUTES.
+def _c_binary_unusable(path) -> str | None:
+    """Why this C reference must not be RUN, or ``None`` if it looks usable.
 
-    Existence is not enough. These binaries were linked against
-    ``MIDAS/build/lib``; once that tree goes away the dynamic loader fails
-    with
+    **Deliberately STATIC -- this must never launch** ``path``.
 
-        Library not loaded: @rpath/libnlopt.1.dylib
+    Existence is not enough: these are prebuilt artefacts of the
+    soft-deprecated C tree and a stale one is unloadable. But the obvious
+    check -- run it once and see whether it survives -- is worse than the
+    problem on macOS/arm64, and this function used to do exactly that.
 
-    and the process aborts before doing anything. A skipif that tests only for
-    the file then lets a dead binary through, and the parity test reports a
-    FAILURE -- implying the Python disagrees with C, when in fact C never ran
-    and nothing was compared. Probe it instead.
+    ``install_name_tool`` rpath surgery invalidates a Mach-O's code signature,
+    and the kernel then SIGKILLs the process inside dyld, before ``main()``.
+    Measured 2026-09-01: ``codesign -v`` on this tree's binaries reports "code
+    object is not signed at all". Such a launch is slow (macOS writes a crash
+    report) and leaves the process in uninterruptible ``UE`` state, where it
+    survives ``SIGKILL``. ``subprocess.run(..., timeout=...)`` does NOT bound
+    it: the timeout fires, the reap does not return. Measured here -- a sweep
+    of this package sat for 23 minutes at 0 %% CPU on a wedged child before it
+    was killed by hand.
+
+    The old ``returncode < 0`` / "Library not loaded" checks were correct in
+    principle and unreachable in practice, because the call never returns.
+
+    So: check statically, and let the test's own subprocess call be where a
+    binary that passes this gate but still cannot load is caught.
     """
+    import os
     import subprocess
+    import sys
     from pathlib import Path as _P
-    if not _P(str(path)).exists():
-        return False
-    try:
-        r = subprocess.run([str(path)], capture_output=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return False
-    # A usage message on empty argv is fine (any exit code >= 0). A negative
-    # returncode means killed by a signal -- the dyld abort is -6 (SIGABRT) --
-    # and a loader message on stderr says the same thing explicitly.
-    if r.returncode < 0:
-        return False
-    return b"Library not loaded" not in (r.stderr or b"")
+    p = _P(str(path))
+    if not p.exists():
+        return "not found"
+    if not os.access(p, os.X_OK):
+        return "present but not executable"
+    if sys.platform == "darwin":
+        try:
+            sig = subprocess.run(["codesign", "--verify", str(p)],
+                                 capture_output=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return None  # cannot check -- let the test try
+        if sig.returncode != 0:
+            detail = " ".join((sig.stderr or b"").decode(errors="replace").split())
+            return (f"code signature invalid ({detail}); on arm64 macOS the "
+                    f"kernel SIGKILLs such a binary inside dyld. Re-sign after "
+                    f"any install_name_tool surgery: codesign -s - -f {p}")
+    return None
 
 _C_BIN = Path("/Users/hsharma/opt/MIDAS/NF_HEDM/bin/Mic2GrainsList")
 
@@ -68,9 +87,8 @@ def workspace():
         pytest.skip("Au example files not present")
     if not _C_BIN.exists():
         pytest.skip(f"C Mic2GrainsList binary not built: {_C_BIN}")
-    if not _c_binary_runs(_C_BIN):
-        pytest.skip(f"C Mic2GrainsList present but does not run "
-                    f"(stale link against MIDAS/build/lib): {_C_BIN}")
+    if (_why := _c_binary_unusable(_C_BIN)) is not None:
+        pytest.skip(f"C Mic2GrainsList unusable: {_why}")
     with tempfile.TemporaryDirectory() as td:
         td_path = Path(td)
         # 1. Reproduce the .mic text file via our parse_mic.

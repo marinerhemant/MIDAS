@@ -209,42 +209,71 @@ def test_params_from_paramfile(tmp_path):
 # -----------------------------------------------------------------------------
 
 
-def _c_binary_runs(path) -> bool:
-    """True only if the C reference actually EXECUTES.
+def _c_binary_unusable(path) -> str | None:
+    """Why this C reference must not be RUN, or ``None`` if it looks usable.
 
-    Existence is not enough. These binaries were linked against
-    ``MIDAS/build/lib``; once that tree goes away the loader fails with
-    ``Library not loaded: @rpath/libnlopt.1.dylib`` and the process aborts
-    before doing anything. A skipif that tests only for the file then lets a
-    dead binary through and the parity test reports a FAILURE -- implying the
-    Python disagrees with C, when C never ran and nothing was compared.
+    **Deliberately STATIC -- this must never launch** ``path``.
+
+    Existence is not enough: these are prebuilt artefacts of the
+    soft-deprecated C tree and a stale one is unloadable. But the obvious
+    check -- run it once and see whether it survives -- is worse than the
+    problem on macOS/arm64, and this function used to do exactly that.
+
+    ``install_name_tool`` rpath surgery invalidates a Mach-O's code signature,
+    and the kernel then SIGKILLs the process inside dyld, before ``main()``.
+    Measured 2026-09-01: ``codesign -v`` on this tree's binaries reports "code
+    object is not signed at all". Such a launch is slow (macOS writes a crash
+    report) and leaves the process in uninterruptible ``UE`` state, where it
+    survives ``SIGKILL``. ``subprocess.run(..., timeout=...)`` does NOT bound
+    it: the timeout fires, the reap does not return. Measured here -- a sweep
+    of this package sat for 23 minutes at 0 %% CPU on a wedged child before it
+    was killed by hand.
+
+    The old ``returncode < 0`` / "Library not loaded" checks were correct in
+    principle and unreachable in practice, because the call never returns.
+
+    So: check statically, and let the test's own subprocess call be where a
+    binary that passes this gate but still cannot load is caught.
     """
+    import os
     import subprocess
+    import sys
     from pathlib import Path as _P
-    if not _P(str(path)).exists():
-        return False
-    try:
-        r = subprocess.run([str(path)], capture_output=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return False
-    # A usage message on empty argv is fine (any exit code >= 0). A negative
-    # returncode means killed by a signal -- the dyld abort is -6 (SIGABRT) --
-    # and a loader message on stderr says the same thing explicitly.
-    if r.returncode < 0:
-        return False
-    return b"Library not loaded" not in (r.stderr or b"")
-
+    p = _P(str(path))
+    if not p.exists():
+        return "not found"
+    if not os.access(p, os.X_OK):
+        return "present but not executable"
+    if sys.platform == "darwin":
+        try:
+            sig = subprocess.run(["codesign", "--verify", str(p)],
+                                 capture_output=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return None  # cannot check -- let the test try
+        if sig.returncode != 0:
+            detail = " ".join((sig.stderr or b"").decode(errors="replace").split())
+            return (f"code signature invalid ({detail}); on arm64 macOS the "
+                    f"kernel SIGKILLs such a binary inside dyld. Re-sign after "
+                    f"any install_name_tool surgery: codesign -s - -f {p}")
+    return None
 
 C_BINARY = "/Users/hsharma/opt/MIDAS/NF_HEDM/bin/MakeHexGrid"
 
 
 @pytest.mark.parity
-@pytest.mark.skipif(
-    not _c_binary_runs(C_BINARY),
-    reason="compiled MakeHexGrid binary missing or does not run",
-)
 def test_make_hex_grid_matches_c(tmp_path):
-    """Bit-comparable parity with the C MakeHexGrid for a small grid."""
+    """Bit-comparable parity with the C MakeHexGrid for a small grid.
+
+    The gate is INSIDE the body, not a ``skipif`` decorator: a decorator's
+    condition is an expression evaluated at import, i.e. during collection, so
+    whatever it does is paid by every ``--collect-only`` and every sweep of
+    this package even when the test is deselected. With the old executing
+    probe that meant a wedged child could stall collection outright.
+    """
+    why = _c_binary_unusable(C_BINARY)
+    if why is not None:
+        pytest.skip(f"MakeHexGrid: {why}")
+
     pf = tmp_path / "p.txt"
     pf.write_text(
         f"GridSize 2.0\n"
