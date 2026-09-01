@@ -244,6 +244,22 @@ def _refuse_gpu(gpu: bool) -> None:
         )
 
 
+def _abs_param_file(param_file) -> str:
+    """Absolute path to the parameter file, resolved in the *caller's* cwd.
+
+    Every runner below chdir's into ``cwd`` before handing this string to the
+    C, and the C just ``fopen``s it. A relative ``param_file`` -- which is what
+    the api layer produces from a relative ``--out`` (``out/midastomo.par``) --
+    stops resolving the moment the chdir lands, ``fopen`` returns NULL at
+    ``tomo_utils.c:255``, and that is the one failure path in the C that prints
+    no specific message: the user gets "Parameter file could not be read.
+    Exiting." after a nonsense "Sinograms are not a power of 2" line. Resolve
+    before the chdir, not after. Paths *inside* the file are already absolute
+    (``TomoConfig.to_lines``).
+    """
+    return str(Path(param_file).expanduser().resolve())
+
+
 def run_param_file(
     param_file: str | os.PathLike,
     n_cpus: int,
@@ -263,12 +279,14 @@ def run_param_file(
     engine still resolves its wisdom-file cache relative to the *process*
     working directory. That makes this call **not thread-safe** against other
     code that depends on the cwd; a lock is held for the duration.
+    ``param_file`` may be relative -- it is resolved before that chdir, see
+    :func:`_abs_param_file`.
 
     ``gpu=True`` is refused -- see :func:`_refuse_gpu`.
     """
     _refuse_gpu(gpu)
     lib = load()
-    param_file = str(param_file)
+    param_file = _abs_param_file(param_file)
     prev = None
     try:
         if cwd is not None:
@@ -327,7 +345,7 @@ def run_param_file_with_sinos(
     ptr = arr.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     nbytes = ctypes.c_size_t(arr.nbytes)
 
-    param_file = str(param_file)
+    param_file = _abs_param_file(param_file)
     prev = None
     try:
         if cwd is not None:
@@ -379,7 +397,7 @@ def run_arrays(
     arr = np.ascontiguousarray(sinos, dtype=np.float32)
     out = np.empty(out_shape, dtype=np.float32)
 
-    param_file = str(param_file)
+    param_file = _abs_param_file(param_file)
     prev = None
     try:
         if cwd is not None:

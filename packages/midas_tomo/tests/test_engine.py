@@ -147,3 +147,33 @@ def test_deterministic_agrees_with_default_to_float_precision(dataset, tmp_path)
         f"(scale {scale:.3e}) -- far more than rounding, so the two paths are "
         f"not computing the same transform"
     )
+
+
+@pytest.mark.parametrize("backend", ["library", "subprocess"])
+def test_relative_working_directory_reconstructs(dataset, tmp_path,
+                                                 monkeypatch, backend):
+    """A relative output directory must work, on both backends.
+
+    ``midas-tomo-reconstruct --out out`` leaves ``out`` relative all the way
+    down to ``workingdir / "midastomo.par"``. Both runners then chdir (or start
+    the child) in ``workingdir`` before handing that string to the engine, so
+    ``out/midastomo.par`` no longer resolved, ``fopen`` returned NULL, and the
+    only report was "Parameter file could not be read. Exiting." -- preceded by
+    a nonsense "Sinograms are not a power of 2. They will be increased to 1",
+    which sends the reader after the wrong problem entirely.
+    """
+    from pathlib import Path
+
+    from midas_tomo import backend_lib
+
+    if backend == "library" and not backend_lib.available():
+        pytest.skip(backend_lib.why_unavailable())
+
+    phantom, sino, angles = dataset
+    monkeypatch.chdir(tmp_path)
+    cube = run_tomo_from_sinos(sino, Path("relative_out"), angles,
+                               n_cpus=2, backend=backend)
+    assert cube.shape[0] == 1
+    assert cube.shape[1] == 1
+    assert np.isfinite(cube).all()
+    assert float(np.abs(cube).max()) > 0.0

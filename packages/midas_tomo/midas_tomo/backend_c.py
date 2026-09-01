@@ -163,8 +163,10 @@ def run_binary(
     Parameters
     ----------
     param_file
-        Path to the MIDAS_TOMO parameter file. Paths *inside* it must be
-        absolute — the binary does not resolve them relative to its own cwd.
+        Path to the MIDAS_TOMO parameter file. May be relative: it is made
+        absolute here, before the child is started in ``cwd``. Paths *inside*
+        it must be absolute — the binary does not resolve them relative to its
+        own cwd.
     n_cpus
         OpenMP thread count.
     gpu
@@ -227,6 +229,12 @@ def run_binary(
     if not available(gpu=use_gpu):
         raise TomoBackendUnavailableError(why_unavailable(gpu=use_gpu))
 
+    # Absolute, and resolved *here* -- i.e. in this process's cwd, before the
+    # subprocess is started in `cwd`. Same trap as backend_lib._abs_param_file:
+    # a relative param_file (what a relative --out produces) stops resolving
+    # once the child starts in `cwd`, and the engine's only report is the
+    # unspecific "Parameter file could not be read. Exiting."
+    param_file = Path(param_file).expanduser().resolve()
     cmd = [str(binary_path(gpu=use_gpu)), str(param_file), str(n_cpus)]
     if use_gpu:
         cmd.append("--gpu")
