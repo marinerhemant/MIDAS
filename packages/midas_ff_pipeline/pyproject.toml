@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-ff-pipeline"
-version = "0.6.3"
-description = "[DEPRECATED] End-to-end pure-Python FF-HEDM workflow orchestrator (1-N detectors). Use midas-pipeline run --scan-mode ff instead."
+version = "0.7.0"
+description = "[RETIRED] Argv shim that delegates to midas-pipeline. Use midas-pipeline run --scan-mode ff instead; removed at 1.0.0."
 readme = "README.md"
 license = "BSD-3-Clause"
 requires-python = ">=3.9"
@@ -24,52 +24,19 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "midas-params>=0.9.0",  # preflight: CLI errors + path checks
-    "numpy>=1.22",
-    "torch>=2.0",
-    "zarr>=2.14,<3",
-    "h5py>=3.7",
-    "hdf5plugin>=4.0",
-    "tifffile",
-    "pandas>=1.5",
-    # Sibling MIDAS packages.
-    # >=0.1.5: this package invokes the zipper, and 0.1.4 drops BgSubtract,
-    # BgNSectors and MinPeakSNR from the param file it writes -- the peak search
-    # then runs at the defaults with no error. Matches midas-pipeline.
-    "midas-zipper>=0.1.5",                # raw → .MIDAS.zip ingest (pip-portable)
-    # >=0.9.0: this stage passes --phase-atom/--phase-cif/--drop-forbidden/
-    # --forbidden-f2 to the midas-hkls CLI. An older CLI rejects them, so the
-    # hkl stage dies in argparse partway through a run.
-    "midas-hkls>=0.9.0",
-    "midas-peakfit>=0.4.6",
-    "midas-transforms>=0.8.2",
-    "midas-index>=0.3.0",
-    # Both floors are silent-wrong-answer gates, not import breaks. Below
-    # fit-grain 0.7.0 the refiner ships without the c_recipe mode; below
-    # process-grains 0.7.0 the grain-selection keys (Completeness, MinNrSpots)
-    # are parsed and discarded -- a measured 23710-vs-6132 grain discrepancy
-    # from the same refiner output. Matches midas-pipeline (3d9bb427).
-    # >=0.8.0: the canonical midas_fit_grain.losses module this package imports.
-    "midas-fit-grain>=0.8.0",
-    # >=0.9.0: 'spot_aware' is disabled. It was this package's default
-    # process-grains mode, and below the floor it still runs.
-    # >=0.9.2: the default 'c_parity' writes processgrains_diagnostics.h5.
-    # Below the floor a default run produces NO residual sidecar and every
-    # downstream diagnostic silently degrades to descriptive-only.
-    # >=0.10.0: sniffs the 27-vs-33-col OrientPosFit width written by
-    # midas-fit-grain >=0.9.0.
-    "midas-process-grains>=0.10.0",
-    # The delegate target. This package is a SHIM -- `main()` rewrites argv and
-    # hands it to midas-pipeline -- so the dependency is not optional, yet it
-    # was never declared: a clean install of midas-ff-pipeline alone produced a
-    # command that could only fail. Floored at 0.15.0 because that release
-    # removed --refine-loss/--refine-mode/--refine-solver and the values
-    # `--indexer-backend python` and `--pg-mode spot_aware`; this shim's
-    # translation is aligned to exactly that surface and would emit rejects
-    # against an older midas-pipeline.
+    # The delegate target, and now the ONLY dependency. `cli.main()` rewrites
+    # argv and hands it to `midas_pipeline.cli.main`; `testing.py` re-exports
+    # `midas_pipeline.testing`. Nothing else is imported any more -- the stage
+    # tree, config, detector, discovery, dispatch, eta_coverage, provenance,
+    # seeding, sr_midas and results were deleted at 0.7.0 rather than kept in
+    # two places, so the seventeen dependencies they pulled in went with them.
+    # >=0.15.0: refinement is c-omp only, which is what translate_argv's
+    # _FLAG_DROPPED table assumes when it strips --loss/--mode/--solver.
     "midas-pipeline>=0.15.0",
-    "midas-diffract>=0.1.0",
-    "midas-parsl-configs>=0.1.0",
+    # Optional at runtime -- `__init__` imports it inside a try/except so HDF5
+    # files with no plugin filter still read. Declared because the delegated
+    # pipeline effectively always wants it present.
+    "hdf5plugin>=4.0",
 ]
 
 [project.optional-dependencies]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-uq"
-version = "0.1.2"
+version = "0.1.3"
 description = "Cross-validation based uncertainty quantification for HEDM grain refinement (FF, NF, pf)"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -31,6 +31,10 @@ dependencies = [
     "midas-diffract>=0.1.0",
     "midas-hkls>=0.1.0",
     "midas-invert>=0.1",        # shared Laplace core (laplace.py delegates Hessian/pinv here)
+    # Canonical name-resolving Grains.csv / SpotMatrix.csv readers
+    # (midas_process_grains.io.read), used by the CLI. Floor is the first
+    # release carrying them.
+    "midas-process-grains>=0.11.0",
 ]
 
 [project.optional-dependencies]

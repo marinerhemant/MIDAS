@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "midas-tomo"
-version = "0.2.0"
+version = "0.2.1"
 description = "Gridrec filtered back-projection CT reconstruction (CPU + CUDA) with a NumPy API"
 readme = "README.md"
 license = "BSD-3-Clause"
