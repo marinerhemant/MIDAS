@@ -278,3 +278,235 @@ def test_existing_paths_are_untouched():
     for path in (Path.FF, Path.NF, Path.PF, Path.RI):
         for spec in for_path(path):
             assert path in spec.applies_to
+
+
+def test_peakfit_background_keys_are_registered():
+    """MinPeakSNR / BgSubtract / BgNSectors are honoured, not ignored.
+
+    They ride midas_zipper's allow-list into the zarr
+    (``analysis/process/analysis_parameters/MinPeakSNR``), are mapped back by
+    ``midas_peakfit.zarr_io`` and consumed in ``_producer_worker``. They were
+    missing from this registry, so both ``midas-params validate --path ff``
+    and ``midas-pipeline`` reported "unrecognised key 'MinPeakSNR' is IGNORED"
+    -- a false positive that would tell a careful user their SNR filter never
+    ran.
+    """
+    specs = by_name()
+    for name, default in (("MinPeakSNR", 0.0), ("BgSubtract", 0),
+                          ("BgNSectors", 36)):
+        assert name in specs, f"{name} would be reported as an unknown key"
+        spec = specs[name]
+        assert spec.default == default          # must match midas_peakfit.params
+        assert Stage.PEAK_SEARCH in spec.stages
+        assert Path.FF in spec.applies_to and Path.PF in spec.applies_to
+
+
+def test_peakfit_background_keys_parse_without_an_unknown_key_warning(tmp_path):
+    """End-to-end through the parser both callers use."""
+    from midas_params.parser import parse_typed
+
+    p = tmp_path / "ps.txt"
+    p.write_text("MinPeakSNR 5.0\nBgSubtract 1\nBgNSectors 36\n")
+    parsed = parse_typed(str(p))
+    assert parsed.unknown_keys == []
+    assert parsed.values["MinPeakSNR"] == pytest.approx(5.0)
+    assert parsed.values["BgNSectors"] == 36
+
+
+def test_upper_bound_threshold_notes_warn_about_the_example_value():
+    """70000 is a simulation number. A real GE panel clips near 16349, so the
+    shipped example's value flags no saturated reflection at all."""
+    notes = by_name()["UpperBoundThreshold"].notes or ""
+    assert "16349" in notes
+    assert "70000" in notes
+
+
+# ---------------------------------------------------- allow-listed keys that
+# ---------------------------------------------------- were reported IGNORED
+
+#: Every key that reaches a named consumer, with the default that consumer
+#: applies when the key is absent. Sourced from the code, not from the name --
+#: see each ParamSpec's `notes` for the file:line of the read and the use.
+_ALLOWLISTED_WITH_A_CONSUMER = {
+    "MinNrPx": 1,                    # PeaksFittingOMPZarrRefactor.c:1902
+    "MaxNrPx": 10000,                # :1903
+    "MaxNPeaks": 400,                # :1907
+    "DoFullImage": 0,                # :1904
+    "ReferenceRingCurrent": 1.0,     # DEFAULT_BC, :53
+    "zDiffThresh": 0.0,              # :1901 (parsed, but a no-op -- see below)
+    "OverlapLength": 2.0,            # MergeOverlappingPeaksAllZarr.c:521
+    "DoFit": 0,                      # FitSetupParamsAllZarr.c:652
+    "MaxNFrames": 100000,            # :656
+    "WidthTthPx": None,              # sentinel -1 -> falls back to Width
+    "LayerNr": 1,                    # midas_zipper/ff_zip.py:851
+    "U": 1.163,                      # IntegratorZarrOMP.c:380
+    "V": -0.126,                     # :381
+    "W": 0.063,                      # :382
+    "X": 0.0,                        # memset, :372
+    "Y": 0.0,                        # :372
+    "Z": 0.0,                        # :372
+    "SHpL": 0.002,                   # :379
+    "Polariz": 0.99,                 # :378
+}
+
+#: On midas_zipper's allow-list, so they reach the zarr as real typed
+#: datasets -- but NOTHING reads them back. Registering a default nobody
+#: honours would be worse than the warning, so these stay unregistered.
+_ALLOWLISTED_WITH_NO_CONSUMER = [
+    "BeamStopY", "BeamStopZ", "IntensityThresh", "MinS_N", "OverArea",
+    "MaxDev", "tolPanelFit", "PixelSplittingRBin", "ZPixelSize",
+    # The key MIDAS_ParamParser.c:387 actually parses is `FitOrWeightedMean`
+    # (registered). `FitWeightMean` is only the C struct FIELD name, and no
+    # parser looks for it.
+    "FitWeightMean",
+    # The zarr rename of OmegaStep. Written literally in a parameter file it
+    # is NOT in MEASUREMENT_KEYS, so it lands in the analysis group while
+    # every consumer reads it from the measurement group -- silently dead.
+    "step",
+]
+
+
+def test_allowlisted_keys_with_a_consumer_are_registered():
+    """A key that reaches a consumer must not be reported as unrecognised.
+
+    All of these ride midas_zipper's allow-list into
+    ``analysis/process/analysis_parameters/<Key>`` and are then read by a
+    named C or Python consumer, yet `midas-params validate` and
+    midas-pipeline both said "unrecognised key ... is IGNORED" -- telling a
+    careful user their setting did nothing when it did.
+    """
+    specs = by_name()
+    missing = [k for k in _ALLOWLISTED_WITH_A_CONSUMER if k not in specs]
+    assert not missing, f"would still be reported as unknown keys: {missing}"
+
+
+def test_registered_defaults_match_the_consumer():
+    """The default is the consumer's, read from source.
+
+    A registered default that disagrees with the code is worse than no entry
+    at all: it is a documented lie about what happens when the key is absent.
+    """
+    specs = by_name()
+    for name, default in _ALLOWLISTED_WITH_A_CONSUMER.items():
+        assert specs[name].default == default, name
+
+
+def test_keys_with_no_consumer_stay_unregistered():
+    """Deliberately absent, and this test is why.
+
+    Nothing in FF_HEDM/src, NF_HEDM/src, packages/*/c_src or packages/*.py
+    reads these; they only appear in allow-lists and stage-invalidation
+    routing tables. If one ever grows a real consumer, register it then --
+    but do not invent a default to silence a warning.
+    """
+    specs = by_name()
+    wrongly_added = [k for k in _ALLOWLISTED_WITH_NO_CONSUMER if k in specs]
+    assert not wrongly_added, (
+        f"{wrongly_added} were registered; a registered default nobody "
+        f"honours is worse than the IGNORED warning"
+    )
+
+
+def test_the_registered_allowlist_keys_parse_clean(tmp_path):
+    """End to end through parse_typed, which is what both callers use."""
+    from midas_params.parser import parse_typed
+
+    body = "\n".join([
+        "MinNrPx 2", "MaxNrPx 5000", "MaxNPeaks 200", "DoFullImage 0",
+        "ReferenceRingCurrent 1.0", "zDiffThresh 0", "OverlapLength 2.0",
+        "DoFit 1", "MaxNFrames 100", "WidthTthPx 1500", "LayerNr 1",
+        "U 1.163", "V -0.126", "W 0.063", "X 0", "Y 0", "Z 0",
+        "SHpL 0.002", "Polariz 0.99",
+        "MinMatchesToAcceptFrac 0.8", "OverallRingToIndex 2",
+    ]) + "\n"
+    p = tmp_path / "ps.txt"
+    p.write_text(body)
+    parsed = parse_typed(str(p))
+    assert parsed.unknown_keys == []
+    assert parsed.issues == []
+    assert parsed.values["MaxNPeaks"] == 200
+    assert parsed.values["Polariz"] == pytest.approx(0.99)
+
+
+def test_zarr_spellings_resolve_to_the_canonical_key(tmp_path):
+    """`MinMatchesToAcceptFrac` and `OverallRingToIndex` work in a parameter
+    file, so they are aliases, not unknown keys.
+
+    Neither is in the zipper's RENAME_MAP as a source, so each passes through
+    unrenamed to the zarr dataset its consumer actually reads
+    (IndexerUnified.c:2743, FitSetupParamsAllZarr.c:786). They must resolve to
+    the canonical key rather than creating a second, competing entry.
+    """
+    from midas_params.parser import parse_typed
+
+    specs = by_name()
+    assert specs["MinMatchesToAcceptFrac"].name == "Completeness"
+    assert specs["OverallRingToIndex"].name == "OverAllRingToIndex"
+
+    p = tmp_path / "ps.txt"
+    p.write_text("MinMatchesToAcceptFrac 0.8\nOverallRingToIndex 2\n")
+    parsed = parse_typed(str(p))
+    assert parsed.unknown_keys == []
+    assert parsed.values["Completeness"] == pytest.approx(0.8)
+    assert parsed.values["OverAllRingToIndex"] == 2
+
+
+def test_gsas_passthrough_family_is_ri_only_and_marked_export_only():
+    """U/V/W/X/Y/Z/SHpL/Polariz reach the output file but no calculation.
+
+    MIDAS never evaluates a profile with them -- IntegratorZarrOMP copies them
+    verbatim into /InstrumentParameters/ for a downstream GSAS-II refinement.
+    Registering them without saying so would imply MIDAS honours them.
+    """
+    specs = by_name()
+    for name in ("U", "V", "W", "X", "Y", "Z", "SHpL", "Polariz"):
+        spec = specs[name]
+        assert spec.applies_to == frozenset({Path.RI}), name
+        assert Stage.INTEGRATION in spec.stages, name
+        assert spec.hidden_in_wizard, name
+        assert "xport only" in (spec.notes or ""), name
+
+
+def test_polariz_is_not_the_polarization_correction():
+    """Two different keys, one letter apart in meaning.
+
+    `PolarizationFraction` corrects intensities in DetectorMapper; `Polariz`
+    is metadata. Conflating them silently changes nothing about the data and
+    everything about a Rietveld fit.
+    """
+    specs = by_name()
+    assert specs["Polariz"].default == 0.99
+    assert specs["PolarizationFraction"].default == 0.99   # same number...
+    assert "does NOT correct" in (specs["Polariz"].notes or "")
+
+
+def test_width_tth_px_is_documented_as_microns():
+    """The `Px` in WidthTthPx is wrong: every consumer treats it as µm.
+
+    A user who reads the name and sets 5 "pixels" gets a 5 µm ring window and
+    loses essentially every spot.
+    """
+    spec = by_name()["WidthTthPx"]
+    assert spec.units == "um"
+    assert "MICRONS, NOT PIXELS" in (spec.notes or "")
+    # No default of its own -- the C sentinel -1 defers to `Width`.
+    assert spec.default is None
+
+
+def test_dead_but_real_keys_say_they_are_dead():
+    """zDiffThresh is parsed and has a default, and does nothing.
+
+    Registering it stops it being reported as a typo the user would hunt for a
+    correct spelling of; the note stops it reading as a working knob.
+    """
+    notes = by_name()["zDiffThresh"].notes or ""
+    assert "dead parameter" in notes
+
+
+def test_c_vs_python_divergences_are_recorded():
+    """MaxNFrames and WidthTthPx are honoured by the C reference and ignored
+    by the Python pipeline that actually runs. Registering them without that
+    caveat would overstate what setting them does."""
+    specs = by_name()
+    for name in ("MaxNFrames", "WidthTthPx"):
+        assert "DIVERGENCE" in (specs[name].notes or ""), name

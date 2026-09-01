@@ -107,3 +107,20 @@ def test_reports_the_line_number(tmp_path):
     p = _write(tmp_path, "Lsd 958874.75\nSpaceGroup 225\nMarginOmeg 0.6\n")
     msg = _run_capturing(p)
     assert "line 3" in msg
+
+
+def test_peakfit_background_keys_are_not_reported_as_ignored(tmp_path):
+    """MinPeakSNR / BgSubtract / BgNSectors ARE honoured; saying otherwise is
+    a false positive with real consequences.
+
+    They reach the zarr through midas_zipper's allow-list
+    (``analysis/process/analysis_parameters/MinPeakSNR``), are mapped by
+    ``midas_peakfit.zarr_io`` and consumed in ``_producer_worker``. The
+    linter called them unrecognised, which would tell a careful user their
+    peak search ran unfiltered when it did not.
+    """
+    p = _write(tmp_path, "MinPeakSNR 5.0\nBgSubtract 1\nBgNSectors 36\n"
+                         "Lsd 958874.75\nSpaceGroup 225\n")
+    msg = _run_capturing(p)
+    assert "unrecognised" not in msg
+    assert "MinPeakSNR" not in msg

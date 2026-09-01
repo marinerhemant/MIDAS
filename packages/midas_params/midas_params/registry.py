@@ -651,8 +651,15 @@ PARAMS: list[ParamSpec] = [
         description="Ring used to generate candidate orientations.",
         applies_to=FF_PF, required_for=FF_PF, stages=S_INDEX,
         zarr_rename="OverallRingToIndex", typical=2,
+        aliases=("OverallRingToIndex",),
         validators=("positive",),
-        notes="Zarr dataset is 'OverallRingToIndex' with double L (spelling change).",
+        notes="Zarr dataset is 'OverallRingToIndex' with double L (spelling change). "
+              "That double-L spelling is accepted as an alias here because it "
+              "WORKS in a parameter file: it is not in the zipper's RENAME_MAP, "
+              "so it passes through unrenamed to "
+              "analysis/process/analysis_parameters/OverallRingToIndex — "
+              "exactly the dataset FitSetupParamsAllZarr.c:786 reads. Reporting "
+              "it as an unrecognised key was wrong.",
     ),
     ParamSpec(
         name="RingsToUse", type=ParamType.INT, category="Ring selection",
@@ -860,6 +867,52 @@ PARAMS: list[ParamSpec] = [
         description="Saturation cap; pixels above this are ignored in peak search.",
         applies_to=FF_PF, units="counts", stages=S_PEAK,
         validators=("positive",),
+        notes="Detector-specific, and it must be MEASURED, not copied. The "
+              "shipped examples carry 70000, which is right only for a "
+              "simulation (it has to exceed MaxOutputIntensity, default "
+              "65000). A real GE panel at 1-ID clips near 16349 counts "
+              "(measured on a CeO2 frame: ~1100 pixels per frame sitting "
+              "exactly on that value and almost nothing between it and 100 "
+              "counts below), so 70000 flags no saturated reflection at all. "
+              "A saturated reflection is a STRONG one; losing it reads "
+              "downstream as incompleteness and inflates grain volumes on "
+              "that ring.",
+    ),
+
+    # These three are the opt-in local-background peak search in
+    # midas_peakfit (background.py, _producer_worker.py:129). They are
+    # honoured end to end -- midas_zipper's allow-list carries them into the
+    # zarr, midas_peakfit.zarr_io maps them back -- but they were absent here,
+    # so `midas-params validate` and midas-pipeline both reported them as
+    # "unrecognised key ... is IGNORED". A user who believed that warning
+    # would think their SNR filter never ran.
+    ParamSpec(
+        name="MinPeakSNR", type=ParamType.FLOAT, category="Peak search",
+        description="Minimum local SNR, (peak - cell median)/cell sigma, for a "
+                    "detected peak to be kept. 0 = off (legacy/C behaviour).",
+        applies_to=FF_PF, default=0.0, stages=S_PEAK,
+        validators=("non_negative",),
+        notes="Measured against the peak's own (ring, azimuthal sector) cell, "
+              "so unlike MinIntegratedIntensity or FitRMSE it assumes nothing "
+              "about grain size, mosaicity or omega step. Needs the same "
+              "per-sector cells as BgSubtract, so setting it turns those on.",
+    ),
+    ParamSpec(
+        name="BgSubtract", type=ParamType.BOOL, category="Peak search",
+        description="Subtract a per-(ring, sector) local background before "
+                    "thresholding, making RingThresh a height above "
+                    "background. 0 = exact legacy/C behaviour.",
+        applies_to=FF_PF, default=0, stages=S_PEAK,
+        notes="Within one ring band the background level spans ~20x the local "
+              "noise sigma, so a single absolute RingThresh cannot serve the "
+              "whole band.",
+    ),
+    ParamSpec(
+        name="BgNSectors", type=ParamType.INT, category="Peak search",
+        description="Number of azimuthal sectors per ring for the local "
+                    "background / SNR cells.",
+        applies_to=FF_PF, default=36, stages=S_PEAK,
+        validators=("positive",), hidden_in_wizard=True,
     ),
     ParamSpec(
         name="PeakFitMode", type=ParamType.INT, category="Peak search",
@@ -891,8 +944,14 @@ PARAMS: list[ParamSpec] = [
         applies_to=FF_PF, required_for=frozenset({FF}), units="fraction",
         typical=0.8, stages=S_INDEX,
         zarr_rename="MinMatchesToAcceptFrac",
+        aliases=("MinMatchesToAcceptFrac",),
         validators=("positive",),
-        notes="Applies to both FF and PF. In PF, the value flows through the "
+        notes="The zarr spelling MinMatchesToAcceptFrac is an accepted alias: "
+              "the indexer parses BOTH spellings (IndexerUnified.c:2743-2752) "
+              "and the zipper passes the zarr spelling through unrenamed, so "
+              "setting it in a parameter file works and must not be reported "
+              "as unrecognised. "
+              "Applies to both FF and PF. In PF, the value flows through the "
               "Zarr to FitSetupParamsAllZarr → paramstest.txt → "
               "IndexerScanningOMP. If omitted, FitSetupParamsAllZarr.c uses "
               "its internal default (0 = accept everything). MaxAng/TolEta/"
@@ -2345,6 +2404,288 @@ PARAMS: list[ParamSpec] = [
         stages=frozenset({Stage.RECONSTRUCTION}),
         notes="With 55 translations and 1 this gives reconSize 128, which is "
               "what the 2023 U3O8 runs used.",
+    ),
+    # ═══════════════════════════════════════════════════════════════════════
+    # KEYS THAT WERE REACHING A CONSUMER WHILE BEING REPORTED AS IGNORED
+    # ═══════════════════════════════════════════════════════════════════════
+    # Every key below is on midas_zipper's allow-list
+    # (param_refresh.FORCE_DOUBLE_PARAMS / FORCE_INT_PARAMS), so setting it in
+    # Parameters.txt writes a real, typed dataset into
+    # analysis/process/analysis_parameters/<Key> in the .MIDAS.zip -- and each
+    # one is then READ by a named consumer.  They were absent here, so
+    # `midas-params validate` and midas-pipeline both said "unrecognised key
+    # ... is IGNORED".  That is the worst kind of wrong: it tells a careful
+    # user their setting did nothing when it did.
+    #
+    # Deliberately NOT registered, because no code reads them (a registered
+    # default nobody honours is worse than the warning): BeamStopY, BeamStopZ,
+    # IntensityThresh, MinS_N, OverArea, MaxDev, tolPanelFit,
+    # PixelSplittingRBin, ZPixelSize, FitWeightMean (the key the parser reads
+    # is FitOrWeightedMean, already registered above -- this spelling is the
+    # C struct field name and reaches nothing), and `step` (the zarr rename of
+    # OmegaStep; written literally in a parameter file it lands in the
+    # ANALYSIS group, while every consumer reads it from the MEASUREMENT
+    # group, so it is silently dead and the warning is correct).
+
+    # ─── Peak search: connected-region and per-region peak limits ───────────
+    # midas_peakfit.connected.filter_regions / seeds.py, and the C reference
+    # PeaksFittingOMPZarrRefactor.c:1465-1467, :1501-1531.
+    ParamSpec(
+        name="MinNrPx", type=ParamType.INT, category="Peak search",
+        description="Connected regions with this many pixels or fewer are "
+                    "discarded before fitting.",
+        applies_to=FF_PF, default=1, units="pixels", stages=S_PEAK,
+        validators=("positive",), hidden_in_wizard=True,
+        notes="The comparison is `nPx <= MinNrPx`, not `<`, so the default 1 "
+              "already throws away every single-pixel blob and MinNrPx 2 also "
+              "throws away 2-pixel blobs. C: "
+              "PeaksFittingOMPZarrRefactor.c:1465 (default :1902); Python: "
+              "midas_peakfit/connected.py:120 (default params.py:91).",
+    ),
+    ParamSpec(
+        name="MaxNrPx", type=ParamType.INT, category="Peak search",
+        description="Connected regions with this many pixels or more are "
+                    "discarded before fitting.",
+        applies_to=FF_PF, default=10000, units="pixels", stages=S_PEAK,
+        validators=("positive",), hidden_in_wizard=True,
+        notes="Also sizes the C per-region fit scratch buffers (fitRs/fitEtas, "
+              "PeaksFittingOMPZarrRefactor.c:527-528), so lowering it shrinks "
+              "the workspace as well as the filter. Default :1903 / "
+              "midas_peakfit/params.py:92.",
+    ),
+    ParamSpec(
+        name="MaxNPeaks", type=ParamType.INT, category="Peak search",
+        description="Cap on fitted peaks PER CONNECTED REGION (not per frame).",
+        applies_to=FF_PF, default=400, units="count", stages=S_PEAK,
+        validators=("positive",), hidden_in_wizard=True,
+        notes="A region with more local maxima is not skipped -- the brightest "
+              "MaxNPeaks are kept and the rest are silently dropped "
+              "(PeaksFittingOMPZarrRefactor.c:1501-1531, "
+              "midas_peakfit/seeds.py:199). Default :1907 / params.py:109.",
+    ),
+    ParamSpec(
+        name="DoFullImage", type=ParamType.BOOL, category="Peak search",
+        description="Search the whole detector instead of the ring bands, "
+                    "using RingThresh's FIRST threshold everywhere.",
+        applies_to=FF_PF, default=0, stages=S_PEAK, hidden_in_wizard=True,
+        notes="1 abandons ring masking: every pixel gets Thresholds[0] -- the "
+              "first RingThresh row only, all other per-ring thresholds are "
+              "ignored -- and hkls.csv is never read "
+              "(PeaksFittingOMPZarrRefactor.c:2695, :2525; "
+              "midas_peakfit/geometry.py:170). It also disables BgSubtract and "
+              "MinPeakSNR in the Python path (background.py:219, "
+              "orchestrator.py:247), because there are no ring/sector cells "
+              "left to bin into.",
+    ),
+    ParamSpec(
+        name="ReferenceRingCurrent", type=ParamType.FLOAT,
+        category="Image processing",
+        description="Flat multiplicative gain applied to every pixel after "
+                    "dark subtraction and flood division.",
+        applies_to=FF_PF, default=1.0, stages=S_IMG | S_PEAK,
+        validators=("positive",), hidden_in_wizard=True,
+        notes="Despite the name NOTHING divides by a measured ring current -- "
+              "the number supplied is used raw as a gain "
+              "((img-dark)/flood * bc: PeaksFittingOMPZarrRefactor.c:1434, "
+              "midas_peakfit/preprocess.py:211). It is applied BEFORE the "
+              "RingThresh comparison, so changing it silently changes which "
+              "pixels survive the threshold. Default DEFAULT_BC=1 "
+              "(PeaksFittingOMPZarrRefactor.c:53, midas_peakfit/params.py:14).",
+    ),
+    ParamSpec(
+        name="zDiffThresh", type=ParamType.FLOAT, category="Peak search",
+        description="Accepted and parsed by the peak-fitting stage, but has "
+                    "NO EFFECT on any result.",
+        applies_to=FF_PF, default=0.0, units="counts", stages=S_PEAK,
+        hidden_in_wizard=True,
+        notes="Registered so it is not reported as a typo -- it is a real, "
+              "long-standing key -- but it is a dead parameter. C reads it "
+              "into a file-scope global (PeaksFittingOMPZarrRefactor.c:2239 -> "
+              ":2485) that is never referenced again and is not extern-linked; "
+              "Python carries it as a dataclass field and a repr line only "
+              "(midas_peakfit/params.py:111, :238). The archived version even "
+              "printed a double with %d (archive/PeaksFittingOMPZarr.c:843), "
+              "which is how little it was exercised. Setting it does nothing.",
+    ),
+
+    # ─── Transforms: merge / radius / fit-setup ─────────────────────────────
+    ParamSpec(
+        name="OverlapLength", type=ParamType.FLOAT, category="Peak search",
+        description="Frame-to-frame spot-tracking radius: max (YCen, ZCen) "
+                    "separation AND max ring-radius difference for two peaks "
+                    "on consecutive ω frames to merge into one 3-D spot.",
+        applies_to=FF_PF, default=2.0, units="pixels",
+        stages=frozenset({Stage.SPOT_GEN}), hidden_in_wizard=True,
+        notes="It is a DISTANCE, not a length in omega, despite the name; the "
+              "same number gates both the spatial separation and |ΔR| "
+              "(MergeOverlappingPeaksAllZarr.c:861-873, "
+              "midas_transforms/merge/core.py:181-201, :522). Default "
+              "sqrt(4)=2.0 (MergeOverlappingPeaksAllZarr.c:521, "
+              "midas_transforms/params.py:623). WARNING: setting "
+              "LocalMaximaOnly 1 OVERWRITES whatever you put here with 3.0 "
+              "(midas_zipper/ff_zip.py:218-220).",
+    ),
+    ParamSpec(
+        name="DoFit", type=ParamType.BOOL, category="Calibration",
+        description="Run the 5-parameter powder geometry refine (Lsd, YCen, "
+                    "ZCen, ty, tz) inside fit-setup.",
+        applies_to=FF_PF, default=0, stages=S_CALIB | S_REFINE,
+        hidden_in_wizard=True,
+        notes="0 takes the else branch and copies the input geometry straight "
+              "through, so LsdFit/YBCFit/ZBCFit/tyFit/tzFit are echoes of the "
+              "input that were never fitted -- downstream cannot tell the "
+              "difference (FitSetupParamsAllZarr.c:1401-1418, default :652; "
+              "midas_transforms/fit_setup/core.py:316-341, default "
+              "params.py:591).",
+    ),
+    ParamSpec(
+        name="MaxNFrames", type=ParamType.INT, category="Calibration",
+        description="Drop a merged spot from the fit-setup geometry-refine "
+                    "input if it spans more than this many ω frames.",
+        applies_to=FF_PF, default=100000, units="frames",
+        stages=frozenset({Stage.SPOT_GEN, Stage.CALIBRATION}),
+        validators=("positive",), hidden_in_wizard=True,
+        notes="Excludes ω-smeared / streaked spots from the calibration spot "
+              "list only; the spot still exists downstream "
+              "(FitSetupParamsAllZarr.c:1317, default :656). C-vs-PYTHON "
+              "DIVERGENCE: midas_transforms parses it into ZarrParams "
+              "(params.py:594) and never applies it -- fit_setup/core.py has "
+              "no nFrames filter at all -- so on the Python pipeline that "
+              "actually runs today this key is inert.",
+    ),
+    ParamSpec(
+        name="WidthTthPx", type=ParamType.FLOAT, category="Ring selection",
+        description="Override for `Width`: the |R_observed − R_ring| window "
+                    "used to assign a merged spot to a ring.",
+        applies_to=FF_PF, units="um",
+        stages=frozenset({Stage.SPOT_GEN, Stage.CALIBRATION}),
+        validators=("positive",), hidden_in_wizard=True,
+        notes="THE UNITS ARE MICRONS, NOT PIXELS -- the `Px` in the name is "
+              "wrong at every consumer; none of them multiplies or divides by "
+              "the pixel size (CalcRadiusAllZarr.c:359 compares against "
+              "hkls.csv radii in µm; FitSetupParamsAllZarr.c:1271 converts it "
+              "to a 2θ tolerance via Ttheta4mR with µm arguments). No default "
+              "of its own: the C initialises it to the sentinel -1 and falls "
+              "back to `Width` (default 1500 µm) when it is absent "
+              "(CalcRadiusAllZarr.c:114, :239; FitSetupParamsAllZarr.c:652, "
+              ":1084). C-vs-PYTHON DIVERGENCE: midas_transforms has no "
+              "WidthTthPx field, so today's Python pipeline always uses "
+              "`Width` and silently ignores this key "
+              "(midas_transforms/radius/core.py:348).",
+    ),
+
+    # ─── File discovery ─────────────────────────────────────────────────────
+    ParamSpec(
+        name="LayerNr", type=ParamType.INT, category="Data source",
+        description="1-based layer index; selects which raw file this archive "
+                    "is built from and names the output .MIDAS.zip.",
+        applies_to=FF_PF, default=1, stages=S_FILE, hidden_in_wizard=True,
+        validators=("positive",),
+        notes="fNr = StartFileNrFirstLayer + (LayerNr-1)*ScanStep "
+              "(midas_zipper/ff_zip.py:798-802, output name :849-853). It is "
+              "also a BAKED_IN key (param_refresh.BAKED_IN_KEYS): the frames "
+              "already stored in exchange/data came from the file it chose, so "
+              "editing it in an existing archive is refused, not honoured. "
+              "Every downstream reader only echoes it in a banner "
+              "(PeaksFittingOMPZarrRefactor.c:1805, CalcRadiusAllZarr.c:232, "
+              "FitSetupParamsAllZarr.c:1193). In PF the pipeline overloads it "
+              "with the scan index within a layer "
+              "(midas_pipeline/stages/zip_convert.py:194-203).",
+    ),
+
+    # ─── GSAS-II instrument-profile passthrough (radial integration) ────────
+    # IntegratorZarrOMP.c parses these by exact single-token match
+    # (:482-497), re-reads them from the zarr (:950-981) and writes them
+    # verbatim into /InstrumentParameters/ of the integrated output
+    # (:2155-2166) so a downstream GSAS-II Rietveld refinement starts from
+    # them.  MIDAS NEVER COMPUTES WITH THEM -- there is no arithmetic on any of
+    # the eight anywhere in the tree, and MIDAS's own TCH pseudo-Voigt takes
+    # sigma_G / gamma_L as free parameters rather than a U/V/W polynomial
+    # (midas_calibrate_v2/forward/peak_shape.py:54-72).  The defaults are the
+    # GSAS-II default X-ray instprm set.  Registered because they DO reach the
+    # output file, so "IGNORED" was false.
+    ParamSpec(
+        name="U", type=ParamType.FLOAT, category="Integration",
+        description="GSAS-II Caglioti Gaussian tan²θ coefficient, copied to "
+                    "/InstrumentParameters/U of the integrated output.",
+        applies_to=frozenset({RI}), default=1.163, units="centideg²",
+        stages=S_INT, hidden_in_wizard=True,
+        notes="Export only: FWHM² = U tan²θ + V tanθ + W is evaluated by "
+              "GSAS-II, never by MIDAS (IntegratorZarrOMP.c:486, :962, :2161; "
+              "defaults :380, :651).",
+    ),
+    ParamSpec(
+        name="V", type=ParamType.FLOAT, category="Integration",
+        description="GSAS-II Caglioti Gaussian tanθ coefficient, copied to "
+                    "/InstrumentParameters/V of the integrated output.",
+        applies_to=frozenset({RI}), default=-0.126, units="centideg²",
+        stages=S_INT, hidden_in_wizard=True,
+        notes="Export only; negative by convention. IntegratorZarrOMP.c:488, "
+              ":966, :2162; defaults :381, :651.",
+    ),
+    ParamSpec(
+        name="W", type=ParamType.FLOAT, category="Integration",
+        description="GSAS-II Caglioti Gaussian constant term, copied to "
+                    "/InstrumentParameters/W of the integrated output.",
+        applies_to=frozenset({RI}), default=0.063, units="centideg²",
+        stages=S_INT, hidden_in_wizard=True,
+        notes="Export only. Not to be confused with `Width`, the ring "
+              "half-width. IntegratorZarrOMP.c:490, :970, :2163; defaults "
+              ":382, :651.",
+    ),
+    ParamSpec(
+        name="X", type=ParamType.FLOAT, category="Integration",
+        description="GSAS-II Lorentzian 1/cosθ (size-broadening) coefficient, "
+                    "copied to /InstrumentParameters/X of the output.",
+        applies_to=frozenset({RI}), default=0.0, units="centideg",
+        stages=S_INT, hidden_in_wizard=True,
+        notes="Export only. UNRELATED to the X column of Grains.csv (grain "
+              "centroid, µm) -- same letter, different object, no code path "
+              "between them. IntegratorZarrOMP.c:492, :950, :2164; default "
+              "from memset at :372 and :651.",
+    ),
+    ParamSpec(
+        name="Y", type=ParamType.FLOAT, category="Integration",
+        description="GSAS-II Lorentzian tanθ (strain-broadening) coefficient, "
+                    "copied to /InstrumentParameters/Y of the output.",
+        applies_to=frozenset({RI}), default=0.0, units="centideg",
+        stages=S_INT, hidden_in_wizard=True,
+        notes="Export only. UNRELATED to the Y column of Grains.csv. "
+              "IntegratorZarrOMP.c:494, :954, :2165; default :372, :651.",
+    ),
+    ParamSpec(
+        name="Z", type=ParamType.FLOAT, category="Integration",
+        description="GSAS-II additional Lorentzian profile term, copied to "
+                    "/InstrumentParameters/Z of the output.",
+        applies_to=frozenset({RI}), default=0.0, units="centideg",
+        stages=S_INT, hidden_in_wizard=True,
+        notes="Export only. UNRELATED to the Z column of Grains.csv. "
+              "IntegratorZarrOMP.c:496, :958, :2166; default :372, :651.",
+    ),
+    ParamSpec(
+        name="SHpL", type=ParamType.FLOAT, category="Integration",
+        description="GSAS-II axial-divergence S/L + H/L term, copied to "
+                    "/InstrumentParameters/SH_L of the integrated output.",
+        applies_to=frozenset({RI}), default=0.002, stages=S_INT,
+        hidden_in_wizard=True,
+        notes="Export only -- no MIDAS peak shape evaluates it. Note the "
+              "output dataset is renamed SH_L, so the name in the result file "
+              "does not match the key (IntegratorZarrOMP.c:484, :974, :2159; "
+              "defaults :379, :651).",
+    ),
+    ParamSpec(
+        name="Polariz", type=ParamType.FLOAT, category="Integration",
+        description="GSAS-II polarization profile term, copied to "
+                    "/InstrumentParameters/Polariz of the output.",
+        applies_to=frozenset({RI}), default=0.99, units="fraction",
+        stages=S_INT, hidden_in_wizard=True,
+        notes="Export only: it does NOT correct any intensity. The key that "
+              "actually corrects intensities is PolarizationFraction, gated by "
+              "PolarizationCorrection (DetectorMapper.c:365). "
+              "IntegratorZarrOMP.c:482, :978, :2155; defaults :378, :651. "
+              "midas_integrate_v2 collapses the two -- it overwrites Polariz "
+              "with PolarizationFraction (io/zarr_gsas.py:190) -- so v1 and v2 "
+              "disagree when you set them to different values.",
     ),
 ]
 
