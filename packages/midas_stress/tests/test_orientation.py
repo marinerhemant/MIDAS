@@ -271,3 +271,53 @@ def test_rodrigues_agrees_with_axis_angle_construction():
         a = np.asarray(axis_angle_to_orient_mat([0.0, 0.0, 1.0], deg), dtype=float)
         b = np.asarray(rodrigues_to_orient_mat([0.0, 0.0, r]), dtype=float)
         assert np.abs(a - b).max() < 1e-12
+
+
+class TestOrientMatShapeAcceptance:
+    """A genuine (3, 3) must work, not just a flat 9.
+
+    The docstrings of ``orient_mat_to_quat`` and ``misorientation_om`` have
+    always promised "length 9 or shape (3, 3)", but the NumPy kernel indexes
+    the matrix flat (``om[0] + om[4] + om[8]``), so a (3, 3) died with
+    ``IndexError: index 4 is out of bounds for axis 0 with size 3``. Hit for
+    real while comparing two grain orientation matrices read as (3, 3).
+    """
+
+    @staticmethod
+    def _rotz(deg):
+        c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+        return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+    def test_orient_mat_to_quat_3x3_matches_flat9(self):
+        m = self._rotz(37.0)
+        np.testing.assert_allclose(
+            orient_mat_to_quat(m), orient_mat_to_quat(m.ravel()), atol=0.0)
+
+    def test_orient_mat_to_quat_accepts_a_nested_list(self):
+        m = self._rotz(37.0)
+        np.testing.assert_allclose(
+            orient_mat_to_quat(m.tolist()), orient_mat_to_quat(m.ravel()),
+            atol=0.0)
+
+    def test_misorientation_om_3x3_matches_flat9(self):
+        m1, m2 = np.eye(3), self._rotz(10.0)
+        ang33, ax33 = misorientation_om(m1, m2, 225)
+        ang9, ax9 = misorientation_om(m1.ravel(), m2.ravel(), 225)
+        assert ang33 == pytest.approx(ang9, abs=0.0)
+        np.testing.assert_allclose(ax33, ax9, atol=0.0)
+        # sanity: 10 deg about [001] is 10 deg in cubic (below the 45 deg FZ cap)
+        assert math.degrees(ang33) == pytest.approx(10.0, abs=1e-9)
+
+    def test_misorientation_om_3x3_agrees_with_the_batch_path(self):
+        """The batch path already normalised (n, 3, 3) via _as_om9; the scalar
+        one did not. They must now give the same number."""
+        from midas_stress.orientation import misorientation_om_batch
+
+        m1, m2 = np.eye(3), self._rotz(23.0)
+        ang, _ = misorientation_om(m1, m2, 225)
+        (ang_b,) = misorientation_om_batch(m1[None], m2[None], 225)
+        assert ang == pytest.approx(float(ang_b), abs=1e-14)
+
+    def test_a_wrong_shape_still_raises_something_readable(self):
+        with pytest.raises(ValueError, match=r"\(3, 3\) or \(9,\)"):
+            orient_mat_to_quat(np.zeros(3))

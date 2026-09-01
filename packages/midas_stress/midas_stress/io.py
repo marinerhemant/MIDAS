@@ -3,8 +3,17 @@
 The CSV parser is header-driven so it works with all MIDAS flavours:
 the historical ``Grains.csv`` layout, the newer ``GrainsSim.csv`` /
 ``Grains_allatonce.csv`` layout (with ``DiffPos``, ``DiffOme``, ...
-between positions and strains), and any other file as long as the
-column header line begins with ``%GrainID``.
+between positions and strains), and any other file that carries a
+``%`` column-header line naming the orientation-matrix columns.
+
+**The ID column has two spellings.** ``midas_process_grains`` ships two
+writers: ``compute/c_parity_emit.py`` writes ``%GrainID ...`` (what the
+``c_parity`` CLI produces) and ``io/csv.py`` writes ``%ID ...`` (every
+other mode). Both are real and both are on disk. Anchoring the header
+search on either token alone rejects half the corpus outright, so the
+header is located by the presence of ``O11`` — a column every generation
+of the format has had — and ``ID``/``GrainID`` are both accepted as the
+grain-id column name.
 
 The returned dict exposes a single ``strain`` key (the *d-spacing
 strain*, historically called the Kenesei form in MIDAS). It is
@@ -61,9 +70,14 @@ _VECTOR_BLOCKS = {
     "euler_angles":   ["Eul0", "Eul1", "Eul2"],
 }
 
+#: Accepted spellings of the grain-id column, in preference order. Both are
+#: written by live MIDAS code paths (see module docstring); "GrainID" is first
+#: only because it is the older one.
+_ID_NAMES = ["GrainID", "ID"]
+
 # Scalar columns: output_key -> list of accepted header names (first match wins).
 _SCALAR_COLUMNS = {
-    "grain_ids":   ["GrainID"],
+    "grain_ids":   _ID_NAMES,
     "radii":       ["GrainRadius", "Radius"],
     "confidences": ["Confidence"],
     "phase":       ["PhaseNr"],
@@ -72,7 +86,14 @@ _SCALAR_COLUMNS = {
 
 
 def _find_header_line(filepath: str) -> tuple:
-    """Locate the ``%GrainID ...`` header line and the number of lines to skip.
+    """Locate the ``%`` column-header line and the number of lines to skip.
+
+    The header is found by looking for ``O11`` among the ``%`` line's tokens,
+    NOT by the ID token: ``ProcessGrains`` output is written both as
+    ``%GrainID<TAB>O11...`` and as ``%ID<TAB>O11...`` and keying on one
+    spelling silently rejects every file written by the other. ``O11`` is
+    present in every generation of the format (19, 21, 23, 47 and 53 columns),
+    which makes it the one reliable anchor.
 
     Returns
     -------
@@ -83,13 +104,17 @@ def _find_header_line(filepath: str) -> tuple:
     with open(filepath, 'r') as f:
         for line in f:
             stripped = line.lstrip()
-            if stripped.startswith("%GrainID") or stripped.startswith("% GrainID"):
-                header = stripped.lstrip("%").strip()
-                columns = header.split()
-                return columns, skip + 1
+            if stripped.startswith("%"):
+                columns = stripped.lstrip("%").strip().split()
+                if "O11" in columns:
+                    return columns, skip + 1
             skip += 1
     raise ValueError(
-        f"Could not locate '%GrainID ...' column header line in {filepath}"
+        f"Could not locate a '%' column-header line naming the orientation "
+        f"columns O11..O33 in {filepath}. Expected '%ID<TAB>O11<TAB>...' or "
+        f"'%GrainID<TAB>O11<TAB>...'. Files written by very old NF "
+        f"Mic2GrainsList carry a prose header ('%GrainID OrientMat(9) ...') "
+        f"and are not readable by name; re-run midas-nf-mic2grains."
     )
 
 
@@ -104,10 +129,11 @@ def _col_index(columns, name):
 def read_grains_csv(filepath: str) -> dict:
     """Read grain data from a MIDAS ``Grains.csv``-style file.
 
-    The parser is header-driven: it locates the line starting with
-    ``%GrainID`` and maps columns by name, so it works with all MIDAS
-    output flavours (``Grains.csv``, ``GrainsSim.csv``,
-    ``Grains_allatonce.csv``, etc.).
+    The parser is header-driven: it locates the ``%`` column-header line
+    (identified by ``O11``, so both ``%ID`` and ``%GrainID`` files are
+    accepted) and maps columns by name, so it works with all MIDAS output
+    flavours (``Grains.csv``, ``GrainsSim.csv``, ``Grains_allatonce.csv``,
+    etc.).
 
     Parameters
     ----------
@@ -139,7 +165,13 @@ def read_grains_csv(filepath: str) -> dict:
         raise FileNotFoundError(f"Grains file not found: {filepath}")
 
     columns, skip = _find_header_line(filepath)
-    data = np.genfromtxt(filepath, skip_header=skip)
+    # comments='%' as well as skip_header: the column header is the LAST '%'
+    # line in ProcessGrains output but NOT in NF Mic2GrainsList output, which
+    # writes it as line 2 of a nine-line '%' preamble. Skipping by count alone
+    # then fed '%SpaceGroup 225' to the float parser. Treating '%' as a comment
+    # marker makes the reader indifferent to where in the preamble the column
+    # header sits.
+    data = np.genfromtxt(filepath, skip_header=skip, comments='%')
     if data.ndim == 1:
         data = data.reshape(1, -1)
 

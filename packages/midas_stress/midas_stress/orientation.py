@@ -191,6 +191,23 @@ def euler_to_orient_mat(euler) -> list:
     return _euler_to_orient_mat_py(euler)
 
 
+def _as_om9_single(om):
+    """One orientation matrix, (3, 3) or length-9, -> contiguous (9,) float64.
+
+    Scalar counterpart of :func:`_as_om9`. The NumPy kernels index a matrix
+    flat, so every scalar entry point has to funnel through here or a (3, 3)
+    input dies with a bare ``IndexError`` deep inside the kernel.
+    """
+    a = np.ascontiguousarray(om, dtype=np.float64)
+    if a.shape == (3, 3):
+        return a.reshape(9)
+    if a.shape != (9,):
+        raise ValueError(
+            f"expected an orientation matrix of shape (3, 3) or (9,); "
+            f"got {a.shape}")
+    return a
+
+
 def orient_mat_to_quat(orient_mat) -> np.ndarray:
     """Orientation matrix -> quaternion [w, x, y, z].
 
@@ -206,7 +223,13 @@ def orient_mat_to_quat(orient_mat) -> np.ndarray:
     """
     if _is_torch(orient_mat):
         return _orient_mat_to_quat_torch(orient_mat)
-    return _orient_mat_to_quat_py(orient_mat)
+    # _orient_mat_to_quat_py indexes the matrix flat (om[0], om[4], om[8]), so
+    # a genuine (3, 3) — which this signature has always documented, and which
+    # is what euler_to_orient_mat's callers naturally reshape to — raised
+    # IndexError instead of converting. Normalise here rather than inside the
+    # kernel: the batch path already does the same via _as_om9, and the kernel
+    # stays a flat-9 hot loop.
+    return _orient_mat_to_quat_py(_as_om9_single(orient_mat))
 
 
 def orient_mat_to_euler(m) -> np.ndarray:
