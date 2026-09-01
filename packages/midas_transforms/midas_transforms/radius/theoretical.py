@@ -456,31 +456,41 @@ def load_ff_grains_to_tensors(
 ) -> FFGrainTensors:
     """Load a MIDAS ``Grains.csv`` into a :class:`FFGrainTensors`.
 
-    Delegates parsing to :func:`midas_stress.io.read_grains_csv` (the
-    canonical header-driven parser shared across MIDAS).  Volume is
-    derived from ``GrainRadius`` as ``(4/3) π r³``.
+    Every column is resolved by NAME via
+    :func:`midas_transforms.io.grains_csv.read_grains_columns`, so any width
+    (19 / 21 / 23 / 47 / 53) and either header token (``%ID`` or ``%GrainID``)
+    reads.  Volume is derived from ``GrainRadius`` as ``(4/3) π r³``.
+
+    This used to delegate to ``midas_stress.io.read_grains_csv``, which located
+    its header by ``startswith("%GrainID")`` only.  ``midas_process_grains``'
+    non-``c_parity`` writer emits ``%ID``, so that parser found no header and
+    raised ``ValueError`` on every such file — i.e. on the output of the plain
+    Python ProcessGrains path.  Reading it here instead also removes the
+    version floor that fix would otherwise impose on midas-stress; see
+    ``io/grains_csv.py`` for why the canonical reader in
+    ``midas_process_grains`` cannot be imported from here.
     """
     import math
     import torch
 
-    from midas_stress.io import read_grains_csv
+    from ..io.grains_csv import read_grains_columns
 
     dt = dtype or torch.float64
-    g = read_grains_csv(str(grains_csv_path))
-    if "grain_ids" not in g:
-        raise ValueError(f"no GrainID column in {grains_csv_path}")
-    if "positions" not in g:
-        raise ValueError(f"no X/Y/Z columns in {grains_csv_path}")
-    if "radii" not in g:
-        raise ValueError(f"no GrainRadius column in {grains_csv_path}")
+    g = read_grains_columns(grains_csv_path)
+    for col, what in (("X", "X/Y/Z columns"), ("Y", "X/Y/Z columns"),
+                      ("Z", "X/Y/Z columns"), ("GrainRadius", "GrainRadius column")):
+        if col not in g:
+            raise ValueError(f"no {what} in {grains_csv_path}")
 
-    gid = torch.as_tensor(np.asarray(g["grain_ids"]), dtype=torch.int64, device=device)
-    pos = torch.as_tensor(np.asarray(g["positions"]), dtype=dt, device=device)
-    r = torch.as_tensor(np.asarray(g["radii"]), dtype=dt, device=device)
+    gid = torch.as_tensor(g["GrainID"].astype(np.int64), dtype=torch.int64,
+                          device=device)
+    pos = torch.as_tensor(np.column_stack([g["X"], g["Y"], g["Z"]]),
+                          dtype=dt, device=device)
+    r = torch.as_tensor(np.asarray(g["GrainRadius"]), dtype=dt, device=device)
     vol = (4.0 / 3.0) * math.pi * (r ** 3)
     conf = (
-        torch.as_tensor(np.asarray(g["confidences"]), dtype=dt, device=device)
-        if "confidences" in g else None
+        torch.as_tensor(np.asarray(g["Confidence"]), dtype=dt, device=device)
+        if "Confidence" in g else None
     )
     return FFGrainTensors(
         grain_id=gid, position_um=pos, volume_um3=vol, radius_um=r, confidence=conf,
@@ -505,22 +515,29 @@ class FFSpotTensors:
     eta_deg:     "torch.Tensor"       # (N,) float
 
 
-def _parse_spotmatrix_csv(path: Path) -> dict:
-    """MIDAS SpotMatrix.csv column layout::
+def _parse_spotmatrix_csv(path: Path, *, matched_only: bool = True) -> dict:
+    """Read a MIDAS ``SpotMatrix.csv`` of either width (12 legacy / 28
+    expanded), resolving every column by name.
 
-        GrainID SpotID Omega DetectorHor DetectorVert OmeRaw Eta RingNr YLab ZLab Theta StrainError
-
-    Header is a single line starting with '%'.
+    ``matched_only`` (default True) drops the ``Matched == 0`` rows: predicted
+    reflections that were never observed.  They carry ``-1`` in ``SpotID`` and
+    ``RingNr`` and NaN elsewhere, so the SpotID join gives them
+    ``intensity = 0`` and the ring lookup gives them ``ring_idx = -1``, but
+    their ``grain_idx`` is *valid* — which is how phantom zero-intensity spots
+    used to enter per-grain volume and K refinement.  Pass False only if the
+    un-found population is what you are after.
     """
-    arr = np.loadtxt(str(path), skiprows=1)
-    if arr.ndim == 1:
-        arr = arr.reshape(1, -1)
+    from ..io.grains_csv import read_spot_matrix_columns
+
+    sm = read_spot_matrix_columns(path, matched_only=matched_only)
     return {
-        "grain_id":   arr[:, 0].astype(np.int64),
-        "spot_id":    arr[:, 1].astype(np.int64),
-        "omega_deg":  arr[:, 2],
-        "eta_deg":    arr[:, 6],
-        "ring_nr":    arr[:, 7].astype(np.int64),
+        "grain_id":   sm["GrainID"].astype(np.int64),
+        "spot_id":    sm["SpotID"].astype(np.int64),
+        "omega_deg":  sm["Omega"],
+        "eta_deg":    sm["Eta"],
+        "ring_nr":    sm["RingNr"].astype(np.int64),
+        "n_rows_total":     sm["__n_rows_total__"],
+        "n_rows_unmatched": sm["__n_rows_unmatched__"],
     }
 
 

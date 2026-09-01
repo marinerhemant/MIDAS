@@ -155,20 +155,56 @@ def test_invalid_scan_axis_raises():
 # ----------------------------------------------------------- FF I/O
 
 
-def _write_synthetic_grains_csv(path: Path):
-    cols = ["GrainID", "O11","O12","O13","O21","O22","O23","O31","O32","O33",
-            "X","Y","Z", "a","b","c","alpha","beta","gamma",
-            "GrainRadius", "Confidence"]
+# The Grains.csv / SpotMatrix.csv fixtures below are at the widths
+# process_grains writes TODAY (53 and 28 columns), not the dead 21/12-column
+# layouts. The old fixtures were 21 and 12 columns with no ``Matched == 0``
+# row, which is exactly why a positional reader that mistook the lattice for
+# the strain, and one that let phantom un-found reflections through, both
+# passed this file for as long as they did.
+
+#: 53-column Grains.csv header (midas_process_grains.io.csv.GRAINS_HEADER_COLS).
+#: Written under the ``%ID`` token here — the spelling the non-c_parity writer
+#: emits, and the one the previous midas_stress-backed reader rejected outright.
+_GRAINS_53_COLS = (
+    ["O11","O12","O13","O21","O22","O23","O31","O32","O33", "X","Y","Z",
+     "a","b","c","alpha","beta","gamma",
+     "DiffPos","DiffOme","DiffAngle","GrainRadius","Confidence"]
+    + [f"eFab{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+    + [f"eKen{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+    + ["RMSErrorStrain","PhaseNr","Eul0","Eul1","Eul2",
+       "DiffPosPre","DiffOmePre","DiffAnglePre",
+       "DiffPosPost","DiffOmePost","DiffAnglePost"]
+)
+
+#: (GrainID, X, Y, Z, GrainRadius, Confidence). DiffPos / DiffOme are written
+#: as deliberately different values below, so a reader that takes columns 19
+#: and 20 as radius / confidence (which is what positional readers of the
+#: 21-column layout do at this width) gets a visibly wrong answer.
+_GRAINS_ROWS = (
+    (1, 0.0, 0.0, 0.0, 5.0, 0.95),
+    (2, 10.0, 5.0, 0.0, 8.0, 0.90),
+    (3, -5.0, 15.0, 0.0, 3.0, 0.85),
+)
+_DIFF_POS = (251.3, 12.4, 88.0)
+_DIFF_OME = (0.072, 0.910, 0.455)
+
+
+def _write_synthetic_grains_csv(path: Path, token: str = "ID"):
     with path.open("w") as f:
         f.write("% provenance line (skipped)\n")
-        f.write("%" + " ".join(cols) + "\n")
-        rows = [
-            (1, 1,0,0, 0,1,0, 0,0,1, 0.0, 0.0, 0.0, 3,3,3, 90,90,90, 5.0, 0.95),
-            (2, 1,0,0, 0,1,0, 0,0,1, 10.0, 5.0, 0.0, 3,3,3, 90,90,90, 8.0, 0.90),
-            (3, 1,0,0, 0,1,0, 0,0,1, -5.0, 15.0, 0.0, 3,3,3, 90,90,90, 3.0, 0.85),
-        ]
-        for r in rows:
-            f.write(" ".join(f"{v:.6g}" for v in r) + "\n")
+        f.write("%\tSpaceGroup:225\n")
+        f.write("%" + token + " " + " ".join(_GRAINS_53_COLS) + "\n")
+        for (gid, x, y, z, rad, conf), dpos, dome in zip(
+                _GRAINS_ROWS, _DIFF_POS, _DIFF_OME):
+            row = ([gid, 1,0,0, 0,1,0, 0,0,1, x, y, z,
+                    3, 3, 3, 90, 90, 90,          # lattice, NOT strain
+                    dpos, dome, 0.15, rad, conf]
+                   + [100.0] * 9 + [200.0] * 9    # eFab / eKen, microstrain
+                   + [12.5, 1, 0.1, 0.2, 0.3]
+                   + [dpos + 30.0, dome + 0.02, 0.17]
+                   + [dpos, dome, 0.15])
+            assert len(row) == 53
+            f.write(" ".join(f"{v:.6g}" for v in row) + "\n")
 
 
 def test_load_ff_grains_round_trip(tmp_path: Path):
@@ -183,6 +219,39 @@ def test_load_ff_grains_round_trip(tmp_path: Path):
     assert torch.allclose(g.volume_um3, expected_vol)
     assert g.confidence is not None
     assert torch.allclose(g.confidence, _t([0.95, 0.90, 0.85]))
+    # The specific wrong answers a positional 21-column reader gives at width
+    # 53: column 19 is DiffPos and column 20 is DiffOme.
+    assert not torch.allclose(g.radius_um, _t(list(_DIFF_POS)))
+    assert not torch.allclose(g.confidence, _t(list(_DIFF_OME)))
+
+
+@pytest.mark.parametrize("token", ["ID", "GrainID"])
+def test_load_ff_grains_both_header_tokens(tmp_path: Path, token: str):
+    """io/csv writes ``%ID``; c_parity_emit writes ``%GrainID``. Both are real
+    files, and the previous midas_stress-backed reader raised on ``%ID``."""
+    p = tmp_path / "Grains.csv"
+    _write_synthetic_grains_csv(p, token=token)
+    g = load_ff_grains_to_tensors(p)
+    assert g.grain_id.tolist() == [1, 2, 3]
+    assert torch.allclose(g.radius_um, _t([5.0, 8.0, 3.0]))
+
+
+def test_load_ff_grains_matches_canonical_reader(tmp_path: Path):
+    """Guard against drift from ``midas_process_grains.io.read``.
+
+    That module is canonical; ``midas_transforms.io.grains_csv`` mirrors its
+    rules locally because midas-process-grains depends on midas-transforms and
+    importing it here would make the packaging graph circular. This test keeps
+    the two honest wherever both are installed (always, in the monorepo)."""
+    read = pytest.importorskip("midas_process_grains.io.read")
+    p = tmp_path / "Grains.csv"
+    _write_synthetic_grains_csv(p)
+    g = load_ff_grains_to_tensors(p)
+    t = read.read_grains_csv(p)
+    assert g.grain_id.tolist() == t.ids.tolist()
+    assert torch.allclose(g.radius_um, _t(t.grain_radius.tolist()))
+    assert torch.allclose(g.confidence, _t(t.confidence.tolist()))
+    assert torch.allclose(g.position_um, _t(t.positions.tolist()))
 
 
 def test_load_ff_grains_missing_file(tmp_path: Path):
@@ -190,18 +259,44 @@ def test_load_ff_grains_missing_file(tmp_path: Path):
         load_ff_grains_to_tensors(tmp_path / "nonexistent.csv")
 
 
-def _write_synthetic_spotmatrix(path: Path):
-    rows = [
+#: 28-column SpotMatrix header
+#: (midas_process_grains.io.csv.SPOT_MATRIX_HEADER_EXPANDED).
+_SPOTMATRIX_28_COLS = (
+    ["SpotID","Omega","DetectorHor","DetectorVert","OmeRaw","Eta","RingNr",
+     "YLab","ZLab","Theta","StrainError","Matched","theorSpotID","theorRingNr",
+     "theorEta","YExp","ZExp","OmegaExp","DiffLen","DiffOme","InternalAngle",
+     "YExpPost","ZExpPost","OmegaExpPost","DiffLenPost","DiffOmePost",
+     "InternalAnglePost"]
+)
+
+
+def _write_synthetic_spotmatrix(path: Path, n_unmatched: int = 2):
+    """28-column SpotMatrix with ``n_unmatched`` predicted-but-never-found rows.
+
+    An un-found row carries ``-1`` in the two integer columns (SpotID, RingNr)
+    and NaN in every observed column. Its grain_id is a REAL grain, so before
+    the ``Matched`` filter it entered that grain's volume/K refinement as a
+    phantom spot with ``intensity = 0`` and ``ring_idx = -1``.
+    """
+    obs = [
         # GrainID SpotID Omega DetHor DetVert OmeRaw Eta Ring YLab ZLab Theta StrErr
-        (1, 101, 10.0, 0,0, 10.0,  30.0, 1, 0,0, 1.5, 0.0),
-        (1, 102, 20.0, 0,0, 20.0,  60.0, 1, 0,0, 1.5, 0.0),
-        (2, 103, 30.0, 0,0, 30.0,  90.0, 2, 0,0, 2.0, 0.0),
-        (2, 104, 40.0, 0,0, 40.0, -30.0, 9, 0,0, 1.0, 0.0),  # ring 9 unknown
+        (1, 101, 10.0, 0, 0, 10.0,  30.0, 1, 0, 0, 1.5, 0.0),
+        (1, 102, 20.0, 0, 0, 20.0,  60.0, 1, 0, 0, 1.5, 0.0),
+        (2, 103, 30.0, 0, 0, 30.0,  90.0, 2, 0, 0, 2.0, 0.0),
+        (2, 104, 40.0, 0, 0, 40.0, -30.0, 9, 0, 0, 1.0, 0.0),  # ring 9 unknown
     ]
     with path.open("w") as f:
-        f.write("% header\n")
-        for r in rows:
-            f.write(" ".join(f"{v:.6g}" for v in r) + "\n")
+        f.write("%GrainID\t" + "\t".join(_SPOTMATRIX_28_COLS) + "\n")
+        for r in obs:
+            row = list(r) + [1] + [r[1], r[7], r[6]] + [1.0] * 12
+            assert len(row) == 28
+            # written with newline='\t\n': every data row ends in a tab
+            f.write("\t".join(f"{v:.6g}" for v in row) + "\t\n")
+        for k in range(n_unmatched):
+            row = ([1, -1] + ["nan"] * 5 + [-1] + ["nan"] * 4 + [0]
+                   + [900 + k, 3, 44.0] + ["nan"] * 12)
+            assert len(row) == 28
+            f.write("\t".join(str(v) for v in row) + "\t\n")
 
 
 def _write_synthetic_inputall(path: Path, intensities):
@@ -227,6 +322,7 @@ def test_load_ff_spots_round_trip(tmp_path: Path):
         two_theta_deg=_t([3.0, 4.0]),
     )
     sp = load_ff_spots_to_tensors(sm, ie, ring_table=rt, grain_table=grains)
+    # The two Matched == 0 rows are gone: 4 observations, not 6.
     assert sp.spot_id.tolist() == [101, 102, 103, 104]
     assert sp.grain_id.tolist() == [1, 1, 2, 2]
     assert sp.grain_idx.tolist() == [0, 0, 1, 1]  # MIDAS GrainID 1,2 -> rows 0,1
@@ -234,6 +330,59 @@ def test_load_ff_spots_round_trip(tmp_path: Path):
     assert sp.ring_idx.tolist() == [0, 0, 1, -1]  # ring 9 unknown
     assert sp.intensity.tolist() == [100.0, 200.0, 50.0, 25.0]
     assert sp.omega_deg.tolist() == [10.0, 20.0, 30.0, 40.0]
+
+
+def test_load_ff_spots_drops_unmatched_predictions(tmp_path: Path):
+    """A ``Matched == 0`` row is a prediction that was never observed.
+
+    It carries ``SpotID = RingNr = -1``, so it joins to no intensity
+    (``0.0``) and to no ring (``ring_idx = -1``) — but its grain_idx is a real
+    grain, so leaving it in adds a phantom zero-intensity spot to that grain's
+    volume and K refinement.
+    """
+    from midas_transforms.radius.theoretical import _parse_spotmatrix_csv
+
+    sm = tmp_path / "SpotMatrix.csv"
+    _write_synthetic_spotmatrix(sm, n_unmatched=3)
+    raw = _parse_spotmatrix_csv(sm)
+    assert raw["n_rows_total"] == 7
+    assert raw["n_rows_unmatched"] == 3
+    assert -1 not in raw["spot_id"].tolist()
+    assert -1 not in raw["ring_nr"].tolist()
+    assert np.isfinite(raw["omega_deg"]).all()
+    assert np.isfinite(raw["eta_deg"]).all()
+
+    # matched_only=False is the opt-in escape hatch for the un-found population.
+    raw_all = _parse_spotmatrix_csv(sm, matched_only=False)
+    assert len(raw_all["spot_id"]) == 7
+    assert -1 in raw_all["spot_id"].tolist()
+
+    rt = RingTable(
+        ring_numbers=torch.tensor([1, 2], dtype=torch.int64),
+        two_theta_deg=_t([3.0, 4.0]),
+    )
+    grains = load_ff_grains_to_tensors(_make_tmp_grains(tmp_path))
+    sp = load_ff_spots_to_tensors(sm, None, ring_table=rt, grain_table=grains)
+    assert sp.spot_id.tolist() == [101, 102, 103, 104]
+    # Before the filter these three rows all mapped to grain 1 (grain_idx 0).
+    assert sp.grain_idx.tolist() == [0, 0, 1, 1]
+
+
+def test_load_ff_spots_matches_canonical_reader(tmp_path: Path):
+    """Same anti-drift guard as for Grains.csv (see that test's docstring)."""
+    read = pytest.importorskip("midas_process_grains.io.read")
+    from midas_transforms.radius.theoretical import _parse_spotmatrix_csv
+
+    sm = tmp_path / "SpotMatrix.csv"
+    _write_synthetic_spotmatrix(sm, n_unmatched=2)
+    raw = _parse_spotmatrix_csv(sm)
+    t = read.read_spot_matrix(sm)
+    assert raw["spot_id"].tolist() == t.spot_id.tolist()
+    assert raw["grain_id"].tolist() == t.grain_id.tolist()
+    assert raw["ring_nr"].tolist() == t.ring_nr.tolist()
+    assert raw["n_rows_total"] == t.n_rows_total
+    assert raw["n_rows_unmatched"] == t.n_rows_unmatched
+    np.testing.assert_allclose(raw["omega_deg"], t.omega)
 
 
 def test_load_ff_spots_no_intensity_csv(tmp_path: Path):
