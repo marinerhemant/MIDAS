@@ -16,12 +16,47 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 import h5py
+
+
+#: Serialises every open of the ledger. ``ProvenanceStore`` is touched from two
+#: threads: the main thread records each stage as it completes, while
+#: ``StageProgress``'s heartbeat thread reads the whole ledger every couple of
+#: seconds to refresh ``progress.txt``.
+_LEDGER_LOCK = threading.RLock()
+
+
+@contextmanager
+def _open_ledger(path, mode: str):
+    """Open ``midas_state.h5`` under the module lock.
+
+    HDF5 refuses to open a file read-write while the same *process* already
+    holds it read-only, so without this a stage that happens to finish inside
+    the heartbeat's read window dies with::
+
+        OSError: Unable to synchronously open file
+                 (file is already open for read-only)
+
+    and takes the run with it — after however many hours the stage cost.
+    Observed twice on 1-ID FF layers (2026-09-01), both at the end of a ~22 min
+    peakfit. ``HDF5_USE_FILE_LOCKING=FALSE`` is no defence: this is HDF5's own
+    in-process file registry, not an OS-level lock, so the usual NFS workaround
+    does nothing for it.
+
+    The lock is module-level rather than per-instance because the readers and
+    the writer are sometimes different ``ProvenanceStore`` objects pointed at
+    the same path. Contention is negligible — a handful of opens per stage.
+    """
+    with _LEDGER_LOCK:
+        with h5py.File(path, mode) as f:
+            yield f
 
 
 PROVENANCE_FILENAME = "midas_state.h5"
@@ -74,7 +109,7 @@ class ProvenanceStore:
             finished_at = started_at
         if duration_s is None:
             duration_s = finished_at - started_at
-        with h5py.File(self.path, "a") as f:
+        with _open_ledger(self.path, "a") as f:
             grp_name = f"stages/{stage_name}"
             if grp_name in f:
                 del f[grp_name]
@@ -93,7 +128,7 @@ class ProvenanceStore:
     def read(self, stage_name: str) -> Optional[Dict[str, Any]]:
         if not self.path.exists():
             return None
-        with h5py.File(self.path, "r") as f:
+        with _open_ledger(self.path, "r") as f:
             grp_name = f"stages/{stage_name}"
             if grp_name not in f:
                 return None
@@ -112,7 +147,7 @@ class ProvenanceStore:
         if not self.path.exists():
             return {}
         out: Dict[str, Dict[str, Any]] = {}
-        with h5py.File(self.path, "r") as f:
+        with _open_ledger(self.path, "r") as f:
             if "stages" not in f:
                 return {}
             for name in f["stages"]:
@@ -150,7 +185,7 @@ class ProvenanceStore:
     def invalidate(self, stage_name: str) -> None:
         if not self.path.exists():
             return
-        with h5py.File(self.path, "a") as f:
+        with _open_ledger(self.path, "a") as f:
             grp_name = f"stages/{stage_name}"
             if grp_name in f:
                 del f[grp_name]
