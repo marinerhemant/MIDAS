@@ -25,7 +25,7 @@ don't have to install them one at a time.
 | Sub-package | Role |
 |---|---|
 | `midas-pipeline` | Unified FF + PF orchestrator (`--scan-mode {ff,pf,auto}`). End-to-end from raw data through grain reconstruction; single source for both scan modes. |
-| `midas-ff-pipeline` | Independent FF-HEDM workflow orchestrator (1-N detectors). Co-exists with `midas-pipeline`; same kernels under the hood. |
+| `midas-ff-pipeline` | **RETIRED at 0.7.0** — an argv shim that rewrites its arguments and delegates to `midas-pipeline`. It no longer orchestrates anything and has no public API. Use `midas-pipeline run --scan-mode ff`; removed entirely at 1.0.0. |
 | `midas-nf-pipeline` | Pure-Python NF-HEDM pipeline orchestrator (single + multi-resolution, multi-layer). Drop-in for `nf_MIDAS.py` / `nf_MIDAS_Multiple_Resolutions.py`. |
 | `midas-parsl-configs` | Bundled + user-extensible Parsl configs for running MIDAS pipelines on laptops, workstations, clusters. |
 
@@ -85,7 +85,7 @@ pip install "midas-suite[ff,plots]"
 
 | Extra | What it pulls |
 |---|---|
-| `ff` | `midas-ff-pipeline` (transitively pulls hkls, peakfit, transforms, index, fit-grain, process-grains, diffract, parsl-configs) + stress, params, calibrate, integrate |
+| `ff` | `midas-ff-pipeline` + stress, params, calibrate, integrate. Since ff-pipeline's retirement its only dependency is `midas-pipeline`, so hkls, peakfit, transforms, index, fit-grain, process-grains, diffract and parsl-configs still arrive — through `midas-pipeline` rather than through ff-pipeline. The installed set is unchanged. |
 | `pf` | `midas-pipeline[fast]` (numba) + stress, params, calibrate, integrate (scan-mode pf pulls index + fit-grain + transforms + stress transitively) |
 | `nf` | `midas-nf-pipeline` (transitively pulls hkls, stress, nf-preprocess, nf-fitorientation) + params |
 | `calib` | hkls, integrate, peakfit, calibrate (v1 C-backed stack) |
