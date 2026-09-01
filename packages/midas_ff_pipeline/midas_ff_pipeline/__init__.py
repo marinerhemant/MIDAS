@@ -25,12 +25,14 @@ except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
 import warnings as _warnings
-from importlib.metadata import PackageNotFoundError, version as _version
-
-try:
-    __version__ = _version("midas-ff-pipeline")
-except PackageNotFoundError:  # pragma: no cover - source checkout
-    __version__ = "0.0.0.dev0"
+#: Hardcoded rather than read from importlib.metadata, to match the other
+#: fourteen packages in this monorepo and because an EDITABLE install freezes
+#: its metadata at install time -- the code would track the tree while
+#: ``version("midas-ff-pipeline")`` kept reporting whatever was installed. The
+#: dev and canonical environments are editable, so that is the normal case
+#: here, not the exotic one. release.sh also asserts this line matches
+#: pyproject.toml, which is the check that caught its absence.
+__version__ = "0.7.0"
 
 _warnings.warn(
     "midas-ff-pipeline is retired and now only translates argv to "
