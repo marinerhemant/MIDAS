@@ -142,8 +142,22 @@ tGap 0.15                       # Dead time between frames (seconds)
 # Image transformation to get correct coordinate system
 ImTransOpt 0                    # 0 = no transform (see manual for transform codes)
 
-# Detector saturation level (counts)
-# Must exceed MaxOutputIntensity (default 65000) for simulated experiments
+# Detector saturation level (counts): pixels at or above this are treated as
+# saturated in the peak search.
+#
+# 70000 IS A SIMULATION VALUE ONLY. It has to exceed MaxOutputIntensity
+# (default 65000) so a forward-simulated frame never looks clipped.
+#
+# ON REAL DATA IT MUST BE MEASURED, PER DETECTOR. A GE panel at 1-ID clips far
+# lower: on a measured CeO2 frame (park_CeO2_3s_..._000099.edf.ge5, 2026-08-31)
+# ~1100 pixels per frame sit on exactly 16349 counts and essentially nothing
+# lies between 16249 and 16349 -- a hard ceiling, not a tail. Left at 70000 no
+# saturated reflection is ever flagged; and a saturated reflection is a STRONG
+# one, so losing it reads downstream as incompleteness and inflates every grain
+# volume on that ring.
+#
+# To measure it: histogram one raw frame and look for the value a large,
+# isolated pile of pixels sits on, with a gap below it.
 UpperBoundThreshold 70000
 
 # Number of files per layer (for multi-wedge scans)

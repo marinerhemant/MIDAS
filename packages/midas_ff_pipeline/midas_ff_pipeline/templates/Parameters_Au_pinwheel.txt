@@ -78,6 +78,10 @@ tGap 0.15
 
 # IMAGE PROCESSING ------------------------------------------------------------
 ImTransOpt 0
+# 70000 is correct HERE because this template drives a forward
+# SIMULATION (it must exceed MaxOutputIntensity, default 65000). Do not
+# copy it to a real detector: a GE panel at 1-ID clips near 16349 counts,
+# and at 70000 no saturated reflection is ever flagged. Measure it.
 UpperBoundThreshold 70000
 NrFilesPerSweep 1
 
