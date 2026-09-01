@@ -91,9 +91,14 @@ Resolution labels: `loop_0_unseeded`, `loop_<k>_{seeded,unseeded,merged}`
 (`workflows.py:348-352, 424-428, 509-514, 534-540`). `/grains/`, `/all_matches/`, `/grid/`
 are written **only for the root pass** (`consolidate.py:253, 276, 283`).
 
-**`/raw_data_ref/` does not exist here.** `packages/midas_nf_pipeline/USAGE.md:197-204`
-advertises it; grepping `packages/` finds it only in
-`midas_ff_pipeline/midas_ff_pipeline/stages/consolidation.py:508`.
+**`/raw_data_ref/` does not exist here — and as of 2026-09-01 it is not written
+anywhere in the tree.** `packages/midas_nf_pipeline/USAGE.md:197-204` still advertises
+`raw_data_ref`, but the only code that ever wrote it was `midas_ff_pipeline`'s
+consolidation stage, deleted at midas-ff-pipeline **0.7.0** along with the rest of that
+package's unreachable stage tree. `midas_pipeline`'s FF consolidation is a deliberate
+no-op (FF consolidation runs upstream through `midas-process-grains`), so a grep of
+`packages/` for `raw_data_ref` now returns nothing. Treat the USAGE.md paragraph as
+stale documentation, not as a group you should expect to find.
 
 **The four mislabelled datasets** (`consolidate.py:238-250`, repeated at `:330-340`):
 

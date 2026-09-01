@@ -98,13 +98,15 @@ def test_the_shim_cannot_emit_a_flag_the_pipeline_rejects():
     still translating --loss/--mode/--solver into them, so every
     `midas-ff-pipeline run --loss ...` died with "unrecognized arguments".
 
-    Rather than fix the three by name, assert the invariant over the whole flag
-    surface: anything this shim can emit, midas-pipeline must accept.
+    **Reformulated at 0.7.0.** This used to enumerate the shim's own argparse
+    parser and check every flag it could emit. The shim has no parser any more
+    -- it rewrites argv as strings and hands it to midas-pipeline -- so the
+    surface it can *introduce* is exactly the values of ``_FLAG_RENAMES``.
+    Those are what must exist on the other side.
     """
     import argparse
-    from midas_ff_pipeline import cli as ff_cli
     from midas_pipeline import cli as mp_cli
-    from midas_ff_pipeline.cli import _FLAG_RENAMES, _FLAG_DROPPED
+    from midas_ff_pipeline.cli import _FLAG_RENAMES
 
     def option_strings(parser, want_sub=None):
         found = set()
@@ -117,60 +119,51 @@ def test_the_shim_cannot_emit_a_flag_the_pipeline_rejects():
                 found |= set(a.option_strings)
         return found
 
-    ff_flags = option_strings(ff_cli._build_parser(), "run")   # noqa: SLF001
     mp_flags = option_strings(mp_cli._build_parser(), "run")   # noqa: SLF001
-
-    emitted = {_FLAG_RENAMES.get(f, f) for f in ff_flags if f not in _FLAG_DROPPED}
-    orphans = sorted(f for f in emitted if f.startswith("--") and f not in mp_flags)
+    orphans = sorted(t for t in _FLAG_RENAMES.values()
+                     if t.startswith("--") and t not in mp_flags)
     assert not orphans, (
-        "midas-ff-pipeline can emit flags midas-pipeline does not accept: "
-        f"{orphans}. Add them to _FLAG_DROPPED (with the reason) or to "
-        "_FLAG_RENAMES."
+        "_FLAG_RENAMES rewrites to flags midas-pipeline does not accept: "
+        f"{orphans}. A rename must point at a flag that exists."
     )
 
 
-def test_the_shim_cannot_emit_a_VALUE_the_pipeline_rejects():
-    """Matching flag names is not enough -- the choice lists must agree too.
+def test_a_dropped_flag_is_one_the_pipeline_really_rejects():
+    """The same invariant from the other side, and it is the new one.
 
-    Caught two live breaks that the name-level check above passes clean:
-    ``--indexer-backend python`` and ``--pg-mode spot_aware``. Both flags exist
-    on both sides; midas-pipeline 0.15.0 removed the VALUE from each. spot_aware
-    was this shim's default, so a user who never passed --pg-mode was the one
-    most likely to hit it.
+    Dropping a flag silently discards what the user asked for, so each entry in
+    ``_FLAG_DROPPED`` has to be a flag midas-pipeline genuinely will not take.
+    If the pipeline ever grows one back, this fails and the entry should go --
+    otherwise we swallow a flag that would have worked.
+
+    The old value-level twin of this test (``--indexer-backend python``,
+    ``--pg-mode spot_aware``) is gone with the shim's parser: it has no choice
+    lists and no defaults of its own any more, so it cannot originate a bad
+    VALUE -- only pass one through for midas-pipeline to reject on its own
+    terms, which is the correct owner of that check.
     """
     import argparse
-    from midas_ff_pipeline import cli as ff_cli
     from midas_pipeline import cli as mp_cli
-    from midas_ff_pipeline.cli import _FLAG_RENAMES, _FLAG_DROPPED
+    from midas_ff_pipeline.cli import _FLAG_DROPPED
 
-    def actions_for(parser, want_sub):
-        found = {}
+    def option_strings(parser, want_sub=None):
+        found = set()
         for a in parser._actions:                          # noqa: SLF001
             if isinstance(a, argparse._SubParsersAction):  # noqa: SLF001
                 for name, sub in a.choices.items():
-                    if name == want_sub:
-                        found.update(actions_for(sub, want_sub))
+                    if want_sub is None or name == want_sub:
+                        found |= option_strings(sub)
             else:
-                for opt in a.option_strings:
-                    found[opt] = a
+                found |= set(a.option_strings)
         return found
 
-    ff_acts = actions_for(ff_cli._build_parser(), "run")    # noqa: SLF001
-    mp_acts = actions_for(mp_cli._build_parser(), "run")    # noqa: SLF001
-
-    bad = []
-    for flag, a in ff_acts.items():
-        if flag in _FLAG_DROPPED or not flag.startswith("--"):
-            continue
-        b = mp_acts.get(_FLAG_RENAMES.get(flag, flag))
-        if b is None or not getattr(a, "choices", None) or not getattr(b, "choices", None):
-            continue
-        rejected = sorted(c for c in a.choices if c not in b.choices)
-        if rejected:
-            bad.append(f"{flag} offers {rejected}, midas-pipeline accepts {sorted(b.choices)}")
-        if a.default is not None and a.default not in b.choices:
-            bad.append(f"{flag} DEFAULTS to {a.default!r}, which midas-pipeline rejects")
-    assert not bad, "shim offers values midas-pipeline rejects:\n  " + "\n  ".join(bad)
+    mp_flags = option_strings(mp_cli._build_parser(), "run")   # noqa: SLF001
+    resurrected = sorted(f for f in _FLAG_DROPPED if f in mp_flags)
+    assert not resurrected, (
+        "these flags are in _FLAG_DROPPED but midas-pipeline accepts them "
+        f"again: {resurrected}. Remove them from _FLAG_DROPPED rather than "
+        "silently swallowing a flag the user asked for."
+    )
 
 
 def test_ff_pipeline_only_injects_scan_mode_where_it_is_accepted():
@@ -201,30 +194,6 @@ def test_the_unified_pipeline_offers_no_loss_at_all():
     )
 
 
-def test_every_caller_default_is_runnable():
-    """The reported failure was a DEFAULT, so no flag was needed to hit it."""
-    from midas_ff_pipeline import cli as ff_cli
-    from midas_fit_grain import cli as fg_cli
-    from midas_ff_pipeline.config import PipelineConfig as FFConfig
-    from midas_pipeline.config import RefinementConfig
-
-    refiner = set(_loss_action(fg_cli.build_parser()).choices)  # noqa: SLF001
-    cli_default = _loss_action(ff_cli._build_parser()).default
-    assert resolve(cli_default)[0] in refiner
-    assert FFConfig.__dataclass_fields__["refine_loss"].default in refiner
-    assert RefinementConfig.__dataclass_fields__["loss"].default in refiner
-
-
-def test_config_and_cli_defaults_agree():
-    from midas_ff_pipeline import cli as ff_cli
-    from midas_ff_pipeline.config import PipelineConfig as FFConfig
-    assert (_loss_action(ff_cli._build_parser()).default
-            == FFConfig.__dataclass_fields__["refine_loss"].default
-            == DEFAULT_LOSS)
-
-
-# ------------------------------------------------------- deprecated names ---
-
 def test_a_retired_name_is_substituted_not_forwarded():
     resolved, note = resolve("pixel")
     assert resolved == "full3d"
@@ -254,13 +223,12 @@ def test_the_default_loss_is_panel_dependent():
     assert MULTIDET_LOSS not in PANEL_DEPENDENT_LOSSES
 
 
-def test_both_stages_key_the_swap_on_the_set_not_a_name():
-    import inspect
-    from midas_ff_pipeline.stages import refine as ff_refine
-    from midas_pipeline.stages import refinement as mp_refine
-
-    for mod in (ff_refine, mp_refine):
-        src = inspect.getsource(mod)
-        assert "PANEL_DEPENDENT_LOSSES" in src, (
-            f"{mod.__name__} must test the set, not a single loss name"
-        )
+# NOTE: three tests were removed at 0.7.0 when the shim's stage tree was
+# deleted -- `test_every_caller_default_is_runnable` and
+# `test_config_and_cli_defaults_agree` both asserted against
+# `midas_ff_pipeline.config.PipelineConfig`, and
+# `test_both_stages_key_the_swap_on_the_set_not_a_name` against
+# `midas_ff_pipeline.stages.refine`. None of those modules exists any more;
+# the midas_pipeline half of each assertion lives in that package's own
+# suite. What remains here is the shim's real contract: argv in, argv out,
+# and never a flag or value the pipeline would reject.
