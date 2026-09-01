@@ -286,7 +286,7 @@ Full key list: `FF_Parameters_Reference.md`. Keys this runbook depends on:
 |---|---|
 | `SkipFrame` | 1 at 1-ID; applies to every multi-frame file and the dark (§3e) |
 | `dataDataset` / `darkDataset` | both `exchange/data` for DM files (§3d) |
-| `OmegaStart` / `OmegaStep` | negated vs the log for `aero` (§2); `OmegaStart` describes **raw** frame 0 |
+| `OmegaStart` / `OmegaStep` | negated vs the log for `aero` (§2); `OmegaStart` is the ω of the **first frame USED — after `SkipFrame`**, not of raw frame 0 (§3e is the authority). This cell said "raw frame 0" until 2026-08-31; following it costs a silent one-step ω offset. The zarr's `scan_parameters/start` is the back-dated raw-frame-0 value and is what to check (§2, §3e) |
 | `ImTransOpt` | must match the calibration (§6) |
 | `LatticeConstant` / `SpaceGroup` | the **sample's**, not the calibrant's (§6) |
 | `RhoD` | µm; distortion normalisation radius |

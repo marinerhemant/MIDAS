@@ -1,4 +1,4 @@
-# FF-HEDM Lab Notebook — `bt_1id_jul26` (§1–§7), `bt_20id_jul26b` ti7al (§8) and `nfdev_jul26` (§9)
+# FF-HEDM Lab Notebook — `bt_1id_jul26` (§1–§7), `bt_20id_jul26b` ti7al (§8), `nfdev_jul26` (§9) and `bt_1id_mar23` (§10)
 
 **Companion to `FF_HEDM_Handbook.md`.** The handbook says what to do; this records what
 was actually found, how it was measured, and what turned out to be wrong. They are kept
@@ -2226,5 +2226,276 @@ tree; `au_m0267` and `alumina_fix` are the good ones) and
 and `scripts/verify_for_docs.py`, which re-derives every number in §9b from those copies.
 **`scripts/uncensored_residual.py` is broken** — only 9 % of its predictions find a
 candidate — and nothing it produced is cited here.
+
+---
+
+## 10. `bt_1id_mar23` — 1-ID GE5, archived spring-2023 data (analysed 2026-08-31)
+
+First pass through this doc set on **archived** data rather than a live beamtime, and on
+the *same* detector as §1–§7 three years earlier. That combination is what made it useful:
+every difference found here is a difference in **vintage**, not in station, and each one
+had been written into the handbook as if it were a property of 1-ID.
+
+Three of the handbook's own statements were wrong against this data, and a fourth was
+right but too narrow. All four are corrected; this section is the evidence.
+
+### 10.0 What this campaign established
+
+| # | Finding | Status | Where |
+|---|---|---|---|
+| 1 | The par-file **tail is off by one** on 2023 files — exposure/file/frame are 18/19/20, not 19/20/21. Fields 9, 10/11 and 17 transfer, which is why the ω-sign rule still worked | ESTABLISHED — corrects Handbook §3b | §10a |
+| 2 | `fastsweep_Emon.txt`'s `E_HEM` is **field 10** here, not field 6 — the 2023 timestamp is five whitespace fields wide, and field 6 is a foil µt | ESTABLISHED — corrects Handbook §4a | §10a |
+| 3 | The CeO2 0/180 pair split `Lsd` by **7.34 mm (0.96 %)** with `BC` agreeing to 0.0008 px. It is a **3.669 mm sample displacement along the beam**, not fit uncertainty, and **the mean is the answer** | ESTABLISHED, by three tests + a known-answer test | §10b |
+| 4 | Known-answer test: gold at the corrected `Lsd` fits a = 4.07898 Å, **+191 ppm** on literature; either single exposure gives ±0.478 % | ESTABLISHED | §10b |
+| 5 | `tx` = 0.126686° on LSHR moved `DiffPos` p50 **4.0×** and dissolved a hard floor at 235 µm, while grain-Z scatter **barely moved** — Handbook §5h's "Z halves" signature does **not** generalise | ESTABLISHED — narrows Handbook §5h, ENVELOPE §3 | §10c |
+| 6 | A **hard floor** in the `DiffPos` distribution is a diagnostic for an unrefined global geometry parameter, with `DiffOme` as the control | ESTABLISHED — new DIAGNOSIS entry | §10c |
+| 7 | `midas-joint-ff-calibrate` 0.4.0 read a current `Grains.csv` with the legacy 21-column map and so **selected the worst-fitting grains**; and crashed on a current `SpotMatrix.csv` with `KeyError: -1` | ROOT-CAUSED, fixed in the working tree (unreleased) | §10d |
+| 8 | The GE5 clips hard at **16 349 counts** (**~1090 px/frame**); the shipped `UpperBoundThreshold 70000` can never fire. A dark count of **387** was reported but the stuck-pixel *fraction* is unconfirmed | ESTABLISHED (ceiling) / PROVISIONAL (dark fraction) — ENVELOPE §1 | §10e |
+
+### 10a. The metadata map had drifted — and only in its tail
+
+The handbook's §3b said its field map was "verified against `bt_1id_jul26_FF.par`", a 2026
+file, and offered it as *the* 1-ID FF par layout. On
+`/gdata/dm/1ID/2023/bt_1id_mar23/data/metadata/bt_1id_mar23/bt_1id_mar23_FF.par`
+(**42 fields**) the tail is shifted by one:
+
+| | exposure | file number | frame index |
+|---|---|---|---|
+| 2026 (`bt_1id_jul26_FF.par`) | 19 | 20 | 21 |
+| 2023 (`bt_1id_mar23_FF.par`) | **18** | **19** | **20** |
+
+**What saved the ω-sign rule is that the head did not move.** Field 9 (rotation stage),
+fields 10/11 (sweep bounds) and field 17 (per-frame ω) all transfer, so Handbook §2 read
+`aero` correctly and the negation rule applied unchanged. Only the file/frame bookkeeping
+moved — which is exactly the half that produces *no error* when it is wrong: an `awk`
+selection on `$20` silently selects on the frame index, matches nothing or matches the
+wrong scan, and the reader concludes the scan is missing.
+
+**The energy column moved for a different reason.** `fastsweep_Emon.txt` writes a
+timestamp that is **five whitespace fields** here — `Tue Mar 28 10:56:12 2023` — pushing
+`E_HEM` from field 6 to **field 10**. Field 6 on a 2023 file is a foil µt, which is a
+plausible-looking number and not an energy. Field 10 read **71.6800** flat across the
+whole *earlier* (Mar 28–31) window. The Apr-02 campaign this section describes reads
+**71.6300** in all 31 of its Emon rows, and `FullLog.log` carries nine matching
+`71.63` statements, every one dated Apr 02. The tomography scan record agrees:
+`Energy (keV): 71.63`.
+
+Both corrections are the same lesson and it is hard rule 13: **a column index is a name
+taken from a position.** The handbook now says to identify the energy by its *value* and
+to pin the file/frame columns on the file in front of you (Handbook §3b, §4a).
+
+### 10b. The 0/180 `Lsd` split is a SAMPLE DISPLACEMENT — and the mean is the answer
+
+Handbook §5f described the 0/180 calibrant pair as "an independent repeat", with the
+`bt_1id_jul26` reference showing `Lsd` agreeing to 0.218 mm (0.013 %). Here the same
+procedure gave a spread **34× larger**, and treating it as uncertainty would have been
+wrong in a way that propagates into every `Lsd`-scaled quantity.
+
+**What was measured.** CeO2, GE5, 71.63 keV, nominal 770 mm:
+
+| | value |
+|---|---|
+| `Lsd` disagreement, 0 vs 180 | **7.34 mm = 0.96 %** |
+| `BC` disagreement | **0.0008 px** |
+
+That combination is the whole finding: a *fit* landing in two basins moves the tilts and
+the centre with it. This moved neither.
+
+**Three tests, all of which had to come back positive.**
+
+1. **Only ω changed between the two exposures.** Par fields 12–16 — every sample and
+   detector position — are **byte-identical** across the pair. Nothing translated.
+2. **The ring radii scale UNIFORMLY.** Measured directly on the images at a **fixed** BC,
+   independent of any fit: ratio **1.009604**, flat across **8 rings**, against an `Lsd`
+   ratio of **1.009602**. A tilt error, a distortion error or a ring mis-assignment
+   (Handbook §5b) would each give a radius-*dependent* ratio.
+3. **It reproduces.** An independent **2 s** CeO2 pair reproduces the split to
+   **0.23 µm**.
+
+**Cause.** The calibrant's diffracting volume sat **3.669 mm off the rotation axis along
+the beam**. A 180° turn flips the sign of that offset, so one exposure sits 3.669 mm
+nearer the detector and the other 3.669 mm further, and the two fits **bracket** the true
+rotation-axis-to-detector distance. The mean is that distance:
+**`Lsd` = 767 765.75 µm**. Either single exposure would have been **0.48 %** out.
+
+Note the geometry of the discriminator: an offset **transverse** to the beam translates
+the pattern and moves `BC`; an offset **along** the beam scales it about a fixed centre.
+`BC` unmoved is what says which one this is.
+
+**Known-answer test — the part that makes this more than an argument.** Gold cubes on the
+same geometry, at the corrected `Lsd`:
+
+| `Lsd` used | fitted a (Å) | error vs literature 4.0782 |
+|---|---|---|
+| **mean of the pair (767 765.75 µm)** | **4.07898** | **+191 ppm** |
+| the 0 exposure alone | 4.0977 | +0.478 % |
+| the 180 exposure alone | 4.0587 | −0.478 % |
+
+**25×** between the corrected answer and either single exposure (191 ppm against 4780), on a
+quantity nothing in the fit was told. The reconstruction found **2 grains**, related by a
+**Σ3 twin at 59.9724° about ⟨111⟩** — the same parent-plus-twin signature as the
+`bt_1id_jul26` gold reference (§3d), which is an independent sanity check on the
+orientation half.
+
+**What this changes in the handbook.** §5f now names two regimes and gives the
+discriminating test, rather than describing the spread as uncertainty; DIAGNOSIS *Sample
+displacement or distance error* gains the 0/180 remedy, which it previously lacked. The
+uncomfortable corollary is stated there too: **with only one exposure none of this is
+visible**, and the fit converges and passes the 100 µε gate at the displaced distance.
+
+### 10c. `tx` on LSHR — and the Z-halving signature that did not generalise
+
+Sample: LSHR, fcc, a = **3.59028 Å**, **2321 grains**, 1-ID GE5, 200 µm beam.
+
+**The refinement.** Two `grain-tx` passes, composed per the Handbook §5h rule
+(`tx_total = tx_applied + tx_reported`):
+
+| pass | reported residual |
+|---|---|
+| 1 | **+0.123253°** |
+| 2 | **+0.003433°** |
+
+A **36× drop** in one pass, i.e. converged in two, where the R2e gold case only halved per
+pass. Composed: **`tx` = 0.126686°, `Wedge` = 0.000320°**. How fast it converges is a
+property of the dataset; **compose and iterate regardless** — that rule is unchanged.
+
+**Effect, before and after re-running from `transforms`:**
+
+| | before | after | |
+|---|---|---|---|
+| `DiffPos` p50 | 251.3 µm | **62.3 µm** | **4.0×** |
+| `DiffPos` p5 | 238.5 µm | **20.4 µm** | the floor went |
+| `DiffAngle` p50 | 0.152° | 0.074° | |
+| **`DiffOme` p50** | 0.072° | **0.074°** | **unchanged — the control** |
+| X / Y scatter | 283 / 285 µm | 290 / 291 µm | unchanged |
+| grain-Z scatter | 36.5 µm | 32.4 µm | **barely moved** |
+
+**`DiffOme` is the control, and it is not decoration.** A roll of the detector about the
+beam moves spots within the detector plane. It cannot change which ω frame a spot appears
+on. So a "`tx` refinement" that improves `DiffOme` is absorbing something else, and this
+one did not.
+
+**Handbook §5h's Z signature does not generalise, and saying so is the point of recording
+this.** On 20-ID ti7al, grain-Z scatter halved (152.6 → 76.4 µm) while X and Y stood
+still, and that was written up as *the* signature of a real geometry correction. Here the
+roll was **larger** and Z moved 36.5 → 32.4 µm — because Z was already tight against a
+200 µm beam and had nothing to give. The correction surfaced in `DiffPos` instead. The
+general statement is the weaker one: **a real correction tightens whatever the error was
+loosening, and leaves the well-conditioned coordinates alone.** Which coordinate that is
+depends on the dataset. Handbook §5h and ENVELOPE §3 now say so.
+
+**The hard floor is the transferable diagnostic.** Before any refinement, this layer's
+`DiffPos` distribution rose **vertically out of ~235 µm** — p5 238.5 against a p50 of
+251.3, with no grain below the edge. Per-grain refinement cannot go below an error common
+to every grain, so a floor is the fit reporting a *global* parameter it is not allowed to
+vary. It is free to look at, it is visible before you know what the parameter is, and the
+discriminating test is simply whether the floor moves when `tx` is applied. New DIAGNOSIS
+entry: *A hard floor in the `DiffPos` distribution* (`resid.hard_floor`).
+
+### 10d. `midas-joint-ff-calibrate` 0.4.0 could not read a current `Grains.csv`
+
+Found while doing §10c, and it is a **version trap**, not a one-off: anyone on an
+installed 0.4.0 or below hits it, and on the `Grains.csv` half it does not crash.
+
+**The `Grains.csv` half — a silent wrong answer.** `load_grains_csv`
+(`midas_joint_ff_calibrate/grain_observations.py:47`) hard-coded the legacy 21-column
+layout behind a `len(cols) < 21` guard. That guard **passes** on a 47- or 53-column file,
+so nothing ever raised. On anything wider than 21 columns it returned column 19
+(`DiffPos`) as `GrainRadius` and column 20 (`DiffOme`) as `Confidence`. Measured on a
+47-column 208-grain Ti-7Al file: median radius **286.9 µm** instead of 25.2, median
+confidence **0.117** instead of 0.580.
+
+**Why that is not cosmetic.** `grain_refine` SELECTS which grains to refine with
+`np.argsort(-grains["confidence"])`. Reading `DiffOme` as `Confidence` means it was
+ranking on residual **descending** — deliberately keeping the **worst-fitting** grains. On
+that file the top-10 selection shares **1 grain** with the correct one. A separate
+real-data run moved the refined `tx` by ~10 % and **flipped the sign of `Wedge`**.
+
+**The `SpotMatrix.csv` half — a crash, which is the lucky case.** The 28-column current
+format carries rows for reflections a grain was *predicted* to produce and that were never
+observed: `SpotID`/`RingNr` = **−1**, NaN in every observed column, **~3.3 %** of rows on
+real data. The positional reader passed them straight through to
+`build_observations_and_matches`, which raised **`KeyError: -1`** out of the ring-slot
+lookup. Had it got past that, η would have been recomputed from NaN `YLab`/`ZLab`.
+
+**Fix, in the working tree and unreleased at the time of writing.** Both loaders now
+resolve columns **by name** through the canonical readers — `read_grains_csv`
+(`midas_process_grains/io/read.py:231`) and `read_spot_matrix`
+(`midas_process_grains/io/read.py:332`), the latter dropping `Matched == 0` rows by
+default — and `midas_joint_ff_calibrate` floors `midas-process-grains >= 0.11.0`. Both
+files have been widened repeatedly (`Grains.csv` 19 → 21 → 47 → 53, `SpotMatrix.csv`
+12 → 28) under two header tokens (`%ID` and `%GrainID`), which is why every positional
+reader in the tree froze one snapshot and drifted.
+
+This is hard rule 11 — **suspect success**. `grain-tx` ran, exited 0, and returned a
+plausible `tx`.
+
+### 10e. The GE5 saturation ceiling, and how much of it is stuck pixels
+
+**Measured on `bt_1id_mar23` `park_CeO2_3s_..._000099.edf.ge5` (5 frames of
+2048²): 1073, 1071, 1072, 1112, 1122 pixels per frame sitting on exactly 16 349 counts
+— mean 1090 — with only 11–19 pixels per frame anywhere in (max−100, max).** A bright
+tail does not look like that. It is a hard clipping ceiling.
+
+> **Earlier revisions of this section read "4377 pixels ... in one CeO2 frame".** That
+> number is real but mislabelled: 1071+1072+1112+1122 = 4377 is the sum over frames
+> **1–4**, the four left after the 1-ID skip-first-frame convention. It is a per-file
+> total. The per-frame count — which is what `UpperBoundThreshold` acts on — is ~1090.
+
+`FF_HEDM/Example/Parameters.txt` ships `UpperBoundThreshold 70000`, more than **4×** that
+ceiling. On this detector the whole-region drop it exists to trigger
+(`midas_peakfit/seeds.py:156`) can therefore **never fire**: clipped peaks are fitted as
+though real, and the failure mode is not the documented loss of a strong reflection but a
+silent bias in its fitted intensity — which feeds the ring's powder normalisation and so
+every grain volume on that ring.
+
+**Do not read a ceiling-pixel count as saturation without subtracting the dark.** The same
+scan's **dark was reported at 387 pixels at the same 16 349 value** — stuck pixels,
+present with no beam. Against the measured 1090 per data frame that is ~35 %, not half.
+**The dark has not been re-counted per-frame the same way, so the ratio is unconfirmed**
+— it may itself be a multi-frame total. Count your own dark rather than carrying it. Counting the
+ceiling pixels in the dark first is one line and is per detector.
+
+### 10f. Provisional — do not upgrade
+
+* **The energy IS resolved; an earlier revision of this section claimed a 0.07 %
+  discrepancy and that was an error of campaign attribution.** This beamtime ran at
+  **three** energies — 71.680 (Mar 28–31), **71.630 (Apr 02, this campaign)** and 90.524
+  (Mar 31 onward, the Hydra quad). All three Apr-02 records agree at 71.630:
+  Emon field 10 (31 rows), `FullLog.log` (nine statements, all dated Apr 02), and the
+  tomography scan record. The lesson is the trap, not the number — **match the energy to
+  the scan's own timestamp**, because a beamtime-wide read crosses the campaigns.
+  Retained for scale: were the two ever confused, hard rule 8 makes 0.07 % 
+  every **absolute** lattice parameter and ≈ 536 µm of `Lsd`, and it cancels in relative
+  strain. **State which value a result assumed.** It also means the gold +191 ppm in §10b
+  is a test of the *displacement correction*, not an independent calibration of λ.
+* **The 3.669 mm offset is the calibrant's, not necessarily the sample's.** It was
+  measured on the CeO2 exposures. Whether the LSHR and gold volumes sat at the same place
+  on the axis was not established, and nothing here tests it.
+* **`tx` = 0.126686° is converged on two passes by the 36× residual drop, not by a third
+  pass.** A third would settle it, as it would for `nfdev_jul26`'s extrapolated −0.267
+  (§9c).
+* **Why the 0/180 displacement was there at all is not established** — a mounting offset,
+  a stage zero, or the calibrant simply glued off-centre. It does not need closing to use
+  the geometry, because the mean is the right distance either way.
+
+### 10g. Measurement ledger — `bt_1id_mar23`
+
+| What | How it was established | Handbook § |
+|---|---|---|
+| Par tail is 18/19/20, not 19/20/21 | field-by-field read of a 42-field `bt_1id_mar23_FF.par` row against the image filenames and the per-file frame counts | 3b |
+| `E_HEM` is field 10 | the timestamp occupies five whitespace fields; field 6 is a foil µt. Field 10 reads 71.6800 in the Mar 28–31 window and **71.6300 on Apr 02** | 4a |
+| Energy corroboration (Apr 02) | Emon field 10 (31 rows @ 71.6300), `FullLog.log` (9 statements @ 71.63, all Apr 02), tomography scan record `Energy (keV): 71.63` — **three records, no disagreement** | 4a, R2f |
+| `Lsd` 767 765.75 µm, BC (1022.76327, 974.64506), ty −0.01579°, tz 0.13356° | CeO2, four independent fits; 31.4–36.4 µε in-loop, 23.8–26.4 µε after the residual map | R2f |
+| `RhoD` 296 580.92 µm | `corner_px × px` = 200 × hypot(1024.237, 1072.355) from that BC | R2f, rule 15 |
+| `ImTransOpt 0` | this detector, this vintage | 3f |
+| 0/180 split is a displacement, not noise | `BC` agrees to 0.0008 px; par fields 12–16 byte-identical; uniform radial ratio 1.009604 across 8 rings at fixed BC vs an `Lsd` ratio 1.009602; reproduced on a 2 s pair to 0.23 µm | 5f, DIAGNOSIS *Sample displacement or distance error* |
+| The mean is the rotation-axis distance | known-answer test: gold a = 4.07898 Å (+191 ppm) vs 4.0977 / 4.0587 (±0.478 %) from the single exposures | 5f, R2g |
+| Gold is parent + Σ3 twin, 59.9724° about ⟨111⟩ | `midas_stress` misorientation on the two grains | R2g |
+| `tx` 0.126686°, `Wedge` 0.000320° on LSHR | two `grain-tx` passes composed, residual +0.123253° → +0.003433° | 5h |
+| `tx` effect is in `DiffPos`, not Z | p50 251.3 → 62.3 µm, p5 238.5 → 20.4; Z 36.5 → 32.4; X/Y and `DiffOme` unchanged | 5h, ENVELOPE §3 |
+| A `DiffPos` hard floor diagnoses an unrefined global parameter | the 235 µm edge dissolved when `tx` was applied, with `DiffOme` as the control | DIAGNOSIS `resid.hard_floor` |
+| `midas-joint-ff-calibrate` 0.4.0 mis-reads current artefacts | 47-column file read as 21: median radius 286.9 vs 25.2 µm, confidence 0.117 vs 0.580; top-10 selection shares 1 grain; `KeyError: -1` on 28-column `SpotMatrix.csv` | 5h, spine trap table |
+| GE5 clips at 16 349 counts | **1090 pixels/frame** on exactly that value (range 1071–1122 over 5 frames of `park_CeO2_3s_..._000099.edf.ge5`), only 11–19 px/frame in (max−100, max). The **4377** of earlier revisions is the frames-1–4 sum, not a per-frame count. Dark **387** — ratio unconfirmed | ENVELOPE §1, R2f |
 
 ---

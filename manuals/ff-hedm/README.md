@@ -23,7 +23,7 @@ checked after the fact.
 | ω sign | par field 9 = `aero` ⇒ negate (§2) | **no par file exists.** Settle ω sign *and* detector mirror together, from physical arguments (§2b). `OmegaStart 180` / `OmegaStep -0.25` is the answer for `bt_20id_jul26b`, **not** a property of the station |
 | frame 0 | throwaway, `SkipFrame 1` (rule 2) | same |
 | `ImTransOpt` | establish per detector (§3f) | **2** (flip-Z), verified on `bt_20id_jul26b` |
-| verified on | `bt_1id_jul26` | `bt_20id_jul26b` ti7al / nf709 / ruby, and `nfdev_jul26` Au / alumina — **the two disagree, see §R2d vs §R2e** |
+| verified on | `bt_1id_jul26`, and `bt_1id_mar23` (2023 archive, same GE5) — **these two disagree on the par-file tail (§3b), the `E_HEM` column (§4a) and `ImTransOpt`; see §R2a vs §R2f** | `bt_20id_jul26b` ti7al / nf709 / ruby, and `nfdev_jul26` Au / alumina — **the two disagree, see §R2d vs §R2e** |
 | branch | — | **D.** FF and PF run at both 20-ID-D and 20-ID-E; NF only at D. Everything verified here is **D**. Confirm the branch, never infer it from "20-ID" — one campaign was filed as E for nine days (rule 13) |
 
 Multi-panel (GE1–4) and multi-layer scans are *not* covered: `cross_det_merge`
@@ -91,7 +91,7 @@ else is opened when you reach it. Section numbers are continuous across the set.
 | [`phase-4-read-report.md`](phase-4-read-report.md) | §8–§8b, §11, §14–§14c — `Grains.csv` checks, validation buckets, report, done-means | when a result exists |
 | [`DIAGNOSIS.md`](DIAGNOSIS.md) | symptom → discriminating test → cause → lever | **when something looks wrong** — indexed by symptom, not by step |
 | [`RUNBOOK.md`](RUNBOOK.md) | §R1–§R3 — where it runs, what healthy looks like *with conditions*, and the current pick-up point | on resume, and before quoting any number as "normal" |
-| [`LAB_NOTEBOOK.md`](LAB_NOTEBOOK.md) | evidence, measurement ledger, **retracted claims** — Lab Notebook §1–§7 the 1-ID campaign, **Lab Notebook §8 and Lab Notebook §9 the two 20-ID Varex campaigns** (the later one retracts a convention the earlier one established, which is why both are kept) | before re-investigating anything |
+| [`LAB_NOTEBOOK.md`](LAB_NOTEBOOK.md) | evidence, measurement ledger, **retracted claims** — Lab Notebook §1–§7 the 1-ID campaign, **Lab Notebook §8 and Lab Notebook §9 the two 20-ID Varex campaigns** (the later one retracts a convention the earlier one established, which is why both are kept), **Lab Notebook §10 a 2023 archive re-analysis on the same 1-ID GE5** (which corrected three statements this doc set had been making about 1-ID as a station) | before re-investigating anything |
 | [`ENVELOPE.md`](ENVELOPE.md) | what this measurement can and cannot determine, sorted by whether anything can be done about it | before promising an answer, and **before suggesting a different measurement** |
 | [`C_REFERENCE.md`](C_REFERENCE.md) | §13–§13d — the C cross-check recipe | only when a python result looks wrong |
 
@@ -175,7 +175,10 @@ proceed. Everything not blocked by it should still be finished first.
 4. **The filename is not the energy (§4a).** `bt_1id_jul26` wrote
    `CeO2_..._96keV_000001.ge5.h5` for a scan taken at **95.0 keV**. Three instrument
    records agreed on 95 and the string was stale. Read `instrument/HEM/Energy` from the
-   HDF5, cross-check `fastsweep_Emon.txt` field 6 and the spec log's `Energy (keV):`.
+   HDF5, cross-check `fastsweep_Emon.txt`'s `E_HEM` column and the spec log's
+   `Energy (keV):`. **The `E_HEM` column index is not fixed** — field 6 on 2026 files,
+   field **10** on 2023 ones, where the timestamp is five fields wide. Identify it by its
+   value (tens of keV, constant across the window), never by index (§4a).
 5. **Never trust a calibration you have not overlaid on the image (§5d).** A converged fit
    with a good strain number can still sit on the wrong ring assignment. Overlay predicted
    rings on the measured frame and look at it.
@@ -298,6 +301,7 @@ file — but is numbered last so the references above keep their numbers:
 | `aero` ω sign | mirrored microstructure, plausible completeness | §2 |
 | first frame kept | one bad frame + every ω off by one step | §3e |
 | "fixing" the zipper to skip the first file too | double skip — 1440 frames become 1439 | §3e |
+| `OmegaStart` set to the ω of **raw** frame 0 | it is the ω of the first frame **USED**, after `SkipFrame`. One step out, silently: nothing errors, `nFrames` is right, and `Grains.csv` is unchanged apart from a 0.25° rigid rotation of every orientation about ω. **§2 and §10 of this doc set said "raw frame 0" until 2026-08-31** — a run built from either is one step out. Check the zarr's `scan_parameters/start`, which must equal the negated raw frame 0 | §3e (authority), §2 |
 | `DetZ` used as `Lsd` | 11 % geometry error that still "converges" | §4b |
 | energy taken from the filename | 1 % λ error → 1 % `Lsd`, wrong absolute lattice parameter | §4a |
 | dark read from `exchange/dark` | that group does not exist in DM files; dark silently all-zero | §3d |
@@ -337,6 +341,7 @@ file — but is numbered last so the references above keep their numbers:
 | a refined parameter sitting exactly on a bound | not a measurement — the fit ran out of room. Seen three times: `Wedge` at +5.0 from a misread ω key, `iso_R4`/`iso_R6` at +0.05 from six grains. `midas-joint-ff-calibrate` ≥ 0.1.9 names it and exits 1 | §5h |
 | distortion "refined" by `grain-tx` on 0.1.8 | `v2_coeffs_from_named` builds a numpy array via `float(v)`, detaching the graph — the harmonics got **zero gradient** and never moved, while being reported as refined | §5h |
 | `grain-tx` on a parameter file that says `OmegaStart` | pre-0.1.7 read only `OmegaFirstFile` and took the frame count from `NrFilesPerSweep` (= 1 on one-file-per-sweep). 5 matched spots of 12 355, `Wedge` railed at its bound, `rc=0` | §5h |
+| `midas-joint-ff-calibrate` **≤ 0.4.0** on a current-format `Grains.csv` | its loader hard-coded the **legacy 21-column** layout behind a `len(cols) < 21` guard — which passes on a 47- or 53-column file, so it never raised. It read col 19 (`DiffPos`) as `GrainRadius` and col 20 (`DiffOme`) as `Confidence`. That corrupts the grain **SELECTION**, not just a report: `grain_refine` picks grains by `argsort(-confidence)`, so it was ranking on `DiffOme` descending and deliberately keeping the **worst-fitting** grains. Measured on a 47-column 208-grain file, the top-10 selection shares **1 grain** with the correct one; a separate run moved the refined `tx` by ~10 % and flipped the sign of `Wedge`. Companion crash: a current 28-column `SpotMatrix.csv` raised **`KeyError: -1`** out of the ring-slot lookup on the ~3.3 % of rows that are predicted-but-never-observed (`SpotID`/`RingNr` = −1, NaN observations). **Both fixed in the working tree, unreleased at the time of writing** — the fix routes both files through the name-resolving readers in `midas_process_grains.io.read` and floors `midas-process-grains >= 0.11.0`. On an older install, `grain-tx` runs, exits 0 and returns a plausible number | §5h, Lab Notebook §10d |
 | running a CLI from the wrong environment | `--mode ff: invalid choice` and friends are version, not syntax. The version number alone may not distinguish builds — check content, not `--version` | §0 |
 | version floors read from this document instead of from the tree | **eight** declarations rose for silent-wrong-answer reasons in the nine days after this file was written, across five packages | §0 |
 | `--refine-backend` left unset | **CLOSED** — both backends are now `c-omp`-only and `c-omp` by default, enforced in argparse *and* in `PipelineConfig`. Historically the refiner defaulted to python+torch+CUDA while the indexer defaulted to c-omp, so the run went silently half onto the GPU path, died with a bare `CalledProcessError` and no child traceback, and each retry cost a full re-index. A handbook or script still passing `--refine-backend python` is pre-fix | rule 10b, §7 |

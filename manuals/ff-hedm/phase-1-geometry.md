@@ -24,15 +24,41 @@ awk '{print $9}' <METADATA_DIR>/<beamtime>_FF.par | sort | uniq -c
 Verified on `bt_1id_jul26`: all **7297** FF rows read `aero`.
 
 Worked example — `Au3_cubes_ff_000008`. The par logs 1441 frames running
-ω = −180.25 → +179.75 at step **+0.25**. Negating, and dropping the throwaway frame 0
-(§3e), the parameter file gets:
+ω = −180.25 → +179.75 at step **+0.25**. Negating gives raw frame 0 at +180.25; dropping
+the throwaway frame 0 (§3e), the **first frame actually used** is at +180.00, and that is
+what `OmegaStart` names:
 
 ```
-OmegaStart 180.25      # omega of RAW frame 0, negated
+OmegaStart 180.00      # omega of the first frame USED, i.e. AFTER SkipFrame (§3e)
 OmegaStep  -0.25
-SkipFrame  1           # -> first frame actually used is at +180.00
+SkipFrame  1           # raw frame 0, at +180.25, is discarded
 OmegaRange -180 180
 ```
+
+> **This example said `OmegaStart 180.25` in revisions of this file before 2026-08-31, and
+> that is a silent one-step (0.25°) ω error in every reconstruction that followed it.**
+> `OmegaStart` is the ω of the first frame you want to **USE**, post-skip — §3e is the
+> authority and is code-cited; §2 and §10 were the two places that contradicted it.
+>
+> **Symptom, and how to check an existing run.** Nothing errors and nothing in
+> `Grains.csv` moves: it is a rigid 0.25° rotation of every orientation about ω, exactly
+> the cost already documented for the 20-ID zero-point offset in §3e (≤ 2.2 µm of position
+> at r = 500 µm; every difference — misorientation, relative orientation, strain —
+> unaffected). Read the zarr instead. The zipper stores
+> `measurement/process/scan_parameters/start = OmegaStart − SkipFrame·OmegaStep`
+> (`ff_zip.py:250`), so on this sweep the stored `start` **must equal the negated raw
+> frame 0, +180.25**. Measured on the 1441-frame `aero` sweep: `OmegaStart 180.25` stored
+> 180.50 — one step past raw frame 0, wrong — and `OmegaStart 180.00` stored 180.25,
+> correct.
+>
+> ```python
+> z = zarr.open("<result>/LayerNr_1/<stem>.MIDAS.zip", mode="r")
+> float(z["measurement/process/scan_parameters/start"][0])   # == negate(raw frame 0 omega)
+> ```
+>
+> [`RUNBOOK.md`](RUNBOOK.md) §R2b has carried `OmegaStart 180.00` for this same detector
+> and an identical sweep throughout; where the runbook and this example disagreed, the
+> runbook was right.
 
 **Why you cannot check this later.** A sign flip in ω mirrors the reconstructed
 microstructure. Completeness, grain counts and internal angles are all unchanged. Nothing
@@ -155,25 +181,54 @@ holding a `_dark_before`, the data file, and a `_dark_after`.
 
 ### 3b. Par-file field map (1-ID FF)
 
-Positional, whitespace-separated. Verified against `bt_1id_jul26_FF.par`:
+Positional, whitespace-separated. **The head of the row is stable across beamtimes; the
+tail is vintage-dependent and shifts by one.** Pin the tail columns on your own file
+before using them — the two verified mappings are below.
 
-| field | meaning |
-|---|---|
-| 1–5 | date stamp |
-| 6 | detector tag (`GE_AD`) |
-| 7 | scan name |
-| 9 | **rotation stage** — the `aero` test (§2) |
-| 10, 11 | sweep bounds (logged ω) |
-| 17 | **per-frame ω** (logged) |
-| 19 | exposure (s) |
-| 20 | **file number** |
-| 21 | **frame index within the file** (1-based) |
+| field | meaning | verified on |
+|---|---|---|
+| 1–5 | date stamp | both |
+| 6 | detector tag (`GE_AD`) | both |
+| 7 | scan name | both |
+| 9 | **rotation stage** — the `aero` test (§2) | both |
+| 10, 11 | sweep bounds (logged ω) | both |
+| 17 | **per-frame ω** (logged) | both |
 
-Extract one scan's sweep:
+**These six transfer**, which is why the ω-sign rule (§2) worked unchanged on a
+three-year-old file. The tail does not:
+
+| | exposure (s) | **file number** | **frame index** (1-based) | verified on |
+|---|---|---|---|---|
+| **2026 vintage** | 19 | 20 | 21 | `bt_1id_jul26_FF.par` |
+| **2023 vintage** | **18** | **19** | **20** | `bt_1id_mar23_FF.par` (42 fields), `/gdata/dm/1ID/2023/bt_1id_mar23/data/metadata/bt_1id_mar23/` |
+
+Everything after field 17 is therefore **off by one between these two beamtimes**, and
+neither row is a property of the station. Reading a 2023 file with the 2026 map silently
+returns the wrong column: field 21 is not the frame index there, and an `awk` selection on
+`$20` selects on the frame index instead of the file number — which matches nothing, or
+matches the wrong scan.
+
+**Pin the columns empirically, on your own file.** The frame index is the column that runs
+1, 2, 3, … and resets per file; the file number is the column that is constant within a
+scan and matches the six-digit suffix of the image filename; the exposure is the small
+constant float. One pass over a few rows settles all three:
+
+```bash
+awk '{print NF; exit}' <logs>/<beamtime>_FF.par                 # 42 on bt_1id_mar23
+head -1 <logs>/<beamtime>_FF.par | tr -s ' ' '\n' | cat -n      # field number -> value
+awk 'NR<4{for(i=17;i<=NF;i++) printf "%d:%s ", i, $i; print ""}' \
+    <logs>/<beamtime>_FF.par                                    # watch which one counts 1,2,3
+```
+
+Only then write the extraction. **This next line is an example to verify, not to copy** —
+it is the 2026 mapping, and on a 2023 file the two column numbers move down by one:
 
 ```bash
 awk '$20=="000008" && $7=="Au3_cubes_ff" {print $21, $17}' <logs>/<beamtime>_FF.par
 ```
+
+This is hard rule 13 in the metadata: never take a number from a position you did not
+check on the file in front of you.
 
 ### 3b-2. HDF5 metadata map (20-ID-D HT-HEDM Varex, `.vrx.h5`)
 
@@ -342,9 +397,18 @@ layered design is easy to misread:
 
 Consequently **`OmegaStart` is the ω of the first frame you want to USE** (post-skip), and
 the zarr's `scan_parameters/start` is deliberately back-dated to
-`OmegaStart − SkipFrame·OmegaStep` (`ff_zip.py:294`) so that it describes raw frame 0.
+`OmegaStart − SkipFrame·OmegaStep`, which the zipper computes as
+`start_omega` (`ff_zip.py:250`), so that it describes raw frame 0.
 The consumer recovers `start + SkipFrame·step = OmegaStart` for the first frame it
 processes. The chain is self-consistent; changing either half alone breaks it.
+
+**This is the authority for `OmegaStart`, and §2 and §10 used to contradict it.** Both
+said `OmegaStart` describes *raw* frame 0; both were corrected on 2026-08-31. Checked
+against the code and the data on a 1441-frame `aero` sweep negated to +180.25 → −179.75:
+`OmegaStart 180.25` wrote `scan_parameters/start = 180.50`, a step past the raw frame 0 it
+is supposed to describe, while `OmegaStart 180.00` wrote 180.25 and is correct. The
+symptom of the wrong value is a **silent 0.25° rigid rotation about ω** — see the note in
+§2 for how to test an existing run.
 
 > Making the zipper physically drop the frame **as well** skips it twice: a 1441-frame
 > sweep yields 1439 processed frames instead of 1440. Confirmed the hard way on
@@ -475,17 +539,40 @@ Sources, in order of trust:
 | source | `bt_1id_jul26` | verdict |
 |---|---|---|
 | `instrument/HEM/Energy` (HDF5) | 95.0 | **use this** |
-| `fastsweep_Emon.txt` field 6 (`E_HEM`) | 95.0000 | corroborates |
+| `fastsweep_Emon.txt`, the `E_HEM` column (§ below — **not a fixed field number**) | 95.0000 | corroborates |
 | spec `FullLog.log` → `Energy (keV):` | 95 | corroborates |
 | `instrument/InsertionDevice/IDEnergy` | 95.055 | undulator setting, not the mono |
 | `instrument/HRM/Energy` | 78.39 | **different monochromator — ignore** |
 | the filename | "96keV" | **stale string** |
 
-`fastsweep_Emon.txt` columns come from `macros_<user>/E_mon.mac`: field 2 is a foil µt, field
-6 is `epics_get("1id:userTran3.A")` = the HEM energy readback. **Rows where the last two
-columns are `0.000 0.000` had the foil out** (air) and carry no absorption information.
+**The `E_HEM` column index is vintage-dependent — identify it by its VALUE, not by its
+position.** `fastsweep_Emon.txt` columns come from `macros_<user>/E_mon.mac`, and the
+leading timestamp is not a fixed width:
 
-λ[Å] = 12.398419843320026 / E[keV]. At 95.0 keV, λ = 0.130510 Å.
+| vintage | `E_HEM` is | why | verified on |
+|---|---|---|---|
+| 2026 | field **6** | field 2 is a foil µt; field 6 is `epics_get("1id:userTran3.A")` | `bt_1id_jul26`, read 95.0000 |
+| 2023 | field **10** | the timestamp occupies five whitespace fields (`Tue Mar 28 10:56:12 2023`), pushing everything right; **field 6 there is a foil µt, not an energy** | `bt_1id_mar23`, read 71.6800 across the whole window |
+
+Taking field 6 on a 2023 file therefore returns an absorption number, not an energy, and
+it will not look like one. **The energy is the column sitting in the tens of keV and
+constant across the scan window** — pick it that way and the vintage stops mattering:
+
+```bash
+awk 'NR==1{for(i=1;i<=NF;i++) printf "%d:%s ", i, $i; print ""}' <logs>/fastsweep_Emon.txt
+```
+
+Then corroborate against the other two records before believing it. On `bt_1id_mar23`,
+field 10 read **71.6800** flat, `FullLog.log` said `HEM energy is set to 71.68 keV`, and
+the tomography scan record said `Energy (keV): 71.63` — three records agreeing to 0.07 %,
+which is the level at which the pair rule (rule 8) starts to matter for an absolute
+lattice parameter (see [`RUNBOOK.md`](RUNBOOK.md) §R2f).
+
+**Rows where the last two columns are `0.000 0.000` had the foil out** (air) and carry no
+absorption information.
+
+λ[Å] = 12.398419843320026 / E[keV]. At 95.0 keV, λ = 0.130510 Å; at 71.630 keV,
+λ = 0.173090 Å.
 
 ### 4b. Distance — `DetZ` is a stage readback, not `Lsd`
 
@@ -627,11 +714,36 @@ Observed on `bt_1id_jul26` (same image, λ the only change): 95 keV → 19.4 µ�
 96 keV → 72.7 µε. Suggestive, and it agreed with the beamline's own confirmation of
 95 keV — but treat it as corroboration, not proof.
 
-### 5f. Use the 0/180 pair if you have one
+### 5f. Use the 0/180 pair if you have one — and read the spread before you average it
 
-A calibrant measured at two rotations 180° apart gives an independent repeat of the same
-detector geometry; the spread between the two fits is an honest uncertainty. On
-`bt_1id_jul26`:
+A calibrant measured at two rotations 180° apart is **two different measurements, and
+which one you have depends on where the calibrant sat.** There are two regimes and they
+call for opposite actions:
+
+| regime | `Lsd` spread | `BC` spread | what it is | what to do |
+|---|---|---|---|---|
+| **small, unstructured** | ≲ 0.05 % | agrees | an independent repeat — honest fit uncertainty | quote the spread as the uncertainty; either fit will do |
+| **large, systematic** | ≫ the repeatability, tilts and BC unmoved | agrees to ≪ 1 px | the diffracting volume is **displaced along the beam**; a 180° turn flips the offset, so the two fits **bracket** the true distance | **average — this is mandatory, not a tidy-up.** The mean is the rotation-axis-to-detector distance; either single exposure is wrong by the offset |
+
+**Do not decide by the size of the number.** Decide by the three-part discriminating test
+below, because a large spread that is *noise* and a large spread that is a *displacement*
+call for different geometries.
+
+#### The discriminating test — all three must hold for the displacement reading
+
+1. **`BC` is unchanged.** A displacement **along the beam** scales the pattern about a
+   fixed centre. A displacement **transverse** to the beam translates it, which moves
+   `BC` instead. `BC` unmoved with `Lsd` split ⇒ the offset is along the beam.
+2. **The ring radii scale UNIFORMLY**, measured on the images at a **fixed** BC — one
+   ratio, flat across every ring. A tilt, a distortion error or a ring mis-assignment
+   (§5b) all produce a radius-dependent ratio instead.
+3. **It reproduces on a second, independent pair.** A fit landing in two basins does not
+   repeat; a geometric offset does.
+
+Also confirm from the log that only ω moved between the two exposures — every sample and
+detector position identical. If a stage moved, this entry does not apply.
+
+#### Regime 1, measured — `bt_1id_jul26`
 
 | | samRy −90 | samRy +90 | diff |
 |---|---|---|---|
@@ -645,6 +757,43 @@ detector geometry; the spread between the two fits is an honest uncertainty. On
 distortion harmonics differed by up to ~10× between the two fits (`a1`: 0.0001 vs 0.0017)
 — the individual harmonic coefficients are fitting noise even when the radial prediction
 they sum to is stable. Do not interpret them physically.
+
+#### Regime 2, measured — `bt_1id_mar23` CeO2, GE5 (2026-08-31)
+
+The same procedure on a different campaign returned a spread **34× larger**, and it was
+not noise:
+
+| quantity | 0 vs 180 |
+|---|---|
+| `Lsd` | **7.34 mm apart = 0.96 %** — against 0.013 % on `bt_1id_jul26` above |
+| `BC` | **0.0008 px apart** |
+
+All three tests fired:
+
+* the par shows **only ω changed** between the two exposures — fields 12–16, every sample
+  and detector position, byte-identical;
+* the ring radii scale **uniformly**: ratio **1.009604** measured directly from the images
+  at a fixed BC, flat across 8 rings, against an `Lsd` ratio of **1.009602**;
+* an independent 2 s CeO2 pair reproduces the split to **0.23 µm**.
+
+**Cause.** The calibrant's diffracting volume sat **3.669 mm off the rotation axis along
+the beam**. A 180° rotation flips that offset, so one exposure sits 3.669 mm nearer the
+detector and the other 3.669 mm further; the two fits bracket the truth and **the mean is
+the rotation-axis-to-detector distance**, which is the distance the reconstruction needs.
+Using either single exposure would have put `Lsd` **0.48 %** out.
+
+**Confirmed by a known-answer test.** With the corrected `Lsd = 767 765.75 µm`, gold cubes
+on the same geometry fitted a = **4.07898 Å** against gold's literature 4.0782 —
+**+191 ppm**. Either single exposure would have given **4.0977** or **4.0587 Å**, i.e.
+±0.478 % — **25×** further from the known answer. (Two grains, related by a Σ3 twin at 59.9724°
+about ⟨111⟩ — the same parent-plus-twin signature as the 1-ID gold reference,
+Lab Notebook §3d.) Full numbers: [`RUNBOOK.md`](RUNBOOK.md) §R2f, Lab Notebook §10b.
+
+**With only one exposure you cannot see any of this**, and the fit will converge and pass
+the 100 µε gate at the displaced distance. That is the argument for acquiring the pair,
+not just for using it: it is the only calibrant-side handle on a sample-position error
+that otherwise propagates into every `Lsd`-scaled quantity. See
+[`DIAGNOSIS.md`](DIAGNOSIS.md) *Sample displacement or distance error*.
 
 ### 5g. Export
 
@@ -713,10 +862,39 @@ midas-joint-ff-calibrate grain-tx \
 | completeness (median) | 0.580 | 0.630 |
 | X / Y scatter | 271 / 265 µm | 273 / 272 µm — unchanged |
 
-Z halving while X and Y stand still is the signature of a real geometry
-correction: it tightened the badly-conditioned coordinate and left the
-well-conditioned ones alone. A fit that moved all three would be absorbing
+Z halving while X and Y stand still was, on *that* dataset, the signature of a
+real geometry correction: it tightened the badly-conditioned coordinate and left
+the well-conditioned ones alone. A fit that moved all three would be absorbing
 error.
+
+> **The Z-halving signature does NOT generalise — do not use it as the
+> acceptance test.** It appears only when Z was loose to begin with. Measured on
+> `bt_1id_mar23` LSHR (fcc, a = 3.59028 Å, 2321 grains, 1-ID GE5), a much larger
+> roll than ti7al's:
+>
+> | | before | after | read as |
+> |---|---|---|---|
+> | `DiffPos` p50 | 251.3 µm | **62.3 µm** (4.0×) | the real signal here |
+> | `DiffPos` p5 | 238.5 µm | **20.4 µm** | the **hard floor at 235 µm disappeared** |
+> | `DiffAngle` p50 | 0.152° | 0.074° | |
+> | **`DiffOme` p50** | 0.072° | **0.074° — unchanged** | **the control** |
+> | X / Y scatter | 283 / 285 µm | 290 / 291 µm — unchanged | |
+> | grain-Z scatter | 36.5 µm | 32.4 µm — barely moved | Z was already tight against a 200 µm beam |
+>
+> **`DiffOme` is the control and it must not move.** A roll of the detector about
+> the beam moves spots within the detector plane; it cannot change which ω frame
+> a spot appears on. A "tx refinement" that improves `DiffOme` is absorbing
+> something else and should not be believed.
+>
+> The refinement converged in **two passes** — pass 1 residual **+0.123253°**,
+> pass 2 **+0.003433°**, a **36× drop**, composed **`tx` = 0.126686°,
+> `Wedge` = 0.000320°** — where the gold case above only halved per pass. Compose
+> and iterate regardless; how fast it converges is a property of the dataset, not
+> of the method.
+>
+> **The disappearing floor is the more useful diagnostic**, and it is available
+> *before* you refine anything: see [`DIAGNOSIS.md`](DIAGNOSIS.md) *A hard floor
+> in the `DiffPos` distribution*. Full numbers in Lab Notebook §10c.
 
 **`--refine` is a freeze/thaw list**, not a fixed pair. Also available: `Lsd`,
 `BC_y`, `ty`, `tz`, and the distortion harmonics (`iso_R2/R4/R6`, `a1..a6`,
@@ -739,6 +917,18 @@ broadcasts to every grain:
 ```
 
 #### Two checks before believing any of it
+
+> **Version gate first: `midas-joint-ff-calibrate` ≤ 0.4.0 cannot read a current
+> `Grains.csv` or `SpotMatrix.csv`, and only one of the two halves crashes.** Its
+> loader assumed the legacy 21-column `Grains.csv` behind a `len(cols) < 21`
+> guard, which passes on a 47- or 53-column file — so it read `DiffPos` as
+> `GrainRadius` and `DiffOme` as `Confidence`, and since grains are **selected**
+> by `argsort(-confidence)` it was refining the **worst-fitting** grains. The
+> `SpotMatrix.csv` half raises `KeyError: -1` on the ~3.3 % of rows that are
+> predicted-but-never-observed. Fixed in the working tree (unreleased at the time
+> of writing) by routing both through `midas_process_grains.io.read`; floor
+> `midas-process-grains >= 0.11.0`. Full numbers: spine trap table,
+> Lab Notebook §10d.
 
 **`matched spots` must be a large fraction of the grains' spots.** A handful
 means the predicted pattern is not landing on the data at all — nearly always

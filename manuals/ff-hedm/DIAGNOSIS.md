@@ -26,6 +26,7 @@ reads as coverage, which is exactly what the generic vocabulary existed to preve
 | `split.illumination_radial` | this entry's own two tests — per-grain `DiffPos` binned by `r = sqrt(X²+Y²)` from `Grains.csv`, and the per-grain lit-ω-arc duty-cycle enrichment (its own null) |
 | `systematic.mirrored_beam_centre` | this entry's comparison of the `midas_calibrate_v2` refined beam centre against its mirror `N-1 − BC`, since strain does not diagnose it |
 | `resid.population_mixture` | this entry's own test — per-grain `DiffPos` from `Grains.csv` binned by `Confidence`, with the per-spot internal angle from `residuals/spot_table` col 9 as the censoring check. Both read from files the default run already writes |
+| `resid.hard_floor` | this entry's own test — the **shape** of the per-grain `DiffPos` distribution from `Grains.csv`: a distribution rising vertically from zero at some non-zero value, rather than approaching zero smoothly. Read from a file the default run already writes |
 
 Strain railing at the Kenesei `MargStrain` bound is **not** listed here: it is the
 generic `bound.pileup` (objects piling against a declared parameter bound), and both
@@ -69,6 +70,18 @@ this entry does not apply and the detector-centre entry does.
 
 **Cause.** A sample displacement or an Lsd error, both of which scale the ring pattern
 rather than translating it.
+
+**Separating the two, when a 0/180 calibrant pair exists.** This entry names the symptom;
+the pair is what tells you which of the two causes you have, and what to do about it. A
+displacement **along the beam** flips sign under a 180° rotation, so the two fits bracket
+the truth and **their mean is the rotation-axis-to-detector distance** — averaging is then
+mandatory, not tidying. An `Lsd` error does not flip and the pair agrees. Measured on
+`bt_1id_mar23` CeO2: 7.34 mm (0.96 %) apart in `Lsd` with `BC` agreeing to **0.0008 px**,
+ring radii scaling uniformly (ratio 1.009604 across 8 rings at fixed BC), reproduced on a
+second pair to 0.23 µm ⇒ a 3.669 mm displacement along the beam, and either single
+exposure would have been 0.48 % out. Note the contrast with the entry above: an offset
+**transverse** to the beam moves `BC` instead of splitting `Lsd`, which is what makes `BC`
+the discriminator. Procedure and the known-answer test: §5f, Lab Notebook §10b.
 
 **Lever.** Refine Lsd against a calibrant. Powder cannot constrain `tx` (rotation about
 the beam) — keep it fixed there and refine it from grains in a second pass with
@@ -417,6 +430,52 @@ illumination and the entry above applies instead.
 > 44,358 µm (**418×**), alumina 392 µm (**18×**). Always run the null, and never select
 > grains by confidence while measuring a population residual — that alone moved alumina
 > 618 → 20 µm.
+
+## A hard floor in the `DiffPos` distribution
+
+symptom: resid.hard_floor
+coord: per-grain `DiffPos` from `Grains.csv`
+
+Distinct from the mixture entry above, and read from the same column. That one asks
+*which grains* are bad; this one asks about the **shape of the distribution's lower
+edge**, and it fires on runs whose median looks acceptable.
+
+**Test.** Plot, or just tabulate, the low percentiles of per-grain `DiffPos`. A population
+limited by per-grain fit noise approaches zero smoothly — p5 well below p50, the histogram
+tapering into the origin. A population sitting on a **global geometry error** cannot: no
+grain can fit better than the error common to all of them, so the distribution **rises
+vertically out of a non-zero floor**, with p5 nearly equal to the floor. Measured on
+`bt_1id_mar23` LSHR (2321 grains): p5 **238.5 µm** against a p50 of 251.3 µm — a hard edge
+at ~235 µm that no grain crossed.
+
+The floor is what makes this diagnosable at all: it is per-grain refinement telling you,
+in the only way it can, that the thing it cannot vary is what is limiting it.
+
+**Discriminating test — does the floor move when `tx` is applied?** Refine `tx`/`Wedge`
+from the grains (§5h) and re-run from `transforms`. If the floor collapses, it was global
+geometry. On that same layer, applying a composed `tx = 0.126686°` took p5 238.5 → **20.4
+µm** and p50 251.3 → **62.3 µm**; the floor disappeared. If the floor holds, this entry
+does not apply — look at the mixture entry above, or at illumination
+(`split.illumination_radial`).
+
+**Run the control in the same pass. `DiffOme` must NOT move.** A detector roll acts within
+the detector plane and cannot change which ω frame a spot lands on, so an intervention
+that improves `DiffOme` is absorbing something other than `tx` and the improvement should
+not be believed. Measured on the same run: `DiffOme` p50 0.072 → 0.074° — unchanged —
+while `DiffPos` moved 4.0× and `DiffAngle` p50 halved (0.152 → 0.074°).
+
+**Cause.** A geometry parameter that is global to the layer and outside the per-grain
+refiner's model — in every case seen here, an unrefined detector roll `tx`. It is
+*structurally* invisible to a powder calibrant (§5h), so a run can pass every calibration
+gate and still carry it.
+
+**Lever.** §5h: `midas-joint-ff-calibrate grain-tx --refine tx,Wedge`, **compose** the
+reported residual onto the applied value, re-run from `transforms` — the stage that
+applies it (`midas_transforms/fit_setup/core.py:376`) — and iterate until the reported
+residual stops falling. Do **not** reach for the matching margins (README rule 9): the
+refiner never reads them, and tightening them changes which candidates survive indexing
+rather than the residual. Do not expect the grain-Z scatter to halve as confirmation —
+that signature is dataset-dependent and did not appear here (§5h).
 
 ## Zero seeds indexed, run exits 0
 
