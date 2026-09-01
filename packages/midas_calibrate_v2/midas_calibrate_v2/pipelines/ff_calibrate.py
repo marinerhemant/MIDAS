@@ -71,12 +71,20 @@ class FFCalibrationResult:
                 f"RhoD {self.RhoD_um:.1f} um  strain {self.strain_uE:.1f} ue [{v}]")
 
 
+#: Extensions handled by the HDF5 branch of :func:`load_calibrant_frame`.
+#: Anything else goes to :func:`midas_calibrate_v2.io.readers.read_image`,
+#: which dispatches on the extension itself.
+_HDF5_SUFFIXES = (".h5", ".hdf5", ".hdf", ".nxs")
+
+
 def load_calibrant_frame(
     path: Union[str, Path],
     *,
     data_group: str = DEFAULT_DATA_GROUP,
     dark_group: Optional[str] = None,
     reduce: str = "median",
+    data_type: int = 1,
+    skip_frame: int = 0,
 ) -> np.ndarray:
     """Reduce a calibrant exposure to one dark-subtracted 2-D frame.
 
@@ -84,7 +92,30 @@ def load_calibrant_frame(
     ``data_group`` is missing rather than guessing a dataset, and warns loudly
     if the named dark reduces to all zeros — the signature of pointing at the
     wrong group.
+
+    **Not HDF5-only.** At 1-ID the calibrant is very often the raw GE binary
+    the detector wrote, ``<stem>_NNNNNN.edf.ge5``, never converted. This used
+    to be an unconditional ``h5py.File(...)``, so ``--mode ff`` on a raw
+    exposure died with an OSError and the only way through was to call
+    :func:`~midas_calibrate_v2.calibrate` by hand — which skips the step that
+    rewrites ``RhoD``, the single value ``--mode ff`` exists to get right.
+    Non-HDF5 paths (GE binary, TIFF, CBF) now go through
+    :func:`~midas_calibrate_v2.io.readers.read_image`, which already knows the
+    8192-byte GE header and the multi-frame layout.
+
+    ``data_type`` and ``skip_frame`` apply to the raw-binary path only
+    (``data_type`` 1 = uint16, the GE default). ``data_group``/``dark_group``
+    are HDF5 concepts; passing ``dark_group`` with a raw file raises rather
+    than being ignored, because an ignored dark leaves the pedestal in.
+
+    No image transform is applied here on either path — ``calibrate()`` owns
+    ``im_trans``, and applying it twice would mirror the geometry.
     """
+    if Path(path).suffix.lower() not in _HDF5_SUFFIXES:
+        return _load_calibrant_frame_raw(
+            path, dark_group=dark_group, reduce=reduce,
+            data_type=data_type, skip_frame=skip_frame)
+
     import h5py
 
     with h5py.File(str(path), "r") as f:
@@ -116,6 +147,37 @@ def load_calibrant_frame(
                 "On 20-ID Varex the dark is in '/exchange/bright'.")
         img = img - fn(dark, axis=0)
     return np.clip(img, 0.0, None)
+
+
+def _load_calibrant_frame_raw(
+    path: Union[str, Path],
+    *,
+    dark_group: Optional[str],
+    reduce: str,
+    data_type: int,
+    skip_frame: int,
+) -> np.ndarray:
+    """Raw (non-HDF5) calibrant exposure -> one 2-D frame.
+
+    Delegates to the package's own reader so a GE binary is decoded exactly the
+    way ``--image`` decodes it elsewhere, rather than by a second, divergent
+    header parser. ``reduce`` is honoured here too: ``read_image`` used to
+    hard-code a mean over frames, which is the wrong reduction for a calibrant
+    — a single zinger becomes a bright spot on the ring it landed on and pulls
+    that ring's centroid.
+    """
+    from ..io.readers import read_image
+
+    if dark_group:
+        raise ValueError(
+            f"dark_group={dark_group!r} was given for {path}, which is not an "
+            "HDF5 file — a raw GE/TIFF/CBF exposure has no groups in it, so "
+            "the dark would be silently skipped and the detector pedestal "
+            "would stay in the image. Subtract the dark before calling, or "
+            "point --image at the converted .h5.")
+    img = read_image(path, skip_frame=skip_frame, data_type=data_type,
+                     frame_reduce=reduce)
+    return np.clip(np.asarray(img, dtype=np.float64), 0.0, None)
 
 
 def rho_d_for(BC_y: float, BC_z: float, n_y: int, n_z: int, px: float) -> float:
