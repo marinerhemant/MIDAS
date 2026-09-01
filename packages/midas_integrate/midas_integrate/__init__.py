@@ -42,6 +42,7 @@ from midas_integrate.geometry import (
     ray_seg_intersect,
     point_in_quad,
     invert_REta_to_pixel,
+    RadiusUnitWarning,
 )
 from midas_integrate.detector_mapper import build_map, BuildMapResult
 from midas_integrate.kernels import (
@@ -109,6 +110,7 @@ __all__ = [
     "ray_seg_intersect",
     "point_in_quad",
     "invert_REta_to_pixel",
+    "RadiusUnitWarning",
     # detector_mapper
     "build_map",
     "BuildMapResult",

@@ -18,6 +18,7 @@ via :func:`build_q_bin_edges_in_R`.
 from __future__ import annotations
 
 import math
+import warnings
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -273,7 +274,74 @@ def REta_to_YZ_scalar(R: float, Eta_deg: float) -> Tuple[float, float]:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Newton-Raphson inversion
+#
+# UNITS. Both inverters take ``R_target`` in **detector pixels**, the same unit
+# ``pixel_to_REta`` returns, and return raw pixel (Y, Z). The name reads as
+# "convert R,eta TO pixels", which invites the opposite reading -- ring radii
+# are micrometres nearly everywhere else in MIDAS -- and nothing rejected a
+# micrometre radius: the seed line ``Y = Ycen + R_target*sin(eta)`` just put the
+# start point tens of thousands of pixels off the panel, Newton walked it a
+# little, and the caller got coordinates ~50 000 with no error at all. Measured
+# consequence: the mandatory ring-overlay figure drew every ring off-frame and
+# looked blank. Hence _warn_if_R_looks_like_micrometres below.
 # ─────────────────────────────────────────────────────────────────────────────
+
+#: How far past the detector's own scale ``R_target`` must sit before the
+#: pixels-vs-micrometres warning fires. A real pixel radius cannot exceed ~1x
+#: that scale, and the micrometre mistake overshoots it by the pixel pitch
+#: (75-200x), so 10x separates the two with a wide margin either way.
+_R_PIXEL_SANITY_FACTOR = 10.0
+
+
+class RadiusUnitWarning(UserWarning):
+    """``R_target`` is too large to be a pixel radius on this detector.
+
+    A warning, not an error: the inverters are also used for synthetic and
+    deliberately extrapolated geometries. But an unheeded one turns into an
+    empty overlay figure or an empty ring mask, with no other symptom.
+    """
+
+
+def _detector_scale_px(Ycen: float, Zcen: float, RhoD: float, px: float):
+    """Rough largest plausible pixel radius, or ``None`` if unknowable.
+
+    Two independent estimates, and the LARGER wins so neither can cry wolf on
+    its own:
+
+    * ``RhoD / px`` — RhoD is the beam-centre-to-farthest-corner distance times
+      the pitch (``midas_calibrate_v2.pipelines.ff_calibrate.rho_d_for``), so
+      the quotient is that distance back in pixels. Some synthetic callers pass
+      a token RhoD, which would make this absurdly small.
+    * ``hypot(Ycen, Zcen)`` — the beam centre is inside the panel, so the
+      panel is at least this big. Zero for a geometry centred on the origin.
+    """
+    scales = []
+    if RhoD > 0.0 and px > 0.0:
+        scales.append(RhoD / px)
+    centre = math.hypot(float(Ycen), float(Zcen))
+    if centre > 0.0:
+        scales.append(centre)
+    return max(scales) if scales else None
+
+
+def _warn_if_R_looks_like_micrometres(R_max: float, Ycen: float, Zcen: float,
+                                      RhoD: float, px: float,
+                                      *, stacklevel: int = 3) -> None:
+    """Cheap plausibility check on the radial input unit."""
+    scale = _detector_scale_px(Ycen, Zcen, RhoD, px)
+    if scale is None or R_max <= _R_PIXEL_SANITY_FACTOR * scale:
+        return
+    hint = (f" Dividing by the pixel pitch ({px:g} um) gives "
+            f"{R_max / px:.1f} px.") if px > 0.0 else ""
+    warnings.warn(
+        f"R_target reaches {R_max:.4g}, more than "
+        f"{_R_PIXEL_SANITY_FACTOR:g}x this detector's own scale "
+        f"({scale:.1f} px). R_target is in DETECTOR PIXELS, not "
+        f"micrometres.{hint} As given, the returned (Y, Z) land far off the "
+        "panel and nothing downstream will complain.",
+        RadiusUnitWarning, stacklevel=stacklevel)
+
+
 def invert_REta_to_pixel(
     R_target: float, Eta_target: float, *,
     Ycen: float, Zcen: float,
@@ -291,7 +359,23 @@ def invert_REta_to_pixel(
     transform reproduces ``(R_target, Eta_target)``.
 
     Mirror of dg_invert_REta_to_pixel_corr in DetectorGeometry.c.
+
+    Parameters
+    ----------
+    R_target : radial distance in **detector pixels** — the same unit
+        :func:`pixel_to_REta` returns, NOT micrometres. Multiply a micrometre
+        radius by ``1/px`` first. See the units note above this section.
+    Eta_target : azimuth in **degrees**, MIDAS convention.
+    Ycen, Zcen : beam centre in **pixels**.
+    Lsd, RhoD, px : sample-detector distance, distortion normalisation and
+        pixel pitch, all in **micrometres**.
+
+    Returns
+    -------
+    (Y, Z) : raw detector coordinates in **pixels**, unrounded.
     """
+    _warn_if_R_looks_like_micrometres(abs(float(R_target)), Ycen, Zcen,
+                                      RhoD, px)
     Y = Ycen + R_target * math.sin(Eta_target * DEG2RAD)
     Z = Zcen + R_target * math.cos(Eta_target * DEG2RAD)
     h = 0.01
@@ -367,13 +451,16 @@ def invert_REta_to_pixel_batch(
     Points whose Jacobian becomes singular freeze in place (matches the
     scalar version's ``if abs(det) < 1e-30: break`` semantics).
 
-    Parameters mirror :func:`invert_REta_to_pixel` exactly. Inputs may be
-    Python scalars, lists, or numpy arrays; output is always a pair of
-    numpy float64 arrays with shape ``(N,)`` (or ``()`` for scalar input).
+    Parameters mirror :func:`invert_REta_to_pixel` exactly, units included:
+    ``R_targets`` is in **detector pixels** (what :func:`pixel_to_REta`
+    returns), ``Eta_targets`` in **degrees**, ``Ycen``/``Zcen`` in **pixels**,
+    ``Lsd``/``RhoD``/``px`` in **micrometres**. Inputs may be Python scalars,
+    lists, or numpy arrays; output is always a pair of numpy float64 arrays
+    with shape ``(N,)`` (or ``()`` for scalar input).
 
     Returns
     -------
-    Y, Z : np.ndarray
+    Y, Z : np.ndarray of **detector pixels**, unrounded.
         Same shape as broadcast of ``R_targets`` and ``Eta_targets``.
     """
     R_targets = np.asarray(R_targets, dtype=np.float64)
@@ -382,6 +469,9 @@ def invert_REta_to_pixel_batch(
     R_targets, Eta_targets = np.broadcast_arrays(R_targets, Eta_targets)
     R_targets = np.ascontiguousarray(R_targets)
     Eta_targets = np.ascontiguousarray(Eta_targets)
+    if R_targets.size:
+        _warn_if_R_looks_like_micrometres(
+            float(np.max(np.abs(R_targets))), Ycen, Zcen, RhoD, px)
 
     Y = Ycen + R_targets * np.sin(Eta_targets * DEG2RAD)
     Z = Zcen + R_targets * np.cos(Eta_targets * DEG2RAD)

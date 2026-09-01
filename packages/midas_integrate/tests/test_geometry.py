@@ -262,3 +262,81 @@ def test_params_q_and_tth_modes_mutually_exclusive():
     import pytest
     with pytest.raises(ValueError, match="mutually exclusive"):
         p.validate()
+
+
+# ── R_target is in PIXELS, and says so ───────────────────────────────────
+# The name reads as "convert R,eta TO pixels", so passing micrometres -- the
+# unit ring radii carry nearly everywhere else in MIDAS -- is the natural
+# mistake. It used to be silent: the seed Y = Ycen + R*sin(eta) simply landed
+# ~50 000 px off the panel, Newton nudged it, and the caller drew an overlay
+# whose rings were all off-frame.
+_GE_LIKE = dict(
+    Ycen=1022.0, Zcen=974.0, Lsd=772_000.0,
+    RhoD=289_600.0, px=200.0,          # 2048^2 GE, 200 um pitch
+)
+
+
+def _ge_kwargs():
+    return dict(TRs=build_tilt_matrix(0.0, 0.0, 0.0), **_GE_LIKE)
+
+
+def test_micrometre_radius_warns_scalar():
+    from midas_integrate.geometry import RadiusUnitWarning
+
+    with pytest.warns(RadiusUnitWarning, match="DETECTOR PIXELS"):
+        invert_REta_to_pixel(500.0 * 200.0, 30.0, **_ge_kwargs())
+
+
+def test_micrometre_radius_warns_batch():
+    from midas_integrate.geometry import RadiusUnitWarning
+
+    R_um = np.array([300.0, 500.0, 700.0]) * 200.0
+    with pytest.warns(RadiusUnitWarning):
+        invert_REta_to_pixel_batch(R_um, np.zeros(3), **_ge_kwargs())
+
+
+def test_pixel_radius_does_not_warn():
+    """Every legitimate radius on this panel, right out to the corner, must be
+    silent -- a guard that cries wolf gets muted and then never fires."""
+    import warnings as _w
+
+    R_px = np.linspace(50.0, 1448.0, 64)       # corner is RhoD/px = 1448 px
+    with _w.catch_warnings():
+        _w.simplefilter("error")
+        invert_REta_to_pixel_batch(R_px, np.linspace(-179, 179, 64),
+                                   **_ge_kwargs())
+        invert_REta_to_pixel(1448.0, 0.0, **_ge_kwargs())
+
+
+def test_guard_is_silent_when_only_a_token_RhoD_is_supplied():
+    """Synthetic geometries pass a token RhoD (2200 um at a 172 um pitch =
+    12.8 px), which on its own would make every real radius look enormous. The
+    beam-centre scale has to rescue it."""
+    import warnings as _w
+
+    with _w.catch_warnings():
+        _w.simplefilter("error")
+        invert_REta_to_pixel(250.0, 30.0, Ycen=700.0, Zcen=865.0,
+                             TRs=build_tilt_matrix(0.05, 0.18, 0.53),
+                             Lsd=580_000.0, RhoD=2200.0, px=172.0)
+
+
+def test_guard_does_not_change_the_answer():
+    """Behaviour is unchanged: warn, then compute exactly as before."""
+    import warnings as _w
+
+    with _w.catch_warnings():
+        _w.simplefilter("ignore")
+        Y_um, Z_um = invert_REta_to_pixel(500.0 * 200.0, 30.0, **_ge_kwargs())
+    assert math.isfinite(Y_um) and math.isfinite(Z_um)
+    # ...and it really did land off a 2048^2 panel, which is the failure mode
+    # the docstring now names.
+    assert max(abs(Y_um), abs(Z_um)) > 10_000.0
+
+
+def test_docstrings_state_the_unit():
+    """The docstring is the fix; keep it from being dropped in a reflow."""
+    for fn in (invert_REta_to_pixel, invert_REta_to_pixel_batch):
+        doc = fn.__doc__ or ""
+        assert "pixel" in doc.lower()
+        assert "micrometre" in doc.lower() or "micrometres" in doc.lower()
