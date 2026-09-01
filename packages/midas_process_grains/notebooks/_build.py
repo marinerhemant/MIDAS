@@ -64,9 +64,15 @@ tensors, writing the canonical MIDAS artefacts:
 
 | file | columns | content |
 |------|---------|---------|
-| `Grains.csv` | 47 | one row per kept grain — orientation, position, lattice, strain |
-| `SpotMatrix.csv` | 12 | one row per (grain, matched spot) |
+| `Grains.csv` | 53 | one row per kept grain — orientation, position, lattice, strain |
+| `SpotMatrix.csv` | 28 | one row per (grain, predicted spot), found or not |
 | `GrainIDsKey.csv` | — | one line per kept grain (the cluster→grain map) |
+
+Both files have been widened repeatedly (`Grains.csv` 19 → 21 → 47 → 53,
+`SpotMatrix.csv` 12 → 28), which is why nothing below counts columns or
+assigns names by position: everything goes through
+`midas_process_grains.io.read_grains_csv` / `read_spot_matrix`, which resolve
+every column **by name** and hand back `None` for a block the file predates.
 
 The shippable mode is **`c_parity`**, which mirrors the C source line-for-line
 (bit-identical on real data except the Kenesei strain solver). This notebook
@@ -105,6 +111,7 @@ the binary inputs by hand. The schemas below match `tests/conftest.py`:
 <run_dir>/
   paramstest.txt
   hkls.csv
+  IDsHash.csv                            # per-ring reference d0 for the strain gauge
   InputAllExtraInfoFittingAll.csv        # needed only for SpotMatrix.csv
   Results/OrientPosFit.bin               # (n_seeds, 27) float64 — refined seeds
   Results/Key.bin                        # (n_seeds, 2)  int32   — alive flag, NrIDsPerID
@@ -218,6 +225,13 @@ for h in (-1, 1):
             hkl_text += f'{h} {k} {l} 2.0784 1 0 0 0 2.39 4.78 60000.0\\n'
 (RUN_DIR / 'hkls.csv').write_text(hkl_text)
 
+# IDsHash.csv: <ring> <spotID_min> <spotID_max_EXCLUSIVE> <d_spacing_A>.
+# This is the per-ring reference d0 for the Kenesei strain gauge. The
+# consolidation refuses to run without it rather than silently emitting
+# 1e36 microstrain for every grain, so a synthetic run directory has to
+# supply one. Our 20 spots are all on ring 1.
+(RUN_DIR / 'IDsHash.csv').write_text('1 1 21 2.0784\\n')
+
 # InputAllExtraInfoFittingAll.csv: 1 header + 20 whitespace rows (SpotID 1..20).
 # Column meaning (subset the C loader keeps): 0=YLab 1=ZLab 2=Omega 4=SpotID
 # 5=RingNr 6=Eta 7=2θ 11=YOrig(DetH) 12=ZOrig(DetV) 13=OmeRaw.
@@ -252,7 +266,7 @@ result = run_c_parity_pipeline_from_disk(
     run_dir=RUN_DIR,
     out_dir=RUN_DIR,
     device='cpu',           # CPU only — no CUDA required
-    min_nr_spots=1,         # keep every cluster
+    min_nr_spots=1,         # keep every cluster (params.py clamps to 2)
     write_spot_matrix=True,
 )
 print('\\nwrote:', sorted(p.name for p in RUN_DIR.glob('*.csv')))
@@ -261,59 +275,117 @@ print('\\nwrote:', sorted(p.name for p in RUN_DIR.glob('*.csv')))
 ## 4 — Read `Grains.csv` and explain the columns
 
 `Grains.csv` has a `%`-commented header block (NumGrains, lattice, phase info)
-then a tab-separated table with these 47 columns:
+then a tab-separated table of 53 columns:
 
 | group | columns | meaning |
 |-------|---------|---------|
 | identity | `GrainID` | the rep seed's SpotID |
 | orientation | `O11..O33` (9) | row-major orientation matrix |
 | position | `X, Y, Z` | grain centroid (µm, lab frame) |
-| lattice | `a, b, c, α, β, γ` | refined unit cell |
+| lattice | `a, b, c, α, β, γ` | refined unit cell (Å, degrees) |
 | fit quality | `DiffPos, DiffOme, DiffAngle, GrainRadius, Confidence` | per-grain residuals |
-| strain | `eFab11..eFab33` (9) | Fable-Beaudoin strain (closed form from lattice) |
-| strain | `eKen11..eKen33` (9), `RMSErrorStrain` | Kenesei per-spot least-squares strain |
-| phase + Euler | `PhaseNr, Eul0, Eul1, Eul2` | phase index + Bunge Euler (**radians**) |
+| strain | `eFab11..eFab33` (9) | Fable-Beaudoin strain, **µε** (closed form from lattice) |
+| strain | `eKen11..eKen33` (9), `RMSErrorStrain` | Kenesei per-spot least-squares strain, **µε** |
+| phase + Euler | `PhaseNr, Eul0, Eul1, Eul2` | phase index + Bunge ZXZ Euler (**radians**) |
+| pre / post | `DiffPos/Ome/AnglePre`, `DiffPos/Ome/AnglePost` | same-estimator residual triples, added 2026-08-21 |
+
+`DiffPos` (col 19) is a POST-fit position error while `DiffOme`/`DiffAngle`
+(20/21) are PRE-fit means — a historical mixture kept for bug-compatibility.
+The clean before/after comparison is the `*Pre` / `*Post` triples, and they
+are `NaN`, never `0.0`, on a run refined before `midas-fit-grain` 0.9.0.
+
+Read it with `read_grains_csv`, never by slicing a hand-written name list onto
+`pd.read_csv(header=None)`. That list was written when the file had 47 columns
+and `cols[:grains.shape[1]]` only defends against too MANY names — 53 columns
+against 47 names raised `ValueError: Length mismatch` the day the file grew.
+The reader anchors the header on `O11` (the ID column is spelled `%GrainID` by
+`c_parity_emit` and `%ID` by `io/csv`, and both are on disk) and returns
+`None` for blocks a narrower file does not have.
 
 We expect **3 grains** — seeds 1 & 2 collapsed to one (the rep is the one with
 the smaller internal angle).
 """),
     ("py", """\
+from midas_process_grains.io import read_grains_csv
+
 grains_path = RUN_DIR / 'Grains.csv'
 print('── %-header ──')
 header = [ln for ln in grains_path.read_text().splitlines() if ln.startswith('%')]
 print('\\n'.join(header[:8]))
 
-grains = pd.read_csv(grains_path, sep='\\t', comment='%', header=None)
-# The data header line (starting with '%GrainID') is commented; assign names.
-cols = (['GrainID'] + [f'O{i}{j}' for i in (1, 2, 3) for j in (1, 2, 3)] +
-        ['X', 'Y', 'Z', 'a', 'b', 'c', 'alpha', 'beta', 'gamma',
-         'DiffPos', 'DiffOme', 'DiffAngle', 'GrainRadius', 'Confidence'] +
-        [f'eFab{i}{j}' for i in (1, 2, 3) for j in (1, 2, 3)] +
-        [f'eKen{i}{j}' for i in (1, 2, 3) for j in (1, 2, 3)] +
-        ['RMSErrorStrain', 'PhaseNr', 'Eul0', 'Eul1', 'Eul2'])
-grains.columns = cols[:grains.shape[1]]
-print(f'\\n{len(grains)} grains, {grains.shape[1]} columns')
-grains[['GrainID', 'X', 'Y', 'Z', 'Confidence', 'Eul0', 'Eul1', 'Eul2']]
+# Every column resolved by NAME, so this cell reads a 19, 21, 47 or 53-column
+# Grains.csv unchanged and under either ID spelling. `require=` is how you
+# assert on presence -- never a column count.
+g = read_grains_csv(grains_path, require=['GrainRadius', 'Confidence'])
+print(f'\\n{g.n_grains} grains, {g.n_columns} columns, '
+      f'ID column spelled %{g.header_token}')
+print('strain units:', g.strain_units)
+
+# Optional blocks come back None on a file too old to carry them, so presence
+# is a test rather than a guess.
+for nm, blk in (('eFab', g.strain_fab), ('eKen', g.strain_ken),
+                ('Euler', g.euler), ('DiffPosPre', g.diff_pos_pre)):
+    print(f'  {nm:12s} {"present" if blk is not None else "absent (older file)"}')
+
+grains = pd.DataFrame({
+    'GrainID': g.ids,
+    'X': g.positions[:, 0], 'Y': g.positions[:, 1], 'Z': g.positions[:, 2],
+    'GrainRadius': g.grain_radius,
+    'Confidence': g.confidence,
+    'Eul0': g.euler[:, 0], 'Eul1': g.euler[:, 1], 'Eul2': g.euler[:, 2],
+})
+grains
 """),
     ("md", """\
 ## 5 — Read `SpotMatrix.csv` and `GrainIDsKey.csv`
 
-`SpotMatrix.csv` has one row per (kept grain, matched spot) — 12 tab-separated
-columns: `GrainID, SpotID, Omega, DetectorHor, DetectorVert, OmeRaw, Eta,
-RingNr, YLab, ZLab, Theta, StrainError`. The detector/η/ω values are looked up
-from `InputAllExtraInfoFittingAll.csv` by `SpotID`.
+`SpotMatrix.csv` is 28 tab-separated columns. The first 12 are the historical
+layout — `GrainID, SpotID, Omega, DetectorHor, DetectorVert, OmeRaw, Eta,
+RingNr, YLab, ZLab, Theta, StrainError` — looked up from
+`InputAllExtraInfoFittingAll.csv` by `SpotID`. Columns 12-27 were added
+2026-08-21: `Matched`, the prediction (`theorSpotID, theorRingNr, theorEta,
+YExp, ZExp, OmegaExp`), the refiner's per-spot residuals (`DiffLen, DiffOme,
+InternalAngle`) and the post-fit repeat of both.
+
+The one that changes how you read the file is **`Matched`**. Rows with
+`Matched == 0` are reflections the grain was *predicted* to produce and that
+were **never observed** — the completeness deficit, recorded nowhere before.
+They carry `-1` in `SpotID`/`RingNr` (those print as `%d` and cannot hold NaN)
+and NaN in every observed column, and on real data they are ~3.3 % of rows.
+Counting them as spots inflates every per-grain spot count; feeding them to a
+fit gives NaN residuals; and because they all share `SpotID == -1`, a
+spot-overlap statistic makes every pair of grains look like it shares a spot.
+
+`read_spot_matrix` therefore defaults to `matched_only=True`. NaN alone is not
+a usable marker — on *matched* rows `theorSpotID` and the post-fit columns are
+also NaN whenever the diagnostics sidecars are absent — so column 12 is the
+only authority.
 
 `GrainIDsKey.csv` is the compact cluster→grain map (one line per kept grain).
 """),
     ("py", """\
-# Each data row ends in a trailing tab (C printf "...%lf\\t\\n"), so pandas sees
-# one extra all-NaN column — read headerless, drop it, then name the 12 columns.
-sm = pd.read_csv(RUN_DIR / 'SpotMatrix.csv', sep='\\t', comment='%', header=None)
-sm = sm.dropna(axis=1, how='all')
-sm.columns = ['GrainID', 'SpotID', 'Omega', 'DetectorHor', 'DetectorVert',
-              'OmeRaw', 'Eta', 'RingNr', 'YLab', 'ZLab', 'Theta', 'StrainError']
-print(f'SpotMatrix: {len(sm)} rows (grain, spot) pairs')
-print('spots per grain:')
+from midas_process_grains.io import read_spot_matrix
+
+# The reader handles the trailing tab the C printf leaves on every row (a bare
+# split('\\t') yields an empty 29th field and float('') raises) and drops the
+# Matched == 0 rows by default.
+sm_path = RUN_DIR / 'SpotMatrix.csv'
+s = read_spot_matrix(sm_path)
+print(f'SpotMatrix: {s.n_columns} columns, {s.n_rows_total} rows on disk, '
+      f'{s.n_rows_unmatched} of them predicted-but-never-found')
+print(f'kept {len(s.grain_id)} observed (grain, spot) pairs')
+
+# Opt in to the un-found population when the deficit is what you are after.
+s_all = read_spot_matrix(sm_path, matched_only=False)
+if s_all.matched is not None:
+    found = s_all.matched > 0.5
+    print(f'completeness over all grains: {int(found.sum())}/{found.size} '
+          f'= {found.mean():.1%}')
+
+sm = pd.DataFrame({'GrainID': s.grain_id, 'SpotID': s.spot_id,
+                   'Omega': s.omega, 'Eta': s.eta, 'RingNr': s.ring_nr,
+                   'YLab': s.y_lab, 'ZLab': s.z_lab, 'Theta': s.theta})
+print('\\nspots per grain:')
 print(sm.groupby('GrainID')['SpotID'].count())
 print('\\n── GrainIDsKey.csv ──')
 print((RUN_DIR / 'GrainIDsKey.csv').read_text())
@@ -326,8 +398,10 @@ sm.head()
   the C `ProcessGrains` consumes.
 - Ran `run_c_parity_pipeline_from_disk` (CPU) — Stage 1 merged the two
   co-oriented spot-sharing seeds into one grain, leaving **3 grains**.
-- Read and annotated all three outputs: the 47-column `Grains.csv`, the
-  12-column `SpotMatrix.csv`, and `GrainIDsKey.csv`.
+- Read and annotated all three outputs with the canonical name-resolving
+  readers: the 53-column `Grains.csv`, the 28-column `SpotMatrix.csv` (with
+  its `Matched == 0` predicted-but-never-found rows dropped by default), and
+  `GrainIDsKey.csv`.
 
 **On real data:** swap the hand-built binaries for an actual MIDAS run
 directory and call the same function (or the CLI
