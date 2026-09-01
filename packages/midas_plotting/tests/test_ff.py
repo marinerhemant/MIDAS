@@ -13,16 +13,38 @@ from midas_plotting.ipf import (                                # noqa: E402
     direction_rgb, ipf_rgb, ipf_rgb_from_matrix,
 )
 
-_COLS = (["ID"] + [f"O{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
-         + ["X", "Y", "Z", "a", "b", "c", "alpha", "beta", "gamma",
-            "DiffPos", "DiffOme", "DiffAngle", "GrainRadius", "Confidence"]
-         + [f"eFab{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
-         + [f"eKen{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
-         + ["RMSErrorStrain", "PhaseNr", "Eul0", "Eul1", "Eul2"])
+# The CURRENT width is 53: the six DiffPos/Ome/Angle Pre/Post diagnostics were
+# appended on 2026-08-21. The fixture used to stop at 47, which is why nothing
+# here noticed the widening.
+_DATA_COLS = ([f"O{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+              + ["X", "Y", "Z", "a", "b", "c", "alpha", "beta", "gamma",
+                 "DiffPos", "DiffOme", "DiffAngle",
+                 "GrainRadius", "Confidence"]
+              + [f"eFab{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+              + [f"eKen{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)]
+              + ["RMSErrorStrain", "PhaseNr", "Eul0", "Eul1", "Eul2",
+                 "DiffPosPre", "DiffOmePre", "DiffAnglePre",
+                 "DiffPosPost", "DiffOmePost", "DiffAnglePost"])
+_COLS = ["ID"] + _DATA_COLS
 
 
-def _write_grains(tmp_path, n=4, sg=225, break_orientation=False):
-    """A Grains.csv with the real preamble shape, incl. tab-indented phase info."""
+def _write_grains(tmp_path, n=4, sg=225, break_orientation=False,
+                  *, trailing_tab=False, id_token="ID", sep="\t"):
+    """A Grains.csv with the real preamble shape, incl. tab-indented phase info.
+
+    Parameters
+    ----------
+    trailing_tab : bool
+        Terminate every data row with a tab, which is what the C
+        ``ProcessGrains`` actually writes. A reader that does ``split("\t")``
+        then sees a spurious empty final field and ``float("")`` raises. Every
+        real file under ``midas_stress/dev/paper3/runs/*/data/*MPa/`` and the
+        bundled ``GrainsSim.csv`` is in this form, and this fixture's omission
+        of it is why the crash shipped.
+    id_token : "ID" or "GrainID"
+        Both spellings are written by live MIDAS writers.
+    sep : column separator for the header and data rows.
+    """
     from midas_stress.orientation import euler_to_orient_mat_batch
 
     rng = np.random.default_rng(0)
@@ -38,7 +60,7 @@ def _write_grains(tmp_path, n=4, sg=225, break_orientation=False):
         f"%\tSpaceGroup:{sg}",
         "%\tLattice Parameter:4.078200\t4.078200\t4.078200\t"
         "90.000000\t90.000000\t90.000000",
-        "%" + "\t".join(_COLS),
+        "%" + sep.join([id_token] + _DATA_COLS),
     ]
     for k in range(n):
         row = [str(k + 1)] + [f"{v:.6f}" for v in om[k].reshape(-1)]
@@ -50,7 +72,9 @@ def _write_grains(tmp_path, n=4, sg=225, break_orientation=False):
         row += [f"{v:.4f}" for v in rng.normal(200, 50, 9)]             # eKen
         row += ["400.0", "1"]
         row += [f"{v:.9f}" for v in eul[k]]
-        lines.append("\t".join(row))
+        row += ["151.0", "0.06", "0.09", "150.0", "0.05", "0.08"]       # pre/post
+        assert len(row) == len(_COLS)
+        lines.append(sep.join(row) + ("\t" if trailing_tab else ""))
     p = tmp_path / "Grains.csv"
     p.write_text("\n".join(lines) + "\n")
     return p, eul, om
@@ -111,6 +135,51 @@ def test_orientation_check_can_be_disabled(tmp_path):
         read_grains(p, check_orientation=False)
 
 
+@pytest.mark.parametrize("trailing_tab", [False, True])
+@pytest.mark.parametrize("id_token", ["ID", "GrainID"])
+def test_trailing_tab_and_both_id_spellings(tmp_path, trailing_tab, id_token):
+    """The shipped crash: `line.split("\t")` on a tab-terminated row.
+
+    The C ``ProcessGrains`` ends every data row with a tab, so a tab-split
+    yields one extra empty field and ``float("")`` raised
+    ``could not convert string to float: ''`` on every real file under
+    ``midas_stress/dev/paper3/runs/*/data/*MPa/Grains.csv``.
+    """
+    p, eul, om = _write_grains(tmp_path, n=4, trailing_tab=trailing_tab,
+                               id_token=id_token)
+    g = read_grains(p)
+    assert len(g) == 4
+    assert len(g.columns) == 53
+    np.testing.assert_array_equal(g.ids, [1, 2, 3, 4])
+    assert np.allclose(g.euler, eul, atol=1e-6)
+    assert np.allclose(g.orient_mat, om, atol=1e-5)
+    assert np.allclose(g.radius, [40.0, 50.0, 60.0, 70.0])
+
+
+def test_space_separated_file_is_readable(tmp_path):
+    """NF ``mic2grains`` seed files are space-separated, not tab-separated."""
+    p, eul, _ = _write_grains(tmp_path, n=3, sep=" ")
+    g = read_grains(p)
+    assert len(g) == 3 and len(g.columns) == 53
+    assert np.allclose(g.euler, eul, atol=1e-6)
+
+
+def test_current_width_exposes_pre_post_residual_columns(tmp_path):
+    """The 2026-08-21 widening: 47 -> 53. The extra columns must be readable
+    by name, and must not displace anything that was already there."""
+    p, _, _ = _write_grains(tmp_path, n=2)
+    g = read_grains(p)
+    idx = {c: i for i, c in enumerate(g.columns)}
+    for c in ("DiffPosPre", "DiffOmePre", "DiffAnglePre",
+              "DiffPosPost", "DiffOmePost", "DiffAnglePost"):
+        assert c in idx
+    np.testing.assert_allclose(g.raw[:, idx["DiffPosPre"]], 151.0)
+    np.testing.assert_allclose(g.raw[:, idx["DiffPosPost"]], 150.0)
+    # ...and the pre-existing block is untouched.
+    np.testing.assert_allclose(g.diff_pos, 150.0)
+    np.testing.assert_allclose(g.diff_ome, 0.05)
+
+
 def test_missing_header_is_an_error(tmp_path):
     p = tmp_path / "bad.csv"
     p.write_text("1\t2\t3\n")
@@ -127,7 +196,7 @@ def test_strain_is_not_rescaled(tmp_path):
     p, _, _ = _write_grains(tmp_path, n=4)
     g = read_grains(p)
     raw11 = g.strain_fab[:, 0, 0]
-    assert np.allclose(ff.strain_scalar(g, "11"), raw11)
+    assert np.allclose(ff.strain_scalar(g, "11", convention="fab"), raw11)
     assert np.abs(ff.strain_scalar(g, "hydrostatic")).max() < 1e4
 
 
@@ -135,6 +204,9 @@ def test_strain_scalars(tmp_path):
     p, _, _ = _write_grains(tmp_path, n=4)
     g = read_grains(p)
     e = g.strain("fab")
+    assert np.allclose(ff.strain_scalar(g, "hydrostatic", convention="fab"),
+                       np.trace(e, axis1=1, axis2=2) / 3.0)
+    e = g.strain()          # default convention, checked below
     assert np.allclose(ff.strain_scalar(g, "hydrostatic"),
                        np.trace(e, axis1=1, axis2=2) / 3.0)
     assert (ff.strain_scalar(g, "vonmises") >= 0).all()
@@ -246,3 +318,37 @@ def test_ff_detected_by_content_not_filename(tmp_path):
     other.write_text("1 2 3 4 5\n")
     assert not _looks_like_ff(other)
     assert not _looks_like_ff(tmp_path / "missing.csv")
+
+
+# ── strain convention default (regression) ──────────────────────────────────
+def test_strain_default_convention_is_eken(tmp_path):
+    """The default must be eKen, matching ``midas_stress.io``'s ``strain`` key.
+
+    midas_plotting defaulted to eFab while midas_stress.io mapped its plain
+    ``strain`` key to eKen and documented eKen as the recommendation. Both
+    sites labelled their choice, so nothing raised and nothing was mislabelled
+    -- but a strain map from here and a stress from there, on the SAME
+    Grains.csv, were different tensors.
+    """
+    p, _, _ = _write_grains(tmp_path, n=6)
+    g = read_grains(p)
+    # The fixture draws eFab and eKen independently, so a wrong default shows.
+    assert not np.allclose(g.strain_fab, g.strain_ken)
+    np.testing.assert_allclose(g.strain(), g.strain_ken)
+    for kind in ("hydrostatic", "vonmises", "11", "23"):
+        np.testing.assert_allclose(ff.strain_scalar(g, kind),
+                                   ff.strain_scalar(g, kind, convention="ken"))
+
+
+def test_strain_default_agrees_with_midas_stress(tmp_path):
+    """Same file, same tensor, across the two packages.
+
+    midas_stress returns dimensionless strain (it divides the stored
+    microstrain by 1e6); midas_plotting keeps microstrain. That factor is the
+    ONLY difference the two defaults may have.
+    """
+    ms_io = pytest.importorskip("midas_stress.io")
+    p, _, _ = _write_grains(tmp_path, n=6)
+    g = read_grains(p)
+    ms = ms_io.read_grains_csv(str(p))
+    np.testing.assert_allclose(g.strain(), ms["strain"] * 1e6, rtol=1e-9)

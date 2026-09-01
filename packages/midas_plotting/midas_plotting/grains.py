@@ -4,11 +4,16 @@ The FF analogue of :mod:`midas_plotting.mic`: one place that knows the column
 layout so analysis scripts stop re-deriving it.
 
 Columns are looked up **by name** from the ``%ID ...`` header line, never by
-position. That matters more here than it looks: ``Grains.csv`` has grown to 47
-columns, and `midas-fit-grain` 0.5.6 shipped a cyclic rotation of the
-``DiffPos`` / ``DiffOme`` / ``DiffAngle`` columns (fixed in 0.5.7) that a
-positional reader would silently inherit -- one grain's ω residual read 223.87°
-where the true value was 0.054°.
+position. That matters more here than it looks: ``Grains.csv`` has been widened
+repeatedly (19 -> 21 -> 23 -> 47 -> 53 columns), and `midas-fit-grain` 0.5.6
+shipped a cyclic rotation of the ``DiffPos`` / ``DiffOme`` / ``DiffAngle``
+columns (fixed in 0.5.7) that a positional reader would silently inherit --
+one grain's ω residual read 223.87° where the true value was 0.054°.
+
+Rows are split on **whitespace**, not on tabs: the C ``ProcessGrains`` writer
+ends every data row with a tab, so a bare ``split("\t")`` produces a trailing
+empty field and ``float("")`` raises on files that are otherwise perfectly
+valid.
 
 As a further guard, :func:`read_grains` recomputes the orientation matrix from
 the Euler angles and compares it against the ``O11..O33`` columns. Both describe
@@ -125,8 +130,20 @@ class GrainList:
     def n_grains(self) -> int:
         return len(self)
 
-    def strain(self, convention: str = "fab") -> np.ndarray:
-        """``(N, 3, 3)`` strain tensor in the requested convention."""
+    def strain(self, convention: str = "ken") -> np.ndarray:
+        """``(N, 3, 3)`` strain tensor in the requested convention.
+
+        Defaults to **eKen** to agree with ``midas_stress.io.read_grains_csv``,
+        whose plain ``strain`` key is eKen and which documents it as the
+        recommended form (it is fit directly from the per-reflection
+        ``eps_ij g_i g_j = (d_obs - d_0)/d_0`` gauge equation, so it is tied to
+        the raw observables and has better noise properties than the
+        lattice-parameter form). These two packages are routinely pointed at
+        the same Grains.csv -- a strain map here and a stress calculation
+        there -- and while both label their choice, disagreeing on the default
+        meant the map and the stress were not the same tensor. Pass
+        ``convention="fab"`` for the lattice-parameter (Fable-Beaudoin) form.
+        """
         c = convention.lower()
         if c in ("fab", "fable", "efab"):
             s = self.strain_fab
@@ -163,11 +180,22 @@ def _parse(path: Path):
         if not line.strip():
             continue
         if not line.startswith("%"):
-            rows.append(line.split("\t"))
+            # Whitespace-split, NOT `split("\t")`. The C `ProcessGrains`
+            # terminates every data row with a tab, so a bare tab-split yields
+            # a spurious empty final field and `float("")` raises -- which is
+            # exactly what every file under midas_stress/dev/paper3/runs/ and
+            # the bundled GrainsSim.csv did. Splitting on whitespace also
+            # accepts the space-separated flavours (NF mic2grains seed files).
+            # No value in this format ever contains an internal space, and a
+            # collapsed empty field would be caught by the column-count check
+            # in read_grains() below.
+            rows.append(line.split())
             continue
 
         body = line[1:]
-        fields = [f.strip() for f in body.split("\t")]
+        # Same rule for the header, so a space-separated file's column names
+        # are found too. Column names never contain spaces.
+        fields = body.split()
         # Column header: names O11 (and therefore the whole grain record).
         if "O11" in fields or (fields and fields[0] in ("ID", "GrainID")
                                and len(fields) > 5):
@@ -204,7 +232,7 @@ def read_grains(path, *, check_orientation: bool = True) -> GrainList:
     if columns is None:
         raise ValueError(
             f"{path}: no column header found. Expected a line beginning "
-            "'%ID' or '%GrainID' listing tab-separated column names.")
+            "'%ID' or '%GrainID' listing the column names.")
     if not rows:
         raise ValueError(f"{path}: header present but no grain rows.")
 
@@ -213,8 +241,8 @@ def read_grains(path, *, check_orientation: bool = True) -> GrainList:
     if arr.shape[1] != len(columns):
         raise ValueError(
             f"{path}: {arr.shape[1]} data columns but {len(columns)} header "
-            "names -- the file is malformed or tab/space separated "
-            "inconsistently.")
+            "names -- the file is malformed (an empty field mid-row, or a "
+            "header that does not match the rows).")
 
     def col(name, required=True):
         if name not in idx:

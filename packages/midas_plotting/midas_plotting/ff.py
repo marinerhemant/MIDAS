@@ -318,8 +318,16 @@ def completeness_hist(grains, ax=None, *, bins: int = 30,
 
 # ─── strain ─────────────────────────────────────────────────────────────────
 def strain_scalar(grains, kind: str = "hydrostatic", *,
-                  convention: str = "fab") -> np.ndarray:
+                  convention: str = "ken") -> np.ndarray:
     """Reduce the per-grain strain tensor to one number per grain.
+
+    ``convention`` defaults to **eKen**, matching
+    ``midas_stress.io.read_grains_csv``'s ``strain`` key and its documented
+    recommendation, so a strain map from this module and a stress computed by
+    ``midas_stress`` from the same Grains.csv are the same tensor. It used to
+    default to ``"fab"``; both sites labelled their choice, so nothing was
+    mis-read, but the two answers silently differed. Pass ``convention="fab"``
+    for the lattice-parameter form.
 
     ``kind``:
       ``hydrostatic``  trace/3
@@ -352,7 +360,7 @@ def strain_scalar(grains, kind: str = "hydrostatic", *,
 
 
 def strain_map(grains, ax=None, *, kind: str = "hydrostatic",
-               convention: str = "fab", plane: str = "xy", cmin: float = 0.0,
+               convention: str = "ken", plane: str = "xy", cmin: float = 0.0,
                cmap: str = "coolwarm", vmin=None, vmax=None,
                symmetric: bool = True, title: Optional[str] = None):
     """Grain map coloured by a strain scalar (µε).
@@ -392,7 +400,7 @@ def strain_map(grains, ax=None, *, kind: str = "hydrostatic",
     return ax
 
 
-def strain_distribution(grains, ax=None, *, convention: str = "fab",
+def strain_distribution(grains, ax=None, *, convention: str = "ken",
                         bins: int = 30, title: Optional[str] = None):
     """Histograms of the three normal strain components (µε)."""
     import matplotlib.pyplot as plt
