@@ -47,30 +47,93 @@ DEG2RAD = math.pi / 180.0
 
 # --------------------------------------------------------------------- IO
 def _parse_grains_csv(path: Path) -> dict:
-    header_cols = None
-    rows = []
-    with open(path) as f:
-        for line in f:
-            if line.startswith("%GrainID"):
-                header_cols = line.lstrip("%").strip().split("\t")
-            elif line.startswith("%"):
-                continue
-            else:
-                vals = line.strip().split("\t")
-                if not vals[0]:
-                    continue
-                rows.append(vals)
-    arr = np.array([[float(v) for v in row] for row in rows], dtype=np.float64)
-    return {col: arr[:, i] for i, col in enumerate(header_cols)}
+    """Read a ``Grains.csv`` of any width into ``{column name: array}``.
+
+    Delegates to the canonical name-resolving reader in
+    ``midas_process_grains.io``. This used to look for a header line starting
+    with ``%GrainID`` only. ``midas_process_grains.io.csv`` writes ``%ID``
+    (every mode except ``c_parity``), so on those files ``header_cols`` stayed
+    ``None`` and the very next line raised
+    ``TypeError: 'NoneType' object is not iterable`` — the shipped CLI simply
+    could not read half the corpus.
+
+    The grain-id column is normalised to ``GrainID`` whichever token the file
+    carries. On a legacy 21-column file the per-grain lattice is not stored, so
+    it is reconstructed from the header lattice and the Voigt strain block for
+    use as a refinement SEED (the refiner recovers the rest).
+    """
+    from midas_process_grains.io import read_grains_csv
+
+    t = read_grains_csv(path)
+    cols = {name: t.column(name) for name in t.columns}
+    cols["GrainID"] = np.asarray(t.ids, dtype=np.float64)
+
+    if "a" not in cols:
+        # Legacy 21-column layout: cols 13-18 are E11..E23 (dimensionless
+        # strain-gauge form), not a b c alpha beta gamma. Seed the lattice from
+        # the header reference lattice: a = a0 (1 + E11), etc.
+        if t.strain_voigt is None or t.lattice_parameter is None:
+            raise ValueError(
+                f"{path}: no per-grain lattice (a b c alpha beta gamma) and no "
+                f"E11..E23 + '%\tLattice Parameter:' preamble to derive one "
+                f"from. Header has {t.columns!r}."
+            )
+        e = np.asarray(t.strain_voigt, dtype=np.float64)
+        if np.nanmax(np.abs(e[:, :3])) > 0.1:
+            # Refuse to guess: a microstrain-scaled block here would produce a
+            # lattice off by orders of magnitude and a silently hopeless fit.
+            raise ValueError(
+                f"{path}: E11..E33 reach {np.nanmax(np.abs(e[:, :3])):.3g}, "
+                f"which is not a dimensionless strain. Cannot derive a lattice "
+                f"seed; re-run process_grains to get the a/b/c columns."
+            )
+        nom = np.asarray(t.lattice_parameter, dtype=np.float64)
+        for k, name in enumerate(("a", "b", "c")):
+            cols[name] = nom[k] * (1.0 + e[:, k])
+        for k, name in enumerate(("alpha", "beta", "gamma")):
+            cols[name] = np.full(t.n_grains, nom[3 + k])
+    return cols
 
 
 def _parse_spot_matrix(path: Path) -> dict:
-    data = np.loadtxt(path, skiprows=1)
+    """Read a ``SpotMatrix.csv`` of either width (12 legacy / 28 expanded).
+
+    ``read_spot_matrix`` drops the ``Matched == 0`` rows by default: those are
+    reflections a grain was predicted to produce and that were never observed
+    (~3.3 % of rows on real data). They carry ``-1`` in ``SpotID``/``RingNr``
+    and NaN in every observed column.
+
+    Leaving them in did not crash — ``_associate``'s ``min_d < max_dist``
+    is False for a NaN distance, so the fit itself was unaffected — but every
+    COUNT downstream was wrong: ``n_spots`` in the half-half output was
+    overstated, the ``--min-spots`` gate admitted grains with fewer real spots
+    than asked for, ``half_half_spots`` split ``randperm(n)`` over rows that
+    were not all observations so the two halves held unequal amounts of real
+    evidence, and ``jackknife_spots``' per-row influence index no longer
+    lined up with an observed spot.
+
+    η is recomputed as ``atan2(-YLab, ZLab)`` rather than read from the
+    SpotMatrix ``Eta`` column. That column is not reliably an angle. Measured:
+    on ``nfdev_jul26_20id_ff/report_au/SpotMatrix.csv`` it agrees with the
+    lab-frame value to 5e-7 deg, but on
+    ``demk_ff_Cu_results/LayerNr_1/SpotMatrix.csv`` (written by the Python
+    ProcessGrains) it holds MICRONS — ±5e4, tracking YLab — which this CLI was
+    then multiplying by π/180 and handing to the spot-matching loss. ``dev/paper/scripts/run_proto9_park22.py`` in this same
+    package already recomputes it for exactly this reason; the shipped CLI did
+    not. Recomputing is correct in both cases — where the column really is
+    degrees it reproduces it, because MIDAS defines η that way.
+    """
+    from midas_process_grains.io import read_spot_matrix
+
+    t = read_spot_matrix(path, matched_only=True)
     return {
-        "grain_id":  data[:, 0].astype(int),
-        "omega_deg": data[:, 2],
-        "eta_deg":   data[:, 6],
-        "theta_deg": data[:, 10],
+        "grain_id":  np.asarray(t.grain_id, dtype=int),
+        "spot_id":   np.asarray(t.spot_id, dtype=int),
+        "omega_deg": t.omega,
+        "eta_deg":   np.degrees(np.arctan2(-t.y_lab, t.z_lab)),
+        "theta_deg": t.theta,
+        "n_rows_total":     t.n_rows_total,
+        "n_rows_unmatched": t.n_rows_unmatched,
     }
 
 
@@ -224,11 +287,35 @@ def _grain_observations(spots: dict, grain_id: int):
     )
 
 
+def _grain_spot_ids(spots: dict, grain_id: int) -> np.ndarray:
+    """MIDAS SpotIDs for a grain, in the SAME row order as
+    :func:`_grain_observations`.
+
+    The jackknife reports influence per observation index ``k``; without this
+    there is no way back from ``k`` to the spot it names. (With unmatched rows
+    left in, ``k`` did not even index an observation.)
+    """
+    return spots["spot_id"][spots["grain_id"] == grain_id]
+
+
+def _report_spot_filter(spots: dict) -> None:
+    """State how many predicted-but-never-found rows were dropped.
+
+    Silently dropping them is how the counts got out of step in the first
+    place, so the number is printed rather than assumed to be zero.
+    """
+    n_un = spots.get("n_rows_unmatched", 0)
+    if n_un:
+        print(f"SpotMatrix: {spots['n_rows_total']} rows, {n_un} unmatched "
+              f"(Matched == 0) dropped, {len(spots['grain_id'])} observations")
+
+
 # --------------------------------------------------------------------- handlers
 def cmd_half_half(args):
     from .spots import half_half_spots
     grains = _parse_grains_csv(Path(args.grains))
     spots = _parse_spot_matrix(Path(args.spot_matrix))
+    _report_spot_filter(spots)
     model = _build_model_from_paths(
         Path(args.params),
         Path(args.hkls) if args.hkls else None,
@@ -276,6 +363,7 @@ def cmd_jackknife(args):
     from .spots import jackknife_spots
     grains = _parse_grains_csv(Path(args.grains))
     spots = _parse_spot_matrix(Path(args.spot_matrix))
+    _report_spot_filter(spots)
     model = _build_model_from_paths(
         Path(args.params),
         Path(args.hkls) if args.hkls else None,
@@ -287,6 +375,11 @@ def cmd_jackknife(args):
     obs = _grain_observations(spots, args.grain_id)
     if obs is None:
         sys.exit(f"No spots for grain {args.grain_id}")
+    # Row k of `obs` is spot_ids[k]. Emit both: an influence ranking that can
+    # only be read as a row index is not actionable, and before the
+    # Matched == 0 rows were filtered out the index did not even name an
+    # observation.
+    spot_ids = _grain_spot_ids(spots, args.grain_id)
     res = jackknife_spots(
         model, state, obs,
         phase_steps=(args.phase1, args.phase2, args.phase3),
@@ -295,23 +388,27 @@ def cmd_jackknife(args):
     out_path = Path(args.out) if args.out else Path(f"jackknife_grain_{args.grain_id}.csv")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["k", "influence_mis_deg", "influence_lat_A"])
+        w = csv.DictWriter(
+            f, fieldnames=["k", "spot_id", "influence_mis_deg", "influence_lat_A"])
         w.writeheader()
         for k in range(obs.shape[0]):
             w.writerow({
                 "k": k,
+                "spot_id": int(spot_ids[k]),
                 "influence_mis_deg": res.influence_misori_deg[k],
                 "influence_lat_A": res.influence_lat_A[k],
             })
     print(f"wrote per-spot influence -> {out_path}")
     top = res.top_k(10, by="misori")
-    print(f"top-10 influence spots: {top.tolist()}")
+    print(f"top-10 influence spots (SpotID): "
+          f"{[int(spot_ids[k]) for k in top.tolist()]}")
 
 
 def cmd_laplace(args):
     from .laplace import laplace_covariance
     grains = _parse_grains_csv(Path(args.grains))
     spots = _parse_spot_matrix(Path(args.spot_matrix))
+    _report_spot_filter(spots)
     model = _build_model_from_paths(
         Path(args.params),
         Path(args.hkls) if args.hkls else None,

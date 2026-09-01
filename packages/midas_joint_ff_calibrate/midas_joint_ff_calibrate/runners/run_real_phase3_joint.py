@@ -64,6 +64,7 @@ from midas_joint_ff_calibrate.grain_observations import (  # noqa: E402
     load_grains_csv,
     load_spot_matrix,
     load_phase2_grains_and_spots,
+    load_ring_two_theta,
 )
 
 def main(argv=None) -> int:
@@ -250,17 +251,10 @@ def main(argv=None) -> int:
     if len(obs_ring_nrs) == 0:
         raise RuntimeError("No observed rings in any grain's spot bag")
     # Build pred-ring-slot by nearest 2θ (deg) from model.thetas (rad) onto
-    # observed-ring 2θ taken from hkls.csv (Phase 2's canonical hkls).
-    hkls_csv = args.phase2_layer_dir / "hkls.csv"
-    ring_two_theta = {}
-    with open(hkls_csv) as f:
-        next(f)  # header
-        for line in f:
-            cols = line.split()
-            if len(cols) < 11:
-                continue
-            rn = int(cols[4]); tt = float(cols[9])
-            ring_two_theta.setdefault(rn, tt)
+    # observed-ring 2θ taken from hkls.csv (Phase 2's canonical hkls). Parsed
+    # by the shared helper rather than inline, so there is one definition of
+    # the hkls.csv column layout in this package instead of three.
+    ring_two_theta = load_ring_two_theta(args.phase2_layer_dir / "hkls.csv")
     ring_tt_arr = np.array([ring_two_theta[r] for r in obs_ring_nrs], dtype=np.float64)
     pred_tt_deg = np.rad2deg(2 * model.thetas.detach().cpu().numpy())
     diffs = np.abs(pred_tt_deg[:, None] - ring_tt_arr[None, :])

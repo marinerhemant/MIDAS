@@ -30,6 +30,8 @@ from typing import Dict
 
 import numpy as np
 
+from midas_joint_ff_calibrate.grain_observations import load_grains_csv
+
 
 # ---------------------------------------------------------------- patching
 
@@ -208,20 +210,24 @@ def run_process_grains(refit_root: Path, paramstest: Path,
 
 
 def read_grains_strains(grains_csv: Path):
-    """Read Grains.csv → (grain_ids, strain_voigt[N,6])."""
+    """Read Grains.csv → ``(grain_ids, strain_voigt[N, 6])``, dimensionless,
+    ordered ``[e11, e22, e33, e23, e13, e12]``.
+
+    Delegates to :func:`grain_observations.load_grains_csv`, which resolves
+    every column by name. It previously read ``c[13:19]`` and called that the
+    Voigt strain: on a 21-column file those ARE ``E11..E23``, but on the 47 and
+    53-column files process_grains writes today they are the per-grain LATTICE
+    ``a b c alpha beta gamma``. So ``deviatoric_norm`` was being handed 4.08 Å
+    and 90.0° as if they were strain components, and the whole
+    sequential-vs-joint comparison this script exists to produce was
+    meaningless. The real strain lives in the ``eFab``/``eKen`` blocks, in
+    MICROSTRAIN; ``load_grains_csv`` returns the Kenesei (lab/sample-frame)
+    tensor rescaled to dimensionless.
+    """
     if not grains_csv.exists():
         raise FileNotFoundError(grains_csv)
-    ids, strain = [], []
-    for line in grains_csv.read_text().splitlines():
-        if line.startswith("%") or not line.strip():
-            continue
-        c = line.split("\t")
-        if len(c) < 21:
-            continue
-        ids.append(int(c[0]))
-        # cols 13..18 in 21-col Grains.csv = strain[6] (Voigt)
-        strain.append([float(x) for x in c[13:19]])
-    return np.asarray(ids, dtype=np.int64), np.asarray(strain, dtype=np.float64)
+    g = load_grains_csv(grains_csv)
+    return g["ids"], g["strains"]
 
 
 def deviatoric_norm(strain_voigt: np.ndarray) -> np.ndarray:

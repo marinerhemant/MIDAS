@@ -213,6 +213,11 @@ def half_half_spots(
     """
     if loss is None: loss = default_loss()
     n = observations.shape[0]
+    if n < 2:
+        raise ValueError(
+            f"half_half_spots needs at least 2 observations to form two "
+            f"halves; got {n}. With fewer, both halves are empty and the "
+            f"reported disagreement is meaningless rather than small.")
     half = n // 2
     g = torch.Generator(device="cpu").manual_seed(seed)
 
@@ -221,7 +226,12 @@ def half_half_spots(
     per_half = []
     for k in range(n_splits):
         perm = torch.randperm(n, generator=g)
-        idx_a = perm[:half]; idx_b = perm[half:2 * half]
+        # perm[half:], not perm[half:2*half]: on an ODD spot count the latter
+        # leaves the last permuted spot in neither half, so that observation
+        # never constrains either fit. The halves then differ by one spot
+        # (e.g. 50/51 of 101), which perturbs the expected disagreement by
+        # ~0.5 % -- far less than silently discarding an observation.
+        idx_a = perm[:half]; idx_b = perm[half:]
         obs_a = observations[idx_a]; obs_b = observations[idx_b]
 
         state_a = _fit_grain_spots(

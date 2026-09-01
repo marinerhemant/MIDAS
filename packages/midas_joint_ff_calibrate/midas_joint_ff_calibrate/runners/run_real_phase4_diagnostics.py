@@ -52,7 +52,7 @@ from midas_joint_ff_calibrate.pipelines.identifiability import fisher_block_rank
 
 # Phase 3 setup helpers (same loaders).
 from midas_joint_ff_calibrate.runners.run_real_phase3_joint import (
-    load_phase2_grains_and_spots, load_grains_csv,
+    load_phase2_grains_and_spots, load_grains_csv, load_ring_two_theta,
 )
 
 # Pilatus3 2M-CdTe layout (from Phase 0)
@@ -182,15 +182,9 @@ def _build_setup(args):
     print(f"   refining {n_grains_total} grains")
 
     obs_ring_nrs = sorted({int(r) for bag in spots for r in bag.get("ring_nr", [])})
-    hkls_csv = args.phase2_layer_dir / "hkls.csv"
-    ring_two_theta = {}
-    with open(hkls_csv) as f:
-        next(f)
-        for line in f:
-            cols = line.split()
-            if len(cols) >= 11:
-                rn = int(cols[4]); tt = float(cols[9])
-                ring_two_theta.setdefault(rn, tt)
+    # Shared hkls.csv parser (see the note in run_real_phase3_joint) — this was
+    # the third inline copy of the same positional column layout.
+    ring_two_theta = load_ring_two_theta(args.phase2_layer_dir / "hkls.csv")
     ring_tt_arr = np.array([ring_two_theta[r] for r in obs_ring_nrs], dtype=np.float64)
     pred_tt_deg = np.rad2deg(2 * model.thetas.detach().cpu().numpy())
     diffs = np.abs(pred_tt_deg[:, None] - ring_tt_arr[None, :])

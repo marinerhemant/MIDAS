@@ -79,20 +79,22 @@ def generate_grains_csv(output_path, n_grains, lattice_params, rsample, hbeam,
     lattice[:, 4] = be0 * (1 + rng.uniform(-frac, frac, n_grains))
     lattice[:, 5] = ga0 * (1 + rng.uniform(-frac, frac, n_grains))
 
-    # Compute Euler angles from orientation matrices
-    # Using atan2 decomposition of ZXZ convention (MIDAS convention)
-    eulers = np.zeros((n_grains, 3))
-    for i in range(n_grains):
-        m = orient_mats[i]
-        if abs(m[2, 2]) < 1.0 - 1e-10:
-            eulers[i, 1] = np.arccos(np.clip(m[2, 2], -1, 1))
-            eulers[i, 0] = np.arctan2(m[2, 0], -m[2, 1])
-            eulers[i, 2] = np.arctan2(m[0, 2], m[1, 2])
-        else:
-            eulers[i, 1] = 0.0 if m[2, 2] > 0 else np.pi
-            eulers[i, 0] = np.arctan2(-m[0, 1], m[0, 0])
-            eulers[i, 2] = 0.0
-    eulers_deg = np.degrees(eulers)
+    # Euler angles from the orientation matrices, in RADIANS.
+    #
+    # Two things were wrong here and they cancelled out in nothing:
+    #   1. The values were written in DEGREES, while Grains.csv Eul0/1/2 are
+    #      radians (ProcessGrains.c, and every reader in packages/).
+    #   2. The hand-rolled atan2 decomposition was not MIDAS's. C's
+    #      OrientMat2Euler uses acos-based sin_cos_to_angle on [0, 2pi), which
+    #      puts psi in slot 0 and theta in slot 2; this one had them swapped
+    #      with a 180 deg offset.
+    # Delegating to midas_stress keeps this file from drifting from the
+    # convention a third time. Nothing downstream reads these columns --
+    # ForwardSimulationCompressed.c takes only tokens 1..18 -- so the only
+    # consumer is a human or a reader that trusts the documented unit.
+    from midas_stress.orientation import orient_mat_to_euler
+    eulers = np.array([np.asarray(orient_mat_to_euler(orient_mats[i])).ravel()
+                       for i in range(n_grains)])
 
     # Write GrainsSim.csv
     beam_center = 0.0  # Will be overwritten by ForwardSim
@@ -122,7 +124,7 @@ def generate_grains_csv(output_path, n_grains, lattice_params, rsample, hbeam,
             om = orient_mats[i].flatten()
             pos = positions[i]
             lat = lattice[i]
-            eul = eulers_deg[i]
+            eul = eulers[i]
 
             # Strain tensors (zeros for simulation)
             zeros9 = "\t".join(["0.000000"] * 9)
@@ -136,7 +138,7 @@ def generate_grains_csv(output_path, n_grains, lattice_params, rsample, hbeam,
             f.write("0.000000\t0.000000\t0.000000\t300.000000\t1.000000\t")
             # eFab (9), eKen (9)
             f.write(f"{zeros9}\t{zeros9}\t")
-            # RMSErrorStrain, PhaseNr, Euler angles
+            # RMSErrorStrain, PhaseNr, Euler angles (radians)
             f.write(f"0.000000\t1.000000\t{eul[0]:.6f}\t{eul[1]:.6f}\t{eul[2]:.6f}\t\n")
 
     print(f"Generated {n_grains} random grains -> {output_path}")

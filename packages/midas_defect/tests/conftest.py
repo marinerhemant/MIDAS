@@ -451,6 +451,74 @@ def _demk_fcc_root() -> Path | None:
 DEMK_FCC_ROOT = _demk_fcc_root() or _DEMK_FCC_ROOT_CANDIDATES[0]
 
 
+#: The exact legacy layout this fixture's ground-truth tables were computed
+#: from. Grains.csv has been widened repeatedly (19 -> 21 -> 23 -> 47 -> 53)
+#: and columns 13..18 changed MEANING at 47: on a 21-column file they are the
+#: Voigt strain E11 E22 E33 E12 E13 E23, on 47/53 they are the lattice
+#: parameters a b c alpha beta gamma. A `len(parts) < 21` guard passes a
+#: 53-column file happily and would start reading a lattice as a strain --
+#: silently, with no exception and plausible-looking magnitudes.
+_DEMK_VOIGT_NAMES = ("E11", "E22", "E33", "E12", "E13", "E23")
+
+
+def _read_grains_by_name(path):
+    """Read a Grains.csv resolving every column BY NAME.
+
+    Returns ``(OM (n,3,3), pos (n,3), eps_voigt (n,6) or None,
+    radius (n,), confidence (n,), n_columns)``.
+
+    Prefers the canonical reader in ``midas_process_grains.io`` -- the single
+    place in the tree that knows every width and both ID spellings -- and
+    falls back to an inline name-driven parse when that package is not
+    installed (it is not a declared dependency of midas_defect).
+
+    ``eps_voigt`` is None whenever the file does NOT name E11..E23. It is
+    never filled from positions 13:19, because on a modern file those are the
+    lattice parameters.
+    """
+    try:
+        from midas_process_grains.io import read_grains_csv as _canon
+    except ImportError:
+        _canon = None
+
+    if _canon is not None:
+        t = _canon(path)
+        return (t.orient_mat, t.positions, t.strain_voigt,
+                t.grain_radius, t.confidence, t.n_columns)
+
+    lines = Path(str(path)).read_text().splitlines()
+    hidx = next((i for i, ln in enumerate(lines)
+                 if ln.startswith("%") and "O11" in ln.lstrip("%").split()), None)
+    if hidx is None:
+        raise ValueError(f"{path}: no '%' header line naming O11..O33")
+    cols = lines[hidx].lstrip("%").split()
+    idx = {c: i for i, c in enumerate(cols)}
+    rows = []
+    for raw in lines[hidx + 1:]:
+        # rstrip() first: the C writer terminates data rows with a tab.
+        toks = raw.rstrip().split()
+        if not toks or raw.lstrip().startswith("%") or len(toks) < len(cols):
+            continue
+        rows.append([float(v) for v in toks[:len(cols)]])
+    arr = np.asarray(rows, dtype=float)
+
+    def block(names):
+        if not all(n in idx for n in names):
+            return None
+        return arr[:, [idx[n] for n in names]]
+
+    om = block([f"O{i}{j}" for i in (1, 2, 3) for j in (1, 2, 3)])
+    if om is None or arr.size == 0:
+        raise ValueError(
+            f"{path}: header names {cols!r} but no complete O11..O33 data rows")
+    return (om.reshape(-1, 3, 3),
+            block(("X", "Y", "Z")),
+            block(_DEMK_VOIGT_NAMES),
+            arr[:, idx["GrainRadius"]] if "GrainRadius" in idx else None,
+            arr[:, idx["Confidence"]] if "Confidence" in idx else None,
+            len(cols))
+
+
 @pytest.fixture(scope="module")
 def demk_fcc_l1() -> dict:
     """Module-scoped fixture for the demk FCC L1 canonical re-analysis.
@@ -474,28 +542,27 @@ def demk_fcc_l1() -> dict:
     if not grains_csv.exists():
         pytest.skip(f"missing {grains_csv}")
 
-    OM_rows: list[np.ndarray] = []
-    pos_rows: list[np.ndarray] = []
-    eps_voigt_rows: list[np.ndarray] = []
-    radii_list: list[float] = []
-    conf_list: list[float] = []
-    with grains_csv.open() as fh:
-        for line in fh:
-            if line.startswith("%") or not line.strip():
-                continue
-            parts = line.split()
-            if len(parts) < 21:
-                continue
-            vals = [float(x) for x in parts]
-            OM_rows.append(np.array(vals[1:10]).reshape(3, 3))
-            pos_rows.append(np.array(vals[10:13]))
-            eps_voigt_rows.append(np.array(vals[13:19]))  # E11, E22, E33, E12, E13, E23
-            radii_list.append(vals[19])
-            conf_list.append(vals[20])
-
-    OM = np.stack(OM_rows, axis=0)
-    pos = np.stack(pos_rows, axis=0)
-    eps_voigt = np.stack(eps_voigt_rows, axis=0)
+    OM, pos, eps_voigt, radii, confs, n_cols = _read_grains_by_name(grains_csv)
+    if eps_voigt is None:
+        # A regenerated (47/53-column) file. Its strain is eFab/eKen in
+        # MICROSTRAIN and in a different convention from the legacy Voigt
+        # block, so the ground-truth tables below no longer apply -- and cols
+        # 13..18 are now a b c alpha beta gamma, which the old
+        # `len(parts) < 21` guard would have read as a strain without
+        # complaint. Fail loudly instead of comparing apples to 1e6 oranges.
+        pytest.fail(
+            f"{grains_csv} has {n_cols} columns and no E11..E23 Voigt strain "
+            f"block. This fixture's ground-truth tables were computed from "
+            f"the 21-column legacy layout; a regenerated file carries "
+            f"eFab*/eKen* in microstrain under a different convention. "
+            f"Regenerate the ground truth (or read strain via "
+            f"midas_process_grains.io.read_grains_csv(...).strain_ken) before "
+            f"re-enabling this comparison."
+        )
+    if radii is None or confs is None:
+        pytest.fail(f"{grains_csv}: missing GrainRadius/Confidence columns")
+    radii_list = list(radii)
+    conf_list = list(confs)
     # Expand to (n, 3, 3) symmetric strain tensors
     eps_tensor = np.zeros((OM.shape[0], 3, 3))
     eps_tensor[:, 0, 0] = eps_voigt[:, 0]

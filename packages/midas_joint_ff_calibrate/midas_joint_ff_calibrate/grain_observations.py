@@ -18,6 +18,13 @@ import torch
 
 from midas_fit_grain.matching import MatchResult, associate, ring_slot_lookup
 from midas_fit_grain.observations import ObservedSpots
+# The canonical, name-resolving readers for the two ProcessGrains artefacts.
+# Both files have been widened repeatedly (Grains 19 -> 21 -> 47 -> 53,
+# SpotMatrix 12 -> 28) and are written under two header tokens (%ID and
+# %GrainID). Every positional reader in the tree froze one snapshot of that and
+# drifted silently; see the module docstring of midas_process_grains.io.read.
+from midas_process_grains.io import read_grains_csv as _read_grains_csv
+from midas_process_grains.io import read_spot_matrix as _read_spot_matrix
 
 
 def euler_zxz_from_om(R: np.ndarray) -> np.ndarray:
@@ -38,75 +45,121 @@ def euler_zxz_from_om(R: np.ndarray) -> np.ndarray:
 
 
 def load_grains_csv(path: Path) -> dict:
-    """Read Grains.csv (21 cols: ID + OM[9] + XYZ[3] + strain[6] + radius +
-    confidence). Returns arrays plus the header SpaceGroup / Lattice."""
-    ids, om, pos, strain, rad, conf = [], [], [], [], [], []
-    sg, lattice = None, None
-    with open(path) as f:
-        for line in f:
-            line = line.rstrip("\n")
-            if not line:
-                continue
-            if line.startswith("%"):
-                if line.startswith("%\tSpaceGroup:"):
-                    sg = int(line.split(":")[1].strip())
-                elif line.startswith("%\tLattice"):
-                    lattice = tuple(float(x) for x in line.split(":")[1].strip().split())
-                continue
-            cols = line.split("\t")
-            if len(cols) < 21:
-                continue
-            ids.append(int(cols[0]))
-            om.append([float(c) for c in cols[1:10]])
-            pos.append([float(c) for c in cols[10:13]])
-            strain.append([float(c) for c in cols[13:19]])
-            rad.append(float(cols[19]))
-            conf.append(float(cols[20]))
-    n = len(ids)
+    """Read a ``Grains.csv`` of any width (19 / 21 / 23 / 47 / 53 columns) and
+    either header token (``%ID`` or ``%GrainID``).
+
+    Every column is resolved BY NAME through
+    :func:`midas_process_grains.io.read_grains_csv`. This used to be a
+    positional parser that hard-coded the 21-column legacy layout behind a
+    ``len(cols) < 21`` guard — which passes on a 53-column file, so it never
+    raised. On anything wider than 21 columns it returned column 19
+    (``DiffPos``) as ``radius`` and column 20 (``DiffOme``) as ``confidence``.
+    Measured on a 47-column Ti-7Al set (``bt_20id_jul26b``, 208 grains):
+    median radius 286.9 µm instead of 25.2 µm, median confidence 0.117
+    instead of 0.580.
+
+    The confidence error was not cosmetic. :mod:`grain_refine` SELECTS grains
+    with ``np.argsort(-grains["confidence"])``, so it was ranking on DiffOme
+    descending — i.e. deliberately keeping the *worst-fitting* grains. On that
+    same file the top-10 selection shares only 1 grain with the correct one.
+    A separate real-data run reported the resulting refined ``tx`` moving by
+    ~10 % and ``Wedge`` changing sign.
+
+    Returned keys are unchanged so callers do not move; three are added:
+
+    ``strains``
+        (n, 6) Voigt strain, DIMENSIONLESS, ordered
+        ``[e11, e22, e33, e23, e13, e12]``. Taken from the Kenesei
+        (lab/sample-frame) 3x3 block and divided by 1e6 on the 47/53-column
+        files, which store it in microstrain; taken from the legacy
+        ``E11..E23`` block verbatim on a genuine 21-column file (that
+        generation never recorded its units). Cols 13-18 are the LATTICE on
+        anything wider than 21 columns — reading them as strain is the bug
+        this docstring exists to prevent.
+    ``strain_ken_ue`` / ``strain_fab_ue``
+        (n, 3, 3) microstrain, or ``None`` when the file predates them.
+    ``lattice_per_grain``
+        (n, 6) per-grain ``a b c alpha beta gamma``, or ``None`` on a legacy
+        21-column file. Distinct from ``lattice``, which is the single
+        reference lattice from the ``%`` preamble.
+    """
+    t = _read_grains_csv(path)
+    n = t.n_grains
+
+    # Voigt pack in the [11, 22, 33, 23, 13, 12] order the downstream
+    # deviatoric-norm helpers document (NOT the legacy header's
+    # E11 E22 E33 E12 E13 E23 order — that mismatch is itself a live bug).
+    if t.strain_ken is not None:
+        k = t.strain_ken
+        strains = np.column_stack([
+            k[:, 0, 0], k[:, 1, 1], k[:, 2, 2],
+            k[:, 1, 2], k[:, 0, 2], k[:, 0, 1],
+        ]) * 1e-6                      # microstrain -> dimensionless
+    elif t.strain_voigt is not None:
+        strains = np.asarray(t.strain_voigt, dtype=np.float64)
+    else:
+        strains = np.zeros((n, 6), dtype=np.float64)
+
+    zeros = np.zeros(n, dtype=np.float64)
     return {
         "n_grains": n,
-        "ids": np.array(ids, dtype=np.int64),
-        "orient_mat": np.array(om, dtype=np.float64),
-        "positions": np.array(pos, dtype=np.float64),
-        "strains": np.array(strain, dtype=np.float64),
-        "radius": np.array(rad, dtype=np.float64),
-        "confidence": np.array(conf, dtype=np.float64),
-        "sg": sg, "lattice": lattice,
+        "ids": np.asarray(t.ids, dtype=np.int64),
+        # (n, 9) row-major, as before: euler_zxz_from_om reshapes to (3, 3).
+        "orient_mat": np.asarray(t.orient_mat, dtype=np.float64).reshape(n, 9),
+        "positions": (np.zeros((n, 3), dtype=np.float64) if t.positions is None
+                      else np.asarray(t.positions, dtype=np.float64)),
+        "strains": strains,
+        "radius": (zeros if t.grain_radius is None
+                   else np.asarray(t.grain_radius, dtype=np.float64)),
+        "confidence": (zeros if t.confidence is None
+                       else np.asarray(t.confidence, dtype=np.float64)),
+        # Kept as a plain tuple / None: grain_refine does `grains["lattice"] or
+        # tuple(v1.LatticeConstant)`, which an ndarray would turn into a
+        # "truth value of an array is ambiguous" ValueError.
+        "sg": t.space_group,
+        "lattice": (tuple(t.lattice_parameter)
+                    if t.lattice_parameter is not None else None),
+        "strain_ken_ue": t.strain_ken,
+        "strain_fab_ue": t.strain_fab,
+        "lattice_per_grain": t.lattice,
     }
 
 
 def load_spot_matrix(path: Path) -> dict:
-    """Read SpotMatrix.csv (12 cols: GrainID, SpotID, Omega, DetectorHor,
-    DetectorVert, OmeRaw, Eta, RingNr, YLab, ZLab, Theta, StrainError).
+    """Read a ``SpotMatrix.csv`` of either width (12 legacy / 28 expanded).
+
+    Columns are resolved by name through
+    :func:`midas_process_grains.io.read_spot_matrix`, which also drops the
+    ``Matched == 0`` rows by default. Those rows are reflections the grain was
+    PREDICTED to produce and that were never observed: they carry ``-1`` in
+    ``SpotID``/``RingNr`` and NaN in every observed column, and they are ~3.3 %
+    of rows on real data. Left in, they reached
+    :func:`build_observations_and_matches` and raised ``KeyError: -1`` out of
+    the ring-slot lookup; had they got past that, η would have been recomputed
+    from NaN ``YLab``/``ZLab``.
 
     SpotMatrix column-6 "Eta" is a peak-fit diagnostic, NOT the η angle, so we
     recompute η in the model's convention ``atan2(-YLab, ZLab)`` from the
     lab-frame (YLab, ZLab) columns (which are in µm).
     """
-    rows = []
-    with open(path) as f:
-        for line in f:
-            if line.startswith("%") or not line.strip():
-                continue
-            cols = line.rstrip().split("\t")
-            if len(cols) < 12:
-                continue
-            rows.append([float(x) for x in cols])
-    arr = np.array(rows, dtype=np.float64)
-    eta_from_lab_deg = np.rad2deg(np.arctan2(-arr[:, 8], arr[:, 9]))
+    t = _read_spot_matrix(path, matched_only=True)
+    eta_from_lab_deg = np.rad2deg(np.arctan2(-t.y_lab, t.z_lab))
     return {
-        "grain_id": arr[:, 0].astype(np.int64),
-        "spot_id": arr[:, 1].astype(np.int64),
-        "omega": arr[:, 2],            # deg
-        "det_hor": arr[:, 3],          # px
-        "det_vert": arr[:, 4],         # px
-        "ome_raw": arr[:, 5],
+        "grain_id": t.grain_id,
+        "spot_id": t.spot_id,
+        "omega": t.omega,              # deg
+        "det_hor": t.detector_hor,     # px
+        "det_vert": t.detector_vert,   # px
+        "ome_raw": t.ome_raw,
         "eta": eta_from_lab_deg,       # deg, recomputed from (YLab, ZLab)
-        "ring_nr": arr[:, 7].astype(np.int64),
-        "y_lab": arr[:, 8],            # µm
-        "z_lab": arr[:, 9],            # µm
-        "theta": arr[:, 10],           # deg (= 2θ/2)
-        "strain_error": arr[:, 11],
+        "ring_nr": t.ring_nr,
+        "y_lab": t.y_lab,              # µm
+        "z_lab": t.z_lab,              # µm
+        "theta": t.theta,              # deg (= 2θ/2)
+        "strain_error": t.strain_error,
+        # Provenance for the completeness deficit that was silently dropped.
+        "n_rows_total": t.n_rows_total,
+        "n_rows_unmatched": t.n_rows_unmatched,
     }
 
 
