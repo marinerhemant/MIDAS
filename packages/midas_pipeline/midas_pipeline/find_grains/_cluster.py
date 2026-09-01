@@ -62,6 +62,85 @@ class PerVoxelClusterResult:
     unique_OMs: np.ndarray
 
 
+def _pick_best_row_scalar(confs: np.ndarray,
+                          ias: np.ndarray) -> tuple[int, float, float]:
+    """Reference implementation — the original C-order scan, kept verbatim.
+
+    Mirrors ``process_voxel`` (findSingleSolutionPFRefactored.c:675-690):
+    skip if conf < best; skip if conf == best && ia > best_ia; else update.
+    Retained as the oracle the vectorised path is tested against, and as the
+    fallback for NaN (see :func:`_pick_best_row`).
+    """
+    best_row, best_conf, best_ia = -1, -1.0, 100.0
+    for i in range(int(confs.shape[0])):
+        ci = float(confs[i])
+        ai = float(ias[i])
+        if ci < best_conf:
+            continue
+        if ci == best_conf and ai > best_ia:
+            continue
+        best_conf = ci
+        best_ia = ai
+        best_row = i
+    return best_row, best_conf, best_ia
+
+
+def _pick_best_row(confs: np.ndarray,
+                   ias: np.ndarray) -> tuple[int, float, float]:
+    """Vectorised best-row pick, exactly equivalent to the scalar scan.
+
+    Once the O(n_sol^2) grouping is skipped (``need_uniques=False``) this scan
+    becomes the dominant cost of find_grains on a dense layer: it is a Python
+    loop with two ``float()`` calls per candidate, and a dense voxel carries
+    tens of thousands of candidates (s1/L9: ~24.5 M solutions over 361 voxels,
+    433 s single-process at 100 % CPU, I/O idle).
+
+    Three details of the scalar scan are load-bearing and each is reproduced
+    here — all three were confirmed by probing the shipped function, not read
+    off the source:
+
+    1. **Exact ties in BOTH conf and ia select the LAST row**, not the first.
+       ``ai > best_ia`` is false when ``ai == best_ia``, so the scan falls
+       through and re-assigns. (The old comment called this "order-stable",
+       which reads as first-wins. It is not.)
+    2. ``best_conf = -1.0`` / ``best_ia = 100.0`` are not just initialisers,
+       they act as a **virtual sentinel row**: a candidate with conf < -1.0
+       can never win, and one with conf == -1.0 needs ia <= 100.0 to win. If
+       nothing beats the sentinel the result is ``-1``.
+    3. The comparison is lexicographic on ``(conf, -ia)`` — a higher conf wins
+       regardless of how bad its ia is.
+
+    Prepending the sentinel as a real row makes all three fall out of one
+    argmax, and shifting the index back by one yields ``-1`` when the sentinel
+    wins.
+
+    NaN falls back to the scalar loop. Under IEEE comparison every NaN test is
+    false, so the scalar scan treats a NaN conf as "update" and then lets every
+    later row update too — pathological, but it is the shipped behaviour, and
+    the vectorised form cannot express it (``c == c.max()`` is all-false).
+    Rather than approximate it, defer.
+    """
+    n = int(confs.shape[0])
+    if n == 0:
+        return -1, -1.0, 100.0
+    if np.isnan(confs).any() or np.isnan(ias).any():
+        return _pick_best_row_scalar(confs, ias)
+
+    c = np.empty(n + 1, dtype=np.float64)
+    a = np.empty(n + 1, dtype=np.float64)
+    c[0] = -1.0
+    a[0] = 100.0
+    c[1:] = confs
+    a[1:] = ias
+
+    at_max = c == c.max()
+    # Lowest ia among the rows tied at the maximum conf, then the LAST of those.
+    j = int(np.flatnonzero(at_max & (a == a[at_max].min()))[-1])
+    if j == 0:
+        return -1, -1.0, 100.0
+    return j - 1, float(c[j]), float(a[j])
+
+
 def per_voxel_cluster(
     OMs: np.ndarray,
     confs: np.ndarray,
@@ -129,26 +208,11 @@ def per_voxel_cluster(
     max_ang_rad = float(max_ang_deg) * np.pi / 180.0
 
     # --- 1. Best-row pick (matches C process_voxel:675–690). ---
-    # Order-stable scan, tie-break = lowest IA. C semantics: skip if conf
-    # < best, skip if conf == best && ia > best_ia; update otherwise. We
-    # initialise best_conf = -1 so the first valid candidate always wins.
     # Note: min_conf only applies for the multiple-mode caller; single
     # picks the overall best then filters at sino time. For consistency
     # with both C codes we always do the best-pick on the un-filtered
     # set first.
-    best_row = -1
-    best_conf = -1.0
-    best_ia = 100.0
-    for i in range(n):
-        ci = float(confs[i])
-        ai = float(ias[i])
-        if ci < best_conf:
-            continue
-        if ci == best_conf and ai > best_ia:
-            continue
-        best_conf = ci
-        best_ia = ai
-        best_row = i
+    best_row, best_conf, best_ia = _pick_best_row(confs, ias)
 
     # --- 2. Within-voxel unique grouping ---
     if best_row < 0:

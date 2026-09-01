@@ -234,3 +234,77 @@ def test_default_still_groups(axis_angle_om):
                             max_ang_deg=1.0)
     assert res.unique_keys.shape[0] == 2
     assert res.unique_OMs.shape[0] == 2
+
+
+# ---------------------------------------------------------------------------
+# Vectorised best-row pick vs the scalar oracle
+# ---------------------------------------------------------------------------
+
+from midas_pipeline.find_grains._cluster import (  # noqa: E402
+    _pick_best_row, _pick_best_row_scalar,
+)
+
+
+@pytest.mark.parametrize("seed", range(25))
+def test_vectorised_best_row_matches_scalar_random(seed):
+    """Differential test against the reference scan on random inputs.
+
+    Values are drawn on a COARSE grid on purpose: random floats essentially
+    never collide, and exact ties are the whole subtlety (last-wins).
+    """
+    rng = np.random.default_rng(seed)
+    n = int(rng.integers(1, 400))
+    confs = rng.choice(np.array([-2.0, -1.0, 0.0, 0.25, 0.5, 0.75, 1.0]), n)
+    ias = rng.choice(np.array([0.0, 0.1, 0.5, 100.0, 150.0]), n)
+    assert _pick_best_row(confs, ias) == _pick_best_row_scalar(confs, ias)
+
+
+@pytest.mark.parametrize("seed", range(15))
+def test_vectorised_best_row_matches_scalar_continuous(seed):
+    """Same, on continuous values, so the ordinary no-tie path is covered."""
+    rng = np.random.default_rng(1000 + seed)
+    n = int(rng.integers(1, 500))
+    confs = rng.normal(size=n)
+    ias = rng.normal(size=n) * 10.0
+    assert _pick_best_row(confs, ias) == _pick_best_row_scalar(confs, ias)
+
+
+@pytest.mark.parametrize(
+    "confs, ias, expect_row, why",
+    [
+        ([0.5, 0.9, 0.9], [0.3, 0.2, 0.2], 2, "tie in conf AND ia -> LAST wins"),
+        ([0.9, 0.9, 0.9], [0.1, 0.1, 0.1], 2, "all identical -> last"),
+        ([0.9, 0.9], [0.2, 0.1], 1, "same conf, lower ia wins"),
+        ([0.9, 0.9], [0.1, 0.2], 0, "same conf, lower ia wins (first)"),
+        ([-5.0, -3.0], [0.1, 0.1], -1, "all conf below the -1.0 sentinel"),
+        ([-1.0], [50.0], 0, "conf == sentinel conf, ia beats sentinel ia"),
+        ([-1.0], [150.0], -1, "conf == sentinel conf, ia loses to sentinel"),
+        ([0.2, 0.9], [0.9, 0.5], 1, "higher conf wins despite worse ia"),
+    ],
+)
+def test_vectorised_best_row_semantics(confs, ias, expect_row, why):
+    """Pin the three subtleties: last-wins ties, the sentinel, lexicographic order.
+
+    These values were probed against the SHIPPED function before the
+    vectorisation was written, so they encode observed behaviour rather than a
+    reading of the source.
+    """
+    c = np.asarray(confs, dtype=np.float64)
+    a = np.asarray(ias, dtype=np.float64)
+    assert _pick_best_row(c, a)[0] == expect_row, why
+    assert _pick_best_row_scalar(c, a)[0] == expect_row, why
+
+
+def test_vectorised_best_row_nan_defers_to_scalar():
+    """NaN is pathological in the scalar scan; the fast path must not diverge."""
+    confs = np.array([0.5, np.nan, 0.9])
+    ias = np.array([0.1, 0.2, 0.3])
+    assert _pick_best_row(confs, ias) == _pick_best_row_scalar(confs, ias)
+    confs2 = np.array([0.5, 0.9])
+    ias2 = np.array([np.nan, 0.3])
+    assert _pick_best_row(confs2, ias2) == _pick_best_row_scalar(confs2, ias2)
+
+
+def test_vectorised_best_row_empty():
+    e = np.empty(0, dtype=np.float64)
+    assert _pick_best_row(e, e) == (-1, -1.0, 100.0)
