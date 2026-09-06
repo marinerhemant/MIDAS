@@ -40,12 +40,75 @@ from .point_group import (
     proper_group_symbol,
     proper_rotations_from_space_group,
 )
+from .distortion_mode import (
+    SubcellSetting, supercell_to_subcell, subcell_to_supercell,
+    supercell_hkl_to_subcell, splits_under, diagonal_B_can_express,
+    can_distinguish_modes,
+)
+from .phase_id import (
+    PhaseCandidate, PhaseMatch, candidate_d_lines, worst_relative_residual,
+    global_minimax_scale, chance_worst_residual, identify_phase,
+)
+from .ub_refine import (
+    UBFit, refine_ub_from_gvectors, ub_to_cell, ub_to_u_b,
+    cell_from_metric, drlv2,
+)
+from .cell_series import (
+    CellDeformation, TransitionVerdict, cell_deformation, explained_fraction,
+    track_cell, detect_transition, poisson_upper_p, min_detectable_excess,
+)
+from .ab_initio import (
+    LatticeCandidate, AbInitioResult, index_ab_initio, patterson,
+    chance_score, score_vector, refine_vector, find_candidate_vectors,
+    select_basis, reduce_basis,
+)
+from .conventional import (
+    ConventionalCell, metric_symmetry, to_conventional,
+    to_conventional_from_fit,
+)
+from .ab_splitting import (
+    hkl_box_from_geometry, distortion_rank, distortion_condition,
+    ab_separable, shear_separable, partner_multiplicity, index_asymmetry,
+)
+from .cell_constrained import (
+    FREE_PARAMS, ConstrainedFit, DomainData,
+    refine_cell_constrained, refine_cell_joint, split_with_error,
+)
+from .lattice_symmetry import (
+    Holohedry, holohedry, lattice_symmetry_operations,
+    tolerance_from_fit, holohedry_from_fit,
+)
+from .niggli import NiggliCell, niggli_reduce, same_lattice
 from .space_group import SpaceGroup, list_space_groups
 from .symops import SymOp
 
 __version__ = "0.9.0"
 
 __all__ = [
+    "hkl_box_from_geometry", "distortion_rank", "distortion_condition",
+    "ab_separable", "shear_separable", "partner_multiplicity",
+    "index_asymmetry",
+    "FREE_PARAMS", "ConstrainedFit", "DomainData",
+    "refine_cell_constrained", "refine_cell_joint", "split_with_error",
+    "Holohedry", "holohedry", "lattice_symmetry_operations",
+    "tolerance_from_fit", "holohedry_from_fit",
+    "NiggliCell", "niggli_reduce", "same_lattice",
+    "ConventionalCell", "metric_symmetry", "to_conventional",
+    "to_conventional_from_fit",
+    "LatticeCandidate", "AbInitioResult", "index_ab_initio", "patterson",
+    "chance_score", "score_vector", "refine_vector", "find_candidate_vectors",
+    "select_basis", "reduce_basis",
+    "CellDeformation", "TransitionVerdict", "cell_deformation",
+    "explained_fraction", "track_cell", "detect_transition",
+    "poisson_upper_p", "min_detectable_excess",
+    "UBFit", "refine_ub_from_gvectors", "ub_to_cell", "ub_to_u_b",
+    "cell_from_metric", "drlv2",
+    "PhaseCandidate", "PhaseMatch", "candidate_d_lines",
+    "worst_relative_residual", "global_minimax_scale",
+    "chance_worst_residual", "identify_phase",
+    "SubcellSetting", "supercell_to_subcell", "subcell_to_supercell",
+    "supercell_hkl_to_subcell", "splits_under", "diagonal_B_can_express",
+    "can_distinguish_modes",
     "CLASSICAL_ELECTRON_RADIUS_A",
     "extinction_length_um",
     "kinematical_path_limit_um",
