@@ -89,7 +89,16 @@ ALLOWED_BEAMTIME_PREFIXES = {
 ALLOWLIST = [
     # Ungar & Borbely 1996 / Borbely et al. 2003 (ANIZC) are LITERATURE CITATIONS.
     # Scrubbing a citation would be a misattribution, not a privacy win.
+    #
+    # Two paths, because the Stroh solver, stiffness builders and slip-system
+    # tables MOVED from midas_defect.contrast_factor{,_hex} into midas_ddd
+    # (which those modules now re-export from). The ANIZC citation travelled
+    # with the code it describes. A path-scoped entry does not follow a
+    # refactor, so the move re-opened a gate that had been deliberately closed
+    # -- the entry is duplicated rather than widened to a bare regex so the
+    # allowance stays pinned to the two files that actually cite the paper.
     ("midas_defect/", r"borb[eé]ly"),
+    ("midas_ddd/", r"borb[eé]ly"),
     # This file names the patterns it searches for.
     ("utils/scrub_check.py", r".*"),
 ]
