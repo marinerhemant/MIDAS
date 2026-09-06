@@ -15,10 +15,11 @@ from typing import Sequence
 
 import numpy as np
 
-__all__ = ["ipf_rgb", "sym_matrices", "CUBIC", "HEXAGONAL"]
+__all__ = ["ipf_rgb", "sym_matrices", "CUBIC", "HEXAGONAL", "TRIGONAL"]
 
 CUBIC = "cubic"
 HEXAGONAL = "hexagonal"
+TRIGONAL = "trigonal"
 
 # Laue class per space-group range, for the ones MIDAS actually reconstructs.
 # Deliberately explicit rather than clever: a wrong guess here silently
@@ -26,6 +27,7 @@ HEXAGONAL = "hexagonal"
 _SG_LAUE = [
     (195, 230, CUBIC),
     (168, 194, HEXAGONAL),
+    (143, 167, TRIGONAL),
 ]
 
 
@@ -41,7 +43,7 @@ def laue_class(space_group: int) -> str:
             return name
     raise NotImplementedError(
         f"IPF colouring for space group {space_group} is not implemented "
-        f"(have: cubic 195-230, hexagonal 168-194). Refusing to guess."
+        f"(have: cubic 195-230, hexagonal 168-194, trigonal 143-167). Refusing to guess."
     )
 
 
@@ -78,6 +80,58 @@ def _rgb_hexagonal(d: np.ndarray) -> np.ndarray:
     phi = np.degrees(np.arctan2(np.abs(d[:, 1]), np.abs(d[:, 0])))
     phi = np.minimum(phi % 60.0, 60.0 - (phi % 60.0))     # fold to [0, 30]
     t = np.clip(phi / 30.0, 0.0, 1.0)
+    return np.stack([dz, planar * (1.0 - t), planar * t], axis=1)
+
+
+def _trigonal_sector_deg(sym: np.ndarray) -> float:
+    """Azimuthal fundamental-sector width, measured from the operators.
+
+    Counts the distinct upper-hemisphere azimuths a generic direction is sent
+    to by the group plus the Laue centre. For -3m that is 6 images, so 60 deg
+    -- twice the hexagonal 30. Measured rather than hard-coded so a change in
+    the operator set cannot silently mis-scale the colour ramp.
+    """
+    g = np.array([0.3411, 0.1297, 0.4271])       # generic, no special azimuth
+    g = g / np.linalg.norm(g)
+    both = np.concatenate([sym @ g, -(sym @ g)], axis=0)
+    up = both[both[:, 2] >= -1e-12]
+    phi = np.sort(np.degrees(np.arctan2(up[:, 1], up[:, 0])) % 360.0)
+    keep = [phi[0]]
+    for a in phi[1:]:
+        if a - keep[-1] > 1e-6:
+            keep.append(a)
+    return 360.0 / len(keep)
+
+
+def _rgb_trigonal(d_all: np.ndarray, sym: np.ndarray) -> np.ndarray:
+    """Standard [0001]-[10-10]-[01-10] triangle for Laue class -3m.
+
+    D3 has 6 proper rotations (3-fold about c, three 2-fold in the basal
+    plane) against 6/mmm's 12, so the sector spans 60 deg, not 30. Colouring
+    R-3m with the hexagonal triangle folds by a 6-fold axis the crystal does
+    not have and silently gives distinct orientations the same colour.
+
+    The azimuth is NOT hand-folded. Where MIDAS puts the 2-fold axes is a
+    convention, and assuming one sits at azimuth 0 gives a colouring that is
+    not symmetry invariant (measured: colour moved by up to 0.99 under
+    ``g -> S.g``). Instead take the whole orbit, add ``-d`` for the Laue
+    centre, keep the upper hemisphere and pick the smallest azimuth --
+    canonical whatever the operator convention.
+
+    ``d_all`` is ``(n, n_sym, 3)``, every symmetry image of each direction.
+    """
+    both = np.concatenate([d_all, -d_all], axis=1)              # (n, 2s, 3)
+    phi = np.degrees(np.arctan2(both[:, :, 1], both[:, :, 0])) % 360.0
+    phi = np.where(both[:, :, 2] >= -1e-12, phi, np.inf)        # upper only
+    k = np.argmin(phi, axis=1)
+    idx = np.arange(both.shape[0])
+    rep, phi_c = both[idx, k], phi[idx, k]
+    phi_c = np.where(np.isfinite(phi_c), phi_c, 0.0)
+    rep = rep / np.linalg.norm(rep, axis=1, keepdims=True)
+
+    dz = np.abs(rep[:, 2])
+    planar = np.hypot(rep[:, 0], rep[:, 1])
+    t = np.clip(phi_c / _trigonal_sector_deg(sym), 0.0, 1.0)
     return np.stack([dz, planar * (1.0 - t), planar * t], axis=1)
 
 
@@ -139,7 +193,14 @@ def ipf_rgb_from_matrix(
         raise ValueError("axis must be non-zero")
     a = a / n
 
-    d = np.einsum("nij,j->ni", g, a)                 # crystal dir of the axis
+    # TRANSPOSE. MIDAS orientation matrices map CRYSTAL -> LAB (v_lab = g v_crystal),
+    # so the crystal direction parallel to the sample axis `a` is g^T a, not g a.
+    # This is not cosmetic: with g a, the colour is NOT symmetry-invariant for this
+    # convention -- the 24 equally valid representations of one grain spread over
+    # 0.96 in RGB, so a map's colour depended on which variant the indexer happened
+    # to store. Two grains agreeing to 0.5 deg came out 0.42 apart in RGB.
+    # Fixed 2026-09-03; see tests::test_ipf_colour_is_symmetry_invariant.
+    d = np.einsum("nji,j->ni", g, a)                 # crystal dir of the axis = g^T a
     return direction_rgb(d, space_group, gamma=gamma)
 
 
@@ -170,6 +231,8 @@ def direction_rgb(
         red = red[np.arange(red.shape[0]), pick]
         red /= np.linalg.norm(red, axis=1, keepdims=True)
         rgb = _rgb_cubic(red)
+    elif fam == TRIGONAL:
+        rgb = _rgb_trigonal(d, sym)
     else:
         dd = d.copy()
         dd[:, :, 2] = np.abs(dd[:, :, 2])
