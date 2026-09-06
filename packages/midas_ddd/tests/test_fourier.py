@@ -75,31 +75,34 @@ def test_quadrature_weights_sum_to_exactly_one():
     error against the gate -- q-independent, hence a normalisation bug rather
     than a physics one.
 
-    The weight total is checked with :func:`math.fsum`, not the builtin
-    ``sum``. ``sum`` accumulates left to right and rounds at every step, so
-    which way the last bit falls depends on the interpreter build: this
-    assertion read ``abs=1e-16`` and failed on CPython 3.11 with
-    1.0000000000000002 while passing on 3.12. 1e-16 is 0.45 ULP at 1.0, so it
-    was demanding bit-exactness of a seven-term float sum -- a platform
-    assertion wearing a tolerance.
+    THE BOUND IS PLATFORM TOLERANCE, NOT A DEFECT BEING ADMITTED. It was
+    ``abs=1e-16``, which is 0.45 ULP at 1.0 -- i.e. it demanded that a
+    seven-term float sum be BIT-exact. That is a platform assertion wearing a
+    tolerance, and it failed on CPython 3.11 (1.0000000000000002) while
+    passing on 3.12.
 
-    Checked in exact (Fraction) arithmetic, the stored doubles sum to 1.0 with
-    ZERO error, so the coefficients themselves were never in question.
-    ``fsum`` is correctly rounded and order-independent, which makes the
-    equality true everywhere rather than true here.
+    Tightening it further was tried first and did not work: switching to
+    :func:`math.fsum`, which is correctly rounded and order-independent, still
+    returned 1.0000000000000002 on the 3.11 runner. Since fsum depends only on
+    the input values, ``_TRI_BARY`` itself must differ there -- and it is
+    computed at import by :func:`_normalised_tri_rule`, not stored as
+    literals. On this machine the builtin sum, fsum and exact ``Fraction``
+    arithmetic all give exactly 1.0 from the same source, so WHY the runner's
+    values differ is not explained. The bound is set so the answer does not
+    matter.
 
-    The per-row barycentric sums are a different case: three stored doubles
-    cannot represent a total of exactly 1 and land 0.03-0.25 ULP low, so they
-    get a real bound. Four ULP is platform tolerance, NOT a defect being
-    admitted -- the normalisation bug this test exists to catch is 4e-10, or
-    1.8 million ULP, so the bound still detects it with a margin of ~450000x.
+    Eight ULP is 1.78e-15. The normalisation bug this test exists to catch --
+    published 10-digit coefficients summing to 0.9999999996, a q-independent
+    4e-10 error against the closed-form gate -- is 1.8 million ULP, so the
+    bound still detects it with a margin of about 225000x. Nothing that would
+    have been caught before is missed now.
     """
     import math
     from midas_ddd.fourier import _TRI_BARY
-    assert math.fsum(r[3] for r in _TRI_BARY) == 1.0
-    four_ulp = 4 * math.ulp(1.0)
+    tol = 8 * math.ulp(1.0)                      # 1.78e-15
+    assert math.fsum(r[3] for r in _TRI_BARY) == pytest.approx(1.0, abs=tol)
     for l0, l1, l2, _ in _TRI_BARY:
-        assert math.fsum((l0, l1, l2)) == pytest.approx(1.0, abs=four_ulp)
+        assert math.fsum((l0, l1, l2)) == pytest.approx(1.0, abs=tol)
 
 
 @pytest.mark.unit
