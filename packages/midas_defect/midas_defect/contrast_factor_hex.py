@@ -47,28 +47,14 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# Stiffness and Miller-Bravais geometry
+# Stiffness (re-exported) and Miller-Bravais geometry
 # ---------------------------------------------------------------------------
 
-def hexagonal_stiffness(
-    c11: float, c12: float, c13: float, c33: float, c44: float, *,
-    dtype: torch.dtype = torch.float64, device=None,
-) -> torch.Tensor:
-    """6×6 Voigt stiffness of a hexagonal crystal (``C66 = (C11-C12)/2``)."""
-    device = torch.device("cpu") if device is None else device
-    t = lambda x: torch.as_tensor(x, dtype=dtype, device=device)
-    c11, c12, c13, c33, c44 = t(c11), t(c12), t(c13), t(c33), t(c44)
-    c66 = (c11 - c12) / 2.0
-    z = torch.zeros((), dtype=dtype, device=device)
-    rows = [
-        torch.stack([c11, c12, c13, z, z, z]),
-        torch.stack([c12, c11, c13, z, z, z]),
-        torch.stack([c13, c13, c33, z, z, z]),
-        torch.stack([z, z, z, c44, z, z]),
-        torch.stack([z, z, z, z, c44, z]),
-        torch.stack([z, z, z, z, z, c66]),
-    ]
-    return torch.stack(rows, dim=0)
+# `hexagonal_stiffness` MOVED to midas_ddd.elasticity, alongside
+# `cubic_stiffness`, so all stiffness construction has one home. Re-exported
+# here so `from midas_defect.contrast_factor_hex import hexagonal_stiffness`
+# keeps working. Do NOT re-port it.
+from midas_ddd.elasticity import hexagonal_stiffness  # noqa: F401
 
 
 def mb_plane_to_hkl(hkil: Sequence[int]) -> Tuple[int, int, int]:

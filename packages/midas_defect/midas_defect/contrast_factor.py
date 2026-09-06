@@ -9,8 +9,15 @@ distortion ``F(φ)`` over the slip plane (paper eqns 3-4); the angular distortio
 equilibrium of a single dislocation in an infinite anisotropic medium (Teodosiu
 1982; Stroh formalism, cf. Ting, *Anisotropic Elasticity*).
 
-Why this lives in midas_defect
-------------------------------
+Where the elasticity lives
+--------------------------
+The Stroh sextic solver and the stiffness builders are **not** in this file
+any more -- they are in :mod:`midas_ddd.elasticity`, and re-exported below so
+existing imports keep resolving. What stays here is the contrast factor
+itself, which is line-profile analysis rather than general elasticity.
+
+Why the contrast factor lives in midas_defect
+---------------------------------------------
 :mod:`midas_defect.williamson_hall` reduces per-hkl asterism breadth to a single
 strain ε and a dislocation density ρ = prefactor·ε²/b², treating every reflection
 as equally strain-sensitive. That is the *elastically isotropic* approximation. In
@@ -44,7 +51,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 import torch
@@ -62,174 +69,34 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# Voigt index map and stiffness construction
-# ---------------------------------------------------------------------------
-
-#: Voigt index for each (i, j) Cartesian pair: 11→0 22→1 33→2 23→3 13→4 12→5.
-_VOIGT_IDX = torch.tensor([[0, 5, 4], [5, 1, 3], [4, 3, 2]])
-
-
-def cubic_stiffness(
-    c11: float, c12: float, c44: float, *,
-    dtype: torch.dtype = torch.float64,
-    device=None,
-) -> torch.Tensor:
-    """Return the 6×6 Voigt stiffness matrix of a cubic crystal.
-
-    Parameters
-    ----------
-    c11, c12, c44
-        Cubic elastic constants (GPa, or any consistent unit). ``C`` is
-        dimensionless so only their ratios matter.
-    """
-    device = torch.device("cpu") if device is None else device
-    c11 = torch.as_tensor(c11, dtype=dtype, device=device)
-    c12 = torch.as_tensor(c12, dtype=dtype, device=device)
-    c44 = torch.as_tensor(c44, dtype=dtype, device=device)
-    z = torch.zeros((), dtype=dtype, device=device)
-    rows = [
-        torch.stack([c11, c12, c12, z, z, z]),
-        torch.stack([c12, c11, c12, z, z, z]),
-        torch.stack([c12, c12, c11, z, z, z]),
-        torch.stack([z, z, z, c44, z, z]),
-        torch.stack([z, z, z, z, c44, z]),
-        torch.stack([z, z, z, z, z, c44]),
-    ]
-    return torch.stack(rows, dim=0)
-
-
-def _voigt_to_tensor(C6: torch.Tensor) -> torch.Tensor:
-    """Expand a 6×6 Voigt stiffness matrix to the full ``(3,3,3,3)`` tensor."""
-    idx = _VOIGT_IDX.to(C6.device)
-    return C6[idx[:, :, None, None], idx[None, None, :, :]]
-
-
-def _rotate_tensor(C4: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
-    """Rotate a 4th-rank tensor: ``C'_{ijkl} = M_ia M_jb M_kc M_ld C_{abcd}``."""
-    return torch.einsum("ia,jb,kc,ld,abcd->ijkl", M, M, M, M, C4)
-
-
-def _slip_frame(line: torch.Tensor, normal: torch.Tensor) -> torch.Tensor:
-    """Rotation matrix (rows = e1, e2, e3) from crystal to slip coordinates.
-
-    ``e3`` = unit line, ``e2`` = unit slip-plane normal, ``e1 = e2 × e3``. The
-    returned ``M`` maps a crystal-frame vector ``v`` to the slip frame via
-    ``M @ v``. ``normal`` is expected ⊥ ``line`` (a physical slip system); a
-    Gram-Schmidt step removes any residual non-orthogonality.
-    """
-    e3 = line / torch.linalg.norm(line)
-    e2 = normal - (normal @ e3) * e3
-    e2 = e2 / torch.linalg.norm(e2)
-    e1 = torch.linalg.cross(e2, e3)
-    e1 = e1 / torch.linalg.norm(e1)
-    return torch.stack([e1, e2, e3], dim=0)
-
-
-def _stroh_eig(
-    C4: torch.Tensor,
-    *,
-    degeneracy_tol: float = 1e-4,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Stroh eigensolution: 3 roots ``p`` (Im>0) and amplitude/stress vectors A,B.
-
-    Solves the 6×6 fundamental eigenproblem ``N ξ = p ξ`` with
-    ``ξ = (a, b)``, where for a dislocation line along ``e3``::
-
-        Q_ik = C_{i1k1},  R_ik = C_{i1k2},  T_ik = C_{i2k2}
-        N = [[ -T⁻¹Rᵀ ,        T⁻¹  ],
-             [ R T⁻¹Rᵀ - Q ,  -R T⁻¹ ]]
-
-    Returns ``(p, A, B)`` for the three roots with positive imaginary part,
-    with columns normalised so ``2 aₐᵀ bₐ = 1`` (Stroh orthonormality).
-    """
-    Q = C4[:, 0, :, 0]
-    R = C4[:, 0, :, 1]
-    T = C4[:, 1, :, 1]
-    Tinv = torch.linalg.inv(T)
-    RT = R.transpose(-1, -2)
-    N1 = -Tinv @ RT
-    N3 = R @ Tinv @ RT - Q
-    top = torch.cat([N1, Tinv], dim=1)
-    bot = torch.cat([N3, N1.transpose(-1, -2)], dim=1)
-    N = torch.cat([top, bot], dim=0)
-
-    p_all, _ = torch.linalg.eig(N)
-    mask = p_all.imag > 0
-    if int(mask.sum()) != 3:
-        raise ValueError(
-            f"expected 3 sextic roots with Im(p)>0, got {int(mask.sum())}; "
-            "the stiffness may be elastically isotropic (degenerate roots) or "
-            "ill-conditioned."
-        )
-    p = p_all[mask]
-
-    # Near-degenerate roots ⇒ the matrix is defective and the simple-eigenvector
-    # Stroh path returns unreliable amplitude vectors. This happens in the
-    # elastically isotropic limit (Zener ratio → 1), where the roots collapse to
-    # p = i. Refuse rather than silently return garbage — a dislocation-contrast
-    # analysis is only meaningful for an elastically anisotropic crystal anyway.
-    pdiff = torch.abs(p[:, None] - p[None, :])
-    pdiff = pdiff + torch.eye(3, dtype=pdiff.dtype, device=pdiff.device) * 9.0
-    if float(pdiff.min().detach()) < degeneracy_tol:
-        raise ValueError(
-            "near-degenerate sextic roots: the crystal is at/near the elastically "
-            "isotropic limit (Zener ratio ≈ 1), where the simple-eigenvector Stroh "
-            "solution is unreliable. Contrast factors require an anisotropic crystal."
-        )
-
-    # Amplitude vectors a from the 3×3 null space of (Q + p(R+Rᵀ) + p²T):
-    Qc, Rc, Tc, RTc = (Q.to(p.dtype), R.to(p.dtype),
-                       T.to(p.dtype), RT.to(p.dtype))
-    eye3 = torch.eye(3, dtype=p.dtype, device=C4.device)
-    a_cols, b_cols = [], []
-    for k in range(3):
-        Mk = Qc + p[k] * (Rc + RTc) + p[k] * p[k] * Tc
-        # null vector = singular vector with smallest singular value
-        _, _, Vh = torch.linalg.svd(Mk)
-        a = Vh[-1].conj()
-        b = (RTc + p[k] * Tc) @ a              # Stroh stress vector
-        s = 1.0 / torch.sqrt(2.0 * (a @ b))    # bilinear (no conjugate)
-        a_cols.append(a * s)
-        b_cols.append(b * s)
-    A = torch.stack(a_cols, dim=1)
-    B = torch.stack(b_cols, dim=1)
-    return p, A, B
-
-
-# ---------------------------------------------------------------------------
-# Crystal → Cartesian geometry (any crystal system)
+# Anisotropic-elasticity primitives -- MOVED to midas_ddd.elasticity
 # ---------------------------------------------------------------------------
 #
-# The Stroh core works in a Cartesian slip frame. For a *cubic* cell the integer
-# Miller indices double as Cartesian directions, but for any lower symmetry they
-# do not. We reuse the canonical orthogonalisation ("A") matrix from
-# `midas_stress.tensor.lattice_params_to_A_matrix` (Busing-Levy convention, the
-# same matrix the Fable-Beaudoin strain solver uses) — never a re-ported B
-# matrix. ``A`` maps fractional crystal coordinates to Cartesian, so:
-#   * a real-space direction  [uvw]  (Burgers vector, dislocation line)  → A · [uvw]
-#   * a reciprocal direction   (hkl)  (plane normal, diffraction vector)  → A⁻ᵀ · (hkl)
-# For cubic, A = a·I, so both maps are the identity up to scale and every result
-# is byte-identical to passing raw Miller indices (see the cubic-identity test).
+# The Stroh sextic solver, the stiffness builders, the slip-frame rotation and
+# the crystal->Cartesian maps now live in `midas_ddd.elasticity`. They moved
+# when a third and fourth consumer appeared (midas_saxs and the near-Bragg
+# diffuse forward) and a SAXS package could not reasonably depend on an FF-HEDM
+# metrology package just to build a stiffness matrix.
+#
+# They are re-exported here, unchanged, so every historical import path keeps
+# working -- `from midas_defect.contrast_factor import cubic_stiffness, _stroh_eig`
+# resolves exactly as before. New code should import from `midas_ddd` directly.
+# Do NOT re-port them into this file.
 
-
-def _crystal_A_matrix(crystal, *, dtype, device) -> torch.Tensor:
-    """Orthogonalisation matrix A (fractional → Cartesian) for a `Crystal`."""
-    from midas_stress.tensor import lattice_params_to_A_matrix
-
-    lat = crystal.lattice
-    latc = torch.tensor(
-        [lat.a, lat.b, lat.c, lat.alpha, lat.beta, lat.gamma],
-        dtype=dtype, device=device)
-    return lattice_params_to_A_matrix(latc)
-
-
-def _to_cartesian(v: torch.Tensor, A: torch.Tensor, kind: str) -> torch.Tensor:
-    """Map a Miller vector to Cartesian: ``direct`` → A·v, ``reciprocal`` → A⁻ᵀ·v."""
-    if kind == "direct":
-        return A @ v
-    if kind == "reciprocal":
-        return torch.linalg.solve(A.transpose(-1, -2), v)   # A⁻ᵀ · v
-    raise ValueError(f"kind must be 'direct' or 'reciprocal', got {kind!r}")
+from midas_ddd.elasticity import (  # noqa: F401
+    _VOIGT_IDX,
+    _crystal_A_matrix,
+    _gen_slip_systems,
+    _rotate_tensor,
+    _slip_frame,
+    _stroh_eig,
+    _to_cartesian,
+    _voigt_to_tensor,
+    bcc_slip_systems,
+    cubic_stiffness,
+    fcc_slip_systems,
+    hexagonal_stiffness,
+)
 
 
 def single_contrast_factor(
@@ -248,7 +115,7 @@ def single_contrast_factor(
     stiffness into the slip frame, solve the sextic, build the angular distortion
     ``β_ij(φ)`` (eqn 6), form ``F(φ) = Σ_i Σ_{j=1,2} γ_i γ_j β_ij`` (eqn 4) with
     ``γ`` the direction cosines of ``g`` in the slip frame, and return
-    ``C = ⟨F²⟩_φ = (1/2π)∫₀²ᐩ F² dφ`` (eqn 3).
+    ``C = (1/π)∫₀²ᐩ F² dφ = 2·⟨F²⟩_φ`` (eqn 3).
 
     Parameters
     ----------
@@ -311,50 +178,21 @@ def single_contrast_factor(
 
     F = (gamma[None, :] * (gamma[0] * beta1 + gamma[1] * beta2)).sum(-1)
     # ANIZC / Klimanek-Kužel normalisation C = (1/π)∫₀²ᐩ F² dφ = 2·⟨F²⟩_φ.
-    # The factor 2 (vs the bare φ-mean) is pinned to the paper's silver worked
-    # example C(2̄20, 60° mixed) = 0.3843 — see tests/test_contrast_factor.py.
+    # The factor 2 is EQUATION (3) OF THE PAPER, not a fitted constant: Borbély,
+    # Dragomir-Cernatescu, Ribárik & Ungár, J. Appl. Cryst. 36 (2003) 160-162,
+    # writes C = (1/π)∫F²dφ, which is twice the bare φ-mean. It is corroborated
+    # three ways that do not use the silver example: the Burgers circuit closes
+    # to 1e-14, the isotropic limit converges on the analytic sin²Ψcos²Ψ, and the
+    # resulting C̄h00 reproduces Ungár et al., J. Appl. Cryst. 32 (1999) 992.
+    # DO NOT "fix" this to match a bare mean. Halving it silently halves every
+    # contrast factor and puts modified_williamson_hall's ρ out by 2x, and only
+    # the anchor tests would fail.
     return 2.0 * (F * F).mean()
 
 
 # ---------------------------------------------------------------------------
-# Slip-system tables and averaged contrast factor
+# Averaged contrast factor over a slip-system family
 # ---------------------------------------------------------------------------
-
-def _gen_slip_systems(
-    planes: Sequence[Tuple[int, int, int]],
-    burgers_pool: Sequence[Tuple[int, int, int]],
-) -> List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]]:
-    """All (normal, burgers) pairs with burgers ⊥ normal, ± deduplicated."""
-    systems = []
-    seen = set()
-    for n in planes:
-        nv = np.array(n, float)
-        for b in burgers_pool:
-            bv = np.array(b, float)
-            if abs(float(nv @ bv)) > 1e-9:
-                continue
-            key = (n, tuple(sorted((b, tuple(-x for x in b)))))
-            if key in seen:
-                continue
-            seen.add(key)
-            systems.append((n, b))
-    return systems
-
-
-def fcc_slip_systems() -> List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]]:
-    """The 12 FCC ``{111}⟨110⟩`` slip systems as ``(plane_normal, burgers)``."""
-    planes = [(1, 1, 1), (1, 1, -1), (1, -1, 1), (-1, 1, 1)]   # 4 distinct {111}
-    burgers = [(1, -1, 0), (1, 0, -1), (0, 1, -1),
-               (1, 1, 0), (1, 0, 1), (0, 1, 1)]
-    return _gen_slip_systems(planes, burgers)
-
-
-def bcc_slip_systems() -> List[Tuple[Tuple[int, int, int], Tuple[int, int, int]]]:
-    """The 12 BCC ``{110}⟨111⟩`` slip systems as ``(plane_normal, burgers)``."""
-    planes = [(1, 1, 0), (1, -1, 0), (1, 0, 1),                 # 6 distinct {110}
-              (1, 0, -1), (0, 1, 1), (0, 1, -1)]
-    burgers = [(1, 1, 1), (1, 1, -1), (1, -1, 1), (-1, 1, 1)]
-    return _gen_slip_systems(planes, burgers)
 
 
 def average_contrast_factor(

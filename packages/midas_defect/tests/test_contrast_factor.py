@@ -246,3 +246,72 @@ def test_cbar_model_linear_in_H2_recovers_h00_and_q():
 def test_fit_cbar_requires_two_points():
     with pytest.raises(ValueError, match="at least 2"):
         fit_cbar_h00_q([(1, 0, 0)], [0.3])
+
+
+# ---------------------------------------------------------------------------
+# 5. Second published anchor — Ungár, Dragomir, Révész & Borbély,
+#    J. Appl. Cryst. 32 (1999) 992-1002.
+#
+#    Added after four independent refuters showed the ANIZC silver example is a
+#    degenerate configuration: g ∥ b and g·n = 0, which zeroes the whole β_i2
+#    branch. Three genuine defects (deleting β_i2, flipping its sign, swapping
+#    g and b) pass that anchor with EXACTLY zero deviation, and a 9.35% error in
+#    C44 goes undetected. These anchors are non-degenerate and catch all three.
+# ---------------------------------------------------------------------------
+
+# p.996: "The elastic constants of Cu are c11 = 166.1, c12 = 119.9 and
+# c44 = 75.6 GPa (Hearmon, 1966)."
+_CU_1999 = (166.1, 119.9, 75.6)
+
+
+@pytest.mark.unit
+def test_cu_chbar00_matches_ungar_1999():
+    """p.996: C̄h00 = 0.3040 for Cu, edge and screw in equal proportion.
+
+    Scale-sensitive, so this independently constrains the eqn-(3) factor of 2
+    that the silver example also fixes — but at a configuration where the
+    β_i2 branch is live.
+    """
+    C6 = cubic_stiffness(*_CU_1999)
+    screw = float(average_contrast_factor(C6, [2, 0, 0], character="screw"))
+    edge = float(average_contrast_factor(C6, [2, 0, 0], character="edge"))
+    assert (screw + edge) / 2.0 == pytest.approx(0.3040, abs=1e-3)
+
+
+@pytest.mark.unit
+def test_cu_chbar00_screw_matches_paper_parametrisation():
+    """Eqn (8), p.994: C̄h00 = a[1-exp(-Ai/b)] + c·Ai + d, fcc screw
+    a=0.1740 b=1.9522 c=0.0293 d=0.0662, independent of c12/c44.
+
+    Tolerance is 2%: the paper prints Ai = 3.21 and c12/c44 = 1.608, but its own
+    stated constants give 3.2727 and 1.5860. The printed pair is not a rounding
+    of them, it is the OTHER standard Cu set (168.4/121.4/75.4 -> 3.2085,
+    1.6101), so the paper is internally inconsistent on this page. Feeding the
+    printed Ai into eqn (8) moves the result by ~1%, which is what this
+    tolerance absorbs.
+    """
+    c11, c12, c44 = _CU_1999
+    a_i = 2.0 * c44 / (c11 - c12)
+    a, b, c, d = 0.1740, 1.9522, 0.0293, 0.0662
+    expected = a * (1.0 - math.exp(-a_i / b)) + c * a_i + d
+    got = float(average_contrast_factor(cubic_stiffness(c11, c12, c44),
+                                        [2, 0, 0], character="screw"))
+    assert got == pytest.approx(expected, rel=0.02)
+
+
+@pytest.mark.unit
+def test_q_is_normalisation_independent_and_matches_paper_range():
+    """q = B/A in C̄ = C̄h00(1 - qH²) (eqn 7). A ratio, so it is invariant to the
+    eqn-(3) factor — the one anchor here that cannot be satisfied by tuning
+    scale. Fig. 2(a) puts fcc Cu near q ≈ 2.4 screw and ≈ 1.7 edge, and the
+    paper's measured specimen sits between at q = 2.15 (2)."""
+    C6 = cubic_stiffness(*_CU_1999)
+    out = {}
+    for char in ("screw", "edge"):
+        c200 = float(average_contrast_factor(C6, [2, 0, 0], character=char))
+        c220 = float(average_contrast_factor(C6, [2, 2, 0], character=char))
+        out[char] = (1.0 - c220 / c200) / 0.25          # H² = 1/4 for (220)
+    assert out["screw"] == pytest.approx(2.39, abs=0.10)
+    assert out["edge"] == pytest.approx(1.66, abs=0.10)
+    # the measured specimen must be bracketed by the two pure characters
+    assert out["edge"] < 2.15 < out["screw"]
