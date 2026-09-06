@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-suite"
-version = "0.11.2"
+version = "0.12.0"
 description = "Meta-package: installs the MIDAS Python pipeline (FF/NF/PF HEDM, calibration, peakfit, integration, transforms, ODF, stress)."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -132,6 +132,12 @@ calib-v2 = [
 # One research capability each, layered on top of core. Kept OUT of core
 # `dependencies` (they carry heavy/optional stacks); opt in per workflow.
 pdf = ["midas-pdf>=0.1.1"]              # total scattering / PDF G(r)
+saxs = ["midas-saxs>=0.1.0"]            # small-angle: form factors + 2-D frames
+# Dislocation networks (ExaDiS/ParaDiS ingest + the Fourier displacement kernel)
+# that drive midas-saxs, the near-Bragg diffuse forward and the DFXM network path.
+ddd = ["midas-ddd>=0.1.0"]
+# The pairing the loop/void SAXS work actually needs: networks + the detector.
+saxs-dislocations = ["midas-saxs[dislocations]>=0.1.0", "midas-ddd>=0.1.0"]
 defect = ["midas-defect>=0.1.1"]        # diffuse-scattering defect metrology
 dfxm = ["midas-dfxm>=0.3.1"]            # dark-field X-ray microscopy fwd/inverse
 xaf = ["midas-xaf>=0.1.0"]              # cross-axis faceted HEDM
@@ -153,6 +159,8 @@ plots = ["midas-plotting>=0.3.0"]
 all = [
     "midas-joint-ff-calibrate>=0.4.0",
     "midas-pdf>=0.1.1",
+    "midas-saxs>=0.1.0",
+    "midas-ddd>=0.1.0",
     "midas-defect>=0.1.1",
     "midas-dfxm>=0.3.1",
     "midas-xaf>=0.1.0",

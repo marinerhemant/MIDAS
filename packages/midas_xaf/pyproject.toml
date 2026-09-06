@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-xaf"
-version = "0.1.0"
+version = "0.2.0"
 description = "Cross-Axis Faceted HEDM (XAF-HEDM): design + simulation toolkit for merged-reciprocal-space far-field HEDM through a six-faceted diamond anvil cell"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.22",
+    "pandas>=1.5",             # rotation_budget: the budget table
     "torch>=2.0",
     "midas-diffract>=0.6.0",
     "midas-hkls>=0.5.0",

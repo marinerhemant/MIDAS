@@ -33,7 +33,7 @@ from . import (autonomy, geometry, metrics, merge, reconstruct, sweep, coverage,
                micromech, report, synth, indexing, pipeline, structure,
                robustness, budget)
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "XAFConfig",

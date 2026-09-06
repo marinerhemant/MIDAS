@@ -82,7 +82,7 @@ from .niggli import NiggliCell, niggli_reduce, same_lattice
 from .space_group import SpaceGroup, list_space_groups
 from .symops import SymOp
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 __all__ = [
     "hkl_box_from_geometry", "distortion_rank", "distortion_condition",

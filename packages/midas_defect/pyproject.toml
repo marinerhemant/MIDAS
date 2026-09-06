@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-defect"
-version = "0.1.5"
+version = "0.1.6"
 description = "Differentiable, phase-agnostic diffuse-scattering defect metrology on top of standard FF-HEDM: intensity-budget closure, per-grain dislocation density, fault-rod and selection-rule tests."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -37,6 +37,13 @@ dependencies = [
     "midas-index>=0.1",          # initial-pass indexer for seed_index.py
     "midas-peakfit>=0.1",        # connected-component peak extraction (torch)
     "midas-invert>=0.1.1",         # shared fit + mixture-deconvolution primitives (used by peakshape.py)
+    # >=0.1.0: contrast_factor / contrast_factor_hex re-export their Stroh
+    # solver, stiffness builders and slip-system tables FROM midas-ddd. Below
+    # the floor those names do not exist and this package fails at import.
+    # RELEASE ORDER: midas-ddd must be on PyPI BEFORE this package is published,
+    # or `pip install midas-defect` cannot resolve. Published 0.1.5 predates
+    # this dependency and is unaffected.
+    "midas-ddd>=0.1.0",
 ]
 
 [project.scripts]

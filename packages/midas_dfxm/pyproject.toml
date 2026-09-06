@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dfxm"
-version = "0.7.0"
+version = "0.8.0"
 description = "Differentiable forward + inverse for Dark-Field X-ray Microscopy (DFXM): deformation-gradient field imaging through a magnifying objective, and per-dislocation defect-type discrimination, on top of midas-stress / midas-hkls / midas-defect."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -28,6 +28,10 @@ dependencies = [
     "midas-hkls>=0.5",       # lattice math, form factors, structure factors, hkl enumeration (torch)
     "midas-2d>=0.1",         # continuous-q structure factor, resolution convolution, detector projection
     "midas-defect",          # Stroh sextic contrast-factor solver, slip systems, GND, rods
+    # >=0.1.0: dislocation networks. `network_deformation_field` imports
+    # midas_ddd.realspace directly (finite-segment Mura distortion), and the
+    # Stroh primitives this module already used now live there too.
+    "midas-ddd>=0.1.0",
     "midas-invert>=0.1.1",     # shared differentiable-inversion primitives (fit, losses, UQ, design)
     "midas-distortion",      # detector distortion model (single source of truth)
 ]
