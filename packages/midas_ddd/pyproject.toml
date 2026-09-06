@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-ddd"
-version = "0.1.0"
+version = "0.1.1"
 description = "Dislocation networks for MIDAS: discrete-dislocation-dynamics (ExaDiS / ParaDiS) ingest, anisotropic-elasticity (Stroh) primitives, and the differentiable real-space and Fourier displacement fields that drive the SAXS, near-Bragg diffuse and DFXM forward models."
 readme = "README.md"
 license = "BSD-3-Clause"

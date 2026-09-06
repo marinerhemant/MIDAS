@@ -26,7 +26,7 @@ ParaDiS ``.data`` file bridge works without it; the in-process ``pyexadis`` path
 is optional and imported lazily.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .elasticity import (
     bcc_slip_systems,

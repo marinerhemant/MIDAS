@@ -133,6 +133,43 @@ depend on an FF-HEDM metrology package to build a stiffness matrix.
 path broke, and `test_elasticity.py::test_reexport_*` fails loudly if anyone
 re-ports a copy.
 
+## Known limitations — claims that were refuted, and must not come back
+
+Each of these looked like a feature at some point in this package's development
+and was killed by adversarial review. They are recorded because the cheapest
+way to lose a week here is to re-derive one of them.
+
+| Claim | Why it is wrong |
+|---|---|
+| The `kappa` law is a **loop-vs-void discriminator** | A uniaxial plate precipitate is identical to a loop (6 of 6 directions agreeing to 1e-10), and randomly oriented loops are *exactly* degenerate with a void: the variant mean of `n (x) n` is exactly `I/3` for every cubic family. |
+| **"elastic + total = 1"** confirms both kernels against each other | An algebraic tautology. The gate never called the Fourier kernel at all, and a sphere passes it identically because the sphere average is `tr(P)/3`. It is Eshelby restated (Lazar 2017, Eqs. 77/94/95). |
+| An ExaDiS loop network is **invisible to DFXM** | The 1e-4 rad figure matched no measured quantity — most likely the dimensionless `eps = 1.4e-4` read as an angle. The right floor is per-pixel *precision*, 2 mdeg = 3.5e-5 rad, and single dislocations are routinely imaged (Jakobsen 2019; Borgi 2024/2025). |
+| The `kappa` law / the small-angle anisotropy is **novel** | Clouet 2018 Eq. 26; Dederichs 1973. |
+| SAXS determines **loop number density** to 2.6 % from one frame | REFUTED 2026-09-04. Restoring the mandated signed `dV` gives cond 2.77e16 and an unbounded SE; the data fix only `n*dV^2`. Full autopsy in the `midas-saxs` README. **Loop radius at 0.6 % survived** and may be stated, given `q_max * R >~ 3`. |
+
+**What the refutations did not touch.** Three independent lenses confirmed the
+Fourier kernel: the Laue-corrected small-q law was re-derived from a sum rule
+with no MIDAS code, agreeing to 5.55e-17; the Ehrhart-Trinkaus-Larson Eq. (8b)
+implementation is gauge-invariant; and an independent numpy forward reproduced
+the CRB to four digits. The code is sound. What was wrong, every time, was a
+claim about what the code measured.
+
+**One positive result from the same review.** A discrete fcc {111} four-variant
+loop population is **not** degenerate with a void at zero selection (contrast
+1.47, SE 11.8 %), because four discrete normals have anisotropic *fourth*
+moments. The `<n (x) n> = I/3` degeneracy above is a *second*-moment statement
+about the amplitude and does not transfer to the incoherent `<|A|^2>`. This
+needs a single crystal or strong texture: a randomly textured polycrystal
+averages back to uniform (contrast 1.0004, SE 699 %).
+
+**Two facts that are load-bearing for anything built on this package.** Loop
+character — interstitial versus vacancy — is unrecoverable from small-angle
+intensity, but IS reachable near Bragg through the structure-factor phase
+`Phi = -1` on **odd** reflections for extrinsic loops (Ehrhart 1982). And open
+(line) dislocations contribute nothing at small angle: they enclose no area and
+carry no relaxation volume, so they are absent from the SAXS forward entirely.
+They image perfectly well in DFXM.
+
 ## Numerical traps, all of them found the hard way
 
 **Burgers magnitudes are not normalised** (see above): 54 of the repo network's

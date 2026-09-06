@@ -53,6 +53,54 @@ question is defect-type discrimination in an irradiated material, near-Bragg
 diffuse (Huang) scattering is stronger than the small-angle signal by
 `(G/q)^2` ~ 1e4 to 1e7 and is the better measurement.
 
+## Identifiability — what a frame determines, and what it only appears to
+
+**Loop number density is not recoverable from a single SAXS frame.** A study in
+this package claimed 2.6 % on loop number density and 0.6 % on loop radius, at
+1e6 photons/q-point with voids at volume fraction 5.2e-5, from a loop-block
+condition number of 639. It was **REFUTED on 2026-09-04** by adversarial review.
+Every number in it reproduces, several bit-identically — the arithmetic was
+never the problem. The numbers describe a different parameter vector, a
+different void loading and a different sample mounting than the claim stated.
+
+Six ways it fails, each measured by a refuter rather than read from the study's
+own output:
+
+| | effect |
+|---|---|
+| Signed `dV` restored to the parameter vector (it had been dropped *because* it made the Fisher matrix rank-deficient — that rank deficiency was the finding) | cond **2.77e16**; the data fix only the combination `n*dV^2`; SE[log n_loop] **unbounded** |
+| Void loading raised to this package's own "realistic irradiation case" (equal radius, equal number density) — the study ran voids 100x **rarer** than loops | SE[n_loop] **252 %** |
+| A true Watson habit distribution instead of `watson_normals`, which is a delta cone at a single polar angle and cannot reach the isotropic control | **4.7 %** at the planted S = 0.75, **699 %** at uniform |
+| Sample rotated: the q-grid had put the habit axis in the detector plane, the single most favourable choice | in-plane 2.57 %, 10 deg off the beam 52 %, **along the beam 1.4e4-2.7e4 %**; about **7 %** of habit-axis orientations fail outright |
+| Absolute intensity scale freed (it was hard-fixed, i.e. flux x volume x transmission x efficiency known exactly) | an exact null vector appears; only the **ratio** `n_loop/n_void` is identifiable. With a 1 % calibration prior 2.77 %, with 10 % 10.3 % |
+| Mild model error: log-normal loop sizes at sigma_ln = 0.2, or a true Watson habit at the same S | bias **-28 %** and **-24 %** on `n_loop`, at 9-11 sigma, with chi2/dof of 0.61 and 0.02 — i.e. entirely inside "the fit looks fine" |
+
+At the claim's own operating point voids already supply **97.9 %** of the
+photons and the whole result rides on a **3.54 %** azimuthal modulation. Over
+99 % of the claimed information is azimuthal anisotropy, not scattering-curve
+shape.
+
+**A condition number cannot be a confirm criterion here.** A Fisher matrix
+scales linearly with photon budget, so its condition number is *exactly*
+scale-invariant: measured at 639.5832 to seven digits across 1e0, 1e3, 1e6, 1e9
+and 1e12 photons/q-point while SE[log n_loop] ran 2580 % to 0.0026 %. Across
+four decades of void loading it moved 639.6 to 640.2 while SE went 2.58 % to
+101 %, straight through the refute threshold with the criterion passing
+untouched.
+
+**What survived.** Loop **radius** at 0.6 % is robust — it held under every
+lens, including the ones that destroyed the number density, and is unaffected
+by freeing the absolute scale. State it with its condition: `q_max * R >~ 3`.
+
+**What this means for the code.** Nothing here is wrong. Three independent
+lenses confirmed the Fourier kernel, the Laue correction, the Fisher assembly
+and the Schur profiling. The forward model is sound; the claim was wrong about
+what it measured. If you build a Fisher or CRB analysis on this package,
+include the degenerate directions (signed `dV`, a loop-vs-plate shape
+parameter), use a habit distribution that can actually reach isotropy, put the
+void population at its realistic loading, and report the sample mounting --
+because the answer depends on all four.
+
 ## Scope
 
 **Closed dislocation loops only.** A cut surface exists only for a closed

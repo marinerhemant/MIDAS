@@ -40,7 +40,7 @@ loops are not (``kappa dV`` in-plane versus ``dV`` along the normal, with
 by radial averaging — see :func:`midas_saxs.detector.azimuthal_profile`.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .core_shell import (
     core_shell_sphere_form_factor_squared,
