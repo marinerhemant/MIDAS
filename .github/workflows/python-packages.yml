@@ -299,6 +299,12 @@ jobs:
           elif [[ "$TAG" == midas-ckernel-v* ]]; then
             echo "package=midas_ckernel" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-ckernel" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-ddd-v* ]]; then
+            echo "package=midas_ddd" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-ddd" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == midas-saxs-v* ]]; then
+            echo "package=midas_saxs" >> "$GITHUB_OUTPUT"
+            echo "pypi_name=midas-saxs" >> "$GITHUB_OUTPUT"
           elif [[ "$TAG" == midas-defect-v* ]]; then
             echo "package=midas_defect" >> "$GITHUB_OUTPUT"
             echo "pypi_name=midas-defect" >> "$GITHUB_OUTPUT"
