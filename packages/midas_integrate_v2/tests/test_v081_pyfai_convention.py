@@ -171,3 +171,23 @@ def test_wrong_conversion_recovers_BC_shifted_by_half_pixel():
     # proof the +0.5 matters.
     assert BC_y_back == pytest.approx(BC_y - 0.5, abs=1e-9)
     assert BC_z_back == pytest.approx(BC_z - 0.5, abs=1e-9)
+
+
+def test_poni_bc_naming_is_rows_then_columns_not_midas_bcy_bcz():
+    """Pin the cross-package trap: this module's BC_y is ROWS; midas_defect's
+    bcy_px is COLUMNS. Assigning one to the other transposes the beam centre."""
+    from midas_integrate_v2.compat.pyfai import poni_to_bc
+    px = 172.0
+    # Poni1 -> first return, Poni2 -> second
+    first, second = poni_to_bc(0.148050995, 0.129232865, px, px)
+    assert abs(first - (0.148050995 / (px * 1e-6) - 0.5)) < 1e-6   # = rows
+    assert abs(second - (0.129232865 / (px * 1e-6) - 0.5)) < 1e-6  # = cols
+    assert first > second                     # 860 vs 751 for this real file
+    import midas_integrate_v2.compat.pyfai as m
+    assert "opposite way round from" in m.poni_to_bc.__doc__
+
+
+def test_poni_file_to_row_col_is_the_unambiguous_spelling():
+    from midas_integrate_v2 import poni_file_to_row_col
+    assert "row" in poni_file_to_row_col.__doc__
+    assert "bcz is the ROW" in poni_file_to_row_col.__doc__
