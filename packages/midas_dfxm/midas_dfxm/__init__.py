@@ -120,7 +120,10 @@ from .generators import (
 )
 from .plasticity import (
     gnd_identifiability,
+    gnd_density_from_field,
+    gnd_noise_floor,
     multislip_gnd_field,
+    nye_tensor_from_field,
     nye_from_densities,
     recover_gnd_densities,
     slip_dislocation_types,
@@ -322,7 +325,10 @@ __all__ = [
     "nye_from_densities",
     "gnd_identifiability",
     "recover_gnd_densities",
+    "gnd_density_from_field",
+    "gnd_noise_floor",
     "multislip_gnd_field",
+    "nye_tensor_from_field",
     "load_cpfem_field",
     "save_cpfem_field",
     "cpfem_true_strain",

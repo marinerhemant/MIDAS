@@ -124,7 +124,13 @@ class StrohDislocation:
             cutoff = (r2 / (r2 + rc2))[:, None]
         else:
             raise ValueError(f"core_model must be 'lorentzian' or 'compact', got {self.core_model!r}")
-        denom2 = denom.real ** 2 + denom.imag ** 2 + 1e-300
+        # Guard must be representable in the working dtype: 1e-300 underflows to
+        # exactly 0.0 in float32 (smallest denormal ~1.4e-45), so the on-line voxel
+        # evaluated 0/0 and returned NaN for any candidate whose line passes through
+        # a sampled point. Measured: 8 of 48 fcc candidates produced NaN beta at
+        # float32 before this fix.
+        tiny = torch.finfo(denom.real.dtype).tiny
+        denom2 = denom.real ** 2 + denom.imag ** 2 + tiny
         inv = denom.conj() * cutoff / denom2
         AD = self.A * self.D[None, :]  # (3, 3): [i, alpha]
         S1 = (AD[None, :, :] * inv[:, None, :]).sum(-1)                       # j=1
@@ -375,6 +381,82 @@ def dislocation_deformation_field(
     latc = torch.as_tensor(lattice_params, device=device, dtype=dtype)
     return DeformationField(
         positions=positions, F=F,
+        reference_orientation=reference_orientation,
+        lattice_params=latc, shape=shape,
+    )
+
+
+def network_deformation_field(
+    positions: torch.Tensor,
+    network,
+    C6: torch.Tensor,
+    *,
+    core_radius_um: float | None = None,
+    n_quad: int = 8,
+    chunk: int = 4096,
+    reference_orientation=None,
+    lattice_params=(3.6356, 3.6356, 3.6356, 90.0, 90.0, 90.0),
+    shape: tuple[int, int, int] | None = None,
+) -> DeformationField:
+    """DFXM deformation field from a discrete-dislocation network (ExaDiS / ParaDiS).
+
+    The counterpart of :func:`dislocation_deformation_field` for a *finite
+    segment* network rather than a list of infinite straight Stroh lines.
+
+    Why the distinction is not cosmetic: superposing infinite lines through a
+    DDD network's node positions is a different configuration, not an
+    approximation of it. For a closed loop it is qualitatively wrong -- the
+    loop's whole relaxation volume lives in the closure, which infinite lines do
+    not have. The one-off script that produced the FCC-Cu round-trip in
+    ``dev/paper/runs/real_validation`` did exactly that, on 12 segments; this is
+    the supported path.
+
+    Parameters
+    ----------
+    positions : (N, 3) tensor
+        Voxel centres, micrometers.
+    network : midas_ddd.DislocationNetwork
+        From ``midas_ddd.read_paradis(...)`` or ``midas_ddd.exadis``.
+    C6 : (6, 6) tensor
+        Voigt stiffness. **The finite-segment kernel is isotropic** -- there is
+        no closed-form anisotropic finite-segment solution, which is why
+        production DDD codes use the non-singular isotropic one. An anisotropic
+        ``C6`` is reduced to its Voigt average, so for a strongly anisotropic
+        crystal prefer the Stroh path (infinite lines) where exactness matters
+        more than finite length.
+    core_radius_um
+        Non-singular core. Defaults to the network's Burgers magnitude.
+
+    Returns
+    -------
+    DeformationField
+        ``F = I + beta``, with ``beta`` the **elastic** distortion -- which is
+        what DFXM images, the lattice being continuous across the cut surface
+        for a perfect dislocation. (:mod:`midas_ddd.fourier` works with the
+        total, elastic plus plastic; see ``midas_ddd.realspace`` for the
+        relation between them.)
+
+    Examples
+    --------
+    >>> from midas_ddd import read_paradis, cubic_stiffness       # doctest: +SKIP
+    >>> net = read_paradis("net.data", b_magnitude_A=2.556)       # doctest: +SKIP
+    >>> field = network_deformation_field(pts, net, cubic_stiffness(168.4, 121.4, 75.4))
+    """
+    from midas_ddd.realspace import network_distortion
+
+    beta = network_distortion(positions, network, C6,
+                              core_radius_um=core_radius_um,
+                              n_quad=n_quad, chunk=chunk)
+    device, dtype = positions.device, positions.dtype
+    eye = torch.eye(3, device=device, dtype=dtype)
+    if reference_orientation is None:
+        reference_orientation = eye
+    else:
+        reference_orientation = torch.as_tensor(reference_orientation,
+                                                device=device, dtype=dtype)
+    latc = torch.as_tensor(lattice_params, device=device, dtype=dtype)
+    return DeformationField(
+        positions=positions, F=eye + beta,
         reference_orientation=reference_orientation,
         lattice_params=latc, shape=shape,
     )

@@ -172,3 +172,120 @@ def multislip_gnd_field(
     latc = torch.as_tensor(lattice_params, device=device, dtype=dtype)
     return DeformationField(positions=positions, F=R, reference_orientation=orientation,
                             lattice_params=latc, shape=shape)
+
+
+# ---------------------------------------------------------------------------
+# The missing link: per-voxel orientation/distortion field -> Nye tensor
+# ---------------------------------------------------------------------------
+#
+# `nye_from_densities` is the forward and `recover_gnd_densities` inverts the
+# decomposition, but nothing turned a MEASURED per-voxel field into alpha.
+# (`midas_defect.gnd.per_grain_nye_tensor` is inter-GRAIN, k-NN over an FF-HEDM
+# grain map -- a different measurement.) DFXM delivers exactly a per-voxel
+# field, so this is the step between the instrument and the GND content, and it
+# is where the detection limit lives: alpha is a CURL, i.e. a spatial
+# derivative, so orientation noise is amplified by 1/spacing.
+
+def nye_tensor_from_field(
+    F: torch.Tensor,
+    shape,
+    spacing_um,
+    *,
+    rotation_only: bool = False,
+) -> torch.Tensor:
+    """Nye tensor per voxel from a deformation-gradient field. ``(N, 3, 3)``, 1/µm.
+
+    ``alpha_ij = eps_jkl d_k beta_il`` with ``beta = F - I`` the elastic
+    distortion (Nye 1953; Arsenlis & Parks 1999). Central differences on the
+    interior, one-sided at the faces.
+
+    Das, Hofmann & Tarleton, *Int. J. Plasticity* (2018),
+    `10.1016/j.ijplas.2018.05.001`, show the three curl conventions in common use
+    agree when applied consistently, so the choice above is not a free parameter
+    -- and they also find the volumetric elastic strain barely affects alpha,
+    which is why ``rotation_only`` (use the skew part of beta alone, the
+    HR-EBSD-style estimate) is offered and is usually close.
+
+    Parameters
+    ----------
+    F : (N, 3, 3)
+        Deformation gradient per voxel, voxels ordered C-style over ``shape``.
+    shape : (nx, ny, nz)
+    spacing_um : float or 3-sequence
+        Voxel pitch. A scalar is broadcast.
+    rotation_only :
+        Differentiate only the skew (lattice-rotation) part of ``beta``.
+
+    Notes
+    -----
+    Differentiable. A dimension of extent 1 contributes no derivative (its
+    gradient is taken as zero), so a single slice returns the components a 2-D
+    measurement can support and zeros for the rest -- it does NOT silently
+    invent the out-of-plane terms.
+    """
+    nx, ny, nz = (int(s) for s in shape)
+    if F.shape[0] != nx * ny * nz:
+        raise ValueError(f"F has {F.shape[0]} voxels but shape {tuple(shape)} "
+                         f"implies {nx * ny * nz}")
+    sp = torch.as_tensor(spacing_um, dtype=F.dtype, device=F.device)
+    if sp.ndim == 0:
+        sp = sp.repeat(3)
+
+    eye = torch.eye(3, dtype=F.dtype, device=F.device)
+    beta = (F - eye).reshape(nx, ny, nz, 3, 3)
+    if rotation_only:
+        beta = 0.5 * (beta - beta.transpose(-1, -2))
+
+    # d_k beta_il for k = 0,1,2
+    grads = []
+    for k, n in enumerate((nx, ny, nz)):
+        if n < 2:
+            grads.append(torch.zeros_like(beta))
+            continue
+        g = torch.gradient(beta, spacing=float(sp[k]), dim=k)[0]
+        grads.append(g)
+    dbeta = torch.stack(grads, dim=0)            # (3, nx, ny, nz, 3, 3) = d_k beta_il
+
+    eps = torch.zeros(3, 3, 3, dtype=F.dtype, device=F.device)
+    for i, j, k, v in ((0, 1, 2, 1.0), (1, 2, 0, 1.0), (2, 0, 1, 1.0),
+                       (0, 2, 1, -1.0), (2, 1, 0, -1.0), (1, 0, 2, -1.0)):
+        eps[i, j, k] = v
+    # alpha_ij = eps_jkl d_k beta_il
+    alpha = torch.einsum("jkl,kxyzil->xyzij", eps, dbeta)
+    return alpha.reshape(nx * ny * nz, 3, 3)
+
+
+def gnd_density_from_field(F, shape, spacing_um, *, burgers_length_A=2.556,
+                           rotation_only=False) -> torch.Tensor:
+    """Scalar GND density per voxel, m^-2, from ``|alpha| / b``. ``(N,)``.
+
+    The Frobenius norm of the Nye tensor over the Burgers magnitude -- the
+    standard scalar summary, and a LOWER BOUND on the true dislocation content:
+    it counts only the geometrically necessary part, and statistically stored
+    dipoles cancel out of alpha exactly. Kysar et al., *Int. J. Plasticity* 26
+    (2010) 1097, derive the rigorous lower bound this norm approximates.
+    """
+    alpha = nye_tensor_from_field(F, shape, spacing_um,
+                                  rotation_only=rotation_only)
+    b_um = burgers_length_A / _ANGSTROM_PER_UM
+    return torch.linalg.matrix_norm(alpha) / b_um * 1e12    # 1/um^2 -> 1/m^2
+
+
+def gnd_noise_floor(sigma_orientation_rad: float, spacing_um: float, *,
+                    burgers_length_A: float = 2.556, stencil: float = 2.0
+                    ) -> float:
+    """Analytic GND detection floor, m^-2. **A scaling estimate, not a measurement.**
+
+    ``rho_min ~ sigma_omega / (b * dx)``: a curl differentiates, so per-voxel
+    orientation noise of ``sigma_omega`` over a baseline ``dx`` produces a
+    spurious curvature ``~sigma_omega/dx`` and hence an apparent GND density
+    ``~sigma_omega/(b dx)``. ``stencil`` is the effective number of spacings in
+    the derivative (2 for central differences).
+
+    This assumes UNCORRELATED per-voxel noise and says nothing about the
+    correlation the resolution function imposes, nor about regularisation. It is
+    the number to test a measurement against, not to quote in place of one.
+    """
+    b_m = burgers_length_A * 1e-10
+    dx_m = spacing_um * 1e-6
+    return float(sigma_orientation_rad / (b_m * dx_m * stencil / 2.0))
