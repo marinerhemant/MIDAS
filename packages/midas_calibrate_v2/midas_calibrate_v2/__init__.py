@@ -33,5 +33,14 @@ __version__ = "0.12.0"
 
 # One-shot fully-automated entry point: image + wavelength -> calibration.
 from .pipelines.auto import calibrate, AutoCalibrationResult, CALIBRANTS
+from .friedel import (
+    beam_centre_from_pairs, BeamCentreResult,
+    tx_from_pairs, TxResult,
+    is_friedel, friedel_domega_floor, antipodal_pairs, predicted_eta,
+)
 
-__all__ = ["__version__", "calibrate", "AutoCalibrationResult", "CALIBRANTS"]
+__all__ = ["__version__", "calibrate", "AutoCalibrationResult", "CALIBRANTS",
+           "beam_centre_from_pairs", "BeamCentreResult",
+           "tx_from_pairs", "TxResult",
+           "is_friedel", "friedel_domega_floor", "antipodal_pairs",
+           "predicted_eta"]
