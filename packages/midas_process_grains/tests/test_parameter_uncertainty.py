@@ -151,25 +151,43 @@ def test_hydrostatic_strain_uses_the_full_abc_covariance(
 
 
 def test_per_grain_lattice_reaches_the_hessian(fake_inputs, monkeypatch):
-    """An (N,6) latc must give each grain ITS OWN cell, not a shared one."""
+    """An (N,6) latc must give each grain ITS OWN cell, not a shared one.
+
+    device and MIDAS_PG_SIGMA_JOBS are pinned because this assertion is about
+    what the PARENT process observed. Left to auto-detect, the device is
+    whatever the machine has: on a Mac that is "mps", which forces _njobs=1 and
+    the serial path, so the spy sees every call. On a plain CPU box -- CI, and
+    every Linux workstation -- it resolves to "cpu", _njobs becomes
+    min(cpu_count, 16) and the work forks. The children inherit the patched
+    function and append to THEIR OWN copy of fake.seen_latc, which dies with
+    them, so the parent's list is empty and the test failed with
+    shape (0,) against (3,). It was passing here only because this laptop has
+    a GPU backend.
+    """
+    monkeypatch.setenv("MIDAS_PG_SIGMA_JOBS", "1")
     H = np.eye(12)
     jn, fake = _stub(H)
     monkeypatch.setattr(jn, "per_grain_hessian_blocks", fake)
 
     latc = np.array([[3.60 + 0.01 * g, 3.60 + 0.01 * g, 3.60 + 0.01 * g,
                       90.0, 90.0, 90.0] for g in range(N_GRAINS)])
-    compute_per_grain_parameter_sigma(latc=latc, **fake_inputs)
+    compute_per_grain_parameter_sigma(latc=latc, device="cpu", **fake_inputs)
 
     seen = np.array(sorted(x[0] for x in fake.seen_latc))
     np.testing.assert_allclose(seen, sorted(latc[:, 0]), rtol=1e-12)
 
 
 def test_scalar_latc_is_broadcast(fake_inputs, monkeypatch):
+    """device/jobs pinned for the reason given in
+    test_per_grain_lattice_reaches_the_hessian: an in-process spy cannot see
+    what a forked child did."""
+    monkeypatch.setenv("MIDAS_PG_SIGMA_JOBS", "1")
     H = np.eye(12)
     jn, fake = _stub(H)
     monkeypatch.setattr(jn, "per_grain_hessian_blocks", fake)
     compute_per_grain_parameter_sigma(
-        latc=np.array([3.6, 3.6, 3.6, 90.0, 90.0, 90.0]), **fake_inputs)
+        latc=np.array([3.6, 3.6, 3.6, 90.0, 90.0, 90.0]),
+        device="cpu", **fake_inputs)
     seen = np.array(fake.seen_latc)
     assert seen.shape == (N_GRAINS, 6)
     assert np.allclose(seen[:, 0], 3.6)

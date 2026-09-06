@@ -73,11 +73,33 @@ def test_quadrature_weights_sum_to_exactly_one():
     """The q -> 0 limit inherits this sum exactly. The published 10-digit
     coefficients sum to 0.9999999996, which showed up as a constant 4e-10
     error against the gate -- q-independent, hence a normalisation bug rather
-    than a physics one."""
+    than a physics one.
+
+    The weight total is checked with :func:`math.fsum`, not the builtin
+    ``sum``. ``sum`` accumulates left to right and rounds at every step, so
+    which way the last bit falls depends on the interpreter build: this
+    assertion read ``abs=1e-16`` and failed on CPython 3.11 with
+    1.0000000000000002 while passing on 3.12. 1e-16 is 0.45 ULP at 1.0, so it
+    was demanding bit-exactness of a seven-term float sum -- a platform
+    assertion wearing a tolerance.
+
+    Checked in exact (Fraction) arithmetic, the stored doubles sum to 1.0 with
+    ZERO error, so the coefficients themselves were never in question.
+    ``fsum`` is correctly rounded and order-independent, which makes the
+    equality true everywhere rather than true here.
+
+    The per-row barycentric sums are a different case: three stored doubles
+    cannot represent a total of exactly 1 and land 0.03-0.25 ULP low, so they
+    get a real bound. Four ULP is platform tolerance, NOT a defect being
+    admitted -- the normalisation bug this test exists to catch is 4e-10, or
+    1.8 million ULP, so the bound still detects it with a margin of ~450000x.
+    """
+    import math
     from midas_ddd.fourier import _TRI_BARY
-    assert sum(r[3] for r in _TRI_BARY) == pytest.approx(1.0, abs=1e-16)
+    assert math.fsum(r[3] for r in _TRI_BARY) == 1.0
+    four_ulp = 4 * math.ulp(1.0)
     for l0, l1, l2, _ in _TRI_BARY:
-        assert l0 + l1 + l2 == pytest.approx(1.0, abs=1e-16)
+        assert math.fsum((l0, l1, l2)) == pytest.approx(1.0, abs=four_ulp)
 
 
 @pytest.mark.unit
