@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-saxs"
+version = "0.1.0"
+description = "Differentiable small-angle X-ray scattering for MIDAS: particle form factors and polydispersity, plus a 2-D detector-image forward model for dislocation loops and voids driven by a discrete-dislocation network."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = [
+    "MIDAS", "SAXS", "USAXS", "small-angle scattering", "X-ray",
+    "dislocation loop", "irradiation", "void", "form factor",
+    "differentiable", "PyTorch",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.22",
+    "torch>=2.0",
+    # f(0) = Z for the electron-density contrast; never re-port a form-factor table.
+    "midas-hkls>=0.9.0",
+    # apply_tilt_distortion: the canonical MIDAS tilt + 15-coefficient distortion
+    # model. The pixel -> q map here must be the SAME one the HEDM side uses, or
+    # a SAXS geometry and an FF geometry calibrated from the same detector would
+    # disagree about where q sits.
+    "midas-transforms>=0.10.0",
+    "midas-distortion>=0.2.0",
+]
+
+[project.optional-dependencies]
+# The dislocation source term. Kept optional so plain particle SAXS -- the
+# form-factor half -- installs without pulling a dislocation-dynamics stack.
+# `midas_saxs.strain_source` imports it lazily and says what to install.
+dislocations = ["midas-ddd>=0.1.0"]
+viz = ["matplotlib>=3.5"]
+dev = ["pytest>=7.0", "matplotlib>=3.5", "midas-ddd>=0.1.0"]
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Documentation = "https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_saxs"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_saxs*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: synthetic-data correctness tests (fast, every PR)",
+    "autograd: gradient correctness tests (gradcheck or finite-diff)",
+    "device: CPU/CUDA/MPS portability tests (skipped if device unavailable)",
+    "slow: heavy tests (run with -m slow)",
+]
