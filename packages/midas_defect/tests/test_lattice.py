@@ -208,3 +208,27 @@ def test_shells_against_scope_overcount():
     # Loosening the merge tolerance can only reduce (or preserve) shell count.
     shells_loose = tetragonal_shells(cr, q_max_inv_A=10.15, q_tol_inv_A=1e-3)
     assert len(shells_loose) <= len(shells)
+
+
+def test_bragg_shells_returns_full_orbits_not_asu_representatives():
+    """Regression: Shell.hkls held only ASU representatives (one octant), so a
+    single-crystal consumer iterating it saw ~12 % of the reflections a real
+    crystal makes. On I4/mmm La3Ni2O7 to q=6: 57 ASU reps vs 470 actual points."""
+    from midas_defect.lattice import bragg_shells
+    from midas_hkls import Lattice, Crystal, SpaceGroup, Atom
+    cry = Crystal(lattice=Lattice(a=3.6116, b=3.6116, c=19.2516,
+                                  alpha=90., beta=90., gamma=90.),
+                  space_group=SpaceGroup.from_number(139),
+                  atoms=[Atom(element="La", fract=(0., 0., 0.5), label="La1")])
+    sh = bragg_shells(cry, q_max_inv_A=6.0)
+    total = sum(len(s.hkls) for s in sh)
+    assert total > 400, f"only {total} reflections; ASU-only regression"
+    # a general hkl shell must contain both +h and -h somewhere
+    allh = [h for s in sh for h in s.hkls]
+    assert any(h[0] < 0 for h in allh), "no negative h: still one octant"
+    assert any(h[2] < 0 for h in allh), "no negative l: still one octant"
+    # every member of a shell must share |q|
+    for s in sh[:12]:
+        qs = {round(math.sqrt((h[0]/3.6116)**2 + (h[1]/3.6116)**2
+                              + (h[2]/19.2516)**2), 6) for h in s.hkls}
+        assert len(qs) == 1, f"shell at q={s.q_inv_A} mixes |q|: {qs}"

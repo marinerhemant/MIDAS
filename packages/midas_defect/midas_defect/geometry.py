@@ -348,6 +348,100 @@ def pixel_to_qlab(
     return k0 * (k_f - k_i)
 
 
+def qlab_to_pixel(
+    qlab: "torch.Tensor | np.ndarray",
+    geom: Geometry,
+    *,
+    max_iter: int = 25,
+    tol_px: Optional[float] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    dtype: Optional[Union[str, torch.dtype]] = None,
+):
+    """Lab-frame q-vector (1/Å) → detector pixel ``(rows, cols)``. Inverse of
+    :func:`pixel_to_qlab`.
+
+    There is **no analytic inverse**: the forward map applies a tilt
+    (``R_z R_y R_x``) and a 15-coefficient radial distortion, and the distortion
+    polynomial is not invertible in closed form. This solves it by quasi-Newton
+    iteration against the forward map itself, seeded with the exact flat-detector
+    inverse and using the flat Jacobian (``dY/dcol = -px``, ``dZ/drow = +px``).
+
+    **Do not substitute the flat inverse.** It is exact only at zero tilt and
+    zero distortion. At a tilt of 0.15°/0.37° — an ordinary calibrated value —
+    it is already wrong by **1.56 px**, which exceeds a typical indexing
+    residual; at 1° it is wrong by 8.3 px.
+
+    Returns ``(rows, cols)`` as tensors, with **NaN** wherever the diffracted ray
+    does not go forward (``k_f·x̂ <= 0``) — those reflections cannot land on a
+    downstream detector and must not be silently projected to a finite pixel.
+
+    Raises ``RuntimeError`` if the iteration does not reach ``tol_px``.
+
+    ``tol_px`` defaults to what the working dtype can actually deliver:
+    ``max(1e-3, 8 * eps * max|coordinate|)``. The previous fixed default of
+    1e-5 px was **below float32 resolution** for pixel coordinates of order
+    1e3 (relative eps 1.2e-7 x 1000 = 1.2e-4 px), so the iteration plateaued at
+    ~9e-5 px -- 0.015 nm, physically meaningless -- and the function raised on
+    ordinary input. Pass an explicit value to override; going below the dtype
+    floor will simply fail again.
+    """
+    from midas_transforms.fit_setup.transform import apply_tilt_distortion
+
+    device_ = resolve_device(device)
+    dtype_ = resolve_dtype(device_, dtype)
+    q = torch.as_tensor(qlab, dtype=dtype_, device=device_)
+    if q.shape[-1] != 3:
+        raise ValueError(f"qlab must have last dimension 3, got {tuple(q.shape)}")
+
+    g = _g_to_tensors(geom, dtype=dtype_, device=device_)
+    p_coeffs = torch.as_tensor(geom.p_coeffs, dtype=dtype_, device=device_)
+    rho_d = torch.as_tensor(geom.rho_d_um, dtype=dtype_, device=device_)
+    px = g["px"]
+
+    if tol_px is None:
+        eps = float(torch.finfo(dtype_).eps)
+        scale = float(max(geom.n_pix_y, geom.n_pix_z))
+        tol_px = max(1e-3, 8.0 * eps * scale)
+
+    # q = k0 (k_f_hat - x_hat)  ->  k_f_hat = q/k0 + x_hat
+    k0 = 2.0 * math.pi / g["lamb"]
+    kf = q / k0
+    kf = kf + torch.tensor([1.0, 0.0, 0.0], dtype=dtype_, device=device_)
+    forward = kf[..., 0] > 0
+    safe_x = torch.where(forward, kf[..., 0], torch.ones_like(kf[..., 0]))
+
+    scale = g["lsd"] / safe_x
+    Y_target = kf[..., 1] * scale
+    Z_target = kf[..., 2] * scale
+
+    # exact flat-detector inverse as the seed: Y = -(col-BCy)*px, Z = +(row-BCz)*px
+    cols = g["bcy"] - Y_target / px
+    rows = g["bcz"] + Z_target / px
+
+    tol_um = tol_px * float(px)
+    for _ in range(int(max_iter)):
+        Yg, Zg = apply_tilt_distortion(
+            cols, rows, Lsd=g["lsd"], BC_y=g["bcy"], BC_z=g["bcz"],
+            tx=g["tx"], ty=g["ty"], tz=g["tz"], p_coeffs=p_coeffs,
+            px=px, rho_d=rho_d,
+        )
+        dY = Y_target - Yg
+        dZ = Z_target - Zg
+        worst = torch.maximum(dY.abs().max(), dZ.abs().max())
+        if bool(worst < tol_um):
+            break
+        cols = cols - dY / px
+        rows = rows + dZ / px
+    else:
+        raise RuntimeError(
+            f"qlab_to_pixel did not converge to {tol_px} px in {max_iter} "
+            f"iterations (worst residual {float(worst)/float(px):.4g} px). "
+            "Check the distortion coefficients and rho_d.")
+
+    nan = torch.full_like(rows, float("nan"))
+    return torch.where(forward, rows, nan), torch.where(forward, cols, nan)
+
+
 def qlab_to_qsample(
     qlab: torch.Tensor,
     omega_rad: "torch.Tensor | float",

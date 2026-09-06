@@ -205,3 +205,93 @@ def on_lattice_fraction(
         return 0.0
     dist = _discrete_nn_distance(q[bright], predicted_pts)
     return float((dist < tol_inv_A).mean())
+
+
+@dataclass
+class ConventionVerdict:
+    """Which orientation convention this voxel cloud is actually in."""
+    convention: str | None      # "OM" | "OM.T" | None when undecidable
+    frac_om: float              # on-lattice fraction using the matrix as given
+    frac_om_t: float            # on-lattice fraction using its transpose
+    margin: float               # ratio winner/loser (inf if loser is 0)
+    decisive: bool
+    note: str
+
+    def __bool__(self) -> bool:      # so `if not verdict:` reads naturally
+        return bool(self.decisive)
+
+
+def check_orientation_convention(
+    q_sample: np.ndarray,
+    intensity: np.ndarray,
+    orientations,
+    crystal,
+    *,
+    q_max_inv_A: float | None = None,
+    bright_percentile: float = 99.5,
+    tol_inv_A: float = 0.1,
+    min_margin: float = 3.0,
+    min_frac: float = 0.30,
+) -> ConventionVerdict:
+    """Ask the **data** which orientation convention a voxel cloud is in.
+
+    There is no universal answer, and assuming one is a live trap in this
+    project: two demk voxel products from the *same* experiment require
+    **opposite** conventions. ``all_labels_qvox.npz`` needs the raw MIDAS
+    ``Grains.csv`` matrix as given (on-lattice 0.978 vs 0.212 for its
+    transpose), while the ``demk_g1592_9r`` ladder fixture needs the transpose
+    (bright voxels 0.21 Å⁻¹ from the ladder axis vs 4.47 Å⁻¹). Each analysis
+    was right for its own product; a rule stated universally is wrong for one
+    of them. Cf. ``LAB_NOTEBOOK.md`` R5, where a frame error of exactly this
+    class produced a retracted result.
+
+    Runs `on_lattice_fraction` both ways and returns the winner with its
+    margin. **Call this before any per-grain attribution on a cloud whose
+    provenance you have not personally checked.**
+
+    Limitation you must respect
+    ---------------------------
+    This test is only valid for a cloud that *contains* Bragg intensity. On a
+    curated **satellite** cloud the reflections are off-lattice by
+    construction, both conventions score near zero, and the verdict comes back
+    ``decisive=False`` — that is the honest answer, not a failure. Use the
+    axis-based test there instead (see `polytype.ladder`): project the bright
+    voxels onto ``U @ <hkl_axis>`` and compare perpendicular spread.
+
+    Returns
+    -------
+    ConventionVerdict
+        ``convention`` is ``"OM"`` (use the matrix as given), ``"OM.T"`` (pass
+        the transpose), or ``None`` when the data cannot decide.
+    """
+    q = np.asarray(q_sample, dtype=np.float64)
+    oms = np.asarray(
+        orientations.detach().cpu().numpy() if isinstance(orientations, torch.Tensor)
+        else orientations, dtype=np.float64).reshape(-1, 3, 3)
+    if q_max_inv_A is None:
+        q_max_inv_A = float(np.linalg.norm(q, axis=1).max()) + 0.5
+
+    fracs = {}
+    for name, mats in (("OM", oms), ("OM.T", np.transpose(oms, (0, 2, 1)))):
+        pts = predicted_reflection_points(mats, crystal, q_max_inv_A=q_max_inv_A)
+        fracs[name] = on_lattice_fraction(
+            q, intensity, pts,
+            bright_percentile=bright_percentile, tol_inv_A=tol_inv_A)
+
+    win, lose = ("OM", "OM.T") if fracs["OM"] >= fracs["OM.T"] else ("OM.T", "OM")
+    margin = float("inf") if fracs[lose] == 0 else fracs[win] / fracs[lose]
+    decisive = bool(fracs[win] >= min_frac and margin >= min_margin)
+    if decisive:
+        note = (f"{win}: {fracs[win]:.3f} on-lattice vs {fracs[lose]:.3f} "
+                f"({margin:.1f}x). Use the matrix "
+                + ("as given." if win == "OM" else "TRANSPOSED."))
+    else:
+        note = (f"UNDECIDABLE: best {win} at {fracs[win]:.3f} on-lattice "
+                f"({margin:.1f}x over {lose}), below the {min_frac:.2f}/"
+                f"{min_margin:.1f}x bar. Expected for a satellite-only cloud "
+                f"(off-lattice by construction) or a broken geometry — these "
+                f"look identical here. Use the axis test, or check the geometry.")
+    return ConventionVerdict(
+        convention=win if decisive else None,
+        frac_om=float(fracs["OM"]), frac_om_t=float(fracs["OM.T"]),
+        margin=float(margin), decisive=decisive, note=note)

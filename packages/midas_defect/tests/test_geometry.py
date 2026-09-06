@@ -444,3 +444,40 @@ def test_paramstest_loader_against_demk_calibration():
     assert g_file.wavelength_A == pytest.approx(g_def.wavelength_A, abs=1e-5)
     assert g_file.n_pix_y == g_def.n_pix_y
     assert g_file.n_pix_z == g_def.n_pix_z
+
+
+def test_qlab_to_pixel_tolerance_is_dtype_aware_not_a_fixed_1e_5():
+    """Regression: the fixed default tol_px=1e-5 is BELOW float32 resolution for
+    pixel coordinates of order 1e3 (relative eps 1.2e-7 * 1000 = 1.2e-4 px), so
+    the iteration plateaued at ~9e-5 px -- 0.015 nm -- and the function raised
+    on ordinary input. It must not."""
+    import torch
+    import numpy as np
+    from midas_defect.geometry import Geometry, pixel_to_qlab, qlab_to_pixel
+
+    g = Geometry(lsd_um=349622.0, bcy_px=737.19, bcz_px=810.28, px_um=172.0,
+                 wavelength_A=0.42459, n_pix_y=1475, n_pix_z=1679,
+                 omega_first_deg=-19.5, omega_step_deg=1.0, n_frames=40,
+                 tx_deg=0.0, ty_deg=0.15, tz_deg=0.37)
+    rows = np.array([200., 600., 1000., 1400.])
+    cols = np.array([300., 700., 900., 1200.])
+    q = pixel_to_qlab(rows, cols, g, device="cpu")
+    r, c = qlab_to_pixel(q, g, device="cpu")          # must not raise
+    r = r.detach().cpu().numpy(); c = c.detach().cpu().numpy()
+    assert np.abs(r - rows).max() < 0.05, np.abs(r - rows).max()
+    assert np.abs(c - cols).max() < 0.05, np.abs(c - cols).max()
+
+
+def test_qlab_to_pixel_still_honours_an_explicit_tolerance():
+    """The dtype-aware default must not silently swallow a caller's request."""
+    import pytest
+    import numpy as np
+    from midas_defect.geometry import Geometry, pixel_to_qlab, qlab_to_pixel
+
+    g = Geometry(lsd_um=349622.0, bcy_px=737.19, bcz_px=810.28, px_um=172.0,
+                 wavelength_A=0.42459, n_pix_y=1475, n_pix_z=1679,
+                 omega_first_deg=-19.5, omega_step_deg=1.0, n_frames=40,
+                 ty_deg=0.15, tz_deg=0.37)
+    q = pixel_to_qlab(np.array([600.]), np.array([700.]), g, device="cpu")
+    with pytest.raises(RuntimeError, match="did not converge"):
+        qlab_to_pixel(q, g, tol_px=1e-12, max_iter=3, device="cpu")

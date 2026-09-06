@@ -125,7 +125,11 @@ def bragg_shells(
 
     Aggregates symmetry-equivalent HKLs (same |q|) into a single `Shell`
     entry. Uses `midas_hkls.generate_hkls` for the underlying enumeration so
-    the systematic absences and ASU representatives come from one place.
+    the systematic absences come from one place, then **expands each ASU
+    representative to its full symmetry orbit** — `Shell.hkls` holds every
+    reciprocal-lattice point of that shell, which is what a single-crystal
+    consumer iterating it requires. Before 2026-09-03 it held only the ASU
+    representatives, i.e. one octant.
     Phase-agnostic: works for FCC (`fcc_cu_crystal()`), tetragonal CuAl₂
     (`cual2_crystal()`), or any other cell.
 
@@ -153,6 +157,19 @@ def bragg_shells(
             continue
         # round to a multiple of q_tol_inv_A so float-equal reflections group
         key = round(q / q_tol_inv_A) * q_tol_inv_A
+        # generate_hkls returns ASU REPRESENTATIVES. A powder shell only needs
+        # those plus a multiplicity, but a SINGLE-CRYSTAL consumer iterating
+        # Shell.hkls needs the full orbit: an ASU set lies in one octant, so a
+        # predictor built from it sees a small fraction of the reflections a
+        # real crystal makes. Measured on I4/mmm La3Ni2O7 to q = 6 1/A: 57 ASU
+        # representatives against 470 actual reciprocal-lattice points -- 12 %,
+        # which capped the seed indexer at 9 matches out of 20 bright cores.
+        try:
+            orbit = crystal.space_group.equivalent_hkls(r.h, r.k, r.l)
+        except Exception:
+            orbit = [(r.h, r.k, r.l)]
+        for hkl in orbit:
+            by_q[key].append((int(hkl[0]), int(hkl[1]), int(hkl[2])))
         by_q[key].append((r.h, r.k, r.l))
     out: List[Shell] = []
     for q in sorted(by_q):

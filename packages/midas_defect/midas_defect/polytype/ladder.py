@@ -140,12 +140,25 @@ def decontaminate_ladder(
     Orientation convention (IMPORTANT). ``orientations`` must be in the package's
     ``U @ G_crystal`` convention (the same as :mod:`midas_defect.bragg_diffuse` /
     :mod:`midas_defect.defect_tests` and ``seed_index.predict_q_from_U``): the
-    sample-frame reflection is ``U @ (2*pi*hkl/a)``. A **raw MIDAS ``Grains.csv``
-    orientation matrix must be transposed** before passing it here (its rows are
-    crystal axes in the sample frame, so the sample-frame reflection is ``OM.T @
-    G_crystal``). Passing un-transposed OMs silently mislabels every fundamental as
-    a satellite (the carrier's own 111/222 land ~0.3-0.6 1/A off). Likewise the
-    ``axis`` used to build the ladder must be ``U @ <111>``.
+    sample-frame reflection is ``U @ (2*pi*hkl/a)``. Passing ``U`` in the wrong
+    sense silently mislabels every fundamental as a satellite (the carrier's own
+    111/222 land ~0.3-0.6 1/A off). Likewise the ``axis`` used to build the ladder
+    must be ``U @ <111>``.
+
+    **Whether a raw MIDAS ``Grains.csv`` matrix needs transposing is a property of
+    the VOXEL CLOUD, not a universal rule** — do not assume it. Two demk products
+    from the same experiment disagree: the ``demk_g1592_9r`` ladder fixture needs
+    ``U = OM.T`` (bright voxels 0.21 1/A from the ladder axis, against 4.47 1/A for
+    ``OM``), while ``all_labels_qvox.npz`` needs ``U = OM`` as given (on-lattice
+    0.978, against 0.212 for ``OM.T``). An earlier version of this docstring stated
+    the transpose as universal; applied to the second cloud it gives garbage.
+
+    Let the data referee it: :func:`midas_defect.bragg_diffuse.check_orientation_convention`
+    runs both and reports the winner with its margin. Note it is only valid on a
+    cloud containing Bragg intensity — on a satellite-only cloud like this
+    function's own fixture both conventions score near zero and it correctly
+    returns ``decisive=False``; there, compare perpendicular spread about
+    ``U @ <hkl_axis>`` instead.
     """
     axis = _unit(ladder.axis)
     U = _orientations(orientations)

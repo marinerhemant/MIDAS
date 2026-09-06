@@ -26,6 +26,7 @@ dependencies = [
     "pandas>=1.5",
     "scipy>=1.10",
     "tifffile>=2023.0",
+    "scikit-image>=0.20",       # ingest.py: h-maxima seeds + 3-D watershed split
     "zarr>=2.14",                # full-res voxel cloud reader (examples/validation)
     # Sibling MIDAS packages -- all reused via the MIDAS reuse map in
     # implementation_plan.md Section 2. Do NOT re-port their primitives.
