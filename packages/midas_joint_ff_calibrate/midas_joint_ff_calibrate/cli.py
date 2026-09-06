@@ -70,13 +70,24 @@ def _grain_tx(args) -> int:
         refine_params=refine, kind=args.kind, max_grains=args.max_grains,
         max_iter=args.max_iter, two_theta_max_deg=args.two_theta_max,
         refine_grain_strain=not args.no_strain, with_powder=args.with_powder,
+        strain_bound=args.strain_bound, lattice_source=args.lattice_seed,
         out_paramstest=args.out, device=args.device,
         fix_values=fix_values or None,
     )
     for k, v in (fix_values or {}).items():
         print(f"  pinned {k} = {v}")
+    if args.kind != "angular":
+        print(f"  NOTE: --kind {args.kind} is accepted but ignored; the loss "
+              "is the (Y,Z) position residual either way.")
     print(f"\n  grains={res.n_grains}  matched spots={res.n_spots_matched}  rc={res.rc}")
+    print(f"  lattice seed: {args.lattice_seed}   "
+          f"grain strain: {'FROZEN at 0' if args.no_strain else 'refined'}")
     print(f"  cost: {res.cost_init:.4e} → {res.cost_final:.4e}")
+    strain_ue = getattr(res, "grain_strain_ue", None)
+    if strain_ue:
+        g = strain_ue
+        print(f"  per-grain strain (nuisance): median {g['median']:.0f} µε  "
+              f"p90 {g['p90']:.0f} µε  max {g['max']:.0f} µε")
     for k, v in res.refined.items():
         print(f"  {k}: {v:+.6f}")
     for msg in getattr(res, "conditioning", []):
@@ -110,15 +121,37 @@ def main(argv=None) -> int:
                          "whatever the parameter file said. A single row "
                          "broadcasts to every grain, e.g. a measured LaB6 "
                          "lattice: --fix "
-                         "grain_lattice=4.1569,4.1569,4.1569,90,90,90 ; or "
-                         "focused-beam grain positions: --fix grain_pos=0,0,0")
+                         "grain_lattice=4.1569,4.1569,4.1569,90,90,90 (the "
+                         "SEED lattice, which is frozen either way — to hold "
+                         "the grains unstrained use --no-strain or --fix "
+                         "grain_strain=0,0,0,0,0,0) ; or focused-beam grain "
+                         "positions: --fix grain_pos=0,0,0")
     gx.add_argument("--kind", default="angular", choices=("angular", "internal_angle"),
-                    help="η-sensitive loss; 'pixel' is disabled (blind to tx)")
+                    help="ACCEPTED BUT IGNORED. make_residual uses the "
+                         "FitMultipleGrains (Y,Z) position loss whatever this "
+                         "says; re-deriving observed (R,η) from raw pixels hit "
+                         "a flipped-η / broken-2θ convention mismatch. Kept "
+                         "only so existing command lines still parse.")
     gx.add_argument("--max-grains", type=int, default=50)
     gx.add_argument("--max-iter", type=int, default=50)
     gx.add_argument("--two-theta-max", type=float, default=20.0)
     gx.add_argument("--no-strain", action="store_true",
-                    help="freeze per-grain lattice (default: refine strain)")
+                    help="freeze per-grain strain at zero, i.e. hold every "
+                         "grain at its seed lattice (default: refine a "
+                         "dimensionless per-grain strain jointly with the "
+                         "geometry, so a real strain is not charged to tx). "
+                         "Costs 6 free parameters per grain — see "
+                         "--max-grains. Until issue #70 this flag did nothing "
+                         "in either direction.")
+    gx.add_argument("--strain-bound", type=float, default=0.02, metavar="EPS",
+                    help="half-width of the per-grain strain box, "
+                         "dimensionless (default 0.02 = 20000 µε)")
+    gx.add_argument("--lattice-seed", default="per_grain",
+                    choices=("per_grain", "header"),
+                    help="per-grain seed lattice: 'per_grain' (default) uses "
+                         "each grain's own fitted a,b,c,α,β,γ from Grains.csv; "
+                         "'header' tiles the nominal LatticeConstant, which is "
+                         "what every run did before issue #70")
     gx.add_argument("--with-powder", action="store_true",
                     help="full joint (powder + grains); not yet wired here")
     gx.add_argument("--out", type=Path, default=None,

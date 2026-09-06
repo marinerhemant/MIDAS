@@ -916,6 +916,48 @@ broadcasts to every grain:
   --fix grain_lattice=4.1569,4.1569,4.1569,90,90,90     # LaB6
 ```
 
+**Each grain is seeded at its OWN lattice, and its strain is refined with the
+geometry.** `grain_lattice` is the per-grain SEED, read from `Grains.csv` cols
+`a b c alpha beta gamma`; `grain_strain` is a dimensionless crystal-frame
+strain, init 0, refined alongside `tx`/`Wedge` unless you pass `--no-strain`.
+So `--fix grain_lattice=…` pins the seed (and is the way to force every grain
+onto a measured standard's lattice), while `--no-strain` — equivalently
+`--fix grain_strain=0,0,0,0,0,0` — holds them there.
+
+> **Before `midas-joint-ff-calibrate` 0.4.2 both of those knobs were inert**
+> (issue #70). The seed was always the tiled nominal `LatticeConstant`, never a
+> grain's own lattice, and `refine_grain_strain` was overridden by a hardcoded
+> `False` at the call site — so `--no-strain` did nothing in either direction
+> and `--fix grain_lattice=<the header value>` pinned a parameter to the value
+> it already had. Two runs differing only in that flag were byte-identical, and
+> that was mechanical, not a physics result.
+>
+> **What it is worth, measured** (shade_LSHR layer 1, Sparks 2024
+> EBSD-comparison FF data, 4312 grains; `--refine tx,Wedge` on a converged
+> pass-2 geometry):
+>
+> | | 20 grains / 5439 spots | 100 grains / 27143 spots |
+> |---|---|---|
+> | final cost, nominal seed + frozen (old) | 7.3189e8 | 3.3673e9 |
+> | final cost, per-grain seed + frozen | 5.8607e8 (**−20 %**) | 2.6527e9 (**−21 %**) |
+> | final cost, per-grain seed + free strain | 5.8417e8 | 2.6425e9 |
+> | `tx` correction, old → new | −0.000462 → −0.000464 | −0.000880 → −0.000882 |
+> | `Wedge` correction, old → new | −0.001240 → −0.001364 | −0.000453 → **+0.000052** |
+>
+> Read that as: **the seed buys a fifth of the residual, `tx` does not care,
+> and `Wedge` does.** `tx` is a pure in-plane rotation, and a per-grain lattice
+> differs from nominal mostly by a COMMON hydrostatic offset (+1100 µε here,
+> `a`/`b`/`c` within 20 µε of each other) which moves spots radially — the one
+> direction `tx` cannot see. Only the deviatoric part shifts η, and on the
+> synthetic fixture freezing a wrong hydrostatic strain biases `tx` ~300–500×
+> less than freezing a wrong deviatoric one of the same size. Caveat on the
+> `Wedge` column: the arm-to-arm spread (5e-4°) is the same size as the
+> 20-vs-100-grain spread (8e-4°), so `Wedge` is poorly determined here either
+> way — the fix moves it by about its own scatter, not clearly beyond it.
+>
+> Cost: strain adds 6 free parameters per grain into a DENSE Jacobian, so
+> `--max-grains 100` took 103 s against 30 s frozen. The tool warns above 60.
+
 #### Two checks before believing any of it
 
 > **Version gate first: `midas-joint-ff-calibrate` ≤ 0.4.0 cannot read a current

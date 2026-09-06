@@ -12,7 +12,8 @@ Canonical names (paper-3 §3.2 + paper-4 §3.3 unification):
     Per-panel     — panel_delta_yz [N, 2], panel_delta_theta [N],
                     panel_delta_lsd [N], panel_delta_p2 [N]
     HEDM grains   — grain_euler [N_g, 3], grain_pos [N_g, 3],
-                    grain_lattice [N_g, 6]
+                    grain_lattice [N_g, 6] (seed, frozen),
+                    grain_strain [N_g, 6] (dimensionless, refinable)
 
 Multi-detector variants (per-detector replicas, used when the user wants
 each detector to have its own Lsd / BC):
@@ -38,14 +39,37 @@ def build_joint_spec(
     refine_grain_orientation: bool = True,
     refine_grain_position: bool = True,
     refine_grain_strain: bool = False,
+    strain_bound: float = 0.02,
 ) -> CalibrationSpec:
     """Extend a powder ``CalibrationSpec`` with HEDM grain nuisance blocks.
 
     The powder spec retains its existing parameters (Lsd, BC_y, BC_z,
-    distortion, panel shifts, ...).  We append three new vector parameters:
-    grain Eulers, grain positions, and grain lattice constants.  Default
-    refinement flags follow the alternating-driver convention: orientations
-    + positions on, strains off (refined in a separate pass).
+    distortion, panel shifts, ...).  We append four new vector parameters:
+    grain Eulers, grain positions, grain lattice constants, and per-grain
+    strain.  Default refinement flags follow the alternating-driver
+    convention: orientations + positions on, strains off (refined in a
+    separate pass).
+
+    **Strain is refined through ``grain_strain``, never by thawing
+    ``grain_lattice``.** ``grain_lattice`` is the per-grain SEED (a, b, c in
+    Å and α, β, γ in degrees) and is always frozen; ``grain_strain`` is a
+    dimensionless crystal-frame symmetric strain, init 0, that the forward
+    model applies as ``B = (I + eps)^-1 B0`` on top of that seed.
+
+    The reason is not stylistic. ``lm_minimise`` boxes every refined
+    parameter with ONE ``(lo, hi)`` pair for the whole tensor and, when a
+    parameter declares no bounds, fabricates that box as
+    ``init.flatten()[0] ± fallback_span`` — the FIRST element only. For a
+    (N, 6) lattice that box is built around ``a`` (e.g. 3.585 ± 2), and the
+    logit transform then clamps every angle silently:
+
+        in  [3.585, 3.585, 3.585, 90.0, 90.0, 90.0]
+        out [3.585, 3.585, 3.585,  5.585,  5.585,  5.585]
+
+    i.e. thawing ``grain_lattice`` rewrites α, β, γ from 90° to the top of
+    the a-box before the first residual evaluation, and returns a degenerate
+    cell with no error raised. Lengths and angles cannot share one box; a
+    dimensionless strain needs only one, centred on zero.
 
     The returned object is the same ``CalibrationSpec`` (now a
     ``ParameterSpec`` subclass), so it slots into ``lm_minimise`` and
@@ -58,7 +82,15 @@ def build_joint_spec(
         possibly with :func:`add_panel_parameters` already applied.
     grain_eulers_init, grain_positions_init, grain_lattices_init
         Initial values from a prior MIDAS grain-fit (e.g. ``Grains.csv``).
-        Shapes must match.
+        Shapes must match. ``grain_lattices_init`` should be each grain's OWN
+        fitted lattice where the file carries one — see
+        :func:`midas_joint_ff_calibrate.grain_observations.grain_lattices_for_fit`.
+    refine_grain_strain
+        Thaw ``grain_strain``. ``grain_lattice`` stays frozen either way.
+    strain_bound
+        Half-width of the ``grain_strain`` box, dimensionless. The default
+        0.02 (= ±20 000 µε) is ~20× the largest per-grain RMS strain seen on
+        real FF data and keeps ``(I + eps)`` far from singular.
     """
     if grain_eulers_init.dim() != 2 or grain_eulers_init.shape[1] != 3:
         raise ValueError(
@@ -85,10 +117,23 @@ def build_joint_spec(
         init=grain_positions_init.to(torch.float64),
         refined=refine_grain_position,
     ))
+    # The per-grain SEED lattice. Always frozen (see the docstring): it is
+    # pinnable with ``--fix grain_lattice=...`` but never refined directly.
     powder_spec.add(Parameter(
         "grain_lattice",
         init=grain_lattices_init.to(torch.float64),
+        refined=False,
+    ))
+    # Crystal-frame symmetric strain, PLAIN-Voigt [e11, e12, e13, e22, e23,
+    # e33] to match HEDMForwardModel.strain_as_voigt. Dimensionless, init 0,
+    # so one box bounds all six components.
+    if not (strain_bound > 0.0):
+        raise ValueError(f"strain_bound must be > 0; got {strain_bound}")
+    powder_spec.add(Parameter(
+        "grain_strain",
+        init=torch.zeros((n_g, 6), dtype=torch.float64),
         refined=refine_grain_strain,
+        bounds=(-float(strain_bound), float(strain_bound)),
     ))
     return powder_spec
 

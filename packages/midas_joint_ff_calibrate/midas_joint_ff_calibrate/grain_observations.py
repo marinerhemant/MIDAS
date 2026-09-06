@@ -13,6 +13,8 @@ import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import logging
+
 import numpy as np
 import torch
 
@@ -25,6 +27,13 @@ from midas_fit_grain.observations import ObservedSpots
 # drifted silently; see the module docstring of midas_process_grains.io.read.
 from midas_process_grains.io import read_grains_csv as _read_grains_csv
 from midas_process_grains.io import read_spot_matrix as _read_spot_matrix
+
+LOG = logging.getLogger(__name__)
+
+#: A per-grain lattice length further than this FRACTION from the header
+#: lattice is a parsing failure, not a strained grain (2 % = 20 000 µε, ~20x
+#: the largest per-grain RMS strain on real FF data).
+_LATTICE_SANITY_FRAC = 0.02
 
 
 def euler_zxz_from_om(R: np.ndarray) -> np.ndarray:
@@ -164,12 +173,69 @@ def load_spot_matrix(path: Path) -> dict:
 
 
 def grain_lattice_from_reference(grains: dict) -> np.ndarray:
-    """Per-grain reference lattice (the header lattice, tiled). The geometry
-    pass keeps strain frozen; per-grain strain is refined separately."""
+    """The NOMINAL header lattice, tiled across every grain.
+
+    This is the ``%`` preamble's ``Lattice Parameter`` line, i.e. what the
+    experiment was set up with — not what any grain was measured to have. Kept
+    as the documented fallback for a legacy 21-column ``Grains.csv``, which
+    records no per-grain lattice. Everything else should call
+    :func:`grain_lattices_for_fit`.
+    """
     n = grains["n_grains"]
     lat0 = (np.array(grains["lattice"], dtype=np.float64)
             if grains["lattice"] is not None else np.zeros(6))
     return np.tile(lat0[None, :], (n, 1))
+
+
+def grain_lattices_for_fit(grains: dict, *, prefer_per_grain: bool = True
+                           ) -> np.ndarray:
+    """Per-grain seed lattice for a geometry fit: each grain's OWN fitted
+    ``a b c alpha beta gamma`` from ``Grains.csv``, falling back to the tiled
+    header lattice per row where that is missing or not physical.
+
+    ``grain_lattice_from_reference`` used to be the only source, which meant a
+    geometry fit both STARTED from and (strain being frozen) STAYED at the
+    nominal lattice for every grain, discarding the per-grain lattice the
+    grain-fit stage had already refined. On real FF data those differ by
+    several hundred µε (github.com/marinerhemant/MIDAS issue #70), and the
+    seed feeds spot association and grain SELECTION as well as the residual,
+    so this is not a strain-only difference.
+
+    A row is rejected (and replaced by the header lattice) when it is not
+    finite, has a non-positive length, has an angle outside (0, 180), or sits
+    further than ``_LATTICE_SANITY_FRAC`` from the header lattice — the
+    signature of a mis-resolved column rather than of a strained grain.
+    """
+    n = int(grains["n_grains"])
+    ref = grain_lattice_from_reference(grains)
+    per = grains.get("lattice_per_grain")
+    if not prefer_per_grain or per is None:
+        LOG.info("grain lattice seed: header lattice tiled across %d grain(s) "
+                 "(%s)", n,
+                 "asked for" if not prefer_per_grain
+                 else "file carries no per-grain lattice")
+        return ref
+    per = np.asarray(per, dtype=np.float64).reshape(n, 6)
+    lengths, angles = per[:, :3], per[:, 3:]
+    ok = (np.isfinite(per).all(axis=1) & (lengths > 0.0).all(axis=1)
+          & (angles > 0.0).all(axis=1) & (angles < 180.0).all(axis=1))
+    ref_len = ref[:, :3]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        drift = np.where(ref_len > 0.0,
+                         np.abs(lengths - ref_len) / np.where(ref_len > 0.0, ref_len, 1.0),
+                         0.0)
+    ok &= (drift <= _LATTICE_SANITY_FRAC).all(axis=1)
+    out = np.where(ok[:, None], per, ref)
+    n_bad = int(n - ok.sum())
+    if n_bad:
+        LOG.warning("grain lattice seed: %d / %d grain(s) had an unusable "
+                    "per-grain lattice and fell back to the header lattice",
+                    n_bad, n)
+    spread = np.abs(out[:, :3] - ref[:, :3]).max() if n else 0.0
+    LOG.info("grain lattice seed: per-grain lattice from Grains.csv for %d / "
+             "%d grain(s); max |a,b,c - header| = %.6g A", int(ok.sum()), n,
+             float(spread))
+    return out
 
 
 def load_ring_two_theta(hkls_csv: Path) -> Dict[int, float]:
@@ -187,12 +253,23 @@ def load_ring_two_theta(hkls_csv: Path) -> Dict[int, float]:
     return ring_two_theta
 
 
-def load_phase2_grains_and_spots(layer_dir: Path):
+def load_phase2_grains_and_spots(layer_dir: Path, *,
+                                 lattice_source: str = "per_grain"):
     """Read Grains.csv + SpotMatrix.csv from a Phase-2 layer dir.
 
     Returns ``(grain_eulers (n,3) rad, positions (n,3) µm, lattices (n,6),
     spots_per_grain, grains_dict, spot_dict)``.
+
+    ``lattice_source`` selects the per-grain seed lattice: ``"per_grain"``
+    (default) takes each grain's own fitted lattice via
+    :func:`grain_lattices_for_fit`; ``"header"`` restores the pre-issue-#70
+    behaviour of tiling the nominal header lattice, which is what a legacy
+    21-column file gets either way. Kept switchable so the two can be run
+    against each other on the same data.
     """
+    if lattice_source not in ("per_grain", "header"):
+        raise ValueError(
+            f"lattice_source must be 'per_grain' or 'header'; got {lattice_source!r}")
     grains_csv = layer_dir / "Grains.csv"
     spot_csv = layer_dir / "SpotMatrix.csv"
     if not grains_csv.exists() or not spot_csv.exists():
@@ -218,8 +295,9 @@ def load_phase2_grains_and_spots(layer_dir: Path):
     for i in range(g["n_grains"]):
         for col, vals in spots_per_grain[i].items():
             spots_per_grain[i][col] = np.array(vals)
-    return (grain_eulers, g["positions"], grain_lattice_from_reference(g),
-            spots_per_grain, g, s)
+    lattices = grain_lattices_for_fit(
+        g, prefer_per_grain=(lattice_source == "per_grain"))
+    return (grain_eulers, g["positions"], lattices, spots_per_grain, g, s)
 
 
 def _empty_observation() -> ObservedSpots:
@@ -322,6 +400,7 @@ __all__ = [
     "load_grains_csv",
     "load_spot_matrix",
     "grain_lattice_from_reference",
+    "grain_lattices_for_fit",
     "load_ring_two_theta",
     "load_phase2_grains_and_spots",
     "build_observations_and_matches",

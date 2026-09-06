@@ -104,6 +104,10 @@ class GrainGeomRefineResult:
     #: Conditioning complaints raised before the fit (too few grains for what
     #: was asked). Advisory; the fit still runs.
     conditioning: List[str] = field(default_factory=list)
+    #: Summary of |grain_strain| in microstrain over all 6 components of
+    #: every grain: keys ``median``, ``p90``, ``max``, ``n_at_bound``. Empty
+    #: when strain was frozen. A NUISANCE block, not a strain measurement.
+    grain_strain_ue: Dict[str, float] = field(default_factory=dict)
 
     @property
     def trustworthy(self) -> bool:
@@ -314,11 +318,33 @@ _MIN_GRAINS_TX = 5
 #: thousands of ring points at every azimuth, is where these belong.
 _MIN_GRAINS_DISTORTION = 50
 
+#: Above this many grains, the dense-Jacobian cost of a free per-grain strain
+#: block (6 free parameters each, one jacfwd tangent apiece) stops being
+#: negligible. Advisory only.
+_MAX_GRAINS_STRAIN = 60
 
-def _conditioning_warnings(refine_params: Sequence[str], n_grains: int) -> List[str]:
+
+def _conditioning_warnings(refine_params: Sequence[str], n_grains: int,
+                           refine_grain_strain: bool = False,
+                           n_spots: Optional[int] = None) -> List[str]:
     """Complain before spending the time, when the ask outruns the data."""
     out: List[str] = []
     thawed = set(refine_params)
+    if refine_grain_strain:
+        n_free = 6 * n_grains
+        if n_spots is not None and n_free > 2 * n_spots:
+            out.append(
+                f"refine_grain_strain adds {n_free} free parameters against "
+                f"{2 * n_spots} residuals — under-determined. Cut max_grains, "
+                "or refine strain downstream in process-grains instead.")
+        if n_grains > _MAX_GRAINS_STRAIN:
+            out.append(
+                f"refine_grain_strain with {n_grains} grains means {n_free} "
+                "free parameters. lm_minimise builds a DENSE Jacobian with "
+                "jacfwd (one tangent per free parameter) even though the "
+                "strain block is block-diagonal by grain, so the cost grows "
+                f"as n_grains^2. Above ~{_MAX_GRAINS_STRAIN} grains this is "
+                "slower than it looks; --max-grains is the knob.")
     if "tx" in thawed and n_grains < _MIN_GRAINS_TX:
         out.append(
             f"refining tx from {n_grains} grain(s): tx is distinguished from a "
@@ -489,16 +515,24 @@ def make_residual(
         eulers = unpacked["grain_euler"]
         positions = unpacked["grain_pos"]
         lattices = unpacked["grain_lattice"]
+        # Per-grain crystal-frame strain, applied by the forward model as
+        # B = (I + eps)^-1 B0 on top of the seed lattice. Absent on a spec
+        # built before grain_strain existed; None then, and the model takes
+        # its no-strain path.
+        strains = unpacked.get("grain_strain")
         pieces: List[torch.Tensor] = []
         for g in range(n_g):
             mt = matches[g]
             S = int(mt.k_idx.shape[0])
             if S == 0:
                 continue
+            kw = {"lattice_params": lattices[g].view(1, 6)}
+            if strains is not None:
+                kw["strain"] = strains[g].view(1, 6)
             spots = functional_call(
                 model, overrides,
                 args=(eulers[g].view(1, 1, 3), positions[g].view(1, 1, 3)),
-                kwargs={"lattice_params": lattices[g].view(1, 6)},
+                kwargs=kw,
             )
 
             def _flat(t):
@@ -547,6 +581,8 @@ def refine_geometry_from_grains(
     refine_grain_strain: bool = True,
     refine_grain_orientation: bool = False,
     refine_grain_position: bool = False,
+    strain_bound: float = 0.02,
+    lattice_source: str = "per_grain",
     fix_values: Optional[Dict[str, object]] = None,
     with_powder: bool = False,
     select: str = "internal_angle",
@@ -565,8 +601,22 @@ def refine_geometry_from_grains(
     refine_params : geometry blocks to thaw. ``tx`` is refined on the
                  observation side (DetCor); ``Wedge`` on the forward side.
     kind       : ``"angular"`` (3D, η-sensitive, default) or ``"internal_angle"``.
-    refine_grain_strain : free per-grain lattice too (recommended — absorbs
-                 strain so it doesn't leak into geometry).
+    refine_grain_strain : free each grain's strain alongside the geometry
+                 (default; absorbs strain so it does not leak into ``tx`` /
+                 ``Wedge``). Refined as the dimensionless ``grain_strain``
+                 block on top of the frozen per-grain seed lattice, NOT by
+                 thawing ``grain_lattice`` — see :func:`build_joint_spec` for
+                 why that distinction is load-bearing. Costs 6 free
+                 parameters per grain; with ``jacfwd`` the Jacobian is dense,
+                 so keep ``max_grains`` modest when this is on.
+                 The strains that come back are NUISANCE parameters that also
+                 soak up any residual radial error (a wrong Lsd or λ shows up
+                 as a hydrostatic term); do not read them as a strain
+                 measurement — that is what process-grains is for.
+    strain_bound : half-width of the ``grain_strain`` box, dimensionless.
+    lattice_source : ``"per_grain"`` (default) seeds each grain's own fitted
+                 lattice from ``Grains.csv``; ``"header"`` restores the
+                 pre-issue-#70 behaviour of tiling the nominal lattice.
     with_powder : full-joint path (powder + grains); not yet wired (raises).
     out_paramstest : if given, write the corrected paramstest for the re-run.
     """
@@ -600,7 +650,7 @@ def refine_geometry_from_grains(
 
     # Grains + spots.
     (grain_eulers, grain_pos, grain_lat, spots_per_grain, grains, _smatrix) = \
-        load_phase2_grains_and_spots(layer_dir)
+        load_phase2_grains_and_spots(layer_dir, lattice_source=lattice_source)
     ring_tt = load_ring_two_theta(layer_dir / "hkls.csv")
 
     model = _build_forward_model(v1, hedm, grains, two_theta_max_deg=two_theta_max_deg,
@@ -679,12 +729,26 @@ def refine_geometry_from_grains(
         lo, hi = (-180.0, 180.0) if nm.startswith("phi") else (-0.05, 0.05)
         spec.add(Parameter(nm, init=torch.tensor(_v2_init[nm], dtype=dtype),
                            refined=False, bounds=(lo, hi)))
-    # Grain pose is held FIXED at the (good) MIDAS values for the tx step: a
+    # Grain POSE is held FIXED at the (good) MIDAS values for the tx step: a
     # free grain orientation rotates the predicted (Y,Z) pattern about the beam
     # exactly as tx rotates the observed one, so co-refining it re-absorbs tx
     # (the divergence we saw). With the pose fixed, the (Y,Z) position loss has a
-    # clean minimum at the true tx (validated by a tx-cost scan). Strain/pose are
-    # refined separately downstream (process-grains), not here.
+    # clean minimum at the true tx (validated by a tx-cost scan).
+    #
+    # Grain STRAIN is different and is NOT frozen by default. A symmetric
+    # strain carries no rigid rotation, so it cannot reproduce tx's uniform
+    # in-plane rotation the way a free orientation can. Decomposed: the
+    # HYDROSTATIC part scales every |g| and moves every spot along R, which tx
+    # leaves invariant; only the DEVIATORIC part shifts eta and can trade
+    # against tx. Measured on the synthetic fixture, freezing a wrong
+    # hydrostatic strain biases tx ~300-500x less than freezing a wrong
+    # deviatoric one of the same size (tests/test_grain_strain.py). Co-refining
+    # is therefore safe, and - the reason to bother - it stops a real per-grain
+    # strain from being charged to the geometry. Freezing it was hardcoded here
+    # until issue #70.
+    #
+    # NB "deviatoric", not "shear": e11/e22/e33 are normal only in the CRYSTAL
+    # frame and carry deviatoric content in the lab unless they are equal.
     spec = build_joint_spec(
         powder_spec=spec,
         grain_eulers_init=torch.from_numpy(grain_eulers).to(dtype),
@@ -692,7 +756,8 @@ def refine_geometry_from_grains(
         grain_lattices_init=torch.from_numpy(grain_lat).to(dtype),
         refine_grain_orientation=refine_grain_orientation,
         refine_grain_position=refine_grain_position,
-        refine_grain_strain=False,
+        refine_grain_strain=refine_grain_strain,
+        strain_bound=strain_bound,
     )
     spec.parameters["grain_euler"].bounds = (-2 * math.pi, 2 * math.pi)
     spec.parameters["grain_pos"].bounds = (-2000.0, 2000.0)
@@ -732,7 +797,9 @@ def refine_geometry_from_grains(
         spec.parameters[nm].refined = False
         LOG.info("pinned %s to a supplied known value", nm)
 
-    conditioning = _conditioning_warnings(refine_params, len(grain_eulers))
+    conditioning = _conditioning_warnings(
+        refine_params, len(grain_eulers), refine_grain_strain=refine_grain_strain,
+        n_spots=sum(int(m.mask.sum()) for m in matches))
     for msg in conditioning:
         LOG.warning("%s", msg)
 
@@ -785,6 +852,31 @@ def refine_geometry_from_grains(
     for msg in bound_msgs:
         LOG.warning("%s", msg)
     at_bounds = [m.split(" =", 1)[0] for m in bound_msgs]
+
+    # Per-grain strain summary. Reported so a run that quietly parked its
+    # strain block on the bound is visible: that is the block absorbing
+    # something that is not strain (a wrong Lsd or lambda), and the geometry
+    # it hands back is then not trustworthy either.
+    strain_summary: Dict[str, float] = {}
+    if refine_grain_strain and "grain_strain" in unpacked:
+        eps = unpacked["grain_strain"].detach().abs()
+        n_edge = int((eps >= (1.0 - 1e-3) * strain_bound).sum())
+        strain_summary = {
+            "median": float(eps.median()) * 1e6,
+            "p90": float(eps.flatten().quantile(0.9)) * 1e6,
+            "max": float(eps.max()) * 1e6,
+            "n_at_bound": float(n_edge),
+        }
+        LOG.info("refined per-grain strain (nuisance block): median %.0f ue, "
+                 "p90 %.0f ue, max %.0f ue", strain_summary["median"],
+                 strain_summary["p90"], strain_summary["max"])
+        if n_edge:
+            msg = (f"{n_edge} of {eps.numel()} grain_strain components are ON "
+                   f"the +/-{strain_bound:g} bound. The strain block is "
+                   "absorbing something that is not strain; the geometry from "
+                   "this run is not trustworthy.")
+            LOG.warning("%s", msg)
+            at_bounds.append("grain_strain")
     out_path = None
     if out_paramstest is not None:
         # Edit the ORIGINAL param text in place — replace/append only the
@@ -847,6 +939,7 @@ def refine_geometry_from_grains(
         n_grains=len(observations), n_spots_matched=n_matched,
         paramstest_out=out_path, unpacked=unpacked,
         at_bounds=at_bounds, conditioning=conditioning,
+        grain_strain_ue=strain_summary,
     )
 
 
