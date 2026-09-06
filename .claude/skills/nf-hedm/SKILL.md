@@ -83,7 +83,8 @@ build both masks from one reduction and let the calibrant decide — not the con
 
 ## Sibling doc sets
 
-`manuals/ff-hedm/` (far-field, skill `ff-hedm`), `manuals/dfxm/` (dark-field X-ray
-microscopy, skill `dfxm`), `manuals/tomo/` (tomography and the **coordinate-system
-reference**, skill `tomo`), and, in the LaueMatching repository,
+`manuals/ff-hedm/` (far-field, skill `ff-hedm`), `manuals/defect/` (diffuse-scattering
+defect metrology — what the far-field peak fit discards, skill `defect`), `manuals/dfxm/`
+(dark-field X-ray microscopy, skill `dfxm`), `manuals/tomo/` (tomography and the
+**coordinate-system reference**, skill `tomo`), and, in the LaueMatching repository,
 `scripts/pipeline/laue/` (skill `laue`).

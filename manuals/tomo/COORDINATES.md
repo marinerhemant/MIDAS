@@ -132,6 +132,54 @@ The in-plane registration is not given by a motor position and has to be
 established per experiment. §5 of [`DIAGNOSIS.md`](DIAGNOSIS.md) lists the
 checks and, importantly, when each has no power.
 
+### 4a. Validating one modality against another without circularity
+
+Worked through in full on FF↔EBSD (`manuals/ff-hedm/phase-5-trust.md` §15g); the
+structure is general and applies to FF↔NF, FF↔tomo and NF↔EBSD equally.
+
+**Match on the quantity that needs no registration, then score the one that does.**
+Orientation comparison needs only the *frame convention*, not a spatial
+registration — so pair grains by misorientation alone, and the **position**
+residual of those pairs is an independent test, because position never entered
+the pairing. That is the cheapest way out of the circularity §4 warns about.
+
+Where a discrete choice is genuinely unavoidable — which axis maps to which, a
+rigid offset — pick it on a random **half** of the objects and report on the
+held-out half. On `shade_LSHR` train and test agreed to 0.1 µm; a large gap
+between them is the signal that the choice did not generalise.
+
+**Settle the frame convention by SCATTER, not by mean offset.** Convention
+questions (matrix vs transpose, `BC` as (col,row) vs (row,col), axis order) are
+discrete: try both and let a null decide. Measured there, the *wrong* beam-centre
+convention gave the *better* median offset — 0.05 px against 0.87 px — and was
+exposed only by its scatter (8.12 px against 0.12 px). A check read one number at
+a time picks the wrong answer.
+
+**Two lengths that are not comparable, and one that is not a truth.**
+
+| quantity | why it is not what it looks like |
+|---|---|
+| a 2-D **section** centroid vs a 3-D **grain** centroid | **only if the two sample different volumes.** When the diffraction layer is a thin slice through the *same* plane the reference sectioned — the usual EBSD-comparison design — FF's fitted position is the centroid of grain ∩ beam slab, i.e. a section centroid too, and the residual is a real **accuracy**. **Test it, do not assume**: regress the residual on grain size. Same section ⇒ it **falls** (measurement error, more signal); FF volume ≫ section ⇒ it **grows** (the gap scales with radius). Measured on three reconstructions of one layer: −0.36, −1.03, −1.47 µm/µm — falls in all three |
+| a misorientation between two modalities | contains **both** instruments' angular precision, which is not separable — again an upper bound |
+| the other modality's **grain list** | a segmentation, not ground truth. Re-segmenting an EBSD map from its raw `.mic` moved an FF precision figure **13 points** (72.3 → 85.7 %) with the reconstruction untouched, because 49.5 % of the apparent false positives were real grains the coarse segmentation had merged. Name the segmentation whenever you quote a number against it, and re-segment once to see how far the number moves |
+
+**When the layer IS the section, the reconstruction's Z spread IS its Z error.**
+Every indexed grain physically lies in the slab, so the observed Z distribution is the
+error distribution — a quantity that is otherwise unmeasurable. Measured with a 1.5 µm
+beam (true slab sd 0.43 µm): Z error 3.11 µm against an in-plane error of 5.04 µm, i.e.
+**Z is BETTER determined than in-plane, 0.62×**. That inverts the usual expectation and is
+a property of the thin beam — a grain outside the slab cannot diffract at all. A large |Z|
+is then a fit failure, not a position, and works as a free quality filter (though not as a
+better sort key than `DiffPos`).
+
+**A residual global rotation is the check that catches what nothing internal can.**
+Fit the best rigid lab rotation between the two orientation sets (resolve symmetry
+first — MIDAS matrices map crystal→lab, so an equivalent orientation is `B·S`,
+never `S·B`) and report its angle *and axis*. An axis on **z_MIDAS** of about one
+ω step is the FF `SkipFrame`/`OmegaStart` error, which changes every orientation
+while leaving every internal diagnostic healthy. Three independent reconstructions
+of one layer gave 0.029°, 0.025°, 0.025°, none on z.
+
 ---
 
 ## 5. Detector frames
@@ -167,3 +215,16 @@ Distinct from all of the above, and the source of a recurring confusion.
    in the two frames and both appear in the same conversation.
 4. **`det = +1` is not decoration.** If you build an axis map by hand, check the
    determinant before trusting anything computed with it.
+5. **The other modality's grain list is a segmentation, not ground truth.** Its
+   grain *count* is a free parameter of whoever segmented it — one EBSD map gave
+   3893 grains as supplied, 4625 re-grown from the raw `.mic`, against 4496 in the
+   published table. Any precision or recall scored against it inherits that choice.
+6. **Comparing two reconstructions of different size is not free.** Precision
+   falls mechanically when a run reports more objects than the reference contains,
+   but truncating both to equal count by an internal metric assumes that metric
+   ranks equally well in both — which is itself a claim. Of 144 grains one run
+   "lost" that way, 103 were present and merely ranked low. Report both, and
+   resolve disagreements per object.
+7. **Stratify before believing a trend across modalities.** A clean monotonic
+   fall in match rate with distance from the beam plane (91 % → 38 %) was entirely
+   confounded by grain size: within one size quartile it was flat.

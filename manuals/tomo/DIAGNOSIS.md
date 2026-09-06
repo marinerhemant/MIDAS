@@ -103,6 +103,70 @@ returns False for it.
 
 ---
 
+## Centring refuses, and the two criteria straddle the answer
+
+symptom: null.not_cleared
+
+**Test.** Read the two per-criterion picks, not just `trustworthy`. The signature is
+`variance` and `total variation` disagreeing by roughly 1.5 px with TV **low**, and it is
+the documented bias of `sharpness(method='tv')`, not a property of the data — see
+`LAB_NOTEBOOK.md` §3.5 and §3.9. TV maximises `−mean|∇f|`, i.e. prefers the *least*
+gradient, so on a specimen with strong edges the well-centred slice has the most gradient
+and TV prefers the degraded one. Seen on `nmc811s5tomo1` (variance +13.000, TV +11.400)
+and on `park_dmi_sam5_mid_cube_tomo` (variance −13.000, TV −11.500). Both times **variance
+was right**.
+
+The other answer: if the two criteria agree and the flag is still False, the complaint is
+about per-slice spread or an edge pick, and that is a different fault — widen `--coarse`
+(the default `-25 25 1` is unbiased; a range chosen around an expected value will push a
+criterion to the sweep edge) and raise `--centre-slab` so more rows carrying sample are
+scored.
+
+Also check whether the score is *flat*: "best score is within 1 % of the median across N
+candidates" means the criterion separated nothing and `argmax` returned a position
+regardless. Strong **ring artefacts** cause this — they dominate the high-frequency content
+and, being concentric about the axis by construction, barely change as the shift varies.
+
+**Cause.** A sharpness proxy is being asked to rank reconstructions whose sharpness is
+dominated by something other than the centring.
+
+**Lever.** Score an observable that does not go through sharpness at all. On a **360°**
+scan use **180° half-scan agreement**: reconstruct the first and second halves separately,
+and minimise `RMS(A−B)/RMS(A)` over the specimen support. Both halves image the same
+object, so they coincide only at the true axis, and rings — being common to both — largely
+cancel. On `park_dmi_sam5` this gave a smooth minimum where the built-in sweep was flat:
+vertex **−12.96** (integer shifts) and **−12.79** (half-integer), against variance's −13.
+Confirm by eye on a **specimen corner**, where a mis-centring shows as a doubled edge and a
+dark halo.
+
+---
+
+## A shift sweep oscillates with period 1 px, minima at half-integers
+
+symptom: null.not_cleared
+
+**Test.** Sample a centring metric at 0.25 px spacing across two integers. If the curve
+oscillates with period exactly 1.0 px and is lowest at `x.5`, the structure is an
+interpolation artefact, not centring. Measured on `park_dmi_sam5`, `RMS(A−B)/RMS(A)`:
+
+    -14.00  0.42693     -13.00  0.42355     -12.00  0.42494      <- integers, high
+    -13.75  0.37344     -12.75  0.37055
+    -13.50  0.35244     -12.50  0.35069                          <- half-integers, low
+    -13.25  0.37146     -12.25  0.37146
+
+**Cause.** A fractional shift resamples the sinogram. The interpolation is a low-pass, so
+it smooths *both* reconstructions being compared and improves any agreement or smoothness
+metric regardless of whether the axis is right. Integer shifts are not resampled and form a
+different class.
+
+**Lever.** Only compare shifts **within one interpolation class** — all integer, or all
+`x.5`. Fit each class separately and check they agree; the spread between classes is a fair
+uncertainty on the axis. Above: −12.96 (integer) against −12.79 (half-integer), so
+−12.9 ± 0.2 px. A parabola fitted across a *mixed* scan returns the half-integer grid, not
+the axis — a "vertex −12.50" from such a fit was discarded for exactly this reason.
+
+---
+
 ## The mask includes reconstruction padding
 
 symptom: scale.inflated

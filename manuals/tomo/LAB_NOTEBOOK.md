@@ -304,6 +304,110 @@ specifically — residual energy outside the sample support, or negative
 undershoot — would be independent of specimen contrast in a way this is not.
 Not changed yet: it is pre-existing behaviour and the fix is a design choice.
 
+### 3.12 §3.5 reproduced on a second specimen, and the OPEN item closed (2026-09-01)
+
+`park_dmi_sam5_mid_cube_tomo` (1-ID, LSHR cube, D = 135 mm, 1.172 µm/px, 360° at 0.2°)
+gave the **same signature as §3.5 on a different beamtime and a different material**:
+
+| criterion | picks |
+|---|---|
+| variance | **−13.000** |
+| total variation | **−11.500** |
+
+TV low by 1.5 px, `trustworthy=False`, consensus refuses. §3.5 saw +13.000 / +11.400 —
+low by 1.6 px. **Two independent datasets, same offset and same sign.** The refusal is
+correct behaviour and the variance pick is the answer both times.
+
+**This entry existed and was not read before re-deriving it.** The FF thread spent about an
+hour rediscovering that TV is biased low, that widening a pre-biased `--coarse` range fixes
+an edge pick but not the disagreement, and that an undershoot-style metric is the way out —
+all of which §3.5 already said, including naming "negative undershoot" as the fix. The
+`tomo` skill instructs that this notebook be read *before* re-investigating; that
+instruction earns its place. `ff-hedm` and `pf-hedm` now point at this doc set (they did
+not; `nf-hedm` already did).
+
+**New here: the flat-curve mode.** On this specimen the coarse sweep also reported *best
+score within 0.85 % of the median across 52 candidates* — the criterion separated nothing
+and `argmax` returned a value regardless. Cause is the strong concentric **ring artefacts**:
+they dominate the high-frequency content and are centred on the axis by construction, so
+they hardly change with shift. That is distinct from §3.5's empty-row edge picks, and it is
+not fixed by `slices_with_signal` or a wider range (both were applied: unbiased
+`-25 25 1`, `--centre-slab 64`, rows 387:451 — the edge picks went away, the flatness did
+not).
+
+**The OPEN item in §3.5 is closed: use 180° half-scan agreement.** The scan covers 360°, so
+the first and second halves must reconstruct the same object; minimise
+`RMS(A−B)/RMS(A)` over the specimen support. It does not go through a sharpness proxy, and
+ring artefacts are common to both halves so they largely cancel. Where the built-in sweep
+was flat this gave a clean minimum:
+
+    integer shifts       vertex -12.96   curvature +0.00207
+    half-integer shifts  vertex -12.79   curvature +0.00249
+
+→ **−12.9 ± 0.2 px** (−15.1 µm), agreeing with the variance pick of −13 and disagreeing
+with TV's −11.5, as expected. Confirmed by eye on the specimen corner: clean over −17…−11,
+doubled edge and dark halo by +8.
+
+An **undershoot/halo** metric — §3.5's own suggestion, mean level in a ring just outside
+the specimen — was also tried. It works in the right direction but is too shallow to be
+decisive here: the dip across −15…−12 spans <0.01 and its minimum drifts to −12. Prefer
+half-scan agreement when the scan is 360°.
+
+**Trap, new and not in §3.5: the metric is only comparable within one interpolation
+class.** Mixing integer and fractional shifts produces a period-1 oscillation with minima
+at half-integers, because a fractional shift resamples the sinogram and the interpolation
+low-pass improves agreement regardless of centring. A parabola through a mixed scan returns
+the half-integer grid, not the axis; a "vertex −12.50" so obtained was discarded. Fit each
+class separately — the spread between them is a fair uncertainty. See `DIAGNOSIS.md`.
+
+**Unresolved.** A 0/180 projection-pair cross-correlation puts the rotation axis at crop
+column 849.67 against a crop centre of 849.5 — offset **+0.17 px** — while the
+reconstruction demonstrably wants **−12.9**. Four of five pairs agree to 0.05 px, so the
+geometric number is not noise. The two are presumably expressed in different reference
+frames, but that has **not** been demonstrated; do not reconcile them by adjusting either.
+
+**RETRACTED — a "negative result" that was two search bugs.** This entry first
+recorded that *no Au inclusion is resolvable in the tomogram*. **That was wrong.**
+There are **three**, each ~49–50 µm, and they are plainly visible by eye once you
+look at the right place:
+
+    #   voxels   z range     row     col   equiv side
+    1    78431   381-455    1474.7  1016.3    50.2 um
+    2    73654    54-122    1472.9   996.9    49.1 um
+    3    73068   725-791    1471.6  1001.0    49.0 um
+
+All three sit on the same specimen face (row ≈ 1473) at z ≈ 88 / 418 / 758,
+spaced ~390 µm — a fiducial ladder that breaks the square cross-section's 4-fold
+symmetry and fixes the vertical at the same time.
+
+Both searches failed for reasons worth naming:
+
+* The first search **did report cube 3** (`z=740, row 1472.4, col 1002.2,
+  1514 px`) and it was dismissed because its radius from the volume centre was
+  constant across slices — "therefore a ring artefact". **Backwards.** An object
+  at a fixed position in the sample keeps the same `(row, col)` in every slice,
+  so a constant radius is what a *real* inclusion looks like. A ring artefact is
+  an annulus spanning all azimuths; these are compact blobs at one azimuth.
+* The second search eroded the specimen mask by 12 px "to look inside", which
+  deleted every object **on the boundary** — which is where all three sit.
+
+μD ≈ 1.08, so the scan was never contrast-starved; the objects were always there.
+**A fiducial registration between FF and tomo IS available on this dataset.**
+
+**And the cube is by far the best rotation-axis criterion here.** Unlike the bulk
+(sharpness flat to 0.85 %) and the specimen edge (halo dip < 0.01), a dense
+compact inclusion has curvature in every direction and is not swamped by the
+rings. Edge-gradient on cube 1 across shift:
+
+    -20  5.1e-04     -14  1.25e-03     -11  8.8e-04
+    -15  8.1e-04     -13  1.31e-03     -9   6.7e-04
+                     -12  1.03e-03     +0   3.9e-04
+
+A sharp peak at **−13** with **3.3× dynamic range**, agreeing with the half-scan
+vertex of −12.96 and resolving −13 over −14. Its area above half-max collapses
+from 1656 px to 860 px between −13 and 0. **If the specimen contains any dense
+compact inclusion, centre on that and skip the sharpness proxies entirely.**
+
 ### 3.7 Paganin, and a RETRACTION about the threshold diagnostic
 
 `midas_tomo.phase_retrieval` implements the single-material Paganin filter.

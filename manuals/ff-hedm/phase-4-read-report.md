@@ -249,3 +249,25 @@ not let a §11 item become a fact by being quoted often enough.
 
 **If a box cannot be ticked, say so in the report rather than leaving it blank.** An
 unticked box is a known limit; a silently skipped one becomes a false claim.
+
+## IPF maps — check the colouring is symmetry-invariant before you trust one
+
+`midas_plotting.ipf_rgb` / `ipf_rgb_from_matrix` needed the **transpose** of a MIDAS
+orientation matrix until 2026-09-03. MIDAS matrices map **crystal -> lab**, so the crystal
+direction along a sample axis is `g^T a`, not `g a`. With the wrong side the colour is not
+symmetry-invariant: the 24 equally valid representations of one grain spread over **0.96**
+in RGB, so the colour depended on which variant the indexer stored, and two grains agreeing
+to 0.5° came out 0.42 apart in RGB (fixed: 0.0101, 99.1 % identical).
+
+**The check, which needs no reference data and must hold for any correct IPF colouring:**
+
+```python
+S = sym_matrices(225)
+rgb = ipf_rgb_from_matrix(np.einsum("nij,jk->nik", g, S[None]), 225)   # g . S
+assert rgb.ptp(axis=0).max() < 1e-6      # one grain, one colour
+```
+
+Symmetry acts on the **right** for crystal->lab matrices — `midas_stress` treats `g·S` as
+the same orientation (0.00°) and `S·g` as a different one (61°). The package's own tests
+asserted the wrong side, which is why the bug survived. If you write an IPF map, assert the
+invariance first; a wrong colouring has no other symptom.

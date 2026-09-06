@@ -120,6 +120,11 @@ README marks which steps are real-data-proven and which are demonstrated in simu
 
 ## Sibling doc sets
 
-`manuals/ff-hedm/` (far-field HEDM, skill `ff-hedm`), `manuals/nf-hedm/` (near-field,
+`manuals/ff-hedm/` (far-field HEDM, skill `ff-hedm`), `manuals/defect/`
+(diffuse-scattering defect metrology, skill `defect`), `manuals/nf-hedm/` (near-field,
 skill `nf-hedm`), and, in the LaueMatching repository, `scripts/pipeline/laue/` (skill
 `laue`). The paper that grounds this doc set is `packages/midas_dfxm/dev/paper/P_merged/`.
+
+**`defect` escalates here** for intragranular detail its far-field measurement cannot
+reach — in particular whether a defect population on a direction shared by parent and twin
+is distributed through the bulk or confined to a nanometre-scale boundary film.

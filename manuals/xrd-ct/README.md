@@ -220,5 +220,7 @@ deliverable and texture was bounded near zero.
 
 `manuals/ff-hedm/` (far-field HEDM, skill `ff-hedm`), `manuals/nf-hedm/` (near-field, skill
 `nf-hedm`), `manuals/pf-hedm/` (scanning 3DXRD — **the right doc set if your rings are
-spotty**, skill `pf-hedm`), `manuals/dfxm/` (dark-field X-ray microscopy, skill `dfxm`), and
-in the LaueMatching repository the `laue` skill.
+spotty**, skill `pf-hedm`), `manuals/defect/` (diffuse scattering **between** discrete spots — the
+counterpart question when the rings are not powder, skill `defect`), `manuals/dfxm/`
+(dark-field X-ray microscopy, skill `dfxm`), and in the LaueMatching repository the `laue`
+skill.

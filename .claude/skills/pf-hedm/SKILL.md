@@ -119,6 +119,19 @@ null found *more* grains than the real data. Cheap: a re-index, no re-prep.
 
 ## Sibling doc sets
 
-`manuals/ff-hedm/` (far-field, skill `ff-hedm`), `manuals/nf-hedm/` (near-field, skill
-`nf-hedm`), `manuals/dfxm/` (dark-field X-ray microscopy, skill `dfxm`), and in the
+`manuals/ff-hedm/` (far-field, skill `ff-hedm`), `manuals/defect/` (diffuse-scattering
+defect metrology, skill `defect`), `manuals/nf-hedm/` (near-field, skill `nf-hedm`),
+`manuals/dfxm/` (dark-field X-ray microscopy, skill `dfxm`), `manuals/tomo/`
+(tomography and the **coordinate-system reference**, skill `tomo`), and in the
 LaueMatching repository the `laue` skill.
+
+**`defect` escalates to this doc set.** When a defect phase sits on a reciprocal direction
+**shared** by two orientation families — a fault population on a twin's composition plane,
+say — far-field cannot say whether it is bulk or a boundary film, because both scatter to
+the same place. That is an intrinsic limit there and a spatial-resolution question here.
+
+**Reach for `tomo` whenever a PF analysis touches the sample volume or has to
+register against another modality.** That doc set owns `COORDINATES.md`, the
+single reference for the MIDAS lab frame across FF, NF, PF and tomo, and its
+`LAB_NOTEBOOK.md` records which reconstruction checks have **no power** on which
+specimens — not guessable from the code.

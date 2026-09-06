@@ -142,8 +142,10 @@ calibration for your priors.
 `manuals/ff-hedm/` (far-field HEDM, skill `ff-hedm`), `manuals/nf-hedm/` (near-field, skill
 `nf-hedm`), `manuals/pf-hedm/` (scanning 3DXRD, skill `pf-hedm`), `manuals/xrd-ct/`
 (powder-like diffraction tomography — **the right doc set if your rings are continuous**,
-skill `xrd-ct`), `manuals/dfxm/` (dark-field X-ray microscopy, skill `dfxm`), and in the
-LaueMatching repository the `laue` skill.
+skill `xrd-ct`), `manuals/defect/` (**the diffuse field between the spots** of a
+discrete-spot rotation series — the same kind of data this doc set reconstructs from, asked
+a different question, skill `defect`), `manuals/dfxm/` (dark-field X-ray microscopy, skill
+`dfxm`), and in the LaueMatching repository the `laue` skill.
 
 ## Log a halt
 

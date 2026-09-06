@@ -90,5 +90,10 @@ data-blind constant guess.
 ## Sibling doc sets
 
 `manuals/ff-hedm/` (skill `ff-hedm`), `manuals/nf-hedm/` (`nf-hedm`),
-`manuals/pf-hedm/` (`pf-hedm`), `manuals/xrd-ct/` (`xrd-ct`). Those consume the
-geometry this one produces.
+`manuals/pf-hedm/` (`pf-hedm`), `manuals/xrd-ct/` (`xrd-ct`), `manuals/defect/`
+(`defect`). Those consume the geometry this one produces.
+
+`defect` is also a **source** of geometry when no calibrant exists:
+`midas_calibrate_v2.friedel` measures a beam centre from Friedel-pair midpoints with no
+geometry file at all, and measures **tx**, the in-plane detector rotation, from the pairs'
+ω splitting — a parameter a powder ring calibration is structurally blind to.

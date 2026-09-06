@@ -119,4 +119,5 @@ registration done with it will have been improvised.
 ## Sibling doc sets
 
 `manuals/ff-hedm/`, `manuals/nf-hedm/`, `manuals/pf-hedm/`, `manuals/dct-tt/`
-(diffraction-contrast tomography — a different measurement), `manuals/xrd-ct/`.
+(diffraction-contrast tomography — a different measurement), `manuals/xrd-ct/`,
+`manuals/defect/` (diffuse-scattering defect metrology).

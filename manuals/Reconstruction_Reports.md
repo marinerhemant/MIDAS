@@ -34,9 +34,19 @@ auto-findings.
 `midas-process-grains` ≥ 0.9.2 writes the sidecar from every mode that reads FitBest,
 including the default `c_parity`; below that, a `c_parity` run produced none, so a
 missing sidecar on an older run says nothing about the run's quality. `mode=physics`
-never writes one (`v4_pipeline` does not read FitBest). Note that `Grains.csv`
-`DiffPos` is **not** the mean of the table's per-spot position residual (median ratio
-0.61) even though `DiffOme` and `DiffAngle` are — do not reconcile them in a report.
+never writes one (`v4_pipeline` does not read FitBest). Note on `DiffPos`: it **is** the mean of the per-spot `DiffLenPost` — verified to
+four decimals on 1-ID LSHR (`park_dmi_sam5` layer 6, 2466 grains, 2026-09-01:
+reported 49.5978 / 190.2037 µm for the two DiffPos branches, per-spot mean
+identical). An earlier note here said it was *not* the mean, ratio 0.61; that
+comparison was against the **pre-fit** `DiffLen`, not `DiffLenPost`.
+
+**It is a mean over a heavy-tailed distribution, so treat it as a weak quality
+metric.** Every grain's mean is ~2.3× its own median, so a minority of badly
+matched spots dominates the reported number for *all* grains. When ranking
+grains by fit quality prefer the median of `DiffLenPost` / `InternalAnglePost`
+from the sidecar. On the same dataset the two-population split measures 2.42×
+on the mean internal angle but only 1.75× on the median — roughly a quarter of
+the apparent separation is the estimator, the rest is real.
 
 ---
 

@@ -133,6 +133,19 @@ The two criteria:
 They should agree; the tool says so explicitly when they do not, which points at a bad band
 or a broken dark rather than at the threshold.
 
+> **On a dense sample, criterion C binds on EVERY ring — the limit is spots MERGING, not
+> noise.** Measured on `shade_LSHR` (1-ID GE, ~4000 grains in the beam), A and B agreed on
+> all nine rings while C sat above both on six of them, giving
+> `RingThresh` **20 / 10 / 50 / 50 / 20 / 20 / 30 / 20 / 20** for rings 1–9. Read that as a
+> statement about the sample: with thousands of grains the rings are crowded, and below the
+> C value distinct spots fuse into one connected component — which A and B cannot see,
+> because merging changes neither blob SNR nor the noise floor.
+>
+> The published run on that dataset used a flat **80**, above every measured value, and
+> under-detected. Lower thresholds bought ~2.36 M peaks and 4312 grains against its 3775 —
+> but they also cost accuracy in the ~10 µm size range while gaining at the very small end,
+> so this is a trade-off to measure, not a free win (§15g).
+
 **Why the old "pick the knee" rule was not enough.** Blobs/frame surviving the size filter
 on `Au3_cubes_ff_000008` go 5.2 (thr 5) → 1.6 (10) → 0.8 (20) → 0.5 (40). The two-orders
 jump is between 5 and 10, but noise keeps falling out well past it. The knee locates where

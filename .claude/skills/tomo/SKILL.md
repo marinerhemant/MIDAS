@@ -67,7 +67,7 @@ error is 4.5× in every volume.** Same class of trap as the stale `exp_setup.yml
 against the recorded first/last image numbers, refusing when they disagree — an
 off-by-one boundary averages projections into the flat field, silently.
 
-## Five things to know before you start
+## Six things to know before you start
 
 1. **The un-illuminated detector does not read as zero.** Outside the beam
    `white − dark ≈ 0`, so the transmission ratio is noise and a clip floor turns it
@@ -95,7 +95,17 @@ off-by-one boundary averages projections into the flat field, silently.
    specimen comes out. On bt_1id_jun25b it did **not** rescue the mask; that outcome was
    reported rather than tuned away.
 
-5. **Check that a check could have failed.** Several here cannot, by construction: the
+5. **A specimen fiducial beats every automatic criterion — look for one first.**
+   Three Au cubes in `park_dmi_sam5` were missed by two automated searches: one
+   found a cube and rejected it because its radius from the volume centre was
+   constant across slices ("ring artefact") — but a fixed real object keeps the same
+   `(row, col)` in every slice, so constant radius is exactly what it should do; a
+   ring artefact is an annulus spanning all azimuths. The next search eroded the
+   specimen mask to "look inside" and deleted everything on the boundary, where all
+   three sat. **Render a slice and look before trusting a blob finder**, and do not
+   erode away the surface.
+
+6. **Check that a check could have failed.** Several here cannot, by construction: the
    V1 sinogram check has zero power on a cylinder; centroid containment is blind to a
    pure translation; and a threshold sweep over *percentiles of the data* pins
    `radius_spread` at exactly `100**(1/3) = 4.642` whatever the input. `manuals/tomo/`
@@ -107,6 +117,31 @@ off-by-one boundary averages projections into the flat field, silently.
   criteria that fail differently and reports `trustworthy=False` when they disagree.
   Choose the slices with `slices_with_signal`: evenly spaced probes land on empty rows,
   whose sharpness curves have no interior optimum, so `argmax` returns a sweep edge.
+
+  **When it refuses, read the two per-criterion picks before doing anything else.**
+  If they straddle the answer by ~1.5 px with **total variation low**, that is the
+  documented TV bias, not your data — variance has been right on both datasets where
+  this was checked. If instead the score is *flat* ("best within 1 % of the median"),
+  the criterion separated nothing and `argmax` returned a number regardless; strong
+  ring artefacts do this, being concentric about the axis by construction.
+  `LAB_NOTEBOOK.md` §3.5 and §3.12, `DIAGNOSIS.md`.
+
+  **Two levers that do not go through a sharpness proxy**, in order of preference:
+  1. **A dense compact inclusion**, if the specimen has one — a marker, a precipitate,
+     an Au fiducial. It has curvature in every direction and is not swamped by rings.
+     On `park_dmi_sam5` a 50 µm Au cube gave a sharp edge-gradient peak with **3.3×**
+     dynamic range where the bulk sweep varied by 0.85 %. Just look at it across
+     shifts; the eye is good at this and the metric agrees.
+  2. **180° half-scan agreement**, for a 360° scan: reconstruct the first and second
+     halves separately and minimise `RMS(A−B)/RMS(A)` over the specimen support. Both
+     halves image the same object, so they coincide only at the true axis, and rings —
+     common to both — largely cancel.
+
+  **Compare only shifts within one interpolation class.** A fractional shift resamples
+  the sinogram, and that low-pass improves any agreement or smoothness metric whether
+  or not the axis is right — so a mixed integer/fractional sweep shows a spurious
+  period-1 oscillation with minima at half-integers. Fit integer and half-integer
+  classes separately; their spread is a fair uncertainty.
 * **Detector roll** — `midas_tomo.detector_tilt`, three estimators against **two
   references**: the beam-box edges reference the *slits*, while per-slice best shift and
   rotation-axis drift reference the *rotation axis*. Prefer `tilt_from_slice_shifts`
@@ -133,6 +168,22 @@ wrong.
 recorded motor value, so it is read, not fitted. Fitting a registration and then
 validating the reconstruction with the same data is circular.
 
+**`COORDINATES.md` §4a is the recipe for validating one modality against another**
+without falling into that circle: match on the quantity that needs no registration
+(orientation), then score the one that does (position), so the second is an independent
+test; pick any unavoidable discrete choice on a random half and report on the held-out
+half; settle frame conventions by **scatter**, not by mean offset — the wrong beam-centre
+convention once gave the *better* mean offset and was caught only by its scatter. Two
+numbers there are not what they look like: a cross-modality misorientation contains both
+instruments' precision, and **the other modality's grain list is a segmentation, not
+ground truth** — re-segmenting one EBSD map moved an FF precision figure 13 points with the
+reconstruction untouched. A third depends on a question you must **ask, not assume**:
+whether the two modalities sample the **same volume**. If the diffraction layer is a thin
+slice through the plane the reference sectioned, the position residual is a real accuracy;
+if not, it is inflated by ~the grain radius. Regress the residual on grain size — it falls
+in the first case and grows in the second. And when the layer *is* the section, the
+reconstruction's **Z spread is its Z error**, otherwise unmeasurable.
+
 **The omega sign:** on the aero stage the recorded SPEC angles run opposite to the
 sample rotation. `TomoScan.thetas()` negates them and records that it did.
 
@@ -145,6 +196,7 @@ just as usefully, which checks were found to have no power on which samples.
 
 ## Sibling doc sets
 
-`manuals/ff-hedm/`, `manuals/nf-hedm/`, `manuals/pf-hedm/`, `manuals/xrd-ct/`, and
-`manuals/dct-tt/` — **diffraction**-contrast tomography, a different measurement with
-different geometry; do not apply this doc set to it.
+`manuals/ff-hedm/`, `manuals/nf-hedm/`, `manuals/pf-hedm/`, `manuals/xrd-ct/`,
+`manuals/defect/` (diffuse-scattering defect metrology), and `manuals/dct-tt/` —
+**diffraction**-contrast tomography, a different measurement with different geometry; do
+not apply this doc set to it.

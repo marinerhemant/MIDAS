@@ -702,6 +702,40 @@ forward model (tilts + distortion + parallax) with
 Look at the inner rings *and* the corners. This is the only check that catches a
 well-converged fit sitting on the wrong ring assignment.
 
+#### Making the overlay quantitative — and reading the right number
+
+A picture catches a wrong ring assignment; a **radial profile** catches sub-pixel geometry
+error and settles the beam-centre convention. Build a max-projection over strided frames,
+take the intensity-weighted radius of each ring, and compare against the predicted radii.
+
+> **The mean offset is the wrong statistic. Read the SCATTER and the ring contrast.**
+> Measured on `shade_LSHR`, testing `BC` as (col,row) against (row,col):
+>
+> | convention | rings found | median offset | **scatter** | ring contrast |
+> |---|---|---|---|---|
+> | **(col,row)** — correct | 9/9 | −0.87 px | **0.12 px** | 49–376 |
+> | (row,col) | 7/9 | **0.05 px** | 8.12 px | 0–1.6 |
+>
+> The **wrong** convention has the better mean offset. Only the scatter and the contrast
+> separate them, and a check read one number at a time would have picked the wrong one.
+
+**Two artefacts live in the diagnostic itself; subtract them before blaming the geometry.**
+On the same dataset a residual of −0.85 px looked like **+1438 µε** of hydrostatic strain:
+
+1. **Integer-truncated radial bins.** Bin *r* holds radii [r, r+1), whose mean is r + 0.5,
+   so a naive profile reads **0.5 px low** at every radius. Use the measured mean radius per
+   bin, not the bin label.
+2. **`hkls.csv` `Radius` is the IDEAL radius.** The data carry the detector distortion.
+   Apply it — for the common 3-coefficient file only the isotropic ρ² term (`p2` in the v1
+   layout) survives azimuthal averaging — via
+   `midas_distortion.core.apply_distortion(..., terms=v1_term_layout())`. Worth −0.27 px here.
+
+With both removed the residual was **−0.085 ± 0.163 px** over nine rings from 316 to 911 px.
+**The discriminator between a real strain and an artefact is the functional form**: a
+hydrostatic strain is a constant *fractional* offset, an estimator bias a constant *pixel*
+offset. Fitting both, constant-offset beat constant-strain 0.142 px against 0.280 px
+scatter — it was never a strain.
+
 ### 5e. What a single powder pattern cannot tell you
 
 `Lsd` and λ are near-degenerate: to first order both just scale the ring radii. Fitting at
@@ -828,11 +862,68 @@ is.
 
 ```bash
 midas-joint-ff-calibrate grain-tx \
-  --paramstest <calibrated params> \
+  --paramstest <THE MASTER PARAM FILE — the same one you pass to
+                midas-pipeline --params, e.g. Parameters.txt> \
   --layer-dir  <result>/LayerNr_1 \
   --refine tx,Wedge --max-grains 100 --max-iter 120 \
   --out ps_txwedge.txt
 ```
+
+> ### HALT: `--paramstest` is the MASTER param file, NEVER `<result>/LayerNr_1/paramstest.txt`
+>
+> This is the single easiest way to get a confident wrong answer out of this step,
+> and it fails **silently with `rc=0`**.
+>
+> The per-layer `paramstest.txt` the c-omp tools consume names its geometry
+> `LsdFit` / `YBCFit` / `ZBCFit` / `txFit`. `CalibrationParams.from_file` looks for
+> `Lsd` / `BC` / `tx`, finds none of them, and builds the forward model on **default
+> geometry**. Every predicted spot then lands ~90° from the data, the ring+tolerance
+> filter (Δω < 2°, Δη < 3°) rejects all of them, the cost is 0 → 0, and the optimiser
+> "converges" at its initial value. You get:
+>
+> ```
+>   grains=200  matched spots=0  rc=0
+>   cost: 0.0000e+00 → 0.0000e+00
+>   tx: +0.000000
+>   Wedge: +0.000000
+>   wrote corrected paramstest → ...
+> ```
+>
+> Read casually that says **"tx is already perfect"**. It means the opposite: nothing
+> was measured. Worse, the file it writes carries *both* the original `txFit` and a
+> new `tx 0`.
+>
+> **Acceptance test, every time: read `matched spots`.** It must be a large fraction of
+> the spots the grains actually own (thousands, typically). Zero — or a handful, as in
+> Lab Notebook §8c where 5 of 12 355 matched — is a **wrong input file or a mis-read ω
+> scan, never a converged fit**. A diagnostic that cannot distinguish "perfect" from
+> "measured nothing" is not a diagnostic; check the count before reading the number.
+>
+> Measured 2026-09-03 on `shade_LSHR`: `--paramstest results/LayerNr_1/paramstest.txt`
+> gave 0 matched spots and `tx = 0.000000`, with |Δω| and |Δη| medians of **1.56 rad
+> ≈ 89°** — i.e. π/2, the median of a uniform random angle difference. That number is
+> the fingerprint: predictions uncorrelated with observations, not a small `tx`.
+
+> ### Do NOT hand-roll a `tx` scan
+>
+> Re-running the pipeline at a grid of `tx` values to minimise `DiffPos` is a worse
+> instrument than this tool in every respect — no `Wedge`, no uncertainty, no gradient,
+> and ~12 min per point against one fit. `grain-tx` exists; if it returns something
+> implausible, **debug it** (start with `matched spots`) rather than replacing it.
+> A scan is only for *confirming* a fit that already converged, as the gold/alumina
+> transfer below does.
+>
+> If you do run one anyway, two traps make it read as "`tx` has no effect at all":
+>
+> 1. **`tx` lives in the ZARR**, and `zip_convert` is the only stage that refreshes
+>    parameters into it. Resuming `--from transforms` leaves the OLD `tx` in place and
+>    produces a **byte-identical `Grains.csv`** (verified by md5 on `shade_LSHR`).
+>    Resume `--from zip_convert`; peakfit then skips on its own
+>    (`Temp/AllPeaks_PS.bin` exists) so the expensive stage is not repeated.
+> 2. **Every stage skips when its output exists** — `transforms` logged
+>    *"InputAllExtraInfoFittingAll.csv already exists; skip"* in 0.03 s. Delete the
+>    downstream outputs first. The refresh guard in `_param_refresh.py` catches this
+>    and refuses with a list; trust it rather than `--force-param-refresh`.
 
 > **`grain-tx` returns a RESIDUAL, not an absolute. Compose and iterate.**
 > It reports the roll left over from whatever `tx` the reconstruction already ran with,

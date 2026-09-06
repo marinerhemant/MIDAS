@@ -211,5 +211,7 @@ a TT field, and a TT field does not need a DCT map — though a DCT map is the n
 
 `manuals/ff-hedm/` (far-field HEDM, skill `ff-hedm`), `manuals/nf-hedm/` (near-field, skill
 `nf-hedm`), `manuals/pf-hedm/` (scanning 3DXRD, skill `pf-hedm`), `manuals/xrd-ct/`
-(powder-like diffraction tomography, skill `xrd-ct`), `manuals/dfxm/` (dark-field X-ray
-microscopy, skill `dfxm`), and in the LaueMatching repository the `laue` skill.
+(powder-like diffraction tomography, skill `xrd-ct`), `manuals/defect/` (the diffuse field
+**between** the spots of a discrete-spot rotation series, skill `defect`), `manuals/dfxm/`
+(dark-field X-ray microscopy, skill `dfxm`), and in the LaueMatching repository the `laue`
+skill.

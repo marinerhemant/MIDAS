@@ -82,6 +82,38 @@ After a first reconstruction, **§5h** refines `tx` and `Wedge` from the grains 
 the two a powder calibrant is structurally blind to. `grain-tx` returns a
 **residual**: compose it onto what the run already applied and iterate.
 
+**Use the tool. Never hand-roll a `tx` scan** — a grid of pipeline re-runs gives no
+`Wedge`, no uncertainty and no gradient, at ~12 min a point. And **`--paramstest` is
+the MASTER param file** (the one `midas-pipeline --params` gets), *never*
+`<result>/LayerNr_1/paramstest.txt` — that one names its geometry `LsdFit`/`txFit`,
+so the model silently falls back to default geometry and reports
+`matched spots=0, tx=0.000000, rc=0`, which reads as "tx is already perfect".
+**Always read `matched spots` before believing the number.**
+
+## If a second modality exists, that is the only real accuracy check
+
+Everything the pipeline reports about its own error is **reproducibility** — repeats that
+share the detector, `Lsd`, tilts, wedge, energy and reference lattice, so every shared
+systematic cancels. EBSD, NF, or any independent measurement gives **distance from truth**.
+**§15g** in `phase-5-trust.md` is the procedure. Four things it will not let you skip:
+
+* **match on orientation alone** — it needs no spatial registration, so the position
+  residual afterwards is an independent test rather than a fitted one;
+* **print the chance-match rate for your own grain count** before quoting any match
+  fraction. With ~3900 grains, 0.5° chance-matches 0.3 % but 2° matches **16 %** and 5°
+  matches **95 %** — a loose threshold measures fundamental-zone density, not your data;
+* **name the reference's segmentation.** Precision moved **13 points** on one dataset
+  (72.3 → 85.7 %) with the reconstruction untouched, purely by re-segmenting the reference;
+  half of the apparent false positives were real grains it had merged;
+* **stratify by grain size before believing any trend** — a clean monotonic |Z| dependence
+  there was entirely confounded by size;
+* **ask whether the two modalities sample the same volume** before reading the position
+  residual. If the layer is a thin slice through the plane the reference sectioned it is a
+  real accuracy (5.04 µm there); if not it is inflated by ~the grain radius. Regress the
+  residual on grain size — it *falls* in the first case, *grows* in the second. In the
+  same-section case the reconstruction's **Z spread is its Z error** (3.11 µm, *better*
+  than in-plane with a thin beam), which is otherwise unmeasurable.
+
 ## When something looks wrong
 
 Go to **`manuals/ff-hedm/DIAGNOSIS.md`** — symptom → discriminating test → cause → lever.
@@ -95,6 +127,23 @@ each one.
 
 ## Sibling doc sets
 
+`manuals/defect/` (**the diffuse field this pipeline discards**, skill `defect`),
 `manuals/nf-hedm/` (near-field, skill `nf-hedm`), `manuals/dfxm/` (dark-field X-ray
-microscopy, skill `dfxm`), and, in the LaueMatching repository, `scripts/pipeline/laue/`
+microscopy, skill `dfxm`), `manuals/tomo/` (tomography and the **coordinate-system
+reference**, skill `tomo`), and, in the LaueMatching repository, `scripts/pipeline/laue/`
 (skill `laue`).
+
+**Reach for `defect` when the grains are not the answer.** This chain fits detected peaks
+and returns grains, discarding everything between them. For a deformed material that
+discarded field is the measurement: asterism → dislocation density, rods → planar faults,
+discrete `n·G/m` satellites → a polytype, and a per-grain mechanics layer on top. It takes
+this pipeline's `Grains.csv` as its input.
+
+**Reach for `tomo` whenever an FF analysis touches the sample volume.** Two FF
+quantities depend on it and neither is obtainable from the diffraction alone:
+the illuminated volume behind absolute grain **size** (`ENVELOPE` §1 — without
+it `GrainRadius` is a ratio against the `Vsample` search bound, relative only),
+and any registration of FF grain positions to another modality. That doc set
+owns `COORDINATES.md`, the single reference for the MIDAS lab frame across FF,
+NF, PF and tomo — and its `LAB_NOTEBOOK.md` records which reconstruction checks
+have **no power** on which specimens, which is not guessable from the code.

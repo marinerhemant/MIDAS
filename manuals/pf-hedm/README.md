@@ -233,7 +233,10 @@ the Python refiner it used to name is known-broken.
 ## Sibling doc sets
 
 `manuals/ff-hedm/` (far-field, skill `ff-hedm`), `manuals/nf-hedm/` (near-field, skill
-`nf-hedm`), `manuals/dfxm/` (dark-field microscopy, skill `dfxm`), and in the LaueMatching
-repository the `laue` skill. pf-HEDM is the only one that carries a **per-voxel peak-shape
+`nf-hedm`), `manuals/defect/` (diffuse-scattering defect metrology, skill `defect`),
+`manuals/dfxm/` (dark-field microscopy, skill `dfxm`), and in the LaueMatching
+repository the `laue` skill. **`defect` escalates here** when a defect population sits on a
+reciprocal direction shared by two orientation families: far-field cannot tell bulk from a
+boundary film there, and spatial resolution is the only way through. pf-HEDM is the only one that carries a **per-voxel peak-shape
 strain** phase; the far-field envelope explains why grains-not-voxels changes the strain
 question.

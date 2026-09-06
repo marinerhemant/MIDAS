@@ -1779,6 +1779,7 @@ while getting one layer of ti7al to reconstruct at all.
 | 1 | `RhoD 2000000` generated 745 rings and overran the indexer's 500-ring table — **0 of 4569 seeds indexed, exit 0** | ROOT-CAUSED, code FIXED 2026-08-16 | §8a |
 | 2 | The overflow is **material-dependent** — cubic nf709 made 70 rings from the same value and reconstructed fine | ESTABLISHED | §8a |
 | 3 | `grain-tx` read `OmegaFirstFile`/`NrFilesPerSweep` and so mis-modelled any standard FF file — 5 matched spots of 12 355, `Wedge` railed at +5.0, `rc=0` | FIXED 0.1.7 | §8c |
+| 3b | `grain-tx` fed the per-layer `paramstest.txt` (keys `LsdFit`/`txFit`, not `Lsd`/`tx`) → default geometry → **0 matched spots, `tx=0.000000`, `rc=0`**, which reads as "tx is already perfect". \|Δω\|,\|Δη\| medians ≈ π/2 | DOC FIX — Handbook §5h now names the master file and makes `matched spots` the acceptance test | §8j |
 | 4 | `tx`/`Wedge` from grains: 208 → 226 grains and grain-Z scatter **halved** | VERIFIED | §8d |
 | 5 | Grain Z is under-resolved by ~2.6× even after that; the beam is 100 µm and Z scatters 76 µm | ESTABLISHED — envelope §3 | §8d |
 | 6 | `Lsd` is degenerate with the lattice and λ; fixing `a` reports an `Lsd` that is a restatement of the assumption | ESTABLISHED | §8e |
@@ -1864,6 +1865,7 @@ matching to **5710**.
 
 The same failure had been reported independently on ruby and nf709 as "Wedge is
 always 5.0". Both were the pre-fix build.
+
 
 ### 8d. `tx` and `Wedge` — the measurement
 
@@ -1974,6 +1976,49 @@ samples every azimuth and a handful of grains does not.
 | ω zero-point differs by one 0.25° step from the legacy-C run | `[−179.75, 180]` vs `[−180, 180]` on the same data; frame accounting correct in both. **Symptom measured and reproduced on a second beamtime (§9a). Documented and accepted — Handbook §3e. Attribution still open; the offset is not being chased.** | 3e, 11 |
 
 ---
+
+### 8j. `grain-tx` fed the per-layer `paramstest.txt` — 0 matched spots, `tx=0`, `rc=0`
+
+**2026-09-03, `shade_LSHR` (Sparks et al. 2024, 1-ID GE, 4299 grains).** Sibling of
+§8c: same silent-success failure, different cause, and this one is an *operator*
+error the doc invited.
+
+`--paramstest results/LayerNr_1/paramstest.txt` names its geometry `LsdFit`,
+`YBCFit`, `ZBCFit`, `txFit`. `CalibrationParams.from_file` looks for `Lsd`, `BC`,
+`tx`, finds none, and builds the forward model on **default geometry**. Result:
+
+| | |
+|---|---|
+| reported | `grains=200  matched spots=0  rc=0`, `cost 0→0`, `tx +0.000000`, `Wedge +0.000000` |
+| \|Δω\| median | **1.559 rad** |
+| \|Δη\| median | **1.563 rad** |
+
+Both ≈ π/2 = 1.5708, which **is the median \|Δ\| of a uniform random angle
+difference** — predictions uncorrelated with observations. Tolerances are Δω < 2°,
+Δη < 3°, so everything is rejected. The written "corrected" file carried *both*
+`txFit 0.200994` and a new `tx 0`.
+
+**Read as "tx is already perfect" it is exactly backwards: nothing was measured.**
+Handbook §5h now states the master-file rule and makes `matched spots` the acceptance test.
+
+**The wasted-hour part, recorded because the reasoning was the error.** Rather than
+debugging the tool I concluded it was broken and hand-rolled a `DiffPos` grid scan
+over `tx` — re-implementing a `midas_*` package, against the standing rule. Two
+further traps then made the scan itself return nothing:
+
+1. `tx` lives in the **zarr**; only `zip_convert` refreshes it. `--resume from --from
+   transforms` left the old `tx` and produced a Grains.csv **byte-identical by md5**
+   (`59cc200f…`) at `tx = −0.4` and `tx = 0.200994`.
+2. Every stage skips when its output exists — `transforms` logged *"already exists;
+   skip"* in 0.03 s.
+
+Fixed by resuming `--from zip_convert` (peakfit self-skips on `Temp/AllPeaks_PS.bin`,
+0.38 s) and deleting downstream outputs; `_param_refresh.py`'s guard correctly
+refused until they were gone. With that, `tx = −0.4` gave 798 grains / `DiffPos`
+399 µm against 4299 / 101 µm at `tx = 0.200994` — so this dataset **is** strongly
+`tx`-sensitive, which is what makes getting `tx` right worth the trouble. The scan
+was still the wrong instrument: use `grain-tx`, and reserve a scan for *confirming*
+a converged fit.
 
 ## 9. `nfdev_jul26` — 20-ID-D Varex, the DiffPos investigation (2026-08-17 → 08-19)
 
@@ -2499,3 +2544,142 @@ ceiling pixels in the dark first is one line and is per detector.
 | GE5 clips at 16 349 counts | **1090 pixels/frame** on exactly that value (range 1071–1122 over 5 frames of `park_CeO2_3s_..._000099.edf.ge5`), only 11–19 px/frame in (max−100, max). The **4377** of earlier revisions is the frames-1–4 sum, not a per-frame count. Dark **387** — ratio unconfirmed | ENVELOPE §1, R2f |
 
 ---
+
+## 11. `shade_LSHR` — 1-ID GE, validated against EBSD (2026-09-03)
+
+Sparks et al. 2024 (IMMI 13:773) layer 1. The first dataset in this doc set with an
+**external** reference, so the first real accuracy measurement rather than reproducibility.
+Reconstruction `copland:/home/s1c/sparks_lshr_ff_hs`, analysis
+`~/Desktop/analysis/shirley_paper/ff_ebsd_compare/`.
+
+### 11a. What the run produced
+
+70.6 min end to end (peakfit 82 % of it), 2 362 227 peaks, **26 879 / 27 248 seeds**
+non-zero (98.6 %), **4312 grains**. `RingThresh` measured per ring
+(20/10/50/50/20/20/30/20/20) where the 2024 run used a flat 80; criterion C bound on every
+ring. Geometry adopted from the 2024 Au file but **verified**: nine rings 316–911 px agree
+to **−0.085 ± 0.163 px** (Handbook §5d).
+
+### 11b. Accuracy against EBSD — the headline
+
+| | 2024 run | Aug-2026 run | this run |
+|---|---|---|---|
+| grains | 3775 | 3495 | **4312** |
+| position, held-out half | 12.2 µm | 6.5 µm | **4.9 µm** |
+| p90 position | 32.5 µm | 17.6 µm | **11.6 µm** |
+| median misorientation | 0.217° | 0.214° | **0.213°** |
+| EBSD grains found (re-segmented ref) | 3503 | 3338 | **3696** |
+| precision (re-segmented ref) | 92.8 % | 95.5 % | 85.7 % |
+
+**ESTABLISHED — position accuracy 2.5× better than the 2024 run**, robust at every grain
+count and under three separate reference-blind rankings (4.4–4.9 µm throughout). Both
+figures are **upper bounds**: misorientation contains EBSD's own precision, and position
+compares a 2-D section centroid with a 3-D grain centroid (Handbook §15g).
+
+### 11c. The reference was under-segmented — and it moved precision 13 points
+
+The supplied EBSD list had **3893** grains. Re-growing it from the raw `.mic`
+(239 984 voxels, 2 µm grid, 4-connected, union-find on `misorientation_om_batch`, min 4
+voxels) gives **4625**; Sparks Table 3 reports **4496**. Nearly tolerance-independent —
+4646 at 0.5°, 4581 at 5° — because 82.1 % of adjacent pairs sit below 1° and only 0.3 %
+between 1° and 3°.
+
+**49.5 % of this run's apparent false positives (591 of 1195) were real grains the coarse
+segmentation had merged.** Control: the same re-segmentation rescued **62.6 %** of the 2024
+run's unmatched grains, i.e. it lifts the *older* run harder — so it is a property of the
+reference, not of the new pipeline. Precision 72.3 → **85.7 %**, reconstruction untouched.
+
+### 11d. Three mechanisms eliminated before the reference was suspected
+
+| mechanism | test | result |
+|---|---|---|
+| over-segmentation / fragments | nearest other FF grain in orientation **and** space | 2.92°/532 µm unmatched vs 2.92°/493 µm matched; fragment-like **0.0 % vs 0.2 %** — NOT fragments |
+| near-misses | misorientation spectrum vs texture-preserving null | tracks chance above 1° — no counterpart at all, not a degraded one |
+| outside the map | position in reference coordinates | **99.9 %** inside the footprint |
+| spurious / coincidence | **private-spot fraction** from `SpotMatrix.csv` | **0.496 unmatched vs 0.507 matched**, ~134 private spots each; at the extreme unmatched are *less* borrowed (private<0.3: 1.1 % vs 2.7 %) — no borrowed-spot population exists |
+
+The private-spot test needs no external reference and is the one that redirected the
+investigation to the reference. 28.2 % of all spots were claimed by >1 grain, so the
+statistic is the *difference*, not the level.
+
+### 11e. Size, not depth — a confounded trend that nearly became a finding
+
+Match rate fell monotonically with |Z| (91 % → 38 %), which reads as "EBSD is a 2-D section
+and FF is not". **Stratifying by grain size killed it**: within the largest size quartile
+the rate is flat at ~98 % across all depths; within the smallest it is ~43 % *even at
+Z ≈ 0*. Small grains have badly-conditioned Z, so the two are confounded.
+Residual unmatched by size quartile after the better reference: **0.7 %** largest → 4.4 →
+11.8 → **39.1 %** smallest. **99.3 % of large grains match a real EBSD grain.**
+
+### 11f. Claims of mine that were REFUTED here
+
+| claim | how it died |
+|---|---|
+| "the 101 µm `DiffPos` is an unconstrained `tx` inherited from a powder calibration" | `grain-tx`, invoked correctly, returned a residual of **−0.000672°**. Against a measured sensitivity of **5825 grains/degree** that is ~4 grains; the confirming re-run moved 4299 → **4312**. `tx` was already right, and the 2024 value cannot have come from the powder |
+| "the recall advantage is mostly a counting effect" | too harsh. Of 144 grains "lost" at equal N, **103 (72 %) were in our list within 0.5°**, 81 merely ranked below the `DiffPos` cut; only 25 absent. The equal-N test assumes both runs rank equally well, and they do not |
+| "the unmatched grains are over-segmentation fragments" | 0.0 % fragment-like against a 0.2 % background |
+| "match rate is limited by distance from the beam plane" | confounded by size (§11e) |
+
+### 11g. Two silent-failure traps, both now in the spine
+
+* `grain-tx` fed the per-layer `paramstest.txt` reports **0 matched spots, `tx=0`, `rc=0`**
+  — see §8j.
+* `tx` lives in the **zarr**; only `zip_convert` refreshes it, and every stage skips when
+  its output exists. Resuming `--from transforms` produced a **byte-identical** `Grains.csv`
+  at `tx = −0.4` and `tx = 0.200994` (md5 `59cc200f…`). `_param_refresh.py`'s guard catches
+  this and should be trusted rather than forced.
+
+### 11i. CORRECTION 2026-09-03 — the layer IS the EBSD section
+
+**Filed as an error of mine, because it ran the wrong way: it made the result look worse
+than it is.** §11b originally called the position residual "an upper bound, inflated by
+~the grain radius, because EBSD gives a 2-D section centroid and FF a 3-D grain centroid".
+HS pointed out the HEDM layer **is** that same 2-D section. With a 1.5 µm beam the FF
+position is the centroid of grain ∩ slab — a section centroid too — so the two are directly
+comparable and the residual is a real **accuracy**.
+
+**The evidence was already in hand and I did not read it.** 85.7 % of grains matching within
+0.5° *and* ~5 µm, with a fitted registration offset of (−1.2, +1.5) µm, is impossible unless
+both sample the same material.
+
+**Confirmed two ways after the fact, both able to fail:**
+- the residual **falls** with grain size — slope −0.36 / −1.03 / −1.47 µm per µm of section
+  radius across the three runs; 6.59 → 5.21 → 4.22 → **3.71 µm** over 0–5, 5–8, 8–12,
+  12–50 µm. A section-vs-volume gap would make it **grow**;
+- FF `GrainRadius` tracks the EBSD **section** radius, Spearman **ρ = 0.76–0.81**, with a
+  shuffled-pairing control at **−0.009**.
+
+**Recalibrated against the re-segmented reference (4625 grains):**
+
+| run | in-plane | p90 | **Z error** | Z/in-plane | miso | found | prec |
+|---|---|---|---|---|---|---|---|
+| Jun 2024 | 12.90 µm | 36.33 | **4.35 µm** | 0.34× | 0.218° | 3502 | 92.8 % |
+| Aug 2026 | 6.61 µm | 20.73 | **3.24 µm** | 0.49× | 0.215° | 3330 | 95.5 % |
+| this run | **5.04 µm** | **12.31** | **3.11 µm** | 0.62× | 0.216° | **3691** | 85.7 % |
+
+**NEW, and only possible here: the Z error is measured.** Every grain lies in a ~1.5 µm slab
+(true sd 0.43 µm), so the Z spread *is* the Z error — 3.11 µm, deconvolved 3.08 µm.
+**Z is BETTER determined than in-plane (0.62×)**, which inverts the usual expectation;
+`ENVELOPE.md` §3's "Z is badly conditioned" was measured with a **100 µm** beam. With a beam
+thinner than the grains the beam itself constrains Z.
+
+**`GrainRadius` is calibrated in this run and not in the others**: 1.23× the EBSD section
+radius here against 5.49× and 5.51× for the 2024 and Aug-2026 runs (different
+`Vsample`/`BeamThickness`). Monotonic but compressed — log–log slope 0.407 ± 0.005.
+In physical terms: **99.4 %** of grains above ~8 µm section radius match, **53.9 %** below
+~4.9 µm.
+
+**NEGATIVE:** |Z| deviation is a useful free *filter* (|Z − layer| ≤ 5 µm keeps 75.7 % and
+lifts the match rate 72.3 → 81.3 %) but is **not** a better *ranking* than `DiffPos` —
+top-2000 match rate 95.0 % against 98.5 %. The `DiffPos`-ranks-poorly defect in §11h stands
+and is still unexplained.
+
+### 11h. Still open
+
+The **604** grains unmatched against *both* references are not shown to be spurious — only
+that they are the hardest by every internal measure (GrainRadius 5.65 µm, |Z| 9.0,
+`DiffPos` 160, confidence 0.970, against 8.50/2.1/87.0/0.996 for matched), in the size range
+where a 2-D section and any segmentation are least reliable. Our 4625 exceeds Sparks' 4496,
+so the re-segmentation may itself over-split; the rescue fractions would shift, the
+direction would not. **The `DiffPos` ranking separating good grains from bad less cleanly
+than the 2024 run's is a real, unexplained defect.**
