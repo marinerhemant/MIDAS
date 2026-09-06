@@ -234,6 +234,11 @@ class SpotAssigner:
         pred_valid: torch.Tensor,
         pred_ring_numbers: Optional[torch.Tensor] = None,
         max_distance: float = 0.1,
+        *,
+        max_two_theta: Optional[float] = None,
+        max_eta: Optional[float] = None,
+        max_omega: Optional[float] = None,
+        one_to_one: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Find nearest observed spot for each valid predicted spot.
 
@@ -246,7 +251,31 @@ class SpotAssigner:
         pred_ring_numbers : Tensor (M,), optional
             Ring number per HKL. If provided, matching restricted to same ring.
         max_distance : float
-            Maximum matching distance in radians. Pairs beyond this are rejected.
+            Maximum matching distance in radians, as a single isotropic sphere
+            in (2theta, eta, omega). Used only when none of the per-channel
+            tolerances below is supplied. **Prefer the split form.**
+        max_two_theta, max_eta, max_omega : float, optional
+            Per-channel tolerances in radians. Supplying **any** of them
+            switches to a split (box) test: a pair matches only if every
+            channel is within its own tolerance, ranked by the normalised
+            distance ``sqrt(sum((d_i/tol_i)^2))``. Channels left as ``None``
+            are unconstrained.
+
+            A single scalar tolerance mixes physically different errors: the
+            2theta channel carries a radial pixel error, eta an azimuthal one,
+            and omega an error set by the rotation step. On one real dataset
+            splitting them took a solution from 7 to 12 reflections **without
+            loosening the cell**. It is also mis-weighted -- a radian of eta is
+            not the same reciprocal-space displacement as a radian of 2theta.
+
+            ``eta`` and ``omega`` are treated as **periodic** and wrapped to
+            (-pi, pi]; the isotropic ``cdist`` path does not wrap, so a pair
+            straddling the branch cut reads as ~2*pi apart there.
+        one_to_one : bool
+            If True, each observed spot is claimed by at most one predicted
+            spot (greedy, best normalised distance first). The default False
+            keeps the historical behaviour, where several predictions may share
+            one observation -- which inflates a match count.
 
         Returns
         -------
@@ -269,10 +298,32 @@ class SpotAssigner:
 
         valid_coords = flat_coords[valid_idx]  # (V, 3)
 
-        # Compute distances to all observed spots
-        # valid_coords: (V, 3), obs_coords: (N_obs, 3)
-        # Use cdist for efficiency
-        dists = torch.cdist(valid_coords, self.obs_coords)  # (V, N_obs)
+        # Distances to all observed spots: (V, N_obs).
+        split = (max_two_theta is not None or max_eta is not None
+                 or max_omega is not None)
+        if split:
+            def _wrap(d):
+                two_pi = 2.0 * math.pi
+                return (d + math.pi) % two_pi - math.pi
+
+            d_tth = (valid_coords[:, 0:1] - self.obs_coords[None, :, 0]).abs()
+            d_eta = _wrap(valid_coords[:, 1:2] - self.obs_coords[None, :, 1]).abs()
+            d_ome = _wrap(valid_coords[:, 2:3] - self.obs_coords[None, :, 2]).abs()
+
+            inside = torch.ones_like(d_tth, dtype=torch.bool)
+            norm_sq = torch.zeros_like(d_tth)
+            for d, tol in ((d_tth, max_two_theta), (d_eta, max_eta),
+                           (d_ome, max_omega)):
+                if tol is None:
+                    continue
+                if tol <= 0:
+                    raise ValueError("per-channel tolerances must be positive")
+                inside &= d <= tol
+                norm_sq = norm_sq + (d / tol) ** 2
+            dists = torch.sqrt(norm_sq)
+            dists = torch.where(inside, dists, torch.full_like(dists, 1e6))
+        else:
+            dists = torch.cdist(valid_coords, self.obs_coords)
 
         # If ring numbers provided, mask cross-ring matches
         if (pred_ring_numbers is not None and
@@ -292,8 +343,26 @@ class SpotAssigner:
         # Nearest neighbor
         min_dists, nn_idx = dists.min(dim=1)  # (V,), (V,)
 
-        # Filter by max distance
-        keep = min_dists < max_distance
+        # Filter: the split path is already normalised, so the cut is at 1.
+        cut = 1.0 + 1e-9 if split else max_distance
+        keep = min_dists < cut
+
+        if one_to_one and bool(keep.any()):
+            # greedy, best first; each observation claimed at most once
+            order = torch.argsort(torch.where(keep, min_dists,
+                                              torch.full_like(min_dists, 1e9)))
+            taken = torch.zeros(self.obs_coords.shape[0], dtype=torch.bool,
+                                device=dists.device)
+            excl = torch.zeros_like(keep)
+            for i in order.tolist():
+                if not bool(keep[i]):
+                    break
+                j = int(nn_idx[i])
+                if bool(taken[j]):
+                    continue
+                taken[j] = True
+                excl[i] = True
+            keep = excl
         if not keep.any():
             empty = torch.zeros(0, 3, device=flat_coords.device)
             return empty, empty, torch.zeros(0, dtype=torch.long, device=flat_coords.device)
