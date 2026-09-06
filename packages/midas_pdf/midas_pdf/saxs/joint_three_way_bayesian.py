@@ -21,7 +21,7 @@ import numpy as np
 import torch
 
 from .joint import sphere_characteristic_function
-from .model import SAXSModel
+from midas_saxs import SAXSModel   # moved out of midas_pdf; see ./__init__.py
 
 
 @dataclass

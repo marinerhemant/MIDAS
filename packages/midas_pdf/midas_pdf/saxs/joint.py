@@ -27,7 +27,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import torch
 
-from .model import SAXSModel
+from midas_saxs import SAXSModel   # moved out of midas_pdf; see ./__init__.py
 
 _FOUR_PI = 4.0 * float(np.pi)
 
