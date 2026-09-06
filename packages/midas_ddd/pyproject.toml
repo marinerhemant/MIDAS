@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-ddd"
+version = "0.1.0"
+description = "Dislocation networks for MIDAS: discrete-dislocation-dynamics (ExaDiS / ParaDiS) ingest, anisotropic-elasticity (Stroh) primitives, and the differentiable real-space and Fourier displacement fields that drive the SAXS, near-Bragg diffuse and DFXM forward models."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = [
+    "MIDAS", "dislocation", "discrete dislocation dynamics", "DDD",
+    "ExaDiS", "ParaDiS", "Stroh", "anisotropic elasticity",
+    "dislocation loop", "eigenstrain", "differentiable", "PyTorch",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.22",
+    "torch>=2.0",
+    # `elasticity._crystal_A_matrix` calls
+    # `midas_stress.tensor.lattice_params_to_A_matrix` -- the canonical
+    # Busing-Levy orthogonalisation. Never re-port it.
+    "midas-stress>=0.8.0",
+]
+
+[project.optional-dependencies]
+# ExaDiS itself needs a Kokkos/CMake build and can never be a PyPI dependency.
+# `midas_ddd.exadis` imports `pyexadis` lazily and raises a message naming the
+# build when it is absent; the ParaDiS `.data` file bridge always works without it.
+exadis = []
+viz = ["matplotlib>=3.5"]
+dev = ["pytest>=7.0", "matplotlib>=3.5"]
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Documentation = "https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_ddd"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_ddd*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: synthetic-data correctness tests (fast, every PR)",
+    "autograd: gradient correctness tests (gradcheck or finite-diff)",
+    "device: CPU/CUDA/MPS portability tests (skipped if device unavailable)",
+    "slow: heavy tests (run with -m slow)",
+]
