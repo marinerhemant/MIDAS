@@ -4,7 +4,9 @@ pf_MIDAS.py runs ``zip_convert``, ``hkl``, ``peakfit``, ``merge_overlaps``,
 ``calc_radius``, and ``transforms`` PER SCAN POSITION (one invocation per
 scan, in parallel via parsl). The current midas-pipeline orchestrator
 calls each stage once per layer, so each PF upstream stage needs to
-iterate the scans itself.
+iterate the scans itself. (``merge_overlaps`` and ``calc_radius`` no longer
+exist as separate stages here — ``transforms`` subsumes both; the names are
+retained above only to describe the legacy script.)
 
 This module centralises:
 

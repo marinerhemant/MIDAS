@@ -13,7 +13,6 @@ The thin shells exist so:
 
 from . import (
     binning,
-    calc_radius,
     calc_radius_v,
     consolidation,
     cross_det_merge,
@@ -22,7 +21,6 @@ from . import (
     grain_geometry,
     hkl,
     indexing,
-    merge_overlaps,
     merge_scans,
     peakfit,
     process_grains,
@@ -57,7 +55,6 @@ except ImportError:
 
 __all__ = [
     "binning",
-    "calc_radius",
     "calc_radius_v",
     "consolidation",
     "cross_det_merge",
@@ -68,7 +65,6 @@ __all__ = [
     "grain_geometry",
     "hkl",
     "indexing",
-    "merge_overlaps",
     "merge_scans",
     "peakfit",
     "potts",

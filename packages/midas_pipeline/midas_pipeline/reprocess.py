@@ -1,6 +1,6 @@
 """``midas-pipeline reprocess`` (FF).
 
-Reruns ``merge_overlaps`` and the ``consolidation`` stage on a layer
+Reruns the ``consolidation`` stage on a layer
 directory that has already been processed (i.e. has ``Grains.csv``,
 ``SpotMatrix.csv``, ``InputAllExtraInfoFittingAll.csv``, …, plus a
 ``*.MIDAS.zip``). Mirrors ``ff_MIDAS.py -reprocess 1``.

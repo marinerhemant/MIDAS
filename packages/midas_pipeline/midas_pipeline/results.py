@@ -52,16 +52,6 @@ class PeakFitResult(StageResult):
 
 
 @dataclass
-class MergeOverlapsResult(StageResult):
-    n_peaks_after_merge: int = 0
-
-
-@dataclass
-class CalcRadiusResult(StageResult):
-    n_spots: int = 0
-
-
-@dataclass
 class TransformsResult(StageResult):
     paramstest_path: str = ""
 
@@ -219,8 +209,6 @@ class LayerResult:
     zip_convert: Optional[StageResult] = None
     hkl: Optional[HKLResult] = None
     peakfit: Optional[PeakFitResult] = None
-    merge_overlaps: Optional[MergeOverlapsResult] = None
-    calc_radius: Optional[CalcRadiusResult] = None
     transforms: Optional[TransformsResult] = None
     cross_det_merge: Optional[CrossDetMergeResult] = None
     global_powder: Optional[StageResult] = None
@@ -257,8 +245,8 @@ class LayerResult:
     def all_stage_results(self) -> List[StageResult]:
         out: list[StageResult] = []
         for f in (
-            self.zip_convert, self.hkl, self.peakfit, self.merge_overlaps,
-            self.calc_radius, self.transforms, self.cross_det_merge,
+            self.zip_convert, self.hkl, self.peakfit,
+            self.transforms, self.cross_det_merge,
             self.global_powder, self.binning,
             self.merge_scans,
             self.indexing, self.refinement,

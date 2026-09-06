@@ -146,6 +146,36 @@ def _pf_config(tmp_path) -> PipelineConfig:
     )
 
 
+class TestNCpusLocalFollowsNCpus:
+    """peakfit is the ONLY consumer of n_cpus_local and it is the long pole of an
+    FF run. It used to default to a hardcoded 4, so `--n-cpus 96` silently left
+    peakfit on 4 processes. 0 now means "follow n_cpus"."""
+
+    def test_default_follows_n_cpus(self, tmp_path):
+        params = tmp_path / "Parameters.txt"
+        params.write_text("RingThresh 1 100\n")
+        cfg = PipelineConfig(result_dir=str(tmp_path / "run"),
+                             params_file=str(params), scan=ScanGeometry.ff(),
+                             n_cpus=96)
+        assert cfg.n_cpus_local == 96
+
+    def test_explicit_value_is_respected(self, tmp_path):
+        params = tmp_path / "Parameters.txt"
+        params.write_text("RingThresh 1 100\n")
+        cfg = PipelineConfig(result_dir=str(tmp_path / "run"),
+                             params_file=str(params), scan=ScanGeometry.ff(),
+                             n_cpus=96, n_cpus_local=8)
+        assert cfg.n_cpus_local == 8
+
+    def test_never_zero(self, tmp_path):
+        params = tmp_path / "Parameters.txt"
+        params.write_text("RingThresh 1 100\n")
+        cfg = PipelineConfig(result_dir=str(tmp_path / "run"),
+                             params_file=str(params), scan=ScanGeometry.ff(),
+                             n_cpus=0)
+        assert cfg.n_cpus_local >= 1
+
+
 class TestPipelineConfig:
     def test_ff_smoke(self, tmp_path):
         cfg = _ff_config(tmp_path)

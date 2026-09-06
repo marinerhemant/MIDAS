@@ -13,7 +13,7 @@ from midas_pipeline import all_stage_names, stage_order_for
 
 
 _EXPECTED_FF = [
-    "zip_convert", "hkl", "peakfit", "merge_overlaps", "calc_radius",
+    "zip_convert", "hkl", "peakfit",
     "transforms", "cross_det_merge", "global_powder",
     "binning", "indexing", "refinement",
     "process_grains", "grain_geometry", "consolidation",
@@ -22,7 +22,7 @@ _EXPECTED_FF = [
 ]
 
 _EXPECTED_PF = [
-    "zip_convert", "hkl", "peakfit", "merge_overlaps", "calc_radius",
+    "zip_convert", "hkl", "peakfit",
     "transforms", "cross_det_merge", "global_powder",
     "merge_scans", "seeding",
     "binning", "indexing", "refinement",

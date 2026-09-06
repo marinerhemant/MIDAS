@@ -102,7 +102,7 @@ def test_provenance_records_every_stage(tmp_path):
     store = ProvenanceStore(layer_dir)
     recorded = store.all_stages()
     expected_ff_stages = {
-        "zip_convert", "hkl", "peakfit", "merge_overlaps", "calc_radius",
+        "zip_convert", "hkl", "peakfit",
         "transforms", "cross_det_merge", "global_powder",
         "binning", "indexing", "refinement",
         "process_grains", "consolidation",

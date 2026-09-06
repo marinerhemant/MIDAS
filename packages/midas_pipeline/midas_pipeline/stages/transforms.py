@@ -23,9 +23,13 @@ aggregation step:
   ``layer_dir`` so downstream stages (indexing/refinement/etc.) have a
   single canonical copy.
 
-The ``merge_overlaps`` and ``calc_radius`` stage modules are kept as
-no-op stubs since this stage subsumes them (matches the natural
-chunking inside ``midas_transforms.Pipeline``).
+This stage **subsumes the cross-frame merge and the per-detector radius
+calculation**: ``midas_transforms.Pipeline`` runs merge → calc_radius →
+fit_setup as one chain, mirroring the C stage order. Separate
+``merge_overlaps`` and ``calc_radius`` stage slots existed to mirror the
+legacy per-stage checkpoint layout; they were unconditional no-ops and were
+removed. Anything looking for ``MergeMap.csv`` or ``Radius_*.csv`` wants this
+stage.
 """
 
 from __future__ import annotations

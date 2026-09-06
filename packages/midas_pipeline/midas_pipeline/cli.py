@@ -126,7 +126,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # Compute
     run.add_argument("--n-cpus", type=int, default=16)
-    run.add_argument("--n-cpus-local", type=int, default=4)
+    run.add_argument("--n-cpus-local", type=int, default=0,
+                     help="processes for peakfit, the long pole of an FF run. "
+                          "Default 0 = follow --n-cpus. Set it only to give "
+                          "peakfit a different count from the rest of the "
+                          "pipeline.")
     run.add_argument("--scan-workers", type=int, default=1,
                      help="PF: concurrent scans in peakfit/transforms "
                           "(claims prevent double-processing; peakfit "
@@ -453,7 +457,7 @@ def _build_parser() -> argparse.ArgumentParser:
     rs.add_argument("--layers", default=None)
 
     rp = sub.add_parser("reprocess",
-                        help="rerun merge_overlaps + consolidation on completed dir")
+                        help="rerun consolidation on a completed result dir")
     rp.add_argument("result_dir")
     rp.add_argument("--device", choices=["cpu", "cuda", "mps"], default="cuda")
     rp.add_argument("--dtype", choices=["float32", "float64"], default="float64")

@@ -528,7 +528,11 @@ class PipelineConfig:
 
     # Compute
     n_cpus: int = 16
-    n_cpus_local: int = 4
+    # peakfit's process count -- the ONLY consumer of this field. 0 means
+    # "follow n_cpus", which is resolved in __post_init__. It used to default
+    # to a hardcoded 4, so `--n-cpus 96` left the longest stage of an FF run on
+    # 4 processes with nothing said in the log.
+    n_cpus_local: int = 0
     device: Device = "cuda"
     dtype: Dtype = "float64"
 
@@ -693,6 +697,10 @@ class PipelineConfig:
             self.resume = "from"
         if self.layer_selection is None:
             self.layer_selection = LayerSelection()
+        # peakfit is the long pole of an FF run; make it honour n_cpus unless
+        # the caller deliberately set a different local count.
+        if self.n_cpus_local <= 0:
+            self.n_cpus_local = max(1, self.n_cpus)
         # Cross-config sanity: PF-only sub-configs must not be enabled in FF mode.
         if self.scan.is_ff and self.recon.do_tomo:
             # Soft: tomography is meaningless in FF; disable silently.
