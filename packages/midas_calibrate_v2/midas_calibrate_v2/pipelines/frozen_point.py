@@ -251,7 +251,7 @@ def iterate_frozen_point_until_stable(
     tol_ty_deg: float = 0.01,
     tol_bc_px: float = 0.05,
     tol_lsd_um: float = 5.0,
-    max_iter: int = 40,
+    max_iter: int = 60,
     bounds_tz_deg: float = 16.0,
     bounds_ty_deg: float = 10.0,
     bounds_bc_px: float = 100.0,
