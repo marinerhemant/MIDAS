@@ -10,6 +10,9 @@ from .bayesian import autocalibrate_bayesian
 from .nn_residual import autocalibrate_nn
 from .joint_cake import autocalibrate_joint
 from .four_stage import autocalibrate_four_stage
+from .frozen_point import (
+    autocalibrate_frozen_point, iterate_frozen_point_until_stable, IterateResult,
+)
 from .downstream import sensitivity_diagnostic, joint_with_downstream
 from .robust import autocalibrate_robust, RobustCalibrationDiagnostics
 from .bic_search import select_basis_bic, BasisFit
@@ -22,6 +25,8 @@ __all__ = [
     "autocalibrate_multi",
     "autocalibrate_bayesian", "autocalibrate_nn", "autocalibrate_joint",
     "autocalibrate_four_stage",
+    "autocalibrate_frozen_point",
+    "iterate_frozen_point_until_stable", "IterateResult",
     "sensitivity_diagnostic", "joint_with_downstream",
     "autocalibrate_robust", "RobustCalibrationDiagnostics",
     "select_basis_bic", "BasisFit",

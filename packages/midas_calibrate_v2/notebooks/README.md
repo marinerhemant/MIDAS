@@ -85,6 +85,12 @@ only notebooks here that need **no** mounted test data.
 | **23** | [Joint Multi-Detector (HYDRA)](23_joint_multidetector_hydra.ipynb) | ~1–2 min | `robust_multipanel_seed` + `autocalibrate_multi` — four azimuthally-mounted GE panels (off-panel BC, weak arcs) refined with **one shared L_sd** + per-panel beam-centre; needs `$V2_HYDRA_BASE` real data |
 | **24** | [Wavelength from Known Travel](24_wavelength_from_known_travel.ipynb) | ~40 s | `autocalibrate_multi(..., lsd_offsets_um=)` — recover **λ and L_sd together** from a scan of exactly-known detector travel. Shows why several distances with a free `L_sd` each does *not* work (cond 5e2 linked vs 7e6 free; σ(λ) 35× worse), the slope-1 cross-check, the stage-vs-detector discriminator, and the ring-overlap ceiling |
 
+### Real-data companion to Tier 3's tilted-detector notebook
+
+| # | Notebook | Wall time | What you'll learn |
+|---|---|---|---|
+| **26** | [Frozen-Point Calibration for Large-Tilt Detectors](26_frozen_point_calibration.ipynb) | ~2–3 min | `autocalibrate_frozen_point` — a one-shot, no-re-extraction pipeline for large/roughly-known detector tilts, on a real off-detector-beam-centre CeO₂ dataset (recovers `tz≈14°` from a rough 15° guess). Then `iterate_frozen_point_until_stable` — re-seeds that pipeline from its own result under a strict parameter-stability criterion to escape a **completely blind** `tz=0` start, validated (offline sweep) across a ~35° capture range with zero false-basin acceptances. Includes an interactive Plotly tilt+distortion-corrected ring overlay and the distortion-basis freeze/thaw convention (iso-only vs. full harmonic basis) applied to this pipeline |
+
 ## Running them
 
 Open in Jupyter or VS Code:
@@ -138,6 +144,7 @@ For specific use cases, jump directly:
 | Comparing v2 to your existing pyFAI workflow | **10** |
 | Need defensible σ values for a paper | **11** |
 | Tilted detector (>5°) | **12** |
+| Large/roughly-known (or completely blind) tilt, off-detector beam centre, or `autocalibrate_pv` converges to implausible strain | **26** |
 | Working with PDF / total scattering | **14** |
 | Want the last 50–100 µε that harmonic distortion misses | **15** |
 | Apply v2 calibration to a sample image | **16** |
