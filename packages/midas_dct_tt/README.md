@@ -3,13 +3,6 @@
 Differentiable forward + inverse for **diffraction contrast tomography (DCT)** and
 **topotomography (TT)**, built on `midas-dfxm` and `midas-diffract`.
 
-> **PRIVATE / UNRELEASED.** `packages/midas_dct_tt/` is excluded in
-> `.git/info/exclude` (local-only, so the ignore rule itself cannot leak the
-> name), and `release.sh` refuses to run while it is. Nothing about this package — the name
-> included — should reach `origin`, PyPI, a talk, or a proposal until
-> [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) has been worked through
-> deliberately.
-
 ## What it is
 
 DCT and TT are not separate physics. They are the same forward operator as DFXM

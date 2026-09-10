@@ -41,8 +41,6 @@ See :func:`midas_dct_tt.geometry.missing_cone_half_angle_deg`.
 Units: micrometers, degrees, Angstrom (wavelength/lattice); reciprocal vectors
 carry the ``2*pi`` convention (``|G| = 2*pi/d``), matching ``midas_dfxm``.
 
-See ``implementation_plan.md``. Not released -- this package is private until
-``RELEASE_CHECKLIST.md`` is worked through.
 """
 
 # Register the HDF5 filter plugins (bitshuffle, LZ4, zstd) that Eiger / Dectris
@@ -55,7 +53,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 from .conventions import (
     DCT_OMEGA_SIGN_AERO,
