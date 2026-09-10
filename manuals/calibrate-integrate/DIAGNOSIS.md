@@ -203,8 +203,10 @@ coord: distortion
 
 **Test.** Two candidate causes, and they are told apart by *which* coefficients
 rail. Run both gates
-(`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/diagnostics.py:281`
-and `:401`) and look at the per-parameter 1σ from the Laplace covariance.
+(`azimuth_coverage_gate`,
+`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/diagnostics.py:475`, and
+`rho_d_scaling_gate`, `:595`) and look at the per-parameter 1σ from the Laplace
+covariance.
 
 **If the railed ones are `a_k`/`phi_k` and the azimuth gate reports a narrow
 wedge** → the harmonics are not identifiable. A k-fold harmonic needs azimuth;

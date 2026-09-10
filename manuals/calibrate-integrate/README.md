@@ -299,7 +299,11 @@ manufacture a false discrepancy (Lab Notebook §3).
   Freeze parameters until it settles (rule 11) rather than reporting the best
   number the run happened to touch.
 - **H11** `RhoD` more than ~1.5× the outermost fitted ring radius while radial
-  distortion is refined (rule 12).
+  distortion is refined (rule 12). The mirror case fails too: `ρ_max` far above 1
+  means `RhoD` sits below the outer ring, which in practice means it was given in
+  **pixels**. `autocalibrate_pv`, `autocalibrate_pv_2d` and `autocalibrate_joint`
+  did exactly that themselves whenever `RhoD` was unset, before
+  `midas-calibrate-v2 0.16.0` (LAB_NOTEBOOK §17).
 - **H12** Fewer than ~3 calibrant rings reach the panel at this distance and
   wavelength. Run this **before** anything else — it is pure geometry, needs no
   image, and it is the only gate that cannot be fooled by a converged fit:
@@ -351,8 +355,17 @@ wrong answer. Read it once before your first run on a new detector.
 | a site mounting convention assumed rather than measured | a "plausible" `Lsd` band rejects good fits and passes bad ones | at 1-ID, measured from fits their own filenames confirm: single panel 0.5–1.9 m, GE quad 1.0–3.3 m. Precision 58 %, recall 49 % on its own — use it as a flag, never as the only check |
 | a written paramstest inheriting the template's `PanelShiftsFile` | new geometry silently uses the *previous* calibration's panel shifts | `midas-calibrate-v2 ≥ 0.8.1`; check the line before reusing the file |
 | `RhoD` inherited from a template and far too large | radial distortion terms rail; strain still looks reasonable | rule 12; RhoD gate |
+| `RhoD` left unset on `midas-calibrate-v2 < 0.16.0`, pv / pv_2d / joint pipelines | distortion fitted with ρ inflated by the pixel pitch (150× at 150 µm); amplitudes of 1e-8 to 1e-16 where µm-basis fits give ~1e-4; the RhoD gate said "well scaled" | upgrade and refit; do not reuse those coefficients (LAB_NOTEBOOK §17) |
 | harmonics refined on a narrow azimuthal wedge | coefficients on their bounds, loop oscillates, "best iterate" is luck | rule 11; azimuth gate; H10 |
 | two calibrants, exact hkl degeneracies treated as blends | good rings silently excluded as "zero-separation doublets" | merge by d-spacing — `_dedup_by_d`, `rings.py:129` — before any blend rule |
 | two calibrants agreeing at a high residual | read as validation; it is two phases on a common noise floor | §4b.4 — absolute number first, ratio second |
 | `tx` set to 0 on a panel that is physically mounted rotated | ring radii barely move so the fit converges; the exported file then carries an azimuthal frame rotated from the detector, and `ty`/`tz` are expressed in it | `tx` is not refined — carry it from the panel; downstream η is wrong otherwise |
 | a geometry-only paramstest treated as a runnable parameter file | missing `MaxRingRad`, `ImTransOpt`, file/scan keys; a missing `MaxRingRad` is the indexer's ring-array overflow | export from a template, or check the key list before handing it on |
+
+---
+
+## Provenance paths
+
+A path written `$ANALYSIS/...` names an analysis campaign directory that is deliberately
+**not** in this repository. It is *provenance, not a link*: it names the file a number or a
+conclusion came from, and promises nothing about reaching it from another machine.

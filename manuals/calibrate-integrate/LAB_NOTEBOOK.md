@@ -630,3 +630,39 @@ drift study, REFUTED — an inconclusive reported as a finding); that fold 0 is 
 detector property at all (it absorbs a median 0.38 mm of `Lsd`, ~25σ); anything
 about ge1–ge4, which have no valid null — 0 of 30 beamtimes carry two
 ring-verified frames from different scans.
+
+---
+
+## §17. RhoD in pixels, silently, in three pipelines — ESTABLISHED (the unit bug); any effect on a basin is NOT
+
+`autocalibrate_pv`, `autocalibrate_pv_2d` and `autocalibrate_joint` fell back to the
+pixel-valued `MaxRingRad` when `RhoD` was unset, without converting to µm, so
+`ρ = R_µm / RhoD` was inflated by the pixel pitch. Measured by running the code on a
+real 2880×2880 / 150 µm Varex CeO₂ frame with `RhoD` unset: ρ = **150.000** at the rim
+through `autocalibrate_pv`, **1.000** through `autocalibrate_frozen_point`. `single`,
+`multi`, `first_time` and `calibrate()` already resolved it correctly.
+
+What it did:
+- every distortion coefficient those pipelines fitted was in a basis nothing else uses;
+  on that frame the amplitudes came out at 1e-8 to 1e-16 where µm-basis fits give ~1e-4;
+- inside the alternating loop, the E-step (through `midas_integrate`, which auto-corrects
+  a pixel `RhoD`) and the M-step (which did not) gave the same coefficients different
+  meanings on every iteration;
+- `rho_d_scaling_gate` checked only the too-large side and reported it as well scaled.
+
+Fixed in `midas-calibrate-v2 0.16.0`: one resolver (`resolve_v1_rho_d_um` in
+`forward/sanity.py`) at every entry point, µm fallbacks behind it, and a gate that now
+fails when ρ_max ≫ 1 with distortion refined. Checked on the same frame with distortion
+frozen, where `RhoD` cannot enter: before and after are bit-identical from two seeds,
+while the normaliser reaching the fit goes from 3429.7 to 514456.9.
+
+**What this does NOT establish.** On that frame `autocalibrate_pv` with distortion
+FROZEN still drifts away from the tilt it started at: tz 14.19 → 14.82 and 15.0 → 15.91,
+both near 2750 µε. That cannot be this bug. Whether the unit bug additionally drives a
+wrong basin with distortion refined is a separate pre-registered test
+(`$ANALYSIS/tx_distortion_frame/rhod_fix_realdata/PREREGISTER.md`) and is not concluded
+here.
+
+Also in 0.16.0: distortion phases get a ±180 box instead of ±90. The LM clamps at a bound
+rather than wrapping, and ±90 is exactly the seam between the (a, φ) and (−a, φ + 180)
+representations, so a real phase near ±90 railed there.
