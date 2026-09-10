@@ -30,6 +30,8 @@ reflections without loosening the cell. :func:`assign_spots` therefore requires
 per-channel tolerances and refuses a lone scalar.
 """
 from __future__ import annotations
+import dataclasses
+from midas_hkls import Lattice
 
 import math
 from dataclasses import dataclass, field
@@ -218,6 +220,16 @@ class IndexResult:
     apply_tilts: bool
     median_residual_px: float
     tolerances: Dict[str, float] = field(default_factory=dict)
+    # The cell the PREDICTION actually used. `a`/`c` above come from the seed
+    # refinement and are kept for compatibility; these come from the converged
+    # fit to the domain's own reflections. `b` did not exist before, so an
+    # orthorhombic cell could not be reported at all.
+    b: Optional[float] = None
+    #: ``(a, b, c)`` the forward model was actually built from, or None if the
+    #: cell never converged and the nominal crystal was used.
+    cell_converged: Optional[Tuple[float, float, float]] = None
+    #: How many reflections the converged fit used.
+    n_cell_reflections: int = 0
 
     def __str__(self) -> str:
         return (f"{self.n_assigned} reflections assigned | {self.audit} | "
@@ -289,6 +301,36 @@ def index_from_cloud(q_sample: np.ndarray, intensity: np.ndarray,
                                 refine_lattice=True)
     U = np.asarray(res.U)
 
+    # The refined cell used to be DISCARDED here: `find_seed_orientation` fits
+    # (U, a, c) against the seed's matched pairs and this function then built the
+    # forward model from the NOMINAL `crystal`, so every prediction -- and hence
+    # the completeness audit -- used the input cell. Worse, the seed fits against
+    # a handful of bright cores only, and nothing re-fitted the cell to the
+    # larger set that `assign_spots` goes on to match.
+    #
+    # Converge the cell in q-space first, on the domain's OWN reflections, then
+    # predict from that. `refine_to_convergence` re-matches on each iteration and
+    # refits on the converged set, so the reported cell is the fit to the
+    # reflections it actually used. The full seed cell is passed (not just a/c):
+    # below ~2 % splitting it makes no difference, above ~3 % a tetragonal seed
+    # claims nothing at all -- see `rows.refine_to_convergence`.
+    from .rows import refine_to_convergence
+    lat0 = crystal.lattice
+    conv = refine_to_convergence(
+        q_sample, U, a0=lat0.a, b0=lat0.b, c0=lat0.c,
+        alpha0=lat0.alpha, beta0=lat0.beta, gamma0=lat0.gamma,
+        min_reflections=max(5, min(8, len(q_sample)//4)))
+    if conv is not None:
+        U = np.asarray(conv.lat.U) if hasattr(conv.lat, "U") else U
+        crystal = dataclasses.replace(
+            crystal, lattice=Lattice(a=conv.lat.a, b=conv.lat.b, c=conv.lat.c,
+                                     alpha=conv.lat.alpha, beta=conv.lat.beta,
+                                     gamma=conv.lat.gamma))
+        refined_cell = (conv.lat.a, conv.lat.b, conv.lat.c)
+        n_converged = int(conv.claim.sum())
+    else:
+        refined_cell, n_converged = None, 0
+
     model, hkls_int, tilts_used = build_forward_model(
         crystal, geom, d_min=d_min, apply_tilts=apply_tilts, device=device)
     spots = predict_spots(model, U)
@@ -328,7 +370,11 @@ def index_from_cloud(q_sample: np.ndarray, intensity: np.ndarray,
         window_px=w_px, window_omega_deg=w_om, observed_intensity=intensity)
 
     return IndexResult(
-        U=U, a=float(res.a), c=float(res.c), n_assigned=n, assigned_hkl=assigned,
+        U=U, a=float(refined_cell[0]) if refined_cell else float(res.a),
+        c=float(refined_cell[2]) if refined_cell else float(res.c),
+        b=float(refined_cell[1]) if refined_cell else None,
+        cell_converged=refined_cell, n_cell_reflections=n_converged,
+        n_assigned=n, assigned_hkl=assigned,
         audit=audit,
         convention=convention or ConventionScan(1, [{"omega_sign": 1,
                                                      "n_assigned": n}]),
