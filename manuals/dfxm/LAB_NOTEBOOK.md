@@ -829,3 +829,280 @@ absent** — but FP is a phase-retrieval *inverse*, which fits midas's different
 is a natural next build and a live ask from the 6-ID-C collaborator. Scope kept with the analysis campaign
 (`$ANALYSIS/yay_strainwaves_dryad/`). Carlsen's methods are published/citable — cite them; do not
 recruit (bilateral-collaboration rule).
+
+---
+
+## 11. Fifth campaign: an independent reduction of a collaborator's dataset (Mg-4Al, ID03)
+
+**What it was.** A collaborator (`datasetG`) sent 13 GB of raw ESRF **ID03** frames —
+Mg-4Al {0002}, 17 keV, one grain, a 3-motor scan (µ rock 25 × χ roll 26 × obpitch 2θ 8 =
+5200 frames) — plus four MATLAB `.mat` products and **no processing script**. We reduced it
+independently from the frames. Working tree
+`chiltepin:/scratch/s1iduser/sharma/datasetG_dfxm/`; report and retractions in
+`$ANALYSIS/dfxm_datasetG/`.
+
+**Value of the campaign: eight of our own claims were refuted before any left the room.** The
+transferable content is *how* each error bar and each attribution failed, below. A blind
+positive control (a Σ3 disorientation identity in `midas_stress`) ran through the same four
+lenses and survived 4/4, so the refutation rate is not the machinery killing everything.
+
+### 11a. What the reduction established (these survived)
+
+- **The reduction is correct.** Two independent from-scratch re-implementations reproduce the
+  intensity sum with **max difference exactly 0** and the µ centroid at **r = 0.99975,
+  RMS 3.3 mdeg**.
+- **A uniform 3-D angular background carries 31.5 % of the per-pixel integrated weight** and
+  must be removed before the moment. It is identical on all three axes (31.55/31.59/31.29 %) —
+  arithmetically necessary, since each marginal removes the same background from the same
+  total, and therefore a consistency check that passed. Removing it moves individual pixels by
+  up to ±1.5 motor steps in µ and the d-spacing by up to +350 µε. This is *in addition to* the
+  per-frame pedestal of §1a.
+- **Geometry from the data, not the header.** The scattering plane is vertical (`ffz` tracks
+  obpitch at 94.62 mm/deg, `ffy` fixed at 0), so detector **rows** carry the 1/sin2θ = 3.587×
+  projection stretch and columns do not. The grain is 298 × 354 µm and roughly equiaxed; on
+  the raw detector it looks like a 3:1 slab.
+- **Un-zigzag is verifiable frame by frame.** `fast_motor_mode = ZIGZAG`; assert
+  |mu[k] − grid[i]| < 0.02° for every frame. Also: `mu/data` **is** `mu_center` exactly
+  (max diff 0.000e+00) and already carries a common grid for both directions —
+  `mu_center − mu_trig` = ±0.01513° on forward/reverse rows — so the hazard disappears if you
+  use it.
+- **Sampling costs can be measured, not asserted.** Take a well-sampled axis, coarsen it to
+  match a starved one, and compare against the full-sampling answer as ground truth. χ at
+  3.35 pts/FWHM decimated 3× (to 1.12) costs **8.61 mdeg RMS with no bias**; 2× costs 4.18.
+  The undecimated control returns exactly 0.
+
+### 11b. The error bar: five ways it went wrong, in order
+
+Each was found by an adversarial lens, not by us. Together they are the most transferable
+result of the campaign.
+
+1. **Subtracting a background does not subtract its variance.** We propagated
+   `sem = σ/√S_subtracted`. The subtracted baseline (971 ADU/bin, 31.5 % of the weight)
+   fluctuates too, and it enters through the lever arm `Σ(x−c)²` summed over **all** bins —
+   **694× longer** than the retained signal's `σ²`. The omitted term was **12.9× the kept
+   one in variance**; the error bar was understated **5–6×**. `centroid_uncertainty()` in
+   `midas_dfxm.mosaicity_fit` now does it correctly, with a regression test.
+2. **A floor measured on one axis does not transfer to another in absolute units.** Ours was
+   measured on χ at a 0.12° decimated step and quoted for µ's 0.04° step. The estimator is
+   **scale-equivariant in x** (verified numerically: rescaling the grid by 1/3 changes the RMS
+   by 0.333334), so what transfers is the error **in units of the step**, not in mdeg.
+3. **Check that budget terms are algebraically independent.** Three of our four "independent"
+   terms were three moments of one vector `d` (forward minus reverse sweep):
+   `RMS(d) = hypot(mean(d), sd(d))` **exactly**. A budget cannot list A, B and √(A²+B²) as
+   separate contributions. The "sampling floor" was literally the same array as the
+   half-split, correlation **0.9917**.
+4. **A term proportional to the signal is not an uncertainty.** Our dominant 60 mdeg
+   "background choice" term regressed against the tilt field itself at **r = −0.96, R² = 0.92**,
+   slope matching the baseline weight — 92.5 % of it is the deterministic dilution
+   `1/(1−f_base)`. Zero the signal and it goes to zero. It also compared against **no**
+   correction, which the halt table forbids; among defensible choices the term is 0.5–4.7 mdeg.
+5. **Quote every term at the same quantile.** We quoted a p95 for the term we wanted large and
+   medians for the rest, producing a "25× lead". Like-for-like it is 10–15×, and at the median
+   that term is the *smallest*. "No single term dominates" was the output of our quantile
+   choices, not of the data.
+
+**And the term we never ran.** Rule 20 requires testing centroid robustness against an
+**asymmetric** lineshape. We had not. When finally run: moment vs fitted centre moves the
+answer by **6.8–9.9 mdeg median** — larger than every other term combined — and symmetric vs
+split lineshape gives p95 = 43 % of FWHM (the §7 precedent was 12 %). *Our own test was
+quantised at its 2 mdeg search grid, so treat it as an order of magnitude.* A budget missing
+its largest term cannot rank its terms.
+
+**The honest end state:** per-pixel scatter 2.9 mdeg (empirical, forward/reverse split),
+estimator choice 7–10 mdeg, and a tilt field spanning ~290 mdeg — signal-to-error 30–100×.
+The maps are solid; the single-pixel error bar is **not** pinned better than ~3–10 mdeg.
+
+### 11c. Prefer a model-free split-half over any analytic error bar
+
+The one estimate that survived all five lenses was the empirical one: split the scan into
+independent halves (χ parity, obpitch parity), reduce each exactly as the pipeline does, and
+measure the scatter. It assumes no noise model, no gain, and no lineshape. Two orthogonal
+splits agreed to 7 % (1.63 vs 1.74 mdeg). Bookkeeping: for halves A, B with full-data error
+σ_full, **SD(A−B) = 2·σ_full**.
+
+Caveats measured on the way: the estimator is mildly non-linear (baseline + clip), so
+`c_full ≠ (c_A+c_B)/2` at the 0.83 mdeg level; and the difference field is **not white**, so a
+high-passed value is a lower bound and the raw value an upper one.
+
+### 11d. Selection on one map's tail manufactures a difference — symmetrically
+
+Comparing two reductions, we selected pixels where **their** map was extreme and found ours
+"disagreed" by 141 mdeg. Under any selector that does not use their map, all estimators agree:
+selecting on ours gives −90/−137/−117, on the raw profile −110/−157/−136. Regression to the
+mean here is **symmetric** — observed/predicted 0.79 in both directions — so running the same
+logic with the roles swapped makes *our* map the unsupported one. **Select on a third,
+independent quantity, or on the raw data.**
+
+Related, from the same comparison: a median over a **bimodal** population describes no pixel.
+Our quoted −24.4 mdeg sat in the gap between our own map's two modes (p25 −147, p75 −0.2).
+
+### 11e. Photon transfer with a pedestal AND a PSF: use the covariance sum
+
+Three routes on the same frames gave 0.5, 8.7 and 11–360 ADU/quantum, every one with a
+**negative read-noise intercept** — the standard signature of a rejected model. The reasons:
+
+- `var/mean` is invalid with a pedestal present (already rule 13).
+- **Every high-pass estimator is biased low by Σw²** when an optical PSF spreads one quantum
+  over more than a pixel — measured Σw² = 0.71 here, i.e. ~1.4 px per quantum.
+- Binning pixels by their temporal mean in a "non-diffracting" box fails when that axis is
+  mostly **fixed-pattern offset** (67 % reproducible between entries here); offset carries no
+  shot noise, so the slope is driven toward zero.
+
+The estimator that works: `Σ_d cov(S_i, S_{i+d})` summed over **all** lags, divided by the
+mean, on frame-differenced data (which kills pedestal and fixed pattern). That gives
+**g ≈ 1.8–2.6 ADU/quantum** here, consistent with §7b's 2.23 on a sibling detector.
+
+### 11f. Two products of the same frames can differ, legitimately
+
+Our full-volume intensity sum and the collaborator's `total_intensity.mat` correlate at only
+**r = 0.40** inside the grain, with internal features ~13 µm apart — while the grain outline
+agrees (IoU 0.945) and **the pixel grids align exactly** (26 hot-pixel fiducials give
+dy = dx = 0.00 px; identity beats all 8 dihedral transforms).
+
+What it is **not**: a pedestal difference (our sum differs from the raw sum by a per-pixel
+*constant*, and a constant cannot move a correlation off 1.0); a scale, rotation or
+translation; a smoothing; a peak-vs-sum choice; or any linear reweighting (59 unconstrained
+marginal weights cap at r = 0.68).
+
+What it is consistent with: **angular selectivity**. Their dark features sit where the raw χ
+peak is displaced +120 mdeg with a broadened, bimodal profile, and a *parent-orientation
+window on our own raw data* reproduces their contrast (0.11–0.29 against their 0.17). One
+reflection images one orientation; material outside the accepted window is legitimately dark
+(ENVELOPE). **Whose product is "right" depends on their algorithm, which was not delivered —
+§7d applies: do not attribute without the script.**
+
+A working hypothesis that remains open and is cheap for them to settle: the delivered
+reconstruction may come from a **different layer**. Detector-fixed fiducials would still align
+perfectly, the outline would barely change, and inclined internal boundaries would cut at
+different lateral positions. Our own file has `uz` constant at −2.345523 mm despite the folder
+being named `layers_uz15um`.
+
+### 11g. Numbers that need their convention stated
+
+- **Points per FWHM.** Half-max crossings give µ = 1.16 steps; 2.355σ gives 3.27. A factor 2.8
+  apart, because the profile is a narrow core with broad tails (96.7 % of the second moment is
+  carried by sub-half-max bins). Both are right for what they measure. Quote the convention.
+- **Correlation length.** The *signal* map decorrelates in ~29 px; the *error* field in 4–5 px.
+  Using the signal's length for an error bar inflates N_eff badly. We did.
+- **"3× hot rows".** That is 3× the *pedestal-subtracted* background; in raw ADU it is 1.09×.
+- **"Peak inside one step".** 76.2 % of grain pixels have *both neighbouring µ steps below half
+  max*; **0.0 %** have the whole peak inside one step. We reported the first as the second for a
+  day (`VERDICT_map_comparison.md`, "Two corrections").
+
+### 11h. A motor statistic can be structurally blind to a real intensity effect
+
+We twice reported "no forward/reverse scan-direction offset, 0.00 ± 0.01 mdeg" and twice it
+was the wrong quantity. That number is `mean(fwd − rev)` over the **readback nodes** — and
+`mu_center` is derived the same way in both directions, so the statistic *cannot* see an
+effect in the recorded intensity. The intensity-weighted centroid on the same data gives
+**+3.5 to +4.2 mdeg** globally and a per-pixel median of 1.67 mdeg (sd 4.74), reproduced
+exactly by an independent rebuild.
+
+**Lesson:** when asking whether a scan-direction artefact exists, measure it on the
+*centroid you report*, not on the motor record. And weight matters — the same offset reads
+−0.1 mdeg pooled over a whole frame with no angular baseline removed (a flat pedestal over
+all bins dilutes it), −2.4 unsubtracted on an ROI, −3.7 baseline-removed, and 1.67 per pixel.
+
+**Mechanism: unresolved, and the two analyses disagree.** One found the offset traces a V in
+detector **row** with its vertex at y = 1008–1040 against a sensor centre of 1024 (R² = 0.70,
+column control flat) — the pco.edge **rolling shutter**, implied line time 25–31 µs/row
+against ~44.5 µs nominal. Another measured the wrong shape and size for that (R² = 0.39,
+|b| = 5.5 mdeg/1000 rows) *and* a column dependence a rolling shutter cannot produce, and
+showed that a direction-**balanced** χ split already spans the claimed value (offsets
+−0.09, −0.20, −0.82, **+1.34** mdeg). Note also that in this scan every entry has the same
+`+-+-` row pattern, so **scan direction is perfectly aliased with χ parity** and no split of
+these data can separate them. Treat the effect as real and its cause as open.
+
+### 11i. Compute a sensitivity at the operating point you actually use
+
+Our two largest budget terms were both evaluated against baselines the pipeline never runs
+at. Against the corrected map it actually produces (`frac_base` median 0.315), the
+background sensitivity at p95 is **8.1 mdeg, not 60**, and at that same operating point the
+sampling-floor proxy rises from 1.3 to **5.8 mdeg rms**. The two largest terms then sit within
+**~1.4×** of each other rather than 25×. A sensitivity swept from a setting you would never
+choose measures the size of a bias you already removed, not the uncertainty in removing it.
+
+### 11j. Two further terms this budget never contained
+
+- **Analysis route.** Two independent reductions' *uncorrected* µ centroids agree in median
+  (−0.16 mdeg) but differ per pixel by **26 mdeg MAD** — not explained by plane selection or
+  by negative clipping. On the baseline-**removed** centroid the same comparison gives
+  r = 0.99975, RMS 3.3 mdeg, so the corrected product is reproducible and the raw one is not.
+  Report the corrected one, and never quote the raw centroid.
+- **Multi-modal pixels.** At `base_frac` 0.30, **12.6 %** of grain pixels have ≥2 maxima above
+  10 % of peak, where a µ centroid is not one lattice tilt at all; and **59 %** have a centroid
+  sitting exactly on a grid node. The fitted intrinsic width is σ ≈ 15.5 mdeg, FWHM ≈ 36 mdeg
+  on a 40 mdeg pitch — the peak is genuinely narrower than one step.
+
+### 11k. What the campaign could not settle
+
+- **Detector gain, from these frames.** There is no temporally steady illuminated region (the
+  halo is ≲2 ADU, below read noise), adjacent frames are not repeats, and an intensity
+  split-half is swamped by a real 33–51 % χ-selection difference. Estimates spanned
+  0.22–360 ADU/quantum across methods. The covariance-sum estimator (§11e) is the right one
+  and gives 1.8–2.6, but the campaign should be treated as **gain not measured** — ask for
+  darks and flats. Note gain does *not* enter a model-free split-half error bar.
+- **Whether the 1.6 mdeg split-half number is "photon + read".** Forward-propagating the
+  measured read noise (3.33 ADU/frame, dark-difference, fixed pattern removed) gives 0.88 mdeg,
+  and 0.96 with g = 2.2 — so the measured 1.64 carries a **1.7× unexplained excess**. The COM
+  error is dominated by read noise in the empty, high-lever-arm wing bins rather than by photon
+  statistics in the peak. Call it "empirical per-pixel scatter", not "photon + read noise".
+- **Three claims that were logged and never verified.** `cd90f336ce19` (the intensity
+  disagreement tracks COM-χ, Spearman −0.58) and `aaee3ebdc059` (the left-edge feature is present
+  in our map at lower contrast) printed VERIFY:REQUIRED and never went through the lenses.
+  `b6ae99e760ce` (a column-only χ ramp at +0.157/+0.186 mdeg/px against a parameter-free
+  +0.1288) was sampled VERIFY:SKIP. All three are provisional. `VERDICT_row_ramp.md` lists the χ
+  ramp under "what survives", which is stronger than its log status.
+
+### 11l. The interpretations that died
+
+§11b–§11j carry the two error-bar refutations (`55b8bf397402`, `dac1eff536a5`). The other six
+were interpretations. Full records: `$ANALYSIS/dfxm_datasetG/`
+`{RETRACTION_strain,VERDICT_row_ramp,VERDICT_mu_rotation,VERDICT_map_comparison}.md`.
+
+1. **"The Δd/d map is an elastic strain field"** (`60b091781be0`). A gradient along the
+   detector-row (2θ) axis carried 54.7 % of the map's variance (std 400.7 → 269.7 µε once
+   removed) and cut *across* the orientation-domain boundaries. And one reflection measures Δd/d
+   only; an Al-content change moves d(0002) the same way. *Rule:* a single-reflection d-spacing
+   map is not a strain map until composition is excluded, and a gradient aligned with an
+   instrument axis is suspect until shown otherwise.
+2. **"That gradient is the CRL field-of-view 2θ term"** (`baf5f1b18bd8`, 4/4). The term is
+   field-uniform by construction, but the measured row slope varies across column bands by
+   0.9–1.2× the whole predicted term and changes sign in one reduction. The profile is 33 %
+   non-linear, and both reductions agree on the curvature to 0.3 %. A parameter-free ratio test
+   predicts [dχ/dcol]/[dε/drow] = 1/cos θ = 1.0101 and measures 1.28–1.41. The agreement "band"
+   was back-solved from the measured slope, so the measurement sat inside it by construction; and
+   −2.2778 µε/row was their map on *our* mask (−1.0578 on their own). *Rules:* test a mechanism on
+   the shape it predicts, not on a spatial average; never build an acceptance band from the number
+   under test; two reductions of the same frames exclude code bugs, not mechanisms. The gradient
+   itself is real (800 phase-randomised surrogates, p < 0.00125), its origin is open, and with the
+   sample never translating nothing in this dataset separates a detector-frame term from a
+   sample-frame one (ENVELOPE §6).
+3. **"A real row-only lattice rotation of 70–96 mdeg"** (`8c48b911dd64`, 4/4). It is a
+   reproducible *saddle*: the row slope flips sign across column quartiles in both reductions on
+   every mask, the end-to-end change per column sextile runs −103 to +255 mdeg, and plane R² is
+   0.04–0.10. The two quoted slopes were off-diagonal cells of one map × mask table (range −0.061
+   to +0.311), and theirs sits inside its own zero-gradient null (p = 0.079). "Column control ≈ 0"
+   was a unit error: row pixels are 3.587× longer on the sample, and in mdeg/µm the worst local
+   column gradient (−0.582) exceeds the row effect (+0.243). *Rules:* a low-R² plane is not a
+   gradient; report the whole map × mask table; compare slopes in µm when pixels are anisotropic.
+4. **"The dark line has not moved between the two reductions"** (`f12668b576db`, self-refuted).
+   The argmin tracker found the grain edge, not the line (x = 298.5 at the search-window edge in
+   both maps), and on our own maps returned an identical 292.00 for COM-µ and COM-χ. Every
+   position and width in the claim was void. *Rule:* identical outputs from different inputs mean
+   the estimator railed; print the search window beside every tracked position.
+5. **"Their dark intensity features are pipeline rejection, not sample contrast"**
+   (`2b3f9947fc2e`, killed by the artifact lens). The dark-band pixels are not photon-starved (raw
+   on/off 1.03–1.06), but their χ peak sits +120 mdeg off with a broadened profile, and a
+   parent-orientation window on our own raw data reproduces their contrast (0.110–0.292 against
+   their 0.166–0.174): the two maps are angularly selective to different degrees (§11f). The
+   "1.007" ratio behind the claim was one array computed twice, and the pedestal dilutes any such
+   ratio ~10× toward unity. *Rule:* §7d; do not attribute a collaborator's feature to a pipeline
+   step without their script.
+6. **"Their COM-µ at boundary pixels is unsupported by the raw profile"** (`8adeccfad99e`, 4/4).
+   Polarity reversed. On genuinely bimodal pixels selected from the raw data (n = 3133), 85 % of
+   *our* centroids land in the empty valley between the modes (0.035 of raw intensity within
+   ±1 bin) against 0 % of theirs (0.564). The "raw" arbiter had been our own baseline-left-in
+   centroid, the estimator rule 1 forbids, and the pixels had been selected on the tail of their
+   map (§11d). *Rules:* at two-orientation pixels a first moment is the wrong estimator; never use
+   a forbidden estimator as ground truth; select on the raw data or a third quantity.

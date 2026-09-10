@@ -95,15 +95,34 @@ yours (rules 11–20, Lab Notebook §7):
    residual on a planted 6.4 % bias**, and that is what killed it (rules 17–20,
    Lab Notebook §5j).
 
+9. **Your error bar is probably too small, in five specific ways.** A fifth campaign — an
+   independent reduction of a collaborator's ID03 set — refuted **eight** of our own claims:
+   two error bars and six interpretations. The error bars failed in five ways. Subtracting a
+   background does not subtract its
+   variance (5–6× too small); budget terms that are moments of one array are not independent
+   (`RMS = hypot(mean, sd)` **exactly**); a term proportional to the signal is a dilution
+   factor, not an uncertainty; a floor measured at one step size does not transfer in mdeg;
+   and quoting one term at p95 against others' medians manufactures any ordering you like.
+   Prefer a **model-free split-half** over any analytic propagation — it needs no gain, no
+   noise model and no lineshape (rules 23–28, Lab Notebook §11b–c).
+
+10. **One reflection gives Δd/d, not elastic strain, and a still sample gives no spatial
+    attribution.** In a solid solution a composition change moves d exactly as strain does.
+    And if `samx/samy/samz` never move, a detector-frame optical term and a real sample
+    gradient are **exactly degenerate** — one scan at a known translation separates them
+    (ENVELOPE §6, Notebook §11f).
+
 ## When something looks wrong
 
 Go to **`manuals/dfxm/DIAGNOSIS.md`** — symptom → discriminating test → cause → lever,
 indexed by symptom rather than by step. Every entry carries a test that can come back the
-other way.
+other way. Newest entries: a centroid histogram that combs at the motor step; two reductions
+of the same frames that agree on orientation but not intensity; a feature present in one
+reduction and absent in another; and a budget whose terms are not independent.
 
-Before re-investigating anything, read **`manuals/dfxm/LAB_NOTEBOOK.md`** — **twelve**
+Before re-investigating anything, read **`manuals/dfxm/LAB_NOTEBOOK.md`** — **twenty**
 attractive claims are recorded there as *refuted or softened*, each with the measurement or
-reference that killed it (§5). None died of new physics: they died of a detrending choice, an
+reference that killed it (§5; §11b and §11l). None died of new physics: they died of a detrending choice, an
 iid bootstrap on correlated pixels, a symmetric alternative that could not move a centroid, a
 Gaussian fit on 7 points, a hardcoded constant, a wrong FWHM convention, and prior art —
 twice over prior art that was cited in `midas_dfxm`'s own docstrings.

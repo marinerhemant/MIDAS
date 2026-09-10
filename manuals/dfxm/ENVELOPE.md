@@ -102,3 +102,39 @@ Skipped on a given run but perfectly possible. These read identically to hard li
 - [ ] Every bound in §2 names what limits it — **three rows still blank** (frame rate, goniometer travel, damage dose)
 - [x] Nothing in §1 or §3 is phrased as a suggestion
 - [x] `Last checked` is within the current run cycle
+
+---
+
+## 6. Added by the Mg-4Al ID03 campaign (Notebook §11)
+
+**Cannot — intrinsic.**
+
+- **One reflection measures Δd/d and nothing else.** In a solid solution a composition change
+  moves d exactly as elastic strain does. Calling a single-reflection d-spacing map "elastic
+  strain" is an assumption, not a measurement, and it is worst exactly at boundaries where
+  segregation is expected. **A second reflection separates them** (and is the only route to a
+  strain tensor).
+- **If the sample never translates, detector-frame and sample-frame terms are exactly
+  degenerate.** An optical field-position term and a real spatial gradient in the sample
+  produce the same map. One extra scan at a known translation separates them: a detector-frame
+  term stays put on the detector, a sample field moves with the sample. Check `samx/samy/samz`
+  and `uz` before promising any spatial attribution — ours were constant despite a folder name
+  implying a layer stack.
+
+**Cannot — with the sampling as taken.**
+
+- **The coarse axis has no sampling floor you can measure.** Decimating a *better*-sampled axis
+  gives a proxy, but its reference is itself under-sampled, so it bounds the gap between two
+  coarse centroids rather than the error against the true angle. Four proxy routes on the same
+  data spanned 2.1–8.6 mdeg. Quote a range and say it is a proxy.
+- **Per-pixel orientation is not pinned better than the estimator choice.** Moment versus
+  fitted centre moved ours by 6.8–9.9 mdeg — larger than photon noise, sampling and every
+  systematic combined. Until rule 20's asymmetric-lineshape test is run, the per-pixel error
+  bar is unbounded below by that amount.
+
+**Did not, but could.**
+
+- **Detector gain.** Measurable from the frames themselves with the covariance-sum estimator
+  (Notebook §11e) — no darks or flats required, though they make it cleaner. Until then every
+  absolute σ is provisional by an unknown factor. Note that gain does *not* enter a model-free
+  split-half error bar, which is one reason to prefer it.

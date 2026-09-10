@@ -272,6 +272,51 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
     the true λ returns off-Bragg on the **weak-beam flank** — but only for the **strain** channel (a
     tilt-channel intensity ∝ $|$deviation$|$ doubles at any operating point).
 
+23. **Subtracting a background does not subtract its variance (§2, Notebook §11b).** Poisson
+    noise is set by what the detector *recorded*, not by what survives your subtraction — and
+    the near-baseline bins sit at the **largest** lever arms `Σ(x−c)²`, so they usually
+    dominate `var(centroid)` while carrying almost no signal. On the Mg-4Al ID03 set the
+    omitted term was **12.9× the retained one in variance** and the error bar came out
+    **5–6× too small**. Use `midas_dfxm.centroid_uncertainty`, or better, measure the scatter
+    with a **model-free split-half** (χ parity, obpitch parity) which assumes no noise model,
+    no gain and no lineshape at all. For halves A, B: `SD(A−B) = 2·σ_full`.
+
+24. **Before quoting an uncertainty budget, prove its terms are independent (Notebook §11b).**
+    Three of our four "independent" terms turned out to be three moments of one vector, with
+    `RMS(d) = hypot(mean(d), sd(d))` **exactly**. Compute the identity; if it holds, you have
+    listed A, B and √(A²+B²) as separate contributions. And **quote every term at the same
+    quantile** — a p95 against medians manufactures whatever ordering you want (ours produced
+    a fictitious "25× lead"; like-for-like it was 10–15×, and at the median that term was the
+    *smallest*).
+
+25. **A term proportional to the signal is not an uncertainty (Notebook §11b).** Regress any
+    candidate term against the field it is supposed to bound. Ours came back at r = −0.96,
+    R² = 0.92 — 92.5 % of it was deterministic dilution, and it vanishes when the signal does.
+    Also: never define a budget term against **no correction at all**; that is a straw man and
+    the halt table forbids the un-subtracted arm outright. Use the spread among *defensible*
+    choices.
+
+26. **A floor measured at one step size does not transfer in absolute units (Notebook §11b).**
+    The centroid estimator is **scale-equivariant in x** — verify it numerically, ours gave
+    0.333334 for a 3× rescale — so what transfers between axes is the error **in units of the
+    step**, never the value in mdeg. And a proxy floor whose *reference* is itself
+    under-sampled bounds nothing: decimating a 3-pt/FWHM axis and calling the undecimated
+    version "truth" measures the gap between a 1-pt and a 3-pt centroid, not the error against
+    the true angle.
+
+27. **When comparing two reductions, never select pixels on one of them (Notebook §11d).**
+    Regression to the mean is **symmetric**: select on theirs and ours looks unsupported;
+    select on ours and theirs does — we measured observed/predicted 0.79 in *both* directions.
+    Select on a third quantity or on the raw data. And never summarise a **bimodal** population
+    with its median: ours sat in the gap between our own two modes and described no pixel.
+
+28. **Photon transfer needs the covariance sum when a PSF is present (§2, Notebook §11e).**
+    `var/mean` is invalid with a pedestal (rule 13); additionally **every high-pass estimator
+    is biased low by Σw²** when one quantum spreads over more than a pixel (measured 0.71 here,
+    ~1.4 px per quantum). Use `Σ_d cov(S_i, S_{i+d})` over **all** lags on frame-differenced
+    data. A **negative read-noise intercept is a rejected model**, not a small correction — all
+    three of our first attempts had one, and gave 0.5, 8.7 and 11–360 ADU/quantum.
+
 ### Traps that silently corrupt results
 
 | Trap | Symptom if missed | Where |
@@ -285,6 +330,12 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
 | a shear-strain reflection reported as "no contrast" | wrong channel — a cube-axis reflection sees the shear as tilt (θ-rock), not strain (θ,2θ) | §4, Notebook §9 |
 | a fixed-θ intensity image read at exact Bragg | 2nd-order response images the wave at **λ/2**; go weak-beam for the true λ | Notebook §9 |
 | a single DFXM frame used to call a wave 2D vs 3D | the inclined projection collapses sample x and z onto one detector axis; you need the scanned reconstruction | Notebook §9 |
+| a centroid error bar propagated over background-SUBTRACTED counts | error bar 5-6x too small; the near-baseline bins carry the longest lever arms | §2, Notebook §11b |
+| budget terms that are moments of one array | `RMS = hypot(mean, sd)` exactly; A, B and their quadrature sum listed as three | Notebook §11b |
+| an uncertainty term that scales with the signal | it is a dilution factor, not an uncertainty; it vanishes with the signal | Notebook §11b |
+| a sampling floor quoted in mdeg across a step-size change | the estimator is scale-equivariant; only the error *in units of the step* transfers | Notebook §11b |
+| pixels selected on one of the two maps being compared | regression to the mean, and it is symmetric — swap the roles and the verdict swaps | Notebook §11d |
+| gain from a high-pass photon transfer with an optical PSF | biased low by sum(w^2); a negative read intercept means the model is rejected | Notebook §11e |
 | a Miller string ("the 400 reflection") quoted without its index frame | channel inverts: ortho 400 (=tet [110]) is strain-sensing, tet 400 (cube axis) is tilt-sensing | Notebook §9a |
 | round-trip quoted as physical accuracy | 1e-16 "validation" that tests only the linear algebra | §2 |
 | mosaicity read as intrinsic sample spread | it is the intrinsic spread **convolved with the instrument resolution** — deconvolve with `fit_orientation_mosaicity`, not `moment_orientation` | §2, §4 |

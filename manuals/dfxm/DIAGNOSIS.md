@@ -447,3 +447,92 @@ its direction** relative to the strain axes; a reflection can be blind in one ch
 **Lever.** Match the channel to the reflection (diagonal reflection → θ,2θ strain; cube-axis → θ-rock
 tilt), and read the intensity wavelength on the weak-beam flank, not at the peak. If you need the true
 strain field, use the θ,2θ COM (linear) rather than a fixed-θ intensity.
+
+---
+
+## The centroid histogram is a comb at the motor step
+
+**Discriminating test.** Compute the phase of each pixel's centroid relative to the
+**encoder** grid: `p = ((c − g0)/step) mod 1`, folded to ±0.5. A well-sampled axis gives
+mean|p| = 0.250 and 20 % of pixels within 0.1 of a grid point. Then run the *same* statistic
+on a second, better-sampled axis of the same scan as a control — it must come back flat, and
+if it does not, the test is broken rather than the data.
+
+**Cause.** The rocking curve is narrower than the step you took it with, so the centroid is
+pulled toward the grid points. On the Mg-4Al ID03 set: rocking axis 1.16 pts/FWHM gave
+mean|p| = 0.2141 and **29.6 %** within 0.1 of a step; the roll axis at 3.35 pts/FWHM gave
+0.2484 and 20.4 % (Notebook §11a).
+
+**Lever.** It is in the data, not the reduction — an independent re-implementation combs
+identically. Fix it at the next beamtime by trimming the *range* and refining the *step*
+(the slack is usually range: the grain spanned 0.69° of a 1.0° window). Until then, do not
+quote a per-pixel orientation to better than the step, and check whether the phase origin you
+are measuring against is the commanded or the readback grid — they differed by 0.39 of a step
+here, which flips apparent pinning into apparent anti-pinning.
+
+---
+
+## Two reductions of the same frames agree on orientation but not on intensity
+
+**Discriminating test.** Four checks, in this order, because each excludes a whole class:
+
+1. **Is it a constant?** If one pipeline subtracts a per-frame scalar pedestal and the other
+   does not, the sums differ by a per-pixel **constant** — and a constant cannot move a
+   correlation off 1.0. If r ≪ 1, pedestal handling is *not* the cause. (Algebra, no compute.)
+2. **Is it the grid?** Cross-correlate isolated hot pixels or speckle fiducials, which are
+   **detector**-fixed. Ours gave dy = dx = 0.00 px with identity beating all 8 dihedral
+   transforms. Note a *whole-frame* correlation is inflated by the mask contrast — compare
+   inside the grain.
+3. **Is it a reweighting?** Fit per-bin weights on your own angular marginals to reproduce
+   their map. If even an unconstrained fit with negative weights caps well below 1 (ours:
+   59 parameters, r = 0.68), their product is **not a linear functional** of your angular
+   volume.
+4. **Is it angular selectivity?** Compare the raw angular profile on their dark features
+   against a matched control. Theirs sat at +120 mdeg in χ with a broadened, bimodal profile,
+   and a *parent-orientation window on our own raw data* reproduced their contrast.
+
+**Cause.** One reflection images one orientation. A pipeline that windows around a parent
+orientation renders everything outside it dark — legitimately, by diffraction contrast — while
+a pipeline that integrates the full scanned volume averages it in. Both are correct; they are
+**different quantities** (Notebook §11f).
+
+**Lever.** Ask which frames and which angular range their product integrates. Do **not**
+attribute the difference to a specific step of their pipeline without their script (Notebook §7d).
+
+---
+
+## A feature is present in one reduction and absent in the other
+
+**Discriminating test.** Do not eyeball it and do not use a whole-strip contrast statistic —
+both mislead. Trace the feature's ridge in the map that *has* it, then sample the **other**
+map along that exact path and against control paths offset by ±10…40 µm. Then arbitrate with
+the **raw counts** on the same pixel list.
+
+**Watch the two traps this test has.** (a) The path is selected on one map, so the comparison
+is circular unless you hold out rows or re-select from the raw data — check by tracing on
+every 8th row and evaluating on the unseen ones. (b) If your "raw" arbiter is your own
+pipeline's array with one step removed, it is not independent — verify with
+`np.array_equal`; ours was **bitwise identical** to the product it was supposed to arbitrate.
+
+**Cause and lever.** If the raw integrated counts on the path match the control (ours: 1.03–1.06)
+the feature is not photon-starved and the difference is in the *other* pipeline's angular
+acceptance. If they do not, it is real absorption or a genuine orientation excursion.
+
+---
+
+## An uncertainty budget's terms do not look independent
+
+**Discriminating test.** Compute `RMS(d)` and `hypot(mean(d), sd(d))` for the vector each term
+came from. If they are equal to floating-point precision, you have listed A, B and √(A²+B²) as
+three contributions. Also correlate the arrays behind any two terms: ours came back at 0.9917.
+
+**Second test.** Regress each term against the field it is supposed to bound. A real
+uncertainty is uncorrelated with the signal; ours gave r = −0.96, R² = 0.92 — it was a
+dilution factor that vanishes when the signal does.
+
+**Third test.** Check that every term is quoted at the **same quantile**. A p95 against medians
+manufactures any ordering you like.
+
+**Cause.** Terms derived from one split, or one difference field, by different summary
+statistics. **Lever.** Rebuild as *one measurement decomposed*, state the decomposition, and
+prefer a model-free split-half over any analytic propagation (Notebook §11b, §11c).
