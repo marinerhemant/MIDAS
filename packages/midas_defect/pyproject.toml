@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-defect"
-version = "0.1.6"
+version = "0.1.7"
 description = "Differentiable, phase-agnostic diffuse-scattering defect metrology on top of standard FF-HEDM: intensity-budget closure, per-grain dislocation density, fault-rod and selection-rule tests."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -31,7 +31,8 @@ dependencies = [
     # Sibling MIDAS packages -- all reused via the MIDAS reuse map in
     # implementation_plan.md Section 2. Do NOT re-port their primitives.
     "midas-transforms>=0.1",     # det <-> q transforms, device/dtype resolution
-    "midas-hkls>=0.1",           # lattice math, structure factors, hkl enumeration (torch)
+    "midas-hkls>=0.11.0",        # lattice math, structure factors, hkl enumeration (torch);
+                                 # >=0.11 for centring_allowed, which rows.py now delegates to
     "midas-stress>=0.1",         # quat / rotation / misorientation primitives
     "midas-diffract>=0.1",       # HEDMForwardModel for predicted spot positions
     "midas-index>=0.1",          # initial-pass indexer for seed_index.py
@@ -66,8 +67,9 @@ dev = [
     "matplotlib>=3.5",          # exercised by test_reports / test_synthetic_regression
 ]
 
-[tool.setuptools]
-packages = ["midas_defect", "midas_defect.cli", "midas_defect.examples"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_defect*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
