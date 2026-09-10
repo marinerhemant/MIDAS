@@ -64,6 +64,9 @@ class SatelliteDoublet:
     metadata: dict = field(default_factory=dict)
 
 
+from ._width import fwhm_half_max
+
+
 def _frame(axis: NDArray[np.floating]) -> tuple:
     axis = np.asarray(axis, dtype=np.float64)
     axis = axis / np.linalg.norm(axis)
@@ -85,8 +88,7 @@ def _wfwhm(x: NDArray[np.floating], w: NDArray[np.floating], nbins: int = 40) ->
     ctr = 0.5 * (edges[1:] + edges[:-1])
     if h.max() <= 0:
         return float("nan")
-    above = ctr[h >= 0.5 * h.max()]
-    return float(above.max() - above.min()) if above.size >= 2 else float("nan")
+    return fwhm_half_max(ctr, h)
 
 
 def _weighted_2means_1d(u: NDArray[np.floating], w: NDArray[np.floating],

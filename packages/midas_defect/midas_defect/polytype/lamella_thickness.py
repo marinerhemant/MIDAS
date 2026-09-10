@@ -14,6 +14,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 
+from ._width import fwhm_half_max
+
+
 def _fwhm_radial(qs: NDArray[np.floating], vals: NDArray[np.floating], axis: NDArray[np.floating], q_target: float) -> float:
     """1-D radial FWHM along ``axis`` near ``q_target`` of the intensity profile."""
     proj = qs @ axis
@@ -26,13 +29,9 @@ def _fwhm_radial(qs: NDArray[np.floating], vals: NDArray[np.floating], axis: NDA
     centers = 0.5 * (edges[:-1] + edges[1:])
     if counts.sum() <= 0:
         return float("nan")
-    peak = float(counts.max())
-    half = 0.5 * peak
-    above = counts > half
-    if above.sum() < 2:
+    if counts.max() <= 0:
         return float("nan")
-    where = np.where(above)[0]
-    return float(centers[where[-1]] - centers[where[0]])
+    return fwhm_half_max(centers, counts)
 
 
 def per_grain_lamella_thickness(
