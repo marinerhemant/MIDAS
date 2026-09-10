@@ -87,3 +87,52 @@ def test_index_asymmetry_flags_a_sparse_column():
     rb = index_asymmetry(balanced)
     assert abs(rb["ratio"] - 1.0) < 0.01
     assert rb["sigma_ratio"] < 1.5
+
+
+# ---------------------------------------------------------------- ab_sensitive_mask
+# Restored 2026-09-09: three La3Ni2O7 analysis scripts imported this symbol and it
+# had never been committed, so they could not run. The expectations below are the
+# contract those call sites documented, not a fresh invention.
+
+def test_ab_sensitive_mask_matches_the_documented_contract():
+    """The exact case the nickelate call site printed and reasoned about."""
+    from midas_hkls import ab_sensitive_mask
+    hkl = np.array([[1, 0, 3], [0, 1, 3], [1, 1, 2], [1, -1, 2], [2, 1, 1], [1, 2, 1]])
+    assert list(ab_sensitive_mask(hkl)) == [True, True, False, False, True, True]
+
+
+def test_ab_sensitive_mask_requires_the_partner():
+    """|h| != |k| is not enough on its own -- without the (k,h) partner a shift in
+    |G| is degenerate with the scale."""
+    from midas_hkls import ab_sensitive_mask
+    lonely = np.array([[1, 0, 3], [2, 0, 1], [3, 0, 2]])       # no (0,h) anywhere
+    assert not ab_sensitive_mask(lonely).any()
+    paired = np.array([[1, 0, 3], [0, 1, 5]])                   # partner at another l
+    assert ab_sensitive_mask(paired).all()
+
+
+def test_ab_sensitive_mask_is_blind_to_the_gamma_shear():
+    """h==k is never credited -- which is exactly why this mask must NOT be used
+    to judge an Fmmm-supercell shear, whose splitting pair is (1,1)/(1,-1)."""
+    from midas_hkls import ab_sensitive_mask
+    shear_pair = np.array([[1, 1, 2], [1, -1, 2]])
+    assert not ab_sensitive_mask(shear_pair).any()
+
+
+def test_ab_sensitive_mask_agrees_with_partner_multiplicity():
+    """The mask is the per-reflection form of partner_multiplicity: a reflection is
+    sensitive iff its (|h|,|k|) pair appears in that dict."""
+    from midas_hkls import ab_sensitive_mask, partner_multiplicity
+    rng = np.random.default_rng(0)
+    hkl = rng.integers(-3, 4, size=(200, 3))
+    mask, pairs = ab_sensitive_mask(hkl), partner_multiplicity(hkl)
+    for row, sens in zip(hkl, mask):
+        x, y = abs(int(row[0])), abs(int(row[1]))
+        assert sens == ((min(x, y), max(x, y)) in pairs)
+
+
+def test_ab_sensitive_mask_edge_cases():
+    from midas_hkls import ab_sensitive_mask
+    assert ab_sensitive_mask(np.zeros((0, 3), dtype=int)).shape == (0,)
+    assert not ab_sensitive_mask(np.array([[0, 0, 2]])).any()      # h==k==0
+    assert ab_sensitive_mask(np.array([[2, -1, 0], [1, 2, 0]])).all()   # sign-insensitive

@@ -68,7 +68,8 @@ from .conventional import (
 )
 from .ab_splitting import (
     hkl_box_from_geometry, distortion_rank, distortion_condition,
-    ab_separable, shear_separable, partner_multiplicity, index_asymmetry,
+    ab_separable, shear_separable, ab_sensitive_mask, partner_multiplicity,
+    index_asymmetry,
 )
 from .cell_constrained import (
     FREE_PARAMS, ConstrainedFit, DomainData,
@@ -79,14 +80,14 @@ from .lattice_symmetry import (
     tolerance_from_fit, holohedry_from_fit,
 )
 from .niggli import NiggliCell, niggli_reduce, same_lattice
-from .space_group import SpaceGroup, list_space_groups
+from .space_group import SpaceGroup, list_space_groups, centring_allowed
 from .symops import SymOp
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 __all__ = [
     "hkl_box_from_geometry", "distortion_rank", "distortion_condition",
-    "ab_separable", "shear_separable", "partner_multiplicity",
+    "ab_separable", "shear_separable", "ab_sensitive_mask", "partner_multiplicity",
     "index_asymmetry",
     "FREE_PARAMS", "ConstrainedFit", "DomainData",
     "refine_cell_constrained", "refine_cell_joint", "split_with_error",
@@ -126,6 +127,7 @@ __all__ = [
     "refine_lattice_from_d_spacings",
     "Reflection",
     "SpaceGroup",
+    "centring_allowed",
     "SymOp",
     "U_to_B",
     "available_elements",

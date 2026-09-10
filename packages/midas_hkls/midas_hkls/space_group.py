@@ -201,3 +201,67 @@ def list_space_groups() -> List[Tuple[int, str, str]]:
         hm = e.labels.split("=")[0].strip()
         out.append((e.sg_number, e.hall_symbol, hm))
     return out
+
+
+def centring_allowed(hkl, space_group) -> "np.ndarray":
+    """Which reflections survive the LATTICE CENTRING absences.
+
+    Returns a boolean mask over ``hkl`` (an ``(n, 3)`` integer array). This is
+    the centring rule ONLY -- the absences that follow from the lattice's
+    centring translations, independent of any atomic basis. Glide- and
+    screw-absences are not included; for those, and for basis-driven weakness,
+    compute ``|F|^2`` from a :class:`~midas_hkls.Crystal`.
+
+    The rule is DERIVED, not tabulated: a reflection survives a centring
+    translation ``t`` exactly when ``h . t`` is an integer, so with the table
+    held in units of 1/12 the test is ``(h . t) % 12 == 0`` for every vector in
+    ``LATTICE_TRANSLATIONS[centering]``. That reproduces the familiar forms --
+    F: h, k, l all the same parity; I: h + k + l even; C: h + k even;
+    R (obverse hexagonal): -h + k + l = 3n -- and, unlike a hand-written table,
+    it cannot be right for some centrings and wrong for others.
+
+    WHY THIS IS HERE. ``midas_defect.rows`` carried its own hand-written version
+    keyed on lists of space-group numbers. It applied the **I** rule (h+k+l even)
+    to an **F**-centred cell, which is wrong in BOTH directions: on La3Ni2O7 S5
+    it credited 726 of 2161 reflections (33.6 %) that F forbids, while being
+    blind to the all-odd families F allows -- 0 of 2161 claimed reflections were
+    all-odd, against 436 of 805 once fixed. Three further call sites gated on
+    ``space_group_number == 139`` and so applied no centring rule at all to any
+    other group. A rule this easy to get wrong belongs in one place, derived.
+
+    Parameters
+    ----------
+    hkl : (n, 3) array_like of int
+    space_group : int, str or SpaceGroup
+        A number (1-230), a Hermann-Mauguin symbol, or a built
+        :class:`SpaceGroup`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> h = np.array([[1, 1, 1], [1, 1, 0], [2, 0, 0], [2, 1, 0]])
+    >>> centring_allowed(h, 225).tolist()        # F, all same parity
+    [True, False, True, False]
+    >>> centring_allowed(h, 229).tolist()        # I, h+k+l even
+    [False, True, True, False]
+    >>> centring_allowed(h, 221).tolist()        # P, nothing forbidden
+    [True, True, True, True]
+    """
+    import numpy as np
+
+    if isinstance(space_group, SpaceGroup):
+        sg = space_group
+    elif isinstance(space_group, str):
+        sg = SpaceGroup.from_hm(space_group)
+    else:
+        sg = SpaceGroup.from_number(int(space_group))
+
+    h = np.asarray(hkl, dtype=np.int64)
+    if h.ndim != 2 or h.shape[1] != 3:
+        raise ValueError(f"hkl must be (n, 3); got {h.shape}")
+    ok = np.ones(len(h), dtype=bool)
+    for t in LATTICE_TRANSLATIONS[sg.centering]:
+        if not any(t):
+            continue
+        ok &= (h @ np.asarray(t, dtype=np.int64)) % STBF == 0
+    return ok

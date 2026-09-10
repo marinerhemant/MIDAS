@@ -32,7 +32,7 @@ import numpy as np
 
 __all__ = ["hkl_box_from_geometry", "distortion_rank",
            "distortion_condition", "ab_separable", "shear_separable",
-           "partner_multiplicity", "index_asymmetry"]
+           "ab_sensitive_mask", "partner_multiplicity", "index_asymmetry"]
 
 
 def hkl_box_from_geometry(a: float, c: float, *, wavelength_A: float,
@@ -117,6 +117,62 @@ def shear_separable(hkl: np.ndarray) -> bool:
     a diagonal cell to sheared data manufactures a splitting.
     """
     return distortion_rank(hkl) >= 3
+
+
+def ab_sensitive_mask(hkl: np.ndarray) -> np.ndarray:
+    """Per-reflection: can THIS reflection help separate ``a`` from ``b``?
+
+    The per-reflection form of :func:`partner_multiplicity`. A reflection is
+    sensitive when both hold:
+
+    1. ``|h| != |k|`` -- otherwise ``|G|`` is invariant under ``a <-> b`` and the
+       reflection carries no information about the splitting at all;
+    2. its partner ``(|k|, |h|)`` is present somewhere in ``hkl`` -- without the
+       partner, a shift in ``|G|`` is degenerate with a shift in the scale
+       (distance, wavelength) and cannot be attributed to ``a`` versus ``b``.
+
+    **Scope, and it is narrower than it looks.** This is the right rule for a
+    ``|G|``-only (d-spacing) analysis. A pipeline holding full 3-D q VECTORS has
+    a second, stronger handle this mask does not credit: the in-plane azimuth of
+    ``G(h,k,l)`` is ``atan2(k/b, h/a)``, which depends on ``a/b`` for ANY
+    ``h, k`` both non-zero, with no partner required. Do not use this mask to
+    argue a vector pipeline is insensitive.
+
+    **It is also blind to a gamma shear.** Under the Fmmm-supercell distortion
+    mode the splitting pair is ``(1,1)/(1,-1)``, which this mask calls NOT
+    sensitive because ``|h| == |k|`` -- while ``(1,0)/(0,1)``, which it does
+    credit, does not split under that mode at all. If the real distortion may be
+    a shear, use :func:`shear_separable`, not this.
+    See ``reference_rp_subcell_supercell_distortion_mode`` in the MIDAS notes.
+
+    ``l`` is IGNORED when matching partners, matching
+    :func:`partner_multiplicity`. A partner at a different ``l`` still pins the
+    in-plane ratio once ``c`` is known; if you need the stricter same-``l``
+    pairing, filter before calling.
+
+    Parameters
+    ----------
+    hkl
+        ``(N, 3)`` integer Miller indices.
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean mask of length ``N``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> ab_sensitive_mask(np.array([[1,0,3],[0,1,3],[1,1,2],[1,-1,2]]))
+    array([ True,  True, False, False])
+    """
+    hkl = np.asarray(hkl)
+    if hkl.size == 0:
+        return np.zeros(0, dtype=bool)
+    h, k = np.abs(hkl[:, 0]), np.abs(hkl[:, 1])
+    present = {(int(x), int(y)) for x, y in zip(h, k)}
+    return np.array([x != y and (int(y), int(x)) in present
+                     for x, y in zip(h, k)], dtype=bool)
 
 
 def partner_multiplicity(hkl: np.ndarray) -> dict:
