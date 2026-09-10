@@ -134,6 +134,11 @@ def autocalibrate_joint(
       4. LBFGS jointly over geometry + shape DOFs against per-window
          Poisson-weighted residuals.
     """
+    # RhoD to µm before anything reads it: the spec, the E-step and the bake
+    # step all normalise the distortion polynomial by it. This pipeline used to
+    # fall back to the pixel-valued MaxRingRad unconverted (see forward.sanity).
+    from ..forward.sanity import resolve_v1_rho_d_um
+    resolve_v1_rho_d_um(v1_params, verbose=verbose, label="autocalibrate_joint")
     if spec is None:
         spec = spec_from_v1_params(v1_params)
     # The image transform is part of the calibration description and rides on
@@ -174,7 +179,7 @@ def autocalibrate_joint(
         setattr(ip, k, getattr(v1_params, k))
     for i in range(15):
         setattr(ip, f"p{i}", getattr(v1_params, f"p{i}"))
-    ip.RhoD = v1_params.RhoD if v1_params.RhoD > 0 else v1_params.MaxRingRad
+    ip.RhoD = v1_params.RhoD if v1_params.RhoD > 0 else v1_params.MaxRingRad * px   # µm
     bin_size = float(v1_params.RBinSize) if v1_params.RBinSize > 0 else 0.25
     ip.RMin, ip.RMax, ip.RBinSize = float(R_min), float(R_max), bin_size
     eta_bin_size = float(eta_bin_size_override) if eta_bin_size_override is not None \

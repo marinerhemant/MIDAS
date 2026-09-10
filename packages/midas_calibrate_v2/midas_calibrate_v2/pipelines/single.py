@@ -100,17 +100,9 @@ def autocalibrate(
     # Resolve RhoD to µm (RhoD enters only as ρ = R_um / RhoD). Auto-detect
     # the units of the supplied value, and default to the BC-to-farthest-edge
     # distance for the automated / from-scratch case.
-    from ..forward.sanity import resolve_rho_d_um
-    rho_d_um, _rho_how = resolve_rho_d_um(
-        v1_params.RhoD if v1_params.RhoD > 0 else v1_params.MaxRingRad,
-        NrPixelsY=int(v1_params.NrPixelsY), NrPixelsZ=int(v1_params.NrPixelsZ),
-        BC_y=float(v1_params.BC_y), BC_z=float(v1_params.BC_z),
-        pxY=float(v1_params.pxY),
-        pxZ=float(v1_params.pxZ if v1_params.pxZ > 0 else v1_params.pxY),
-    )
-    if verbose:
-        print(f"[autocalibrate] RhoD resolved to {rho_d_um:.1f} µm ({_rho_how})")
-    v1_params.RhoD = rho_d_um   # canonical µm for E-step + forward distortion
+    from ..forward.sanity import resolve_v1_rho_d_um
+    rho_d_um, _rho_how = resolve_v1_rho_d_um(   # canonical µm, written back
+        v1_params, verbose=verbose, label="autocalibrate")
     if spec is None:
         spec = spec_from_v1_params(v1_params)
     # The image transform is part of the calibration description and rides on

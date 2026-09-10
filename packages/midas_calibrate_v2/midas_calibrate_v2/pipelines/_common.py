@@ -244,7 +244,7 @@ class FittedDataset:
     ring_idx: torch.Tensor          # long
     snr: torch.Tensor
     ring_two_theta_deg: torch.Tensor   # [n_pts] expected 2θ at the ring
-    rho_d: torch.Tensor                # px
+    rho_d: torch.Tensor                # µm; rho = R_um / rho_d
     weights: Optional[torch.Tensor] = None
     panel_idx: Optional[torch.Tensor] = None
     rt: Optional[RingTable] = None

@@ -89,7 +89,7 @@ def pixel_to_REta(
     parallax: torch.Tensor,
     pxY: torch.Tensor,              # μm; refinable (cartesian)
     pxZ: Optional[torch.Tensor] = None,
-    rho_d: torch.Tensor = None,     # px; distortion normalisation radius
+    rho_d: torch.Tensor = None,     # µm (same units as rad_um); distortion normalisation radius
     panel_layout: Optional[PanelLayout] = None,
     panel_idx: Optional[torch.Tensor] = None,
     delta_yz: Optional[torch.Tensor] = None,
@@ -114,7 +114,7 @@ def pixel_to_REta(
     parallax : depth correction (μm).
     pxY, pxZ : pixel size (μm).  When ``pxZ`` is ``None`` we use ``pxY`` for
         both axes (square pixels).
-    rho_d : distortion normalisation radius (px).
+    rho_d : distortion normalisation radius, in µm (rho = rad_um / rho_d).
     panel_layout, panel_idx, delta_yz, delta_theta, delta_lsd_panel,
     delta_p2_panel, fix_panel_id : optional multi-panel inputs.
     lattice : "cartesian" (default) or "hex_offset_y" (PIXIRAD-style

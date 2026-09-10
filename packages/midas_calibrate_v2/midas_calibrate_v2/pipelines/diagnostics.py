@@ -640,6 +640,31 @@ def rho_d_scaling_gate(
                       if spec is not None else radial)
     base = (f"RhoD={rho_d_um / 1000:.1f} mm vs outermost fitted ring "
             f"{r_max_um / 1000:.1f} mm (ratio {ratio:.2f}, ρ_max={rho_max:.2f})")
+    # The mirror case: RhoD far BELOW the outer ring, so rho runs far above 1.
+    # That is the signature of RhoD given in PIXELS (rho inflated by the pitch,
+    # ~150x at 150 um). Every distortion column then carries a factor up to
+    # rho^6, the coefficients come out in a basis nothing else uses, and a
+    # consumer that normalises in um applies almost none of the correction.
+    # This gate used to check only the too-large side, so a pixel RhoD reported
+    # "radial terms well scaled".
+    from midas_distortion import P_COEF_NAMES
+    refined_dist = ([n for n in P_COEF_NAMES
+                     if n in spec.parameters and spec.parameters[n].refined]
+                    if spec is not None else [n for n in P_COEF_NAMES if n in unpacked])
+    if rho_max >= fail_ratio and refined_dist:
+        return DiagnosticResult(
+            name="rho_d_scaling", severity="fail",
+            message=(f"{base} — ρ_max ≫ 1: RhoD looks like it was given in "
+                     f"PIXELS. It must be µm (ρ = R_µm / RhoD). Distortion "
+                     f"fitted like this lives in a basis no consumer shares. "
+                     f"Set RhoD ≈ {r_max_um:.0f} µm."),
+            metrics=metrics)
+    if rho_max >= warn_ratio:
+        return DiagnosticResult(
+            name="rho_d_scaling", severity="warn",
+            message=(f"{base} — ρ_max above 1: RhoD is smaller than the outer "
+                     f"ring, possibly in pixels; expected ≈ {r_max_um:.0f} µm."),
+            metrics=metrics)
     if ratio >= fail_ratio and refined_radial:
         return DiagnosticResult(
             name="rho_d_scaling", severity="fail",

@@ -84,7 +84,15 @@ def spec_from_v1_params(v1: V1Params) -> CalibrationSpec:
     PHASE_NAMES = {"phi1", "phi2", "phi3", "phi4", "phi5", "phi6"}
     for i in range(15):
         v2_name = V1_TO_V2_DISTORTION[i]
-        tol_i = 90.0 if v2_name in PHASE_NAMES else v1.tolDistortion
+        # Phases get a FULL period (+/-180), not +/-90. The LM enforces bounds
+        # as a sigmoid box, so a phase CLAMPS at the edge instead of wrapping.
+        # (a, phi) == (-a, phi + 180), so +/-90 sits exactly on the seam between
+        # the two sign representations: a real phase near +/-90 rails there,
+        # and its fitted value and scatter become meaningless. At +/-180 the
+        # seam is equivalent to the seed phase with the amplitude sign flipped,
+        # so the fit never has to cross it. No bound would be worse, not better:
+        # an unbounded parameter gets a fabricated box of +/-fallback_span.
+        tol_i = 180.0 if v2_name in PHASE_NAMES else v1.tolDistortion
         _add(s, v2_name, getattr(v1, f"p{i}"),
              refined=refine.get(f"p{i}", True), tol=tol_i)
     _add(s, "Parallax", v1.Parallax, refined=refine.get("Parallax", False),
@@ -97,7 +105,8 @@ def spec_from_v1_params(v1: V1Params) -> CalibrationSpec:
     _add(s, "pxY", v1.pxY, refined=False, tol=0.5)   # μm
     pxZ = v1.pxZ if v1.pxZ > 0 else v1.pxY
     _add(s, "pxZ", pxZ, refined=False, tol=0.5)
-    rho_d = v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad
+    # µm: the forward model uses rho = R_um / RhoD, and MaxRingRad is in px.
+    rho_d = v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad * 0.5 * (v1.pxY + pxZ)
     _add(s, "RhoD", rho_d, refined=False, tol=10.0)
     # Hex-lattice parameters.  Always added so unpack_spec produces
     # consistent dict keys; only consulted when CalibrationSpec.lattice

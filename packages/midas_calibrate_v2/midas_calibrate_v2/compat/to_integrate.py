@@ -265,8 +265,10 @@ def spec_from_calibration_result(
 
     Notes
     -----
-    ``RhoD`` is set in **pixels** (the v2 spec convention; the forward model
-    converts internally). Distortion harmonic names are shared between
+    ``RhoD`` is set in **micrometres**: the forward model uses
+    ``rho = R_um / RhoD`` (see where it is assigned below). This note used to say
+    pixels, which is the unit mistake three calibration pipelines made.
+    Distortion harmonic names are shared between
     ``midas_calibrate_v2`` and ``midas_integrate_v2``, so they copy across with
     no translation.
     """

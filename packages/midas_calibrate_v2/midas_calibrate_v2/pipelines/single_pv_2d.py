@@ -64,7 +64,7 @@ def _bake_2d_to_dataset(
 ) -> FittedDataset:
     """Same recipe as ``single_pv._bake_fits_to_dataset`` but for 2-D fits."""
     px = 0.5 * (v1.pxY + v1.pxZ) if v1.pxZ > 0 else v1.pxY
-    rho_d = v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad
+    rho_d = v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad * px   # µm; MaxRingRad is px
     TRs = build_tilt_matrix(v1.tx, v1.ty, v1.tz)
     R = fits.R_fit.detach().cpu().numpy()
     # The 2D fitter recovers a fitted η offset within the window; use the
@@ -138,6 +138,11 @@ def autocalibrate_pv_2d(
 ) -> PV2DResult:
     """Alternating engine using the 2-D pV peak fitter."""
     v1_params.validate()
+    # RhoD to µm before anything reads it: the spec, the E-step and the bake
+    # step all normalise the distortion polynomial by it. This pipeline used to
+    # fall back to the pixel-valued MaxRingRad unconverted (see forward.sanity).
+    from ..forward.sanity import resolve_v1_rho_d_um
+    resolve_v1_rho_d_um(v1_params, verbose=verbose, label="autocalibrate_pv_2d")
     if spec is None:
         spec = spec_from_v1_params(v1_params)
 

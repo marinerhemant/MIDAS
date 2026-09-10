@@ -72,7 +72,7 @@ def _bake_fits_to_dataset(fits: BatchedFits, v1: V1Params, rt: RingTable,
     dominated by the missing inverse.
     """
     px = 0.5 * (v1.pxY + v1.pxZ) if v1.pxZ > 0 else v1.pxY
-    rho_d = v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad
+    rho_d = v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad * px   # µm; MaxRingRad is px
     TRs = build_tilt_matrix(v1.tx, v1.ty, v1.tz)
 
     R = fits.R_fit.detach().cpu().numpy()
@@ -211,6 +211,11 @@ def autocalibrate_pv(
 ) -> PVCalibrationResult:
     """Alternating engine using batched pV peak fit instead of centroid."""
     v1_params.validate()
+    # RhoD to µm before anything reads it: the spec, the E-step and the bake
+    # step all normalise the distortion polynomial by it. This pipeline used to
+    # fall back to the pixel-valued MaxRingRad unconverted (see forward.sanity).
+    from ..forward.sanity import resolve_v1_rho_d_um
+    resolve_v1_rho_d_um(v1_params, verbose=verbose, label="autocalibrate_pv")
     if spec is None:
         spec = spec_from_v1_params(v1_params)
     # The image transform is part of the calibration description and rides on
