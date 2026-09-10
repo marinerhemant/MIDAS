@@ -129,6 +129,7 @@ from .plasticity import (
     slip_dislocation_types,
 )
 from .mosaicity_fit import (
+    centroid_uncertainty,
     fit_orientation_mosaicity,
     fit_rocking_curve,
     moment_orientation,
@@ -338,6 +339,7 @@ __all__ = [
     "rocking_lrt",
     "rocking_nll",
     "moment_orientation",
+    "centroid_uncertainty",
     "reference_Q",
     "deformation_design_matrix",
     "deformation_identifiability",
@@ -404,4 +406,4 @@ __all__ = [
     "dfxm_image_dynamical_chromatic_pink",
 ]
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"

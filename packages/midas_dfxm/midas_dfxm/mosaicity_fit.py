@@ -22,6 +22,7 @@ Everything is torch-differentiable and device-portable.
 """
 from __future__ import annotations
 
+import numpy as _np
 import torch
 
 from midas_invert.optimize import fit as _invert_fit  # noqa: F401 (available for callers)
@@ -181,7 +182,13 @@ def fit_orientation_mosaicity(
         orientation = torch.stack([cc, pp], dim=-1)                  # (P,K,2)
         mosaic_cov = torch.stack([torch.stack([s00, s01], -1),
                                   torch.stack([s01, s11], -1)], -2)  # (P,K,2,2) intrinsic
-        # crude per-pixel orientation uncertainty ~ total width / sqrt(SNR-ish signal)
+        # Per-pixel orientation uncertainty. NOTE this is a LOWER BOUND and deliberately so:
+        # `data` here is normalised per pixel, so its sum is not a photon count, and the
+        # fitted `background` is subtracted without its variance being carried. Both push the
+        # estimate DOWN. On real ID03 data the equivalent naive form understated the error bar
+        # by ~5-6x (LAB_NOTEBOOK §11b). For an honest number pass raw counts and a measured
+        # gain to `centroid_uncertainty`, or -- better, because it assumes no noise model at
+        # all -- split the scan in half and measure the scatter directly (§11c).
         tot_w = torch.sqrt(s00 + R[0, 0] + s11 + R[1, 1])[:, 0]
         signal = D.sum(-1).clamp_min(1.0)
         ostd = (tot_w / torch.sqrt(signal))[:, None].expand(P, 2)
@@ -670,6 +677,61 @@ def fit_rocking_curve(
             "background": b_raw.detach(),
             "nll": nll, "n_params": n_params, "model": model,
             "theta_step": step, "theta_range": rng}
+
+
+def centroid_uncertainty(counts, grid, *, background_per_bin=0.0, gain=1.0, read_var=0.0):
+    r"""Per-pixel standard error of an intensity-weighted centroid, done correctly.
+
+    For :math:`c = \sum_i x_i P_i / \sum_i P_i` with independent bins,
+
+    .. math:: \mathrm{var}(c) = \frac{\sum_i (x_i - c)^2\,\mathrm{var}(P_i)}{S^2}
+
+    where ``var(P_i) = gain * (recorded counts in bin i) + read_var``.
+
+    **The recorded counts, not the background-subtracted ones.** Subtracting a background
+    removes its mean, never its variance -- and because the near-baseline bins sit at the
+    *largest* lever arms :math:`(x_i-c)^2`, they usually dominate var(c) even though they
+    carry little signal. On the Mg-4Al ID03 campaign the omitted term was **12.9x** the
+    retained one in variance, and the naive ``sigma/sqrt(S)`` understated the error bar by
+    ~5-6x (LAB_NOTEBOOK §11b). ``sigma/sqrt(S)`` is only right when the background is
+    genuinely zero.
+
+    Parameters
+    ----------
+    counts : (..., M) array
+        Recorded counts per angular bin, background INCLUDED, in detector units (ADU).
+    grid : (M,) array
+        Angular positions of the bins, in the units you want the answer in.
+    background_per_bin : float or (...,) or (..., M) array
+        Background already subtracted from ``counts``, per bin. Added back for the
+        variance only. Pass ``0.0`` if ``counts`` still contains it.
+    gain : float
+        Detector gain in counts per detected quantum. **Measure it** -- with a pedestal
+        present ``var/mean`` is invalid, and with an optical PSF every high-pass estimator
+        is biased low by :math:`\sum w^2`; use the spatial covariance summed over all lags
+        (LAB_NOTEBOOK §11e). ``1.0`` makes the result a lower bound.
+    read_var : float
+        Read-noise variance per bin, in counts^2 (i.e. per-frame variance times the number
+        of frames summed into a bin).
+
+    Returns
+    -------
+    (...,) array of the standard error of the centroid, in the units of ``grid``.
+    """
+    xp = torch if isinstance(counts, torch.Tensor) else _np
+    x = xp.as_tensor(grid, dtype=counts.dtype, device=counts.device) if xp is torch \
+        else _np.asarray(grid, dtype=float)
+    sig = counts if xp is torch else _np.asarray(counts, dtype=float)
+    bg = background_per_bin
+    if xp is torch and not isinstance(bg, torch.Tensor):
+        bg = torch.as_tensor(bg, dtype=sig.dtype, device=sig.device)
+    S = sig.sum(-1)
+    c = (sig * x).sum(-1) / xp.clamp(S, min=1e-30) if xp is torch else (sig * x).sum(-1) / _np.maximum(S, 1e-30)
+    lever = (x - c[..., None]) ** 2
+    recorded = sig + bg                      # variance is set by what the detector recorded
+    var = (lever * (gain * recorded + read_var)).sum(-1) / (
+        xp.clamp(S, min=1e-30) ** 2 if xp is torch else _np.maximum(S, 1e-30) ** 2)
+    return xp.sqrt(xp.clamp(var, min=0.0)) if xp is torch else _np.sqrt(_np.maximum(var, 0.0))
 
 
 def rocking_lrt(fit1: dict, fit2: dict) -> torch.Tensor:
