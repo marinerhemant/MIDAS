@@ -30,7 +30,7 @@ except ImportError:  # HDF5 files with no plugin filter still read fine
 
 import importlib
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 # public name -> submodule it lives in. Loaded lazily on first access, so
 # importing the package pulls in nothing heavy (and no torch).
@@ -69,6 +69,11 @@ _EXPORTS = {
     "fundamental_zone": "orientation", "make_symmetries": "orientation",
     "axis_angle_to_orient_mat": "orientation", "rodrigues_to_orient_mat": "orientation",
     "matrix_mult_f33": "orientation",
+    # map-level orientation statistics (numpy only, RADIANS)
+    "mean_axis": "orientation_maps", "axis_spread": "orientation_maps",
+    "medoid_orientation": "orientation_maps", "grod": "orientation_maps",
+    "kam": "orientation_maps", "grid_neighbours": "orientation_maps",
+    "group_orientations": "orientation_maps",
     # diffraction
     "calc_eta_angle_all": "diffraction",
     # frames
