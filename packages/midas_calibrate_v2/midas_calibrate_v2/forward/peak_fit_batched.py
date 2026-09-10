@@ -206,6 +206,8 @@ def fit_cake_per_ring_batched(
     max_iter: int = 50,
     snip_window: int = 0,                # 0 = no SNIP; recommend 12-20
     doublet_separation_px: float = 0.0,  # 0 = no doublet handling; v1 default 25
+    init_center: str = "zero",           # "zero": start at the predicted ring;
+                                         # "peak": start at the brightest bin
     dtype=torch.float64,
     device: str = "cpu",
     verbose: bool = False,
@@ -319,6 +321,19 @@ def fit_cake_per_ring_batched(
         torch.zeros(B, dtype=dtype, device=device),         # bg1
     ], dim=-1)                                             # [B, 7]
     half = max(half_window_px, 1.0)
+    if init_center == "peak":
+        # Start at the brightest bin above a straight line through the window
+        # ends. An LM started at the window centre does not walk to a narrow
+        # peak far from it: measured, a peak 10 px out in a +/-25 px window
+        # rails at the bound instead.
+        n_edge = max(2, R_centered.shape[1] // 10)
+        left = I_block[:, :n_edge].mean(dim=1, keepdim=True)
+        right = I_block[:, -n_edge:].mean(dim=1, keepdim=True)
+        t = torch.linspace(0.0, 1.0, R_centered.shape[1], dtype=dtype, device=device)
+        peak_bin = (I_block - (left + (right - left) * t)).argmax(dim=1)
+        x0[:, 0] = R_centered.gather(1, peak_bin[:, None]).squeeze(1).clamp(-0.9 * half, 0.9 * half)
+    elif init_center != "zero":
+        raise ValueError(f"init_center must be 'zero' or 'peak', not {init_center!r}")
     lo = torch.stack([
         torch.full((B,), -half, dtype=dtype, device=device),
         torch.full((B,), 0.05, dtype=dtype, device=device),

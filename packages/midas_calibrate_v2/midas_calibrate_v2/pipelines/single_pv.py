@@ -6,7 +6,9 @@ fidelity.  This is the path that closes the strain-floor gap to v1 C.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import copy
+import warnings
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 import numpy as np
@@ -53,6 +55,14 @@ class PVCalibrationResult:
     unpacked: dict
     history: List[IterRecord]
     fits_final: Optional[FittedDataset] = None
+    #: Iterations run in the capture window, before ``history`` (which holds the
+    #: fine-window iterations only, as it always has).
+    capture_history: List[IterRecord] = field(default_factory=list)
+
+
+class CaptureRangeWarning(UserWarning):
+    """The final fine-window peak fits pile up at the window edge: the rings
+    are further from the returned geometry than the window reaches."""
 
 
 def _bake_fits_to_dataset(fits: BatchedFits, v1: V1Params, rt: RingTable,
@@ -171,6 +181,145 @@ def _stratified_subsample(fits_ds: FittedDataset, max_per_ring: int,
     )
 
 
+#: A capture window is at most this fraction of the gap to the nearest other
+#: ring. Below half the gap, a window that holds its own ring cannot also hold a
+#: neighbour's centre; 0.45 leaves room for the peak width.
+_CAPTURE_GAP_FRAC = 0.45
+
+_BF_FIELDS = ("R_fit", "eta_deg", "ring_idx", "sigma", "gamma", "area", "snr", "rms", "rc")
+
+
+def _capture_windows_px(r_ideal_px, *, capture_window_px: float,
+                        fine_window_px: float) -> np.ndarray:
+    """Per-ring capture half-window: ``capture_window_px``, capped at
+    ``_CAPTURE_GAP_FRAC`` of the gap to the nearest other ring, never narrower
+    than the fine window."""
+    r = np.asarray(r_ideal_px, dtype=float)
+    if r.size < 2:
+        gap = np.full(r.shape, np.inf)
+    else:
+        d = np.abs(r[:, None] - r[None, :])
+        np.fill_diagonal(d, np.inf)
+        gap = d.min(axis=1)
+    return np.clip(_CAPTURE_GAP_FRAC * gap, fine_window_px, capture_window_px)
+
+
+def _capture_window_complete(bf: BatchedFits, cake_t, R_centers, eta_centers, rt_R_ideal,
+                             wins, coverage, min_cell_coverage: float) -> torch.Tensor:
+    """Per fit: is its radial window whole? The same two tests the centroid
+    E-step applies to its windows (``midas_calibrate.estep.extract_fitted_points``):
+    no cell reads <= 0, and every cell reaches ``min_cell_coverage`` of the
+    best-covered cell in that window. The windows are rebuilt exactly as
+    ``fit_cake_per_ring_batched`` builds them."""
+    n_R = R_centers.numel()
+    dR = float(R_centers[1] - R_centers[0])
+    cov = torch.as_tensor(coverage, dtype=cake_t.dtype, device=cake_t.device)
+    complete = torch.zeros((rt_R_ideal.numel(), eta_centers.numel()), dtype=torch.bool,
+                           device=cake_t.device)
+    for k in torch.unique(bf.ring_idx).tolist():
+        n_win = max(7, int(round(2.0 * float(wins[k]) / dR)))
+        c = int(torch.argmin((R_centers - rt_R_ideal[k]).abs()))
+        lo = max(0, c - n_win // 2)
+        hi = lo + n_win
+        if hi > n_R:
+            hi = n_R
+            lo = hi - n_win
+        I_blk, C_blk = cake_t[lo:hi, :], cov[lo:hi, :]
+        ref = C_blk.max(dim=0).values
+        ref = torch.where(ref > 0, ref, torch.ones_like(ref))
+        complete[k] = ~(I_blk <= 0).any(dim=0) & (C_blk >= min_cell_coverage * ref).all(dim=0)
+    j = torch.argmin((bf.eta_deg[:, None] - eta_centers[None, :]).abs(), dim=1)
+    return complete[bf.ring_idx, j]
+
+
+def _fit_capture_windows(cake_t, R_centers, eta_centers, rt_R_ideal, *,
+                         capture_window_px: float, fine_window_px: float,
+                         coverage=None, min_cell_coverage: float = 0.5,
+                         verbose: bool = False, **fit_kw) -> BatchedFits:
+    """Capture-phase peak fits. The batched fitter takes one window for every
+    ring, so rings are grouped by (whole-px) window and fitted per group, with
+    ``ring_idx`` mapped back to the full ring table.
+
+    With ``coverage`` (the cake's per-cell coverage map), fits whose window is
+    clipped by a detector edge, module gap or mask are dropped. A wide window
+    meets an edge far more often than the fine one, and a clipped window fits
+    the edge: measured on an off-panel Eiger frame, a ring 14 px beyond the
+    panel edge gave 6 fits at +23 px, on the tail of its off-panel peak, which
+    passed the SNR cut and pulled BC_y 20 px onto its bound."""
+    wins = _capture_windows_px(rt_R_ideal.detach().cpu().numpy(),
+                               capture_window_px=capture_window_px,
+                               fine_window_px=fine_window_px)
+    wins = np.maximum(np.floor(wins), fine_window_px)
+    parts = []
+    for w in np.unique(wins):
+        idx = torch.as_tensor(np.flatnonzero(wins == w), dtype=torch.long,
+                              device=rt_R_ideal.device)
+        bf = fit_cake_per_ring_batched(cake_t, R_centers, eta_centers,
+                                       rt_R_ideal[idx], half_window_px=float(w),
+                                       init_center="peak", verbose=False, **fit_kw)
+        if bf.R_fit.numel() == 0:
+            continue
+        parts.append(BatchedFits(**{f: (idx[bf.ring_idx] if f == "ring_idx"
+                                        else getattr(bf, f)) for f in _BF_FIELDS}))
+    if verbose:
+        groups = ", ".join(f"±{w:g}px x{int((wins == w).sum())}" for w in np.unique(wins))
+        print(f"  [pv capture] per-ring windows: {groups}", flush=True)
+    if not parts:
+        return fit_cake_per_ring_batched(cake_t, R_centers, eta_centers, rt_R_ideal,
+                                         half_window_px=fine_window_px, **fit_kw)
+    bf = BatchedFits(**{f: torch.cat([getattr(p, f) for p in parts]) for f in _BF_FIELDS})
+    if coverage is not None:
+        keep = _capture_window_complete(bf, cake_t, R_centers, eta_centers, rt_R_ideal,
+                                        wins, coverage, min_cell_coverage)
+        if verbose:
+            print(f"  [pv capture] dropped {int((~keep).sum())} of {keep.numel()} fits "
+                  f"whose window is clipped", flush=True)
+        bf = BatchedFits(**{f: getattr(bf, f)[keep] for f in _BF_FIELDS})
+    return bf
+
+
+def _unpack_current(spec, dtype, device) -> dict:
+    from ..parameters.pack import pack_spec, unpack_spec
+    with torch.no_grad():
+        x, info = pack_spec(spec, dtype=dtype, device=device)
+        return unpack_spec(x, info, spec)
+
+
+def _predicted_ring_shift_px(fits: FittedDataset, u_before: dict, u_after: dict, *,
+                             panel_layout, spec, q: float = 0.95) -> float:
+    """How far one LM step moved the predicted rings, in px: the change in each
+    fitted point's radial offset from its ring, p95 over the points."""
+    from ..forward.bragg import R_ideal_px
+    from ..forward.distortion import build_p_coeffs
+    from ..forward.geometry import pixel_to_REta
+    if fits.Y_pix.numel() == 0:
+        return 0.0
+    dt, dev = fits.Y_pix.dtype, fits.Y_pix.device
+    zero = torch.zeros((), dtype=dt, device=dev)
+
+    def offset_px(u):
+        out = pixel_to_REta(
+            fits.Y_pix, fits.Z_pix,
+            Lsd=u["Lsd"], BC_y=u["BC_y"], BC_z=u["BC_z"],
+            tx=u.get("tx", zero), ty=u["ty"], tz=u["tz"],
+            p_coeffs=build_p_coeffs(u, dtype=dt, device=dev),
+            parallax=u.get("Parallax", zero),
+            pxY=u["pxY"], pxZ=u.get("pxZ", u["pxY"]),
+            rho_d=fits.rho_d, panel_layout=panel_layout, panel_idx=fits.panel_idx,
+            delta_yz=u.get("panel_delta_yz"),
+            fix_panel_id=getattr(spec, "fix_panel_id", 0),
+            delta_theta=u.get("panel_delta_theta"),
+            delta_lsd_panel=u.get("panel_delta_lsd"),
+            delta_p2_panel=u.get("panel_delta_p2"),
+        )
+        px = 0.5 * (u["pxY"] + u.get("pxZ", u["pxY"]))
+        return out.R_px - R_ideal_px(fits.ring_two_theta_deg, u["Lsd"], px)
+
+    with torch.no_grad():
+        d = (offset_px(u_after) - offset_px(u_before)).abs()
+    return float(torch.quantile(d.detach().cpu(), q))
+
+
 def autocalibrate_pv(
     v1_params: V1Params,
     image: np.ndarray,
@@ -181,6 +330,14 @@ def autocalibrate_pv(
     panel_layout: Optional[PanelLayout] = None,
     n_iter: int = 5,
     half_window_px: float = 4.0,
+    capture_window_px: float = 25.0,      # capture phase: widest per-ring window,
+                                            # capped below half the gap to the
+                                            # next ring; 0 = start in the fine one
+    capture_shift_px: float = 1.0,        # leave capture once an LM step moves
+                                            # the predicted rings less than this
+                                            # (p95 over the fitted points)
+    n_capture_max: int = 10,              # capture iterations at most, run before
+                                            # the n_iter fine ones
     pv_max_iter: int = 50,
     snip_window: int = 0,           # 0 = none, recommend ~2× peak FWHM in bins
     doublet_separation_px: float = 0.0,  # 0 = none; v1 default 25 px
@@ -209,7 +366,31 @@ def autocalibrate_pv(
     dtype=torch.float64, device: str = "cpu",
     verbose: bool = True,
 ) -> PVCalibrationResult:
-    """Alternating engine using batched pV peak fit instead of centroid."""
+    """Alternating engine using batched pV peak fit instead of centroid.
+
+    Runs in two phases. **Capture** fits each ring in a wide window
+    (``capture_window_px``, capped so it cannot hold a neighbouring ring) and
+    repeats until an LM step moves the predicted rings less than
+    ``capture_shift_px``, or ``n_capture_max`` iterations. **Fine** then runs the
+    usual ``n_iter`` iterations in ``half_window_px`` with the strain-change
+    stop. ``history`` holds the fine iterations, ``capture_history`` the others.
+
+    Why: the fine window only sees a ring the geometry already puts within a few
+    px. From a seed further off it fits whatever lies inside the window, the LM
+    agrees with those fits, and the loop settles on a wrong geometry instead of
+    moving toward the rings. Measured on a large-tilt, off-panel CeO2 frame
+    (150 um Varex): the tilt-blind seed put 24 of 30 rings more than 4 px away
+    (median 10.4 px), the fine-window loop stopped 1.9 deg from the rings in tz,
+    and a 25 px window alone reached them. ``capture_window_px=0`` restores the
+    fine-window-only loop.
+
+    Limits, measured on the same frame. Capture moves the geometry only inside
+    the seed-centred bounds: from tz 0 it reached tz 14 deg with ``tolTilts`` 16,
+    needing 10 capture iterations (the default ``n_capture_max``), and with the
+    default 3 deg it cannot. Capture fits whose window is clipped by a detector
+    edge, module gap or mask are dropped; the fine-window fits are not screened
+    that way.
+    """
     v1_params.validate()
     # RhoD to µm before anything reads it: the spec, the E-step and the bake
     # step all normalise the distortion polynomial by it. This pipeline used to
@@ -240,9 +421,16 @@ def autocalibrate_pv(
     cached_full_fits_ds = None    # post-bake, post-SNR, post-subsample
     cached_n_raw = None
     cached_n_after_snr = None
+    in_capture = capture_window_px > half_window_px and n_capture_max > 0
+    capture_history: List[IterRecord] = []
+    last_fine_edge_q90: Optional[float] = None
+    px_mean = (0.5 * (v1_params.pxY + v1_params.pxZ) if v1_params.pxZ > 0
+               else v1_params.pxY)
 
-    for it in range(n_iter):
-        if reuse_fits and cached_bf is not None:
+    for it in range(n_iter + (n_capture_max if in_capture else 0)):
+        if not in_capture and len(history) >= n_iter:
+            break
+        if reuse_fits and cached_bf is not None and not in_capture:
             # Skip cake + peak fit + bake.  Reuse the FROZEN (Y_pix, Z_pix)
             # from iter 0 — bake-at-current-geom would un-stabilise the LM
             # the same way re-extract does.  Pixel positions are an
@@ -291,19 +479,36 @@ def autocalibrate_pv(
                 img_used = image - dark
             else:
                 img_used = image
-            cake = integrate_cake(v1_params, img_used, rt, mask=mask)
+            cake_params = v1_params
+            if in_capture:
+                # The cake's R range is half a Width beyond the outermost rings;
+                # widen it so their capture windows see data on both sides.
+                cake_params = copy.copy(v1_params)
+                cake_params.Width = max(float(v1_params.Width),
+                                        2.0 * capture_window_px * px_mean)
+            cake = integrate_cake(cake_params, img_used, rt, mask=mask)
 
             cake_t = torch.as_tensor(cake.intensity, dtype=dtype, device=device)
             R_centers = torch.as_tensor(cake.R_centers, dtype=dtype, device=device)
             eta_centers = torch.as_tensor(cake.eta_centers, dtype=dtype, device=device)
             rt_R_ideal = torch.as_tensor(rt.r_ideal_px, dtype=dtype, device=device)
 
-            bf = fit_cake_per_ring_batched(
-                cake_t, R_centers, eta_centers, rt_R_ideal,
-                half_window_px=half_window_px, max_iter=pv_max_iter,
-                snr_min=snr_min, snip_window=snip_window,
-                dtype=dtype, device=device, verbose=verbose,
-            )
+            if in_capture:
+                bf = _fit_capture_windows(
+                    cake_t, R_centers, eta_centers, rt_R_ideal,
+                    capture_window_px=capture_window_px,
+                    fine_window_px=half_window_px,
+                    coverage=getattr(cake, "coverage", None), max_iter=pv_max_iter,
+                    snr_min=snr_min, snip_window=snip_window,
+                    dtype=dtype, device=device, verbose=verbose,
+                )
+            else:
+                bf = fit_cake_per_ring_batched(
+                    cake_t, R_centers, eta_centers, rt_R_ideal,
+                    half_window_px=half_window_px, max_iter=pv_max_iter,
+                    snr_min=snr_min, snip_window=snip_window,
+                    dtype=dtype, device=device, verbose=verbose,
+                )
             # Optional doublet co-fitting: detect ring pairs within
             # ``doublet_separation_px`` and refit them with a 2-peak shared-bg
             # model.  Doublet results REPLACE the corresponding singleton
@@ -381,7 +586,10 @@ def autocalibrate_pv(
                 print(f"  [pV-batched] offset stats |R_fit - R_ideal|: "
                       f"med={_np.median(_np.abs(offsets)):.3f} px  "
                       f"q90={_np.quantile(_np.abs(offsets), 0.9):.3f} px", flush=True)
-            if reuse_fits:
+            if not in_capture and bf.R_fit.numel() > 0:
+                last_fine_edge_q90 = float(torch.quantile(
+                    (bf.R_fit - rt_R_ideal[bf.ring_idx]).abs().detach().cpu(), 0.9))
+            if reuse_fits and not in_capture:
                 cached_bf = bf
                 cached_rt = rt
                 cached_max_ring_eff = max_ring_eff
@@ -434,7 +642,7 @@ def autocalibrate_pv(
             if max_per_ring is not None:
                 fits_ds = _stratified_subsample(fits_ds, max_per_ring=max_per_ring)
             n_used = int(fits_ds.Y_pix.numel())
-            if reuse_fits:
+            if reuse_fits and not in_capture:
                 cached_full_fits_ds = fits_ds
                 cached_n_raw = n_raw
                 cached_n_after_snr = n_after_snr
@@ -663,6 +871,7 @@ def autocalibrate_pv(
                         r = torch.cat([r, pr])
                 return r
 
+        unpacked_pre = _unpack_current(spec, dtype, device) if in_capture else None
         unpacked, cost, rc = lm_minimise(
             spec, residual_fn,
             config=GenericLMConfig(max_iter=lm_max_iter, ftol_rel=1e-9,
@@ -749,12 +958,33 @@ def autocalibrate_pv(
                 print(summary, flush=True)
 
         rec = IterRecord(
-            iteration=it, n_fitted=n_used, cost=cost, rc=rc,
+            iteration=(len(capture_history) if in_capture else len(history)),
+            n_fitted=n_used, cost=cost, rc=rc,
             mean_strain_uE=mean_uE,
             Lsd=float(unpacked["Lsd"]),
             BC_y=float(unpacked["BC_y"]), BC_z=float(unpacked["BC_z"]),
             ty=float(unpacked["ty"]), tz=float(unpacked["tz"]),
         )
+        if in_capture:
+            shift_px = _predicted_ring_shift_px(
+                fits_ds, unpacked_pre, unpacked, panel_layout=panel_layout, spec=spec)
+            capture_history.append(rec)
+            fits_final = fits_ds
+            if verbose:
+                print(f"  [pv capture {rec.iteration}] {n_raw}→{n_after_snr}→{n_used} fits  "
+                      f"rc={rc} strain={mean_uE:8.2f} μϵ  "
+                      f"Lsd={rec.Lsd:.2f} BC=({rec.BC_y:.3f},{rec.BC_z:.3f}) "
+                      f"ty={rec.ty:.4f} tz={rec.tz:.4f}  rings moved {shift_px:.2f} px",
+                      flush=True)
+            if shift_px < capture_shift_px or len(capture_history) >= n_capture_max:
+                in_capture = False
+                if verbose:
+                    why = ("rings stopped moving" if shift_px < capture_shift_px
+                           else f"n_capture_max={n_capture_max} reached")
+                    print(f"  [pv capture] done after {len(capture_history)} "
+                          f"iteration(s), {why}; fine window ±{half_window_px:g} px",
+                          flush=True)
+            continue
         history.append(rec)
         fits_final = fits_ds
 
@@ -778,6 +1008,15 @@ def autocalibrate_pv(
                           f"(converged or strain rising: {prev:.2f} → {cur_ms:.2f})",
                           flush=True)
                 break
+
+    if last_fine_edge_q90 is not None and last_fine_edge_q90 >= 0.95 * half_window_px:
+        warnings.warn(CaptureRangeWarning(
+            f"autocalibrate_pv: at least 10% of the final peak fits sit at the edge "
+            f"of the ±{half_window_px:g} px window (q90 |R_fit - R_ideal| = "
+            f"{last_fine_edge_q90:.2f} px). The rings are further from the returned "
+            f"geometry than the window reaches, so the fit can agree with its own "
+            f"fits and still be wrong. Raise capture_window_px or n_capture_max, or "
+            f"start from a closer seed."), stacklevel=2)
 
     # Optional diagnostic CSVs.
     if csv_screen_path is not None and fits_final is not None and unpacked:
@@ -825,7 +1064,8 @@ def autocalibrate_pv(
             print(f"  wrote iteration-trace CSV: {csv_trace_path}", flush=True)
 
     return PVCalibrationResult(spec=spec, unpacked=unpacked or {},
-                                history=history, fits_final=fits_final)
+                                history=history, fits_final=fits_final,
+                                capture_history=capture_history)
 
 
-__all__ = ["autocalibrate_pv", "PVCalibrationResult", "IterRecord"]
+__all__ = ["autocalibrate_pv", "PVCalibrationResult", "IterRecord", "CaptureRangeWarning"]
