@@ -324,3 +324,159 @@ Three rules follow, and each of them caught a real error here:
 A split-half of a **single** run is a strictly better robustness test than a re-run of it — here
 disjoint spatial halves reproduced the full six-group ordering in **2.3 %** of splits — but read
 §13 first: against an orientation-locked bias, a split-half has no power either.
+
+## 15. A coherence length from node widths carries a factor ~5 and a factor π — intrinsic
+
+Measured on La3Ni2O7 (RP n = 2), (00L) nodes 2–9 px against a re-measured instrumental floor
+of 1.71–2.03 px. The honest deliverable was **c-axis coherence 10–55 unit cells, α ≈ 3–14 %
+per RP block** — a factor-5 envelope, and **that interval IS the result**, not a fit that
+needs tightening. It is the union over four independent re-analyses and spans the
+instrumental floor, the width estimator, the lineshape and the node subset. Quoting the
+central value (~20 cells) alone is not supported.
+
+Three limits stack, and each is intrinsic to reading a length off a width:
+
+* **The floor is degenerate with the answer 1:1.** Whatever residual error the instrumental
+  floor carries transfers directly. Here re-measuring the floor moved the answer by 2×.
+  See phase-4-rods §"Turning a node width into a fault probability", trap 1.
+* **A factor of π on top.** `1/w` (finite size) and `1/(πw)` (Hendricks-Teller random
+  faulting) differ by 3.14 on one measurement, and node widths cannot choose between them.
+* **The unit is per RP block, not per unit cell** — the (00L) odd reflections are forbidden,
+  so the probed repeat is c/2. Per cell is 2× larger.
+
+**What could NOT be decomposed.** Splitting the width into a coherence term plus a spacing
+spread (Δc/c) does not survive: on 7 nodes AICc prefers a ONE-parameter model (flat width, or
+floor + linear with no coherence term at all), the 95 % joint region contains both components
+being zero, and against pure replicate scatter (duplicate nodes at the same |L| differ by a
+factor 2.2) lack-of-fit is p = 0.98. **Report one width with a wide interval and no
+decomposition.** Width growth with |L| is suggestive only — Spearman +0.730 (p = 0.007) falls
+to +0.554 (p = 0.062) once the rod pedestal is modelled.
+
+**Prerequisite before any of this is meaningful:** confirm the detector was inside its
+validated count-rate range (phase-1-ingest trap table). Node widths that inflate with
+brightness are a detector effect wearing a defect's clothes.
+
+## 16. A label sum at a fixed absolute threshold is the amplitude raised to a power between 1 and 5 — intrinsic
+
+Measured on demk L5 (Cu-9at%Al, MIDAS zip floor T = 30), 2026-09-08. For a segmentation that
+keeps voxels above a fixed absolute value T, two identically-shaped features whose amplitudes
+differ by a factor k give
+
+    V_A / V_B = k^|s|        s = d log V / d log T  at the operating threshold
+
+and **|s| is a property of where T happens to sit on that feature's intensity distribution,
+not of the feature.** Per component, by peak: 246 → |s| = 0.99, 362 → 0.78, 88 → 2.06,
+76 → 2.42, 67 → 2.30, 63 → 3.23, 56 → 3.93, **49 → 5.38**. The weaker the feature the worse
+it gets, because T climbs relative to its peak.
+
+**This is not the same failure as `LAB_NOTEBOOK.md` R12** (3-D connectivity merging a
+reflection, its asterism and any streak leaving it into one label) **or the intensity-floor
+default (§3).** It bites even when the label contains exactly the right feature and nothing
+else.
+
+What it did on real data:
+
+* **Friedel pairs — which must be equal — came out 0.32 to 1.82 apart in label sum**, while
+  intensity **per voxel** held at median 0.965 and within ±10 % for nearly every pair. The
+  variation was entirely in how many voxels the label contained.
+* A segmentation-free protocol on the same voxels moved the median volume ratio
+  0.880 → **0.991** and collapsed the log-spread **5.6×** (sd 0.237 → 0.042), stable across
+  8 support variants. On the integrated ratios, rms|ln| went 0.287 → **0.134**, spread
+  2.87 → 1.53, within ±15 % of unity 4/11 → **8/11**.
+* Prediction check, so the mechanism is not merely plausible: amplitude ratio 1.136 with
+  |s| = 4.6 predicts a label-volume ratio of 1.86 against **1.75** observed; another pair
+  gives 1.172^1.24 = 1.22 against **1.191**.
+* **The floor is size-dependent.** Size-matched control pairs that must obey Friedel returned
+  rms|ln| = **0.420**; strong pairs (> 20,000 vox) returned **0.022**. For a few-hundred-voxel
+  feature the method floor is 30–40 %.
+
+**How to apply.** Never compare integrated intensities — or centroids — of components whose
+peak amplitudes differ by more than ~2× if they were segmented at a fixed absolute threshold.
+Instead: **one fixed support for all members, censored identically (including the mirror of
+any detector dead region), integrated on the raw array, with the threshold swept to
+convergence.** Establish the method's floor on control features that are *known* to be equal
+and **matched in profile width** — not merely in size and |q| — before quoting any difference
+as real.
+
+Corollary for fitting: **any power law fitted ACROSS features of different amplitude — e.g.
+satellite intensity versus order n — inherits a bias that varies with amplitude along the very
+axis being fitted.** See §17, which is that corollary biting.
+
+Related: the rms of a ratio is a SCATTER statistic. Under a true null an estimator with
+scatter σ returns rms|ln| ≈ σ, so "rms fell from 0.287 to 0.134" says the second estimator has
+less variance and says nothing about whether an asymmetry exists. Test the SIGNED mean against
+controls.
+
+## 17. An intensity-versus-order exponent is extraction-dependent, and the spread covers the competing physical answers — configured
+
+Found 2026-09-07 on demk L5 while cross-checking a number already on a slide.
+`RESULTS_exponent_extraction_conflict.md`.
+
+The satellite intensity scaling `I ∝ n^p` is the discriminator between a **displacement**
+modulation (theory p = 2) and a **composition** modulation (p = 0). Two extractions of the
+same four rungs from the same cloud gave **1.95** and **0.10** — one on each answer.
+
+| | n=1 | n=2 | n=4 | n=5 | exponent |
+|---|---|---|---|---|---|
+| re-extraction, raw I/I₁ | 1.000 | 1.322 | 0.392 | 0.256 | |
+| Lorentz factor J/J₁ = sin 2θ | 1.000 | 1.999 | 3.994 | 4.989 | |
+| re-extraction, corrected | 1.000 | 2.644 | 1.567 | 1.279 | **0.10** |
+| manuscript, raw | 1.00 | 0.45 | 1.92 | 4.42 | |
+| manuscript, corrected | 1.00 | 0.90 | 7.68 | 22.04 | **1.95** |
+
+The disagreement is not a tolerance question: the manuscript puts n=2 **below** n=1 (0.45)
+where the re-extraction puts it **above** (1.32). Extraction geometry for the re-extraction:
+tube `perp < max(0.05, tan(1.6°)·|par|)`, window `|par − nG/3| < 0.06`.
+
+**Do not quote a modulation type from a rung-intensity exponent** until the extraction is
+pinned and the exponent is shown stable across the tube half-angle, the radial window and the
+integration method. §16 is one reason it moves — the rungs differ in amplitude by more than
+2×, so a fixed-threshold extraction biases them differently along the fitted axis.
+**Status: OPEN.** Displacement versus composition is not decided on this dataset.
+
+## 18. Comparing the two Ewald crossings of a reflection — what actually bounds it
+
+Established on demk L5 across 2026-09-08/09. The comparison is worth making — it is one of the
+few internal checks a single rotation scan supports — but four things bound it, and three of
+them changed a verdict here.
+
+**The Friedel floor is structurally BLIND to the errors that survive in a crossing comparison.**
+Friedel mates are mirrored in **row** about BC_z (same column, Δω = 180°); the two Ewald
+crossings are mirrored in **column** about BC_y. A beam-centre error in y, a detector `ty`
+tilt and a rotation-axis wedge are all **column-antisymmetric**, so they cancel in the Friedel
+comparison and survive in the crossing one. A crossing offset "N× above the Friedel floor"
+therefore means *not truncation and not generic centroid noise*. It does **not** mean *not
+instrumental*.
+
+**But a calibration residual has closed-form leverage and is common-mode — which makes it
+falsifiable.** Finite-differencing every geometry parameter, only BC_y moves the crossing
+offset at all:
+
+    d|dq| / d(BC_y)  =  2 · k · px / Lsd  =  0.0188 1/A per pixel
+
+(the factor 2 because the two crossings sit ~180° apart in ω, so a column shift adds rather
+than cancelling). Every tilt contributes ≤ 0.003 1/Å per 0.1°, and p0–p3 ≤ 1e-4. It is
+**common-mode to ±6 % across ten reflections spanning |q| = 0.99–7.04.** So a
+column-antisymmetric residual predicts **one** |dq| for every reflection. On this dataset the
+observed spread was a factor **12.6**, and the tightest reflection (222 at 0.0035) caps the
+residual at ≤ 0.19 px, which predicts ≤ 0.0035 everywhere. A bounded 11-parameter fit left
+95–112 % of every offset standing. **Use this as a test:** a large reflection-to-reflection
+spread in crossing offset *excludes* a calibration residual as a sufficient cause. It does not
+tell you what does cause it.
+
+**Compare features of similar size, with a support that ENCLOSES each one.** Satellites and
+fundamentals differ by ~10× in width here; a sweep of h ≤ 30 px enclosed all five satellite
+groups (which need h = 11–23) and **zero of five** Bragg groups (which need h = 36–100).
+Identical parameters on features of different size is a different measurement in each arm, and
+here it **inverted the ordering** between the two arms. Size the support per group and say so.
+
+**Do not pool centring conventions on extended features.** Between a label centroid and a
+windowed argmax, the Bragg 111 crossing offset moved **2.49×** (0.0327 vs 0.0132) where every
+compact satellite moved 1.09–1.23×. A median over both is the answer in neither.
+
+**And note what cannot be done at all:** a superlattice reflection has **no |q|-matched
+fundamental**. `|q_111| = 2.99 1/A` is the lowest allowed fcc reflection and the n=1 satellite
+sits at `|q_111|/3 ≈ 0.99`, where no fundamental exists by construction. A |q|-matched Bragg
+control at n=1 is impossible in principle, which forces the comparison into |dq| against the
+whole control spread rather than against one partner — and the choice of invariant (|dq| versus
+angle about the origin, which is |dq|/|q|) can itself flip the verdict.

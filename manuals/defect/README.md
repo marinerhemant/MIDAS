@@ -26,7 +26,10 @@ field is the defect signal:
   predicted reciprocal lattice, so scattered intensity can be decomposed and closed.
 
 **This doc set does not get you the grains.** Indexing a far-field HEDM dataset is
-`ff-hedm`; scanning 3DXRD is `pf-hedm`; near-field is `nf-hedm`. What is new here is that
+`ff-hedm`; scanning 3DXRD is `pf-hedm`; near-field is `nf-hedm`. **And if the CELL itself is
+unknown or disputed — ab initio indexing, lattice symmetry, an a/b splitting or a shear, which
+member of a structural series, a pressure — that is `solve-cell`, not `ff-hedm`,** which
+assumes a known cell across many grains. What is new here is that
 `midas_defect.ingest` can now take you from **raw frames** to a spot list and a voxel cloud
 without leaving the package — see `phase-1-ingest.md`. If your rings are continuous powder
 rings, this is the wrong doc set entirely: that is `xrd-ct`.
@@ -42,14 +45,14 @@ rings, this is the wrong doc set entirely: that is `xrd-ct`.
 |---|---|---|
 | **`README.md`** (this) | scope gate, install gate, the order, hard rules, halt conditions | always |
 | `phase-0-survey.md` | what you actually have; is there a diffuse field at all? | first |
-| `phase-1-ingest.md` | raw frames → mask → background → 3-D spots → voxel cloud | if you are starting from frames |
+| `phase-1-ingest.md` | raw frames → mask → background → 3-D spots → voxel cloud, plus the **calling contract** (exact signatures) and the calibration trap table | **if you are starting from frames — copy the chain from here** |
 | `phase-2-index.md` | orientation from the cloud: bright-core seeding, **row and pair seeding for weak domains**, the search null, refine-to-convergence, and the **completeness audit** | before any per-grain number |
 | `phase-3-classify.md` | Bragg/diffuse split, intensity budget, and what closure means | always |
-| `phase-4-rods.md` | rods in the cloud and on the frame stack; satellites; polytype | fault / polytype work |
+| `phase-4-rods.md` | rods in the cloud and on the frame stack; satellites; polytype; **the Friedel/crossing quartet and how to verify a pairing**; variants vs a fixed q-offset; **a ladder can be right in \|q\| and not be a ladder** | fault / polytype work |
 | `phase-5-asterism.md` | asterism fit, Williamson–Hall, sub-grains, Burgers population | dislocation work |
 | `phase-6-mechanics.md` | GND, stress, Schmid, variants, energy, Mecking–Kocks, CPFEM handoff | if the goal is mechanics, not just defects |
 | `phase-7-report.md` | what to state, what to label provisional, provenance | at the end |
-| `ENVELOPE.md` | what this measurement **can** determine, and what it cannot — including §13, why a per-group difference cannot be validated by reproduction | **before promising an answer** |
+| `ENVELOPE.md` | what this measurement **can** determine, and what it cannot — including §13, why a per-group difference cannot be validated by reproduction, and **§16 why a label sum at a fixed threshold is not a measurement** | **before promising an answer** |
 | `DIAGNOSIS.md` | symptom → discriminating test → cause → lever | **when something looks wrong** |
 | `LAB_NOTEBOOK.md` | evidence ledger, **retracted results**, and one live package bug | before re-investigating anything |
 | `RUNBOOK.md` | where it runs, healthy ranges with their conditions, pick-up point | on resume |
@@ -192,7 +195,12 @@ Finish everything not blocked by the halt before reporting it.
 
 ## Sibling doc sets
 
-`manuals/ff-hedm/` (far-field HEDM — **where the grains come from**, skill `ff-hedm`),
+`manuals/solve-cell/` (**where the CELL comes from when it is unknown or disputed** — ab
+initio indexing, lattice symmetry, distortion mode, phase ID and pressure, skill
+`solve-cell`; note that `midas_defect.rows`, `.seed_index`, `.geometry` and
+`.completeness` are that chain's machinery living in this package),
+`manuals/ff-hedm/` (far-field HEDM — **where the grains come from** at a KNOWN cell,
+skill `ff-hedm`),
 `manuals/pf-hedm/` (scanning 3DXRD — **the escalation when bulk and boundary share a
 reciprocal direction**, skill `pf-hedm`), `manuals/nf-hedm/` (near-field, skill `nf-hedm`),
 `manuals/dct-tt/` (DCT and topotomography, skill `dct-tt`), `manuals/dfxm/` (dark-field X-ray

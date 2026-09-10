@@ -25,13 +25,13 @@ OpenMP runtime alongside torch's. Do not remove it.
 
 ```bash
 cd packages/midas_defect
-pytest tests -q                                  # 558 pass, 13 skip
-MIDAS_DEFECT_REAL_DATA=1 pytest tests -q         # 564 pass, 7 skip (571 collected)
+pytest tests -q                                  # 925 pass, 14 skip
+MIDAS_DEFECT_REAL_DATA=1 pytest tests -q         # 932 pass, 7 skip (946 collected)
 ```
 
 The real-data fixtures live at `tests/fixtures/demk_g1592_9r.npz` (committed, 204 KB) and a
 larger voxel NPZ that must be fetched from `/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/`.
-Six tests skip without the env var; one skips without `parameters_final.txt` from copland;
+Seven tests skip without the env var; one skips without `parameters_final.txt` from copland;
 six skip on MPS for float64/complex128 reasons and pass on CPU.
 
 ## Healthy ranges, with their conditions
@@ -65,6 +65,37 @@ Ingest is embarrassingly parallel over raster points; a 900-point map is ~15 min
 96-core node.
 
 ## Current pick-up point
+
+**2026-09-07.** The doc set gained an indexing chain, two hard limits, and a
+calling contract. Nothing is running. Suite **925 pass / 14 skip** (932 with
+`MIDAS_DEFECT_REAL_DATA=1`, 946 collected).
+
+* **`rows.py` is documented for the first time** (`phase-2-index.md`): lattice-row
+  and pair seeding for weak domains, `search_null`, `refine_to_convergence`. 1389
+  lines that previously appeared in no manual.
+* **`ENVELOPE.md` §13/§14 and `DIAGNOSIS.md` 18/19 are new, and they are the
+  expensive lessons.** A per-group difference cannot be validated by reproduction
+  when the groups ARE orientations — a planted identical cell reproduced a real
+  ordering at Kendall 0.73. A re-analysis sharing 95 % of its input is not a
+  replication. And an acceptance gate of the form `|x/x_seed - 1| < tol`
+  manufactures the correlation it would be read as proving (+0.128 ± 0.042 from a
+  zero-effect null); `test_seed_referenced_gate_manufactures_correlation` pins it.
+* **`LAB_NOTEBOOK.md` R15** retracts a six-way per-grain `c` ordering AND its
+  two-level fallback, on four independent reviews.
+* **`phase-1-ingest.md` now ends with a calling contract** — exact signatures plus
+  a trap table — written after six of those traps were hit in one afternoon by
+  the author of the rest of the doc set. `detect_powder_rings` without
+  `azimuth_deg` is the costly one: it discards ~half the real reflections.
+
+Next actions, in the order I would take them:
+
+1. **Decide `refine_to_convergence`'s fate** — it has zero in-package callers and
+   no test that can fail against the historical bug. Either something calls it or
+   it goes private.
+2. **Fold a second real-data anchor into the suite.** The chain now has three
+   (Cu-Al, a DAC ingest, a tetragonal DAC raster) and only the first is committed.
+
+**Superseded 2026-09-02 entry.**
 
 **2026-09-02.** Two preregistered runs on the reference sample, both negative, and the doc set
 updated to match. Nothing is running.

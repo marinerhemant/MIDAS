@@ -58,7 +58,7 @@ and that fails whenever the predicted node cloud is finer than the diffuse featu
 reference sample 0.0688 Å⁻¹ node spacing against a 0.05–0.15 Å⁻¹ halo, so neither distance nor
 direction can attribute a voxel. Check that before promising a fraction (`ENVELOPE.md` §1a).
 
-## Thirteen things to know before you start
+## Fourteen things to know before you start
 
 1. **Closure is arithmetic; attribution is the claim.** An auto-classifier on the reference
    sample reported **99.8 % intensity-budget closure** and was **~18 % wrong**. At high `|q|`
@@ -95,12 +95,16 @@ direction can attribute a voxel. Check that before promising a fraction (`ENVELO
    back-projection — bright pixels on integer hkl at median 0.11, PCA 3.7° from ⟨111⟩. Look
    at raw frames before concluding absence (`DIAGNOSIS.md` 12).
 
-7. **Fourteen results here are recorded as retracted, and three of the retractions were
+7. **Eighteen results here are recorded as retracted, and four of the retractions were
    themselves wrong.** A real two-variant doublet was dismissed as mosaic because the
    diagnostic looked at perpendicular q instead of ω; a real relrod was dismissed on the
    ω-sum. An entire early analysis was retracted for using the **wrong phase**, which
    propagated into the Burgers vector, the selection rules, the fault plane and the strain —
-   each independently plausible. Read `LAB_NOTEBOOK.md` before re-investigating anything.
+   each independently plausible. The newest is **§3.3**, reported refuted on 2026-09-07 and
+   **not** refuted — two disjoint inputs agree to 0.58° and nine of twelve candidate ⟨111⟩
+   carry exactly zero voxels; the bad verdict is still sitting in that day's meeting brief
+   (`LAB_NOTEBOOK.md` R21). A refutation is a claim and needs the same gate as the positive
+   it kills. Read `LAB_NOTEBOOK.md` before re-investigating anything.
 
 8. **Which orientation convention a voxel cloud is in is a property of the CLOUD, not a
    rule.** Two products from this one experiment need **opposite** conventions: the ladder
@@ -155,6 +159,24 @@ direction can attribute a voxel. Check that before promising a fraction (`ENVELO
     below 200, and a write-up that assumed the default misreported a fraction that moves 2.5×
     between the two.
 
+14. **A label sum at a fixed absolute threshold is the amplitude raised to a power between 1
+    and 5.** For two identically-shaped features whose amplitudes differ by k,
+    `V_A/V_B = k^|s|`, and `|s|` is a property of where the threshold lands on that feature's
+    intensity distribution, not of the feature — measured here at **0.8 to 5.4** across
+    components. It made **Friedel pairs, which must be equal, come out 0.32–1.82 apart** while
+    their intensity *per voxel* held at median 0.965. A segmentation-free re-integration moved
+    the median volume ratio to **0.991** and cut the log-spread 5.6×. So: never compare
+    integrated intensities *or centroids* of components whose peak amplitudes differ by more
+    than ~2×; use one fixed support for all members, censored identically **including the
+    mirror of any dead region**, on the raw array, threshold swept to convergence — and
+    establish the floor on controls known to be equal and matched in **profile width**, since
+    the floor is size-dependent (30–40 % for a few-hundred-voxel feature, 2 % above 20,000).
+    This is distinct from point 9: it bites even when the label holds exactly the right
+    feature. It is also why an intensity-versus-order exponent is extraction-dependent —
+    the rungs differ in amplitude along the very axis being fitted, and on this dataset the
+    same cloud gave **1.95 and 0.10**, the displacement answer and the composition answer
+    (`ENVELOPE.md` §16, §17; `DIAGNOSIS.md` 20, 21).
+
 ## The half most people do not know is here
 
 Beyond the diffuse field itself, the package carries a full **diffraction → plasticity** layer
@@ -192,6 +214,15 @@ from it worth knowing before you start:
 * **The background cannot follow a ring narrower than its own 2θ smoothing window**, and such
   a ring survives into the spot list as a train of false reflections. Check the window against
   the ring widths actually present.
+
+**Copy the call sequence; do not reconstruct it.** `phase-1-ingest.md` ends with a
+**calling contract** — the exact chain, with every signature read from the source — and a trap table.
+Nothing in the chain fails loudly on a wrong argument order. The single most expensive one:
+`detect_powder_rings` **without `azimuth_deg`** silently skips the occupancy test and discards
+about half the real reflections as powder (measured: 105–152 spurious rings instead of 17–50,
+kept spots 1133 → 1776). The same section covers calibration, where `make_seed(use_diplib=True)`
+segfaults — the process dies at exit 0 with no traceback, so do not opt in — and the naive
+pyFAI `.poni` → beam-centre conversion is wrong.
 
 ## When something looks wrong
 
@@ -261,7 +292,10 @@ Treat that as calibration for your priors.
 
 ## Sibling doc sets
 
-`manuals/ff-hedm/` (far-field HEDM — **where the grains come from**, skill `ff-hedm`),
+`manuals/solve-cell/` (**where the CELL comes from when it is unknown or disputed** —
+ab initio indexing, symmetry, distortion mode, phase ID, skill `solve-cell`),
+`manuals/ff-hedm/` (far-field HEDM — **where the grains come from** at a KNOWN cell,
+skill `ff-hedm`),
 `manuals/pf-hedm/` (scanning 3DXRD — **the escalation when bulk and boundary share a
 reciprocal direction**, skill `pf-hedm`), `manuals/nf-hedm/` (near-field, skill `nf-hedm`),
 `manuals/dct-tt/` (DCT and topotomography, skill `dct-tt`), `manuals/dfxm/` (dark-field X-ray

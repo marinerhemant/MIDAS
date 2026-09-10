@@ -469,3 +469,57 @@ population. Loop and nominal gate ship together or not at all.
 reflections stored alongside it. Assigning the candidate inside a refine→rematch loop reports a
 cell fitted to the previous iteration, or to a rejected round: **26 %** of one run's stored `c`
 values failed this, median 0.0041 Å, against a 0.035 Å effect under study.
+
+## 20. Two features that MUST be equal come out unequal — Friedel mates, or a symmetry pair
+
+**Symptom.** Friedel's law forbids it, and yet the integrated intensities of q and −q differ
+by tens of percent, sometimes by a factor approaching 2.
+
+**Discriminating test.** Compare **intensity per voxel** against **voxel count**, separately.
+On demk L5 the label sums swung 0.32–1.82 while intensity per voxel sat at median **0.965**,
+within ±10 % for nearly every pair. The variation is in the size of the label, not the
+brightness of the feature.
+
+**Cause.** At a fixed absolute threshold a label's volume goes as the amplitude raised to a
+power between 1 and 5, so two features of even mildly different brightness are cut at
+different fractions of their own peak (`ENVELOPE.md` §16). A dead strip that clips one member
+and not the other adds to it: on demk L5 four of eleven pairs had their higher-row member
+begin one row past the 831–847 strip.
+
+**Lever.** Re-integrate segmentation-free — one fixed support for both members, censoring the
+mirror of every dead region so both are censored identically, on the raw array, threshold
+swept to convergence. That moved the median volume ratio 0.880 → **0.991** and collapsed the
+log-spread 5.6×. If the residual is confined to the clipped pairs, it is truncation and it is
+unrecoverable: the counts were never recorded.
+
+**Do not** conclude a detector edge-response from a row profile without a phase null. An
+apparent 10-row edge zone was withdrawn, its 2-row replacement was then refuted by sliding the
+same comb onto gap-free rows (it returns the same value one time in five, p = 0.197) and by
+applying it to the column gaps, where it returns an impossible 5.1.
+
+## 21. Two analyses of the same feature give different answers and both look defensible
+
+**Symptom.** A second extraction of a published number lands somewhere else — not marginally,
+but on a different physical conclusion.
+
+**Discriminating test.** Ask what the two extractions **weight differently**, then check
+whether the quantity varies along that axis. The most common case here: features of different
+amplitude compared at a fixed threshold, where the bias varies with amplitude along the very
+axis being fitted (`ENVELOPE.md` §16).
+
+**Worked case.** The satellite intensity-versus-order exponent came out **1.95** (displacement
+modulation, theory 2) and **0.10** (composition modulation, theory 0) from the same cloud. The
+raw ratios disagree in ordering, not just in scale — one puts n=2 below n=1 at 0.45, the other
+above at 1.32 (`ENVELOPE.md` §17). Status OPEN.
+
+**Lever.** Do not adjudicate by picking the more careful-looking extraction. Sweep the free
+choices — tube half-angle, radial window, integration method, threshold — and report the
+exponent's range across them. If the range spans the competing predictions, that **is** the
+result, and the modulation type is not determined by this measurement.
+
+**Related trap, same shape.** Two files giving one quantity two values is a reconciliation job
+before it is anything else, and the cause is often aggregation rather than measurement: on
+2026-09-09 two scripts disagreed 0.0503 vs 0.1437 on the same quartet while agreeing to 15
+significant figures on every fixed configuration. The difference was a broken centring mode
+polluting one median. Check a single fixed configuration in both before believing either
+summary.

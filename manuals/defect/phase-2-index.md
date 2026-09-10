@@ -161,3 +161,46 @@ a neighbour's — a seed-referenced gate is not merely imprecise, it is circular
 change a gate and a loop together, you cannot attribute the result to either; change one at a
 time, or re-run one arm with the other's gate so the arms differ only in the thing you mean to
 test. The true size of seed-cell anchoring on this dataset is **currently unknown**.
+
+## Before you report an a/b splitting from an indexed set
+
+The count that gets quoted — "N reflections are sensitive to a vs b" — hides three things,
+and each of them produced a wrong answer on La3Ni2O7.
+
+```python
+from midas_hkls import (ab_sensitive_mask, partner_multiplicity,
+                        ab_separable, shear_separable, distortion_condition,
+                        index_asymmetry)
+
+sens  = ab_sensitive_mask(hkl)          # per reflection: |h| != |k| AND its (k,h) partner present
+pairs = partner_multiplicity(hkl)       # {(min,max): (n_fwd, n_rev)} -- how many spots per pair
+```
+
+**1. A pair supported on one spot is one blob-finding decision away from nothing.**
+On 2604 domain 2, six reflections were called sensitive — but the (1,0) side of the
+(0,1)/(1,0) pair was a **single spot**. Remove it and all six stop being sensitive. Report
+`partner_multiplicity`, not just the count.
+
+**2. `ab_sensitive_mask` is blind to a γ shear, which may be the real distortion.**
+It credits `(1,0)/(0,1)` and rejects `(1,1)/(1,-1)` because `|h| == |k|`. But in the RP
+**subcell** an Fmmm supercell distortion is a **γ shear** — γ = 89.613° vs 90.387° for the two
+variants, with a and b IDENTICAL — so the pair that actually splits is `(1,1)/(1,-1)`, the one
+the mask rejects, while `(1,0)/(0,1)` does not split at all. Use `shear_separable` (rank 3)
+whenever a shear is possible; `ab_separable` (rank ≥ 2) is not enough.
+
+**3. The mask is the rule for a |G|-only analysis and understates a vector pipeline.**
+With full 3-D q vectors the in-plane azimuth `atan2(k/b, h/a)` depends on a/b for ANY h, k both
+non-zero, no partner needed. Do not use the mask to argue a vector pipeline is insensitive.
+
+**Then check the design, not just the count.** `index_asymmetry` measures how unevenly a and b
+are constrained by the observed indices. In a limited ω wedge they are not symmetric: measured
+across the 2604 raster, |k| > |h| in 5004 reflections against |h| > |k| in 1009 — a 5× asymmetry.
+`1/a²` then rides on a sparse design column, any radial systematic pushes `a` one way, and the
+fitted splitting comes out **with a consistent sign across domains**. Since a↔b labelling is a
+per-domain gauge, a common sign is physically impossible and is the signature of this artifact.
+
+**A gate seeded on the answer is not a confirmation.** `repro/gate_packaged.py` in the
+nickelate analysis hardcodes `CELL_A, CELL_C` from the hand index and refines from it — so its
+agreement with that hand index measures nothing. A genuinely unseeded re-index of the same data
+landed 0.35 % away in both axes. If you quote a cell as independently confirmed, check what
+seeded the run.

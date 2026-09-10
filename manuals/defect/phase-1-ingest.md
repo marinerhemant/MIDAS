@@ -90,6 +90,81 @@ mixing conventions is silent, so check against `lattice.bragg_shells`.
 object: 3-D connectivity merges a reflection, its asterism and any streak leaving it into one
 label. Do not later sum over labels and call the result a budget — see `phase-3`.
 
+## The calling contract — copy this, do not reconstruct it
+
+Every signature below was read from `midas_defect/ingest.py`, not remembered. The
+author of this section rewrote the docs above in the morning and then hit **six**
+of the traps in this table the same afternoon building a new sample's front end.
+Reconstructing the chain from prose does not work; copy the block.
+
+```python
+from midas_defect.ingest import (build_mask, subtract_background, find_blobs_3d,
+                                 detect_powder_rings, flag_powder)
+from midas_defect.geometry import Geometry, pixel_to_qlab, qlab_to_qsample
+
+frames = np.stack([tifffile.imread(path(p, k)) for k in range(NFRAME)])
+
+m    = build_mask(frames)
+mask = m.mask if hasattr(m, "mask") else m          # returns an OBJECT
+sub  = subtract_background(frames, tth, az, mask)   # (frames, TTH, AZ, mask)
+
+spots, counts = find_blobs_3d(sub, mask, threshold=200.0, min_vol=10,
+                              split_ratio=3.0, gap_bridge=21,
+                              return_counts=True)   # returns a TUPLE
+spots = spots[spots.n_frames >= 2].reset_index(drop=True)
+
+qlab = pixel_to_qlab(spots.row.values, spots.col.values, g, device="cpu")
+qn   = np.linalg.norm(qlab.detach().cpu().numpy(), axis=1)
+stth = np.degrees(2*np.arcsin(np.clip(qn*LAM/(4*np.pi), -1, 1)))
+rad  = np.hypot(spots.row.values - BCR, spots.col.values - BCC)
+
+rings = detect_powder_rings(sub.max(axis=0), tth, mask, azimuth_deg=az)
+pw    = flag_powder(stth,
+                    np.degrees(np.arctan2(spots.row.values - BCR,
+                                          spots.col.values - BCC)),
+                    rad, rings)
+keep = ~pw
+```
+
+| trap | symptom | fix |
+|---|---|---|
+| **`detect_powder_rings` without `azimuth_deg`** | occupancy comes back all-`NaN`, 3–6× too many "rings", **half the real reflections discarded as powder** | always pass `azimuth_deg=az`. Measured on one sample: 105–152 rings → 17–50, kept spots 1133 → 1776 |
+| `pixel_to_qlab` default device | `TypeError: can't convert cuda:0 device type tensor to numpy` | `device="cpu"` |
+| `find_blobs_3d(..., return_counts=True)` | unpacking error, or a DataFrame where you expected one | it returns `(spots, counts)` |
+| `build_mask` | `tth_deg shape () != frame` further down | it returns an object; take `.mask` |
+| `flag_powder` argument order | wrong spots rejected, silently | `(spot_tth, spot_azimuth, spot_radius, rings)` — arrays, not the spots frame |
+| `RingSet.radius_px` | `AttributeError` | fields are `centre_deg`, `width_deg`, `occupancy`, `profile*` |
+| 2θ per spot by interpolating `tth[:, BCC]` against radius | errors to 21.7°, powder filter rejects the wrong spots | compute 2θ from each spot's own `|q|`, as above |
+
+**Nothing in this chain fails loudly on a wrong argument order.** `subtract_background`
+took a mask where 2θ belonged and raised only because a shape mismatch happened to
+surface three calls later.
+
+## Calibration, same discipline
+
+`midas_calibrate_v2.calibrate(...)` needs `mask` (**nonzero = BAD**) — before
+2026-08-29 it could not take one at all and bad pixels entered the cake as
+genuine zeros. Seed with `make_seed` **from the image**, never from a copied
+geometry or a delivered `.poni`.
+
+| trap | note |
+|---|---|
+| **`make_seed(..., use_diplib=True)` SEGFAULTS** | do not opt in. It was the default until `midas-calibrate-v2` 0.14.0 and is now `False` on all three entry points; a segfault is not a Python exception, so the internal `try/except` cannot catch it and the process dies with no traceback |
+| `make_seed` may return `n_measured=1` | one ring is not a calibration; check `n_measured` before believing `Lsd`. Its `rms_px` will be ~1e-14 precisely because nothing was fitted |
+| `weight_by_radius=` on `calibrate()` | accepted, warns, **does nothing** — a v1 C-file key no Python code reads |
+| **pyFAI `.poni` → MIDAS BC** | there is no documented conversion and the naive `Poni1/px, Poni2/px` is WRONG. Settle the centre from the DATA: the correct one maximises ring sharpness. On one frame the naive conversion was 46.5 px out and fragmented every ring into 2–3 radial peaks |
+| **a delivered `.poni` may be ROW-FLIPPED against the image as your reader returns it** | every ring is at the wrong radius and nothing warns you; a Friedel beam centre disagrees with the PONI's `getFit2D` centre by tens of px in ROW only | flip the image once on load and work in one row order for the rest of the run. **NOTHING IN THE METADATA DECLARES THIS.** In particular `Detector_config: {"orientation": 3}` does NOT: orientation 3 (BottomRight) is pyFAI's DEFAULT and is geometrically identical to 0 — both give p1 increasing down rows, i.e. no flip. TIFFs usually carry no Orientation tag (274) either. It is knowable ONLY from the data: measured on La3Ni2O7, as-read was +57.44 px wrong in row and row-flipped agreed to 0.13 px |
+| **detector count rate past the validated correction** | strong Bragg cores read low, and node WIDTHS inflate with brightness — a defect signal that is really a detector one | check the peak rate before quantifying any width. Measured on La3Ni2O7: cores at **6.8–7.2 Mcounts/s/pixel with 1256 px above 2 Mcps**, 3–7× past where Pilatus/CdTe rate correction is validated. Restricting to dim nodes helps but does not fix it — a cut on a background-subtracted local mean is NOT a cut on pixel rate |
+| capping `max_ring_radius_px` | the WRONG remedy for high strain — reject clipped BINS (`min_cell_coverage`, on by default) and leave the outer rings, which carry the tilt leverage |
+
+**Judging a calibration.** The `<100 µε` gate is for *strain* work. It is not the
+right gate for indexing: 210 µε at |q| ≈ 4 Å⁻¹ is Δq ≈ 8e-4, about **0.1σ** of a
+typical radial matching tolerance. If the deliverable is a lattice-parameter
+*difference* (an a/b splitting, say), the radially symmetric part cancels and the
+number that constrains you is the **azimuthal cos2η residual** — measure it, and
+quote it as the floor. Always overlay the predicted rings on the image before
+believing any of it.
+
 ## Healthy numbers
 
 See `RUNBOOK.md`. Briefly: masked 10–15 %, kept/labelled ≈ 1/3, ~9 % of blobs split,

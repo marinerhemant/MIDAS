@@ -321,3 +321,136 @@ to the reported reflections. `DIAGNOSIS.md` 19, `phase-2-index.md`. Note where t
 neither was caught by 920 passing tests, because both were in the *composition* of correct
 primitives by an out-of-tree script. `rows.refine_to_convergence` exists so the composition is
 in the package with the postcondition asserted.
+
+---
+
+**R16 — "The Friedel intensity asymmetry in L5 is physical." RETRACTED — it is segmentation
+volume, and a detector edge-response invented to explain the residual was refuted twice.**
+
+*2026-09-08.* Many Friedel pairs in the gap-fixed components had unequal integrated intensity,
+which Friedel's law forbids. The asymmetry is real in the label sums (0.32–1.82) and absent in
+the physics: **intensity per voxel sits at median 0.965**, within ±10 % for nearly every pair.
+A segmentation-free re-integration moved the median volume ratio 0.880 → **0.991** and cut the
+log-spread **5.6×** (sd 0.237 → 0.042), stable over 8 support variants. Mechanism identified
+and predictive: at a fixed absolute threshold `V_A/V_B = (amplitude ratio)^|s|` with local
+slope |s| = **0.8–5.4**; it predicts 1.86 against 1.75 observed for pair 315/328.
+`ENVELOPE.md` §16, `known-limits.md`.
+
+Dead-strip truncation is real for 4 of 11 pairs (266, 267, 263, 258 all begin at row 848, one
+past the 831–847 strip); symmetric censoring moves those 0.80–0.88 → 0.94–1.04. The gapfix
+product is innocent — **0 labelled voxels inside any dead strip**.
+
+**What died twice:** a claimed 10-row detector edge zone, then its 2-row replacement. The
+row-profile estimator behind both is refuted by a comb-phase null — slide the same 7-tooth
+17-row comb onto gap-free rows and it returns the same value or lower **one time in five**
+(p = 0.197, spanning 0.69–2.39) — and by applying it to the same detector's column gaps, where
+it returns **5.1**, which is impossible. It is also internally inconsistent: at distance 1 the
+summed ratio is 0.864 while the above-threshold count ratio is 1.093 and the mean per pixel is
+0.995. **There is no measured detector edge response on this instrument.**
+
+**R17 — "There are four ladders." Then "there are two." BOTH REFUTED — and the search cone was
+manufacturing the members.**
+
+*2026-09-08.* The radii are excellent: every picked component lands at `n·G/3` to better than
+1 %. The directions are not collinear through the origin.
+
+Four ladders died because candidates C and D have **no unique members** — they sit 3.73° and
+7.48° from axis A and a 5° search cone around them re-collects A's and B's own components.
+**Every member was borrowed.** *Generalise this:* a search cone around a candidate direction
+will re-collect a neighbour's members, so a member count is not evidence that the direction
+exists. Require members unique to the axis.
+
+Two ladders died on the geometry: fitting each axis from the tightest rungs (n=4, 5), a line
+through the high rungs misses even its own Bragg anchors by 1.9–2.8°, and the high rungs put A
+and B **13.89°** apart while their n=1 spots are **8.5°** apart. Rigid ladders cannot do that.
+
+What survives is a measurement with no model: the angular spread grows **faster than linearly**
+with |q| (8.5° / 12.7° / 14.8° at n = 1 / 4 / 5, i.e. spread/n = 0.146 / 0.219 / 0.255), and at
+n=1 there are four discrete directions at 2.03 / 4.43 / 8.16 / 10.51° from axis A. Constant-angle
+ladders hold spread/n fixed; a fixed transverse offset makes it fall. Neither describes this.
+**Cause unknown, and it is in tension with R18** — see `phase-4-rods.md`.
+
+**R18 — "The 9R doublet is two orientation variants." STANDS — preregistered, two layers, and
+a positive control that passed.**
+
+*2026-09-07.* `PREREGISTER_doublet_scaling.md` fixed the discriminator before the measurement:
+two variants give **Δω constant** with rung order, a fixed transverse q-offset gives
+**Δω ∝ 1/n**. Measured 6.75° at n=1 and 6.50° at n=2 in **both** L5 and L7, against 6.5°/3.25°
+predicted. H0 refuted. Valley depths 0.00 and 0.02–0.03 — the peaks are fully resolved, not a
+shoulder. Measure Δω, not the q-separation: two referees measured the q-separation and
+disagreed (0.175–0.205 vs 0.128 at n=2) because it is not independent of Δω.
+
+Note this is the **third** correction of R3's territory, which was itself a wrongly-retracted
+positive. Read R3, R17 and R18 together before touching the doublet.
+
+**R19 — "The §3.4 order-scaling exponent is 1.95, so the modulation is displacement."
+RETRACTED — the exponent is extraction-dependent and spans both answers.**
+
+*2026-09-07.* Re-extracting the same four rungs from the same cloud gave **0.10** against the
+recorded **1.95** — the composition answer against the displacement answer, theory 0 and 2. Not
+a tolerance question: the manuscript puts n=2 **below** n=1 (0.45), the re-extraction **above**
+(1.32). `ENVELOPE.md` §17. **Status OPEN**; displacement versus composition is not decided on
+this dataset. R16 is one reason the number moves — the rungs differ in amplitude by more than
+2×, so a fixed-threshold extraction biases them along the very axis being fitted.
+
+**R20 — "The satellite Ewald-crossing offset is a calibration residual, not satellite-specific."
+RETRACTED — 4 of 4 lenses. And the reading it replaced is withdrawn too.**
+
+*2026-09-09.* The predecessor claim — that Bragg reflections fail to reproduce the satellite
+crossing rotation, so the difference is in the reflections themselves — was **withdrawn**
+first: it compared angle-about-origin across populations differing 2× in |q|, with unmatched
+segmentation, an axis undefined at the noise floor, and one of its four Bragg controls
+mis-paired (see `phase-4-rods.md`, the 220 case).
+
+The replacement claim then died on all four lenses. **The support sweep (h ≤ 30 px) enclosed
+all five satellite groups and zero of five Bragg groups** (which need h = 36–100), so the two
+arms were different measurements; with enclosing supports the ordering **inverts**. A
+`slope < 0.10` selector introduced after seeing the data correlates with the compared quantity
+at Spearman **+0.900** and keeps exactly the three smallest of five. The headline ordering
+holds in **60 of 120** configurations and flips with the centring convention, which moves
+Bragg 111 by **2.49×**. Two of my own group definitions were wrong: 220 g1/g2 are the **same**
+grain (59.3° is the fcc {220}∧{220} angle of 60°), and its Friedel mates **do** exist — ids
+59, 66, 68, 71.
+
+**What survives, and it is worth more than the claim was:** a column-antisymmetric calibration
+residual is **quantitatively excluded** as a sufficient cause. Only BC_y has leverage, at
+`2·k·px/Lsd = 0.0188 1/A per pixel`, **common-mode to ±6 % over ten reflections**, so it
+predicts one |dq| for all of them; the observed spread is a factor **12.6**, and a bounded
+11-parameter fit leaves 95–112 % of every offset standing. `ENVELOPE.md` §18.
+
+**Net on the crossing offset: not truncation at n=1, not calibration, and not demonstrated to
+be satellite-specific.** It stays out of the manuscript in either direction until the Bragg
+cubes are re-cut at ±110 columns (111 is currently not measurable), a support-convergence
+criterion is registered in advance, and the centring convention is decided on its merits.
+
+**R21 — "§3.3 (the 9R lies on the Σ3 twin composition plane) is refuted." THE RETRACTION WAS
+WRONG. §3.3 stands, and is better supported than the manuscript's own version of it.**
+
+*Reported refuted 2026-09-07; corrected.* **Do not reinstate the refutation from
+`MEETING_BRIEF_2026-09-07.md` or `REEVALUATION_2026-09-07.md`** — both were written that day
+and both carry the bad verdict.
+
+The direct test, two quantities computed from **disjoint** inputs:
+
+| quantity | derived from | value |
+|---|---|---|
+| ladder direction | diffuse shell alone, 12,246 voxels, **zero** grain input | [−0.2973, −0.8654, −0.4034] |
+| composition-plane normal | Σ3 pairs alone, **zero** diffuse input | [+0.2884, +0.8661, +0.4083] |
+
+As axes they agree to **0.58°**. Of the twelve distinct ⟨111⟩ in the twin family, the three
+that are the composition plane carry **98–99 %** of the shell intensity and the other nine
+carry **exactly zero voxels**. Nine directions with genuinely zero support is a discrimination
+the manuscript's own statistic never had.
+
+**Replace the manuscript's statistic, though.** "99 of 99 Σ3 pairs agree, median 0.0°, against
+a 25 % chance baseline" is weak for two reasons: the crystal has **one** twin variant, so all
+99 pairs point at one physical direction and the effective n is **1**, not 99; and the 25 %
+baseline argmaxes over four candidate tubes of which three hold no data, so it compares
+"measured" against "no data" and **random pairing scores 1.000 ± 0.000**.
+
+*Why this entry exists:* it is the fourth retraction in this notebook that was itself wrong.
+**R3** (a real two-variant doublet dismissed as mosaic — the diagnostic looked at
+perpendicular q instead of ω) and **R11** (a real ⟨111⟩ relrod dismissed on the ω-sum,
+reinstated as E10) are two of the others. A refutation is a claim and needs the same gate as
+the positive it kills — see `feedback_refuted_statistic_is_not_refuted_claim`: a
+refuter attacks the claim as posed, and framing is never audited.
