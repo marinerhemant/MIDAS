@@ -6,6 +6,7 @@ bar by ~5-6x. Subtracting a background removes its mean, never its variance -- a
 near-baseline bins carry the largest lever arms, so they dominate var(centroid).
 """
 import numpy as np
+import pytest
 import torch
 
 from midas_dfxm import centroid_uncertainty
@@ -78,3 +79,26 @@ def test_numpy_and_torch_agree():
                                    background_per_bin=torch.tensor(bg)[None])[0])
     n = centroid_uncertainty(peak[None], x, background_per_bin=bg[None])
     assert abs(float(n[0]) - t) < 1e-9 * t
+
+
+def test_integer_counts_are_not_silently_zeroed():
+    """Raw ADU are integer. The torch path cast `grid` to the counts' dtype, which put
+    every bin at angle 0 and returned an error bar of exactly 0.0."""
+    x, peak, bg = _profile()
+    rec = np.rint(peak + bg)
+    f = float(centroid_uncertainty(torch.tensor(rec)[None], x, gain=1.0)[0])
+    i = float(centroid_uncertainty(torch.tensor(rec.astype(np.int64))[None], x, gain=1.0)[0])
+    assert f > 0 and abs(i - f) <= 1e-12 * f
+
+
+def test_per_pixel_background_goes_on_the_bin_axis():
+    """A (...,) background is one value per pixel. Added straight to (..., M) it
+    broadcast along the bins: an error when P != M, silently wrong when P == M."""
+    x, peak, _ = _profile()
+    sig = np.tile(peak, (3, 1))
+    bgp = np.array([1e3, 2e3, 3e3])
+    assert np.array_equal(centroid_uncertainty(sig, x, background_per_bin=bgp),
+                          centroid_uncertainty(sig, x, background_per_bin=bgp[:, None]))
+    square = np.tile(peak, (len(x), 1))
+    with pytest.raises(ValueError, match="ambiguous"):
+        centroid_uncertainty(square, x, background_per_bin=np.linspace(1e3, 3e3, len(x)))

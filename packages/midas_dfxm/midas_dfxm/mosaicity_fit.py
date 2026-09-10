@@ -700,11 +700,15 @@ def centroid_uncertainty(counts, grid, *, background_per_bin=0.0, gain=1.0, read
     ----------
     counts : (..., M) array
         Recorded counts per angular bin, background INCLUDED, in detector units (ADU).
+        Integer input is promoted to float64.
     grid : (M,) array
         Angular positions of the bins, in the units you want the answer in.
     background_per_bin : float or (...,) or (..., M) array
         Background already subtracted from ``counts``, per bin. Added back for the
-        variance only. Pass ``0.0`` if ``counts`` still contains it.
+        variance only. Pass ``0.0`` if ``counts`` still contains it. A ``(...,)`` array
+        is one value per pixel, spread over every bin. A 1-D array whose length equals
+        both the number of pixels and the number of bins is refused as ambiguous:
+        pass ``(..., 1)`` or ``(..., M)``.
     gain : float
         Detector gain in counts per detected quantum. **Measure it** -- with a pedestal
         present ``var/mean`` is invalid, and with an optical PSF every high-pass estimator
@@ -719,12 +723,31 @@ def centroid_uncertainty(counts, grid, *, background_per_bin=0.0, gain=1.0, read
     (...,) array of the standard error of the centroid, in the units of ``grid``.
     """
     xp = torch if isinstance(counts, torch.Tensor) else _np
+    if xp is torch and not counts.is_floating_point():
+        # Raw ADU are usually integer. Left as-is, `grid` below is cast to that integer
+        # dtype, every bin sits at angle 0, and the error bar comes back as exactly 0.0.
+        counts = counts.to(torch.float64)
     x = xp.as_tensor(grid, dtype=counts.dtype, device=counts.device) if xp is torch \
         else _np.asarray(grid, dtype=float)
     sig = counts if xp is torch else _np.asarray(counts, dtype=float)
     bg = background_per_bin
     if xp is torch and not isinstance(bg, torch.Tensor):
         bg = torch.as_tensor(bg, dtype=sig.dtype, device=sig.device)
+    elif xp is not torch:
+        bg = _np.asarray(bg, dtype=float)
+    # A per-PIXEL background, shape (...,), belongs on the bin axis. Added straight to
+    # (..., M) it broadcasts along the bins instead: an error when the pixel count
+    # differs from M, and a silently wrong answer when the two happen to be equal.
+    if bg.ndim == sig.ndim - 1 and bg.ndim > 0:
+        per_pixel = tuple(bg.shape) == tuple(sig.shape[:-1])
+        per_bin = tuple(bg.shape[-1:]) == tuple(sig.shape[-1:])
+        if per_pixel and per_bin:
+            raise ValueError(
+                "background_per_bin is ambiguous: its shape matches both the pixel axes "
+                "and the bin axis. Pass (..., 1) for a per-pixel background or (..., M) "
+                "for a per-bin one.")
+        if per_pixel:
+            bg = bg[..., None]
     S = sig.sum(-1)
     c = (sig * x).sum(-1) / xp.clamp(S, min=1e-30) if xp is torch else (sig * x).sum(-1) / _np.maximum(S, 1e-30)
     lever = (x - c[..., None]) ** 2
