@@ -292,6 +292,43 @@ correct and tags `HEAD` — which is why Phase 3 works. Guard each one: refuse o
 untracked files in the package dir (setuptools builds from **disk**, so they land
 in the wheel), and assert the tag's tree carries the expected version.
 
+## Phase 4b — a green PUBLISH workflow is not a green CI
+
+Before tagging, list every workflow the repo has and check them all:
+
+```bash
+gh workflow list --all
+gh run list --limit 10 --json conclusion,name,headSha -q '.[] | "\(.conclusion)  \(.name)"'
+```
+
+> Measured, LaueMatching 2026-09-07: **three releases shipped off a red CI.** The
+> repo has two workflows — `python-packages.yml` (publishes) and `build.yml`
+> (compiles the C and CUDA on a matrix). I checked the publisher, saw green,
+> released 0.5.0, 0.6.0 and 0.6.1. `build.yml` had been red since 0.6.0, on a
+> step pinning the very contract 0.6.0 inverted: `LAUEMATCHING_CUDA=1` had gone
+> from "attempt" to "require", so installs without nvcc started failing where
+> they had succeeded CPU-only. I had rewritten the two *pytest* files for the new
+> semantics and never grepped `.github/` at all. The owner found it, not me.
+
+The rule this yields: **when a change redefines a documented flag, grep the whole
+repo for the old contract — `.github/`, manuals, templates — not just the test
+directory of the package you edited.**
+
+Two follow-on traps, both paid for in the same session:
+
+- **A test that fails for its OWN reasons will blame the package.** A step set
+  `PATH=/usr/bin:/bin` to hide nvcc, which also hid the venv; pip fell through to
+  the system interpreter and died on PEP 668 `externally-managed-environment`.
+  The step printed "LAUEMATCHING_CUDA=1 failed the install without nvcc". The
+  package was fine. Before believing a CI assertion, read the *command* that
+  produced it.
+- **Prove your sabotage worked before asserting what it broke.** A degrade test
+  passed `--config-settings=cmake.define.CMAKE_CUDA_COMPILER=/bin/false` and
+  asserted CUDA had failed to build. The manifest came back `built: True` — a
+  cmake.define lands on the PARENT cache, and that sub-project is configured
+  through `execute_process()` with three explicit arguments, so nothing was
+  overridden. Assert the negative control actually went negative.
+
 ## Phase 5 — publish, and verify from PyPI
 
 ```bash
