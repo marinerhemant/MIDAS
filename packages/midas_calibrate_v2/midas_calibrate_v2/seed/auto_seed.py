@@ -184,7 +184,7 @@ def _detect_bad_pixels(img: np.ndarray,
 def _median_background(img: np.ndarray, *,
                         kernel_size: int = 101,
                         n_iters: int = 3,
-                        use_diplib: bool = True) -> np.ndarray:
+                        use_diplib: bool = False) -> np.ndarray:
     """Smooth background via iterative median filter.
 
     Default path: downsample 4× → small-kernel scipy median → upsample.
@@ -193,9 +193,22 @@ def _median_background(img: np.ndarray, *,
     the true kernel=101 reaches across closely-spaced ring families on
     Pilatus2M geometries.
 
-    diplib path: used when available and use_diplib=True, applied on the
-    downsampled image for further speedup.  Falls back silently on any
-    exception (macOS OpenMP segfaults have been documented in the package).
+    diplib path: OPT-IN via use_diplib=True, applied on the downsampled image.
+    **Off by default because it can kill the process.**
+
+    The `try/except Exception` around the diplib call below does NOT protect
+    you: a segfault raises SIGSEGV, which is not a Python exception, so the
+    process dies with **exit status 0 and no traceback** — a caller just sees
+    the run stop after "auto-seeder launched". Observed on a real Pilatus 2M
+    CdTe CeO2 frame (1679x1475) on macOS with KMP_DUPLICATE_LIB_OK=TRUE; the
+    cause is the OpenMP runtime conflict that ``seed/__init__.py`` already
+    documents. ``seed/from_image.py`` reached this conclusion first and has
+    defaulted to False since; this function had not, and it is the one
+    :func:`make_seed` exposes to external callers.
+
+    The speedup was negligible anyway: the default path downsamples 4x FIRST,
+    so diplib filters a ~420x369 image with a ~25x25 kernel, which scipy does
+    in well under a second.
     """
     from scipy import ndimage
     img = img.astype(np.float64)
@@ -240,7 +253,7 @@ def _median_background(img: np.ndarray, *,
 def _background_subtract(img: np.ndarray, *,
                           kernel_size: int = 101,
                           n_iters: int = 3,
-                          use_diplib: bool = True) -> tuple:
+                          use_diplib: bool = False) -> tuple:
     """Median-background subtract + MAD-based σ on the residual.
 
     Returns ``(residual, bad_mask, sigma)``:
@@ -451,7 +464,7 @@ def make_seed(img: np.ndarray, *,
               max_rms_px: float = 1.5,
               median_kernel: int = 101,
               median_iters: int = 3,
-              use_diplib: bool = True,
+              use_diplib: bool = False,
               ) -> Seed:
     """Generate a robust (BC, Lsd) seed for midas_calibrate_v2.calibrate().
 
@@ -502,7 +515,11 @@ def make_seed(img: np.ndarray, *,
     median_iters : int
         Number of iterative median filter passes (default 3).
     use_diplib : bool
-        Try diplib's MedianFilter first (faster); fall back to scipy.
+        Opt in to diplib's MedianFilter. **Default False**: it segfaults on
+        some real images on macOS, and because a segfault is not a Python
+        exception the internal try/except cannot catch it — the process exits
+        0 with no traceback. Every caller inside this package already passes
+        False; only this default was still True.
 
     Returns
     -------
