@@ -14,6 +14,7 @@ from midas_calibrate.params import CalibrationParams as V1Params
 
 from ..parameters.parameter import Parameter
 from ..parameters.spec import CalibrationSpec
+from ..io.transforms import im_trans_from_v1
 
 
 def _add(spec: CalibrationSpec, name: str, init, refined: bool,
@@ -41,6 +42,13 @@ def spec_from_v1_params(v1: V1Params) -> CalibrationSpec:
     s.MaxRingRad = v1.MaxRingRad
     s.MinRingRad = v1.MinRingRad
     s.fix_panel_id = v1.FixedPanelID
+    # The image transform is part of the calibration description, and it is
+    # the one field a v1 paramstest carries that has nowhere to live on
+    # CalibrationParams -- it lands in .extra as a string. Dropping it here is
+    # how a caller of any v1_params pipeline ended up with no way at all to say
+    # "this detector is flipped": every route (kwarg, spec field, params field)
+    # was closed. Read it once, here, so every pipeline downstream inherits it.
+    s.im_trans = im_trans_from_v1(v1)
 
     refine = v1.Refine
     _add(s, "Lsd", v1.Lsd, refined=refine.get("Lsd", True), tol=v1.tolLsd)

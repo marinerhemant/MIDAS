@@ -32,6 +32,7 @@ import torch
 from midas_calibrate.params import CalibrationParams as V1Params
 
 from ..compat.from_v1 import spec_from_v1_params
+from ..io.transforms import apply_im_trans
 from ..forward.bragg import R_ideal_px
 from ..forward.geometry import pixel_to_REta
 from ..forward.panels import PanelLayout
@@ -292,6 +293,13 @@ def autocalibrate_four_stage(
     """
     if spec is None:
         spec = spec_from_v1_params(v1_params)
+    # The image transform is part of the calibration description and rides on
+    # the spec (see io/transforms.apply_im_trans for the three ways doing this
+    # by hand fails silently). Guarded so the no-transform path -- every caller
+    # that has ever worked -- is byte-identical to before.
+    if spec.im_trans:
+        image, dark, mask, spec.NrPixelsY, spec.NrPixelsZ = apply_im_trans(
+            image, dark, mask, spec.im_trans)
     if common_kwargs is None:
         common_kwargs = {}
 

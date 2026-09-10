@@ -68,6 +68,20 @@ class TrimReport:
         return "\n".join(lines)
 
 
+def azimuth_deg(Y_pix, Z_pix, BC_y, BC_z):
+    """Azimuth about the beam centre, in degrees, for STRATIFICATION only.
+
+    ``stratified_trim`` uses its azimuth argument solely to bucket points into
+    equal angular sectors, so any consistent azimuth works and the MIDAS eta
+    sign/zero convention does not matter here. What DOES matter is that it
+    varies around a ring: passing a per-ring constant (``ring_two_theta_deg``,
+    say) collapses the (ring, eta_bucket, panel) cell key onto (ring, panel)
+    and silently disables the azimuthal stratification entirely.
+    """
+    import torch
+    return torch.rad2deg(torch.atan2(Z_pix - BC_z, Y_pix - BC_y))
+
+
 def stratified_trim(
     abs_residuals: torch.Tensor,           # [N]
     ring_idx: torch.Tensor,                # [N] long
@@ -353,5 +367,5 @@ def evaluate_full_strain(
     return mean, med, rms
 
 
-__all__ = ["stratified_trim", "multfactor_trim", "stratified_multfactor_trim",
+__all__ = ["azimuth_deg", "stratified_trim", "multfactor_trim", "stratified_multfactor_trim",
             "evaluate_full_strain", "TrimReport"]

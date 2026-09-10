@@ -23,6 +23,7 @@ from midas_peakfit.reparam import x_to_u, u_to_x
 from midas_peakfit import lm_solve_generic
 
 from ..compat.from_v1 import spec_from_v1_params
+from ..io.transforms import apply_im_trans, im_trans_from_v1
 from ..forward.panels import PanelLayout
 from ..loss.pseudo_strain import pseudo_strain_residual
 from ..parameters.parameter import Parameter
@@ -247,6 +248,27 @@ def autocalibrate_multi(
 
     if multi_spec is None:
         multi_spec = build_multi_spec(v1_per_image, link_lsd=link_lsd)
+
+    # Per-image image transform. Each frame carries its own ImTransOpt -- a
+    # multi-image fit can legitimately mix detectors -- so the transform is
+    # read per image from that image's own v1, not from the spec: unlike the
+    # single-image pipelines, MultiImageSpec.per_image is a list of
+    # ``Dict[str, Parameter]``, not a list of CalibrationSpec, so there is no
+    # per-image spec to hang it on. NrPixelsY/Z are written back onto the v1
+    # because that is what the E-step reads the frame size from.
+    # Guarded so the no-transform path is byte-identical to before.
+    _im_trans = [im_trans_from_v1(v1) for v1 in v1_per_image]
+    if any(_im_trans):
+        images = list(images)
+        darks = list(darks) if darks is not None else [None] * len(images)
+        masks = list(masks) if masks is not None else [None] * len(images)
+        for i, it in enumerate(_im_trans):
+            if not it:
+                continue
+            images[i], darks[i], masks[i], ny, nz = apply_im_trans(
+                images[i], darks[i], masks[i], it)
+            v1_per_image[i].NrPixelsY = ny
+            v1_per_image[i].NrPixelsZ = nz
 
     if link_lsd:
         if "Lsd" not in multi_spec.shared:

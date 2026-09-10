@@ -25,6 +25,8 @@ from typing import Optional
 
 import numpy as np
 
+from .transforms import apply_im_trans
+
 
 class BadPixelSentinelWarning(UserWarning):
     """Raised when a frame carries out-of-band bad-pixel values.
@@ -152,16 +154,7 @@ def read_image(
         )
 
     # the mask has to ride along through the same flips, or it stops lining up
-    for opt in im_trans:
-        if opt == 1:
-            img = img[:, ::-1]
-            mask = None if mask is None else mask[:, ::-1]
-        elif opt == 2:
-            img = img[::-1, :]
-            mask = None if mask is None else mask[::-1, :]
-        elif opt == 3:
-            img = img.T
-            mask = None if mask is None else mask.T
+    img, _, mask, _, _ = apply_im_trans(img, None, mask, im_trans)
 
     img = np.ascontiguousarray(img.astype(np.float64))
     if not return_mask:

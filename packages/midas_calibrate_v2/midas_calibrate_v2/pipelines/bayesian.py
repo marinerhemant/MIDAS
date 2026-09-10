@@ -19,6 +19,7 @@ import torch
 from midas_calibrate.params import CalibrationParams as V1Params
 
 from ..compat.from_v1 import spec_from_v1_params
+from ..io.transforms import apply_im_trans
 from ..forward.panels import PanelLayout
 from ..inference.laplace import LaplaceResult, laplace_at_map, report_laplace
 from ..loss.pseudo_strain import pseudo_strain_residual
@@ -81,6 +82,13 @@ def autocalibrate_bayesian(
     """
     if spec is None:
         spec = spec_from_v1_params(v1_params)
+    # The image transform is part of the calibration description and rides on
+    # the spec (see io/transforms.apply_im_trans for the three ways doing this
+    # by hand fails silently). Guarded so the no-transform path -- every caller
+    # that has ever worked -- is byte-identical to before.
+    if spec.im_trans:
+        image, dark, mask, spec.NrPixelsY, spec.NrPixelsZ = apply_im_trans(
+            image, dark, mask, spec.im_trans)
 
     # Step 1: MAP via the alternating engine — gets us close to the posterior
     # mode quickly.

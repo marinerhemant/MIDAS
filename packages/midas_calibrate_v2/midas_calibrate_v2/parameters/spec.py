@@ -92,6 +92,21 @@ class CalibrationSpec(ParameterSpec):
     rings_to_exclude: List[int] = field(default_factory=list)
     max_ring_number: int = 0   # 0 = no limit
 
+    # MIDAS image transform (1=flip Y, 2=flip Z, 3=transpose), applied to the
+    # raw frame before anything else looks at it. It lives on the SPEC rather
+    # than on each call because it is part of the calibration DESCRIPTION: the
+    # geometry below is only meaningful in the frame this produces, so a result
+    # that does not carry its transform cannot be reused or round-tripped.
+    # ``NrPixelsY``/``NrPixelsZ`` above are the counts AFTER it is applied.
+    #
+    # BEHAVIOUR CHANGE, 0.15.0. Before this existed, the v1_params pipelines
+    # ignored ``ImTransOpt`` entirely and callers had to transform the image
+    # themselves before handing it over. Those callers must now STOP doing
+    # that, or the transform lands twice -- and a double flip is silent. If you
+    # need to keep pre-transforming for a while, set ``spec.im_trans = ()``
+    # explicitly and the pipeline will leave your array alone.
+    im_trans: Tuple[int, ...] = ()
+
 
 # ----------------------------------------------------------- multi-image spec
 

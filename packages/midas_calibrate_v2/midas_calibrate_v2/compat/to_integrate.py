@@ -296,6 +296,16 @@ def spec_from_calibration_result(
     s.Wavelength = _t(result.wavelength_A)
     s.Parallax = _t(0.0)
 
+    # Carry the image transform through. Without this the integrator has to be
+    # told the frame a SECOND time, by hand, in parallel with this object --
+    # and a mismatch is silent: the geometry is correct for a frame the
+    # integrator is not producing. NrPixelsY/Z above are already post-transform
+    # (the calibration derived them from the transformed image), so the two are
+    # consistent by construction.
+    im_trans = tuple(getattr(result, "im_trans", ()) or ())
+    s.NrTransOpt = len(im_trans)
+    s.TransOpt = list(im_trans)
+
     NY, NZ = s.NrPixelsY, s.NrPixelsZ
     # RhoD is the distortion normalisation radius and MUST be in micrometres
     # (the forward model uses ρ = R_µm / RhoD). It is the beam-centre-to-

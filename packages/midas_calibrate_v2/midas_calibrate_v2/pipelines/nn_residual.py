@@ -20,6 +20,7 @@ import torch
 from midas_calibrate.params import CalibrationParams as V1Params
 
 from ..compat.from_v1 import spec_from_v1_params
+from ..io.transforms import apply_im_trans
 from ..forward.nn_residual import NNResidualConfig, ResidualConvNet
 from ..forward.panels import PanelLayout
 from ..inference.adam import AdamConfig, adam_minimise
@@ -88,6 +89,13 @@ def autocalibrate_nn(
     """
     if spec is None:
         spec = spec_from_v1_params(v1_params)
+    # The image transform is part of the calibration description and rides on
+    # the spec (see io/transforms.apply_im_trans for the three ways doing this
+    # by hand fails silently). Guarded so the no-transform path -- every caller
+    # that has ever worked -- is byte-identical to before.
+    if spec.im_trans:
+        image, dark, mask, spec.NrPixelsY, spec.NrPixelsZ = apply_im_trans(
+            image, dark, mask, spec.im_trans)
     if nn_config is None:
         nn_config = NNResidualConfig(
             detector_H_px=v1_params.NrPixelsY,

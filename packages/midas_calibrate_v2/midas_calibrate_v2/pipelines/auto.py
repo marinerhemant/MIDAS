@@ -121,6 +121,13 @@ class AutoCalibrationResult:
     NrPixelsY: int = 0
     NrPixelsZ: int = 0
     wavelength_A: float = 0.0
+    #: The MIDAS image transform this geometry was fitted in (1=flip Y,
+    #: 2=flip Z, 3=transpose; () = none). Recorded because the geometry above
+    #: is ONLY meaningful in the frame it produces: without it a result cannot
+    #: be round-tripped or handed to an integrator, and every consumer has to
+    #: carry the transform separately, by hand, in parallel with this object.
+    #: ``NrPixelsY``/``NrPixelsZ`` are the counts AFTER it is applied.
+    im_trans: Tuple[int, ...] = ()
     # Quality + provenance
     post_residual_strain_uE: Optional[float] = None
     in_loop_strain_uE: Optional[float] = None
@@ -276,6 +283,9 @@ def calibrate(
     lsd_window: Optional[float] = None,
     initial_BC_y: Optional[float] = None,
     initial_BC_z: Optional[float] = None,
+    initial_tx: float = 0.0,
+    initial_ty: float = 0.0,
+    initial_tz: float = 0.0,
     max_2theta_deg: float = 28.0,
     min_ring_radius_px: float = 120.0,
     max_ring_radius_px: Optional[float] = None,
@@ -367,6 +377,30 @@ def calibrate(
       set to ``1.5`` so the multi-hypothesis matcher trusts the prior
       (treats it as a ±50 % window).  Override ``lsd_window`` if you want
       a tighter or looser window.
+    * ``initial_ty`` / ``initial_tz`` — detector tilt seeds (deg), the tilt
+      counterpart of ``initial_BC_y`` / ``initial_BC_z``.  Both are refined
+      from here when ``refine_tilts=True`` (the default), so what these buy
+      is a **starting point**: the LM basin is finite, and a detector mounted
+      far enough off perpendicular is outside it from a zero start.  Default
+      ``0.0`` reproduces the previous behaviour exactly.
+    * ``initial_tx`` — the roll about the beam.  Seedable, and **never
+      refined from powder**, which is deliberate rather than an oversight.
+      ``tx`` reaches a ring radius only through the azimuthal distortion
+      harmonics: it shifts lab η by exactly ``tx``, and ``D`` is evaluated at
+      lab η.  So with the harmonics free,
+      ``(tx, φ_k) → (tx + d, φ_k + k·d)`` is an exact gauge orbit — refining
+      ``tx`` walks it and corrupts all six phases with no residual signature
+      to warn you — and with them frozen, ``tx`` is determined only by the
+      frozen field, so a field fitted at the wrong ``tx`` hands back a
+      confident wrong ``tx``.  Supply it from a source that can actually
+      measure it (grain spots, or Friedel-pair ω splitting) and leave it
+      fixed here.
+    * ``im_trans`` — MIDAS image transform (1=flip Y, 2=flip Z, 3=transpose),
+      applied to image, dark and mask together before anything else looks at
+      them, with ``NrPixelsY``/``NrPixelsZ`` taken from the transformed
+      shape.  The same transform is now reachable from every other pipeline
+      through ``CalibrationSpec.im_trans``, and is recorded on the result so
+      the frame the geometry lives in is recoverable from the result alone.
 
     User-supplied seed (optional)
     -----------------------------
@@ -408,6 +442,7 @@ def calibrate(
     import midas_calibrate_v2.seed       # diplib preload (order matters)
     from midas_calibrate_v2.seed import seed_from_image
     from midas_calibrate_v2.pipelines.single import autocalibrate
+    from ..io.transforms import apply_im_trans, parse_im_trans
     from midas_calibrate.params import CalibrationParams
 
     if image.ndim != 2:
@@ -416,29 +451,8 @@ def calibrate(
     # detector image into the geometry-model orientation. Applied to image AND
     # dark so they stay registered; done before BC/shape so everything
     # downstream works in the true frame.
-    def _imtrans(arr):
-        for opt in im_trans:
-            if opt == 1:
-                arr = arr[:, ::-1]
-            elif opt == 2:
-                arr = arr[::-1, :]
-            elif opt == 3:
-                arr = arr.T
-        return np.ascontiguousarray(arr)
-    if im_trans:
-        image = _imtrans(image)
-        if dark is not None:
-            dark = _imtrans(dark)
-        # The MASK must ride along. A mask left in the raw orientation while
-        # the image is flipped masks the wrong pixels — silently, and worse
-        # than no mask at all.
-        if mask is not None:
-            mask = _imtrans(mask)
-    if mask is not None and mask.shape != image.shape:
-        raise ValueError(
-            f"mask shape {tuple(np.shape(mask))} != image shape "
-            f"{tuple(image.shape)} (after im_trans={im_trans})")
-    NZ, NY = image.shape
+    im_trans = parse_im_trans(im_trans)
+    image, dark, mask, NY, NZ = apply_im_trans(image, dark, mask, im_trans)
     if pxZ is None:
         pxZ = pxY
 
@@ -609,7 +623,7 @@ def calibrate(
     v1 = CalibrationParams(
         NrPixelsY=NY, NrPixelsZ=NZ, pxY=pxY, pxZ=pxZ,
         Lsd=seed.Lsd, BC_y=seed.bc_y, BC_z=seed.bc_z,
-        tx=0.0, ty=0.0, tz=0.0,
+        tx=float(initial_tx), ty=float(initial_ty), tz=float(initial_tz),
         Wavelength=wavelength, SpaceGroup=sg,
         LatticeConstant=(a, b, c, alpha, beta, gamma),
         MaxRingRad=float(max_ring_radius_px),
@@ -950,7 +964,7 @@ def calibrate(
                       "a1","phi1","a2","phi2","a3","phi3",
                       "a4","phi4","a5","phi5","a6","phi6") if n in u},
         pxY=pxY, pxZ=pxZ, NrPixelsY=NY, NrPixelsZ=NZ,
-        wavelength_A=wavelength,
+        wavelength_A=wavelength, im_trans=tuple(im_trans),
         post_residual_strain_uE=cr.post_residual_strain_uE,
         post_residual_strain_median_uE=(
             cr.history[-1].median_strain_uE if cr.history else None),

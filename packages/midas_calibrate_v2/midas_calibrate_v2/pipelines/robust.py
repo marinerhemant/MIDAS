@@ -41,6 +41,7 @@ from .diagnostics import (
     DiagnosticResult, run_all_gates, summarise, worst_severity,
 )
 from .single_pv import autocalibrate_pv, PVCalibrationResult
+from ..io.transforms import apply_im_trans, im_trans_from_v1
 
 
 @dataclass
@@ -189,13 +190,26 @@ def autocalibrate_robust(
     diag = RobustCalibrationDiagnostics(severity="ok")
 
     # ---- Auto-seed.
+    # SEED IN THE FRAME THE FIT WILL USE. autocalibrate_pv below applies
+    # spec.im_trans itself, so transform a LOCAL copy here rather than
+    # rebinding `image` -- otherwise the frame is applied twice. Seeding on the
+    # raw array while the solve runs on the transformed one is the classic
+    # version of this bug: the seed and the fit silently disagree about where
+    # the beam centre is, and the fit converges onto the mirrored one with a
+    # perfectly good strain number.
+    im_trans = (spec.im_trans if spec is not None
+                else im_trans_from_v1(v1_params))
+    seed_image = image
+    if im_trans:
+        seed_image, _, _, _, _ = apply_im_trans(image, None, None, im_trans)
+
     v1_used = v1_params
     if auto_seed:
         panel_mask = None
         if panel_layout is not None and panel_layout.panel_index_mask is not None:
             panel_mask = (panel_layout.panel_index_mask.cpu().numpy() >= 0)
         v1_used, did, drift = _maybe_auto_seed(
-            v1_params, image,
+            v1_params, seed_image,
             panel_mask=panel_mask,
             drift_threshold_px=auto_seed_drift_threshold_px,
         )
@@ -210,9 +224,12 @@ def autocalibrate_robust(
                   f"≤ {auto_seed_drift_threshold_px:.1f})", flush=True)
 
     # ---- Run the underlying calibration.
+    # mask=mask: this was declared in the signature and never forwarded, so a
+    # caller who passed a mask to this pipeline got no masking at all -- with
+    # no error, which on a detector with dead panels is worse than no mask.
     res = autocalibrate_pv(
         v1_used, image,
-        dark=dark, spec=spec, panel_layout=panel_layout,
+        dark=dark, mask=mask, spec=spec, panel_layout=panel_layout,
         verbose=verbose,
         **autocalibrate_kwargs,
     )

@@ -18,6 +18,7 @@ from midas_calibrate.params import CalibrationParams as V1Params
 from midas_peakfit import GenericLMConfig
 
 from ..compat.from_v1 import spec_from_v1_params
+from ..io.transforms import apply_im_trans
 from ..forward.panels import PanelLayout
 from ..inference.lm import lm_minimise
 from ..loss.pseudo_strain import pseudo_strain_residual
@@ -112,6 +113,13 @@ def autocalibrate(
     v1_params.RhoD = rho_d_um   # canonical µm for E-step + forward distortion
     if spec is None:
         spec = spec_from_v1_params(v1_params)
+    # The image transform is part of the calibration description and rides on
+    # the spec (see io/transforms.apply_im_trans for the three ways doing this
+    # by hand fails silently). Guarded so the no-transform path -- every caller
+    # that has ever worked -- is byte-identical to before.
+    if spec.im_trans:
+        image, dark, mask, spec.NrPixelsY, spec.NrPixelsZ = apply_im_trans(
+            image, dark, mask, spec.im_trans)
 
     history: List[IterRecord] = []
     fits_final: Optional[FittedDataset] = None

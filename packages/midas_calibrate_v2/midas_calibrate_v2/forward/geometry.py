@@ -3,7 +3,14 @@
 This module is a clean superset of v1's ``geometry_torch.pixel_to_REta_torch``:
 
   * pxY, pxZ are tensors (refinable; v1 had them as Python floats).
-  * tx is refinable (v1 fixed it at 0).
+  * tx is MODELLED (v1 fixed it at 0) -- build_tilt_matrix uses the full
+    intrinsic Z-Y-X rotation. Modelled is not the same as refinable from
+    powder, and this line used to imply it was: tx reaches a ring radius
+    ONLY through the azimuthal distortion harmonics, so with them free
+    (tx, phi_k) -> (tx + d, phi_k + k*d) is an exact gauge orbit, and with
+    them frozen tx is determined only by the frozen field. Every powder
+    pipeline therefore freezes it (compat/from_v1.py) -- deliberately.
+    Refine tx from grain spots or Friedel-pair omega splitting instead.
   * Per-panel rigid-body transform is applied before projection (v1 had no
     panel support in the differentiable path).
   * Parallax is always-on and graph-clean (v1 had a ``.item()`` break).

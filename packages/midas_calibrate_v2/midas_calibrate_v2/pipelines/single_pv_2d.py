@@ -25,7 +25,7 @@ from ..forward.peak_fit_2d import fit_cake_per_ring_2d, BatchedFits2D
 from ..inference.lm import lm_minimise
 from ..loss.diagnostics import strain_summary
 from ..loss.pseudo_strain import pseudo_strain_residual
-from ..loss.robust_trim import stratified_trim, evaluate_full_strain
+from ..loss.robust_trim import stratified_trim, azimuth_deg, evaluate_full_strain
 from ..parameters.spec import CalibrationSpec
 from ..seed.auto_max_ring import auto_detect_max_ring
 from ._common import FittedDataset, filter_ring_table, ring_table_for
@@ -238,7 +238,9 @@ def autocalibrate_pv_2d(
             if trim_mode == "stratified":
                 with torch.no_grad():
                     keep, trim_report = stratified_trim(
-                        r_pre, fits_ds.ring_idx, fits_ds.ring_two_theta_deg,
+                        r_pre, fits_ds.ring_idx,
+                        azimuth_deg(fits_ds.Y_pix, fits_ds.Z_pix,
+                                    unpacked0["BC_y"], unpacked0["BC_z"]),
                         panel_idx=fits_ds.panel_idx,
                         keep_pct=trim_keep_pct,
                         n_eta_buckets=trim_n_eta_buckets,

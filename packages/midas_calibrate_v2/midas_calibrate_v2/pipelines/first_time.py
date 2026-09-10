@@ -54,6 +54,7 @@ import torch
 from midas_calibrate.params import CalibrationParams as V1Params
 
 from ..compat.from_v1 import spec_from_v1_params, add_panel_parameters
+from ..io.transforms import apply_im_trans, parse_im_trans
 from ..forward.distortion import P_COEF_NAMES
 from ..forward.panels import PanelLayout
 from ..parameters.spec import CalibrationSpec
@@ -106,6 +107,7 @@ def _build_v1(
     lattice: Tuple[float, float, float, float, float, float],
     max_ring_rad_px: Optional[float] = None,
     refine_per_panel: bool = False,
+    tx: float = 0.0, ty: float = 0.0, tz: float = 0.0,
 ) -> V1Params:
     if max_ring_rad_px is None:
         # Default to "from BC to nearest detector edge" — covers all rings
@@ -120,6 +122,12 @@ def _build_v1(
         SpaceGroup=int(space_group),
         LatticeConstant=tuple(lattice),
         MaxRingRad=float(max_ring_rad_px),
+        # Genuine LM initial values. `tilt_prior_deg` used to feed ONLY the
+        # beam-centre seeder (cone_aware_bc_refine_with_tilt_prior), so the fit
+        # itself always started from a perpendicular detector no matter what
+        # the caller knew about the mounting -- which is exactly the case a
+        # tilt prior exists for.
+        tx=float(tx), ty=float(ty), tz=float(tz),
         Width=800.0, EtaBinSize=5.0, RBinSize=0.25,
     )
     # RhoD = BC-to-farthest-edge distance (µm): the natural distortion
@@ -460,6 +468,8 @@ def first_time_calibrate(
     trim_residual_pct: float = 5.0,
     seed_method: str = "hough",         # "hough" (fast, default) | "arcs"
     tilt_prior_deg: Optional[Tuple[float, float]] = None,
+    initial_tx: float = 0.0,
+    im_trans: Sequence[int] = (),
     verbose: bool = True,
 ) -> FirstTimeResult:
     """Calibrate from material + wavelength + detector + image with no v1 prior.
@@ -516,6 +526,13 @@ def first_time_calibrate(
     # Track whether BC was user-supplied; image-centre fallback below is
     # only used to construct v1_seed for build_ring_table (sim_radii_px
     # depends on Lsd, not BC).  The auto-seed branch then overrides it.
+    # Transform FIRST: everything below -- the seeder, the ring table, the
+    # pixel counts -- has to run in the frame the fit will use.
+    im_trans = parse_im_trans(im_trans)
+    if im_trans:
+        image, dark, panel_mask, n_pixels_y, n_pixels_z = apply_im_trans(
+            image, dark, panel_mask, im_trans)
+
     user_supplied_bc = bc_initial_guess is not None
     if lsd_initial_guess_um is None:
         lsd_initial_guess_um = 300_000.0
@@ -530,6 +547,9 @@ def first_time_calibrate(
         wavelength_A=wavelength_A,
         space_group=space_group, lattice=lattice,
         refine_per_panel=refine_per_panel,
+        tx=float(initial_tx),
+        ty=float(tilt_prior_deg[0]) if tilt_prior_deg else 0.0,
+        tz=float(tilt_prior_deg[1]) if tilt_prior_deg else 0.0,
     )
 
     # ---------- stage 0: auto-seed BC and Lsd from the calibrant image.
