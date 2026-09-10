@@ -13,21 +13,35 @@ from __future__ import annotations
 
 from typing import Sequence
 
+import math
 import numpy as np
 
-__all__ = ["ipf_rgb", "sym_matrices", "CUBIC", "HEXAGONAL", "TRIGONAL"]
+__all__ = ["ipf_rgb", "ipf_rgb_from_matrix", "direction_rgb", "laue_class",
+           "sym_matrices", "sector_deg", "triangle_corners",
+           "CUBIC", "HEXAGONAL", "TRIGONAL", "TETRAGONAL", "ORTHORHOMBIC"]
 
 CUBIC = "cubic"
+TETRAGONAL = "tetragonal"
+ORTHORHOMBIC = "orthorhombic"
 HEXAGONAL = "hexagonal"
 TRIGONAL = "trigonal"
 
 # Laue class per space-group range, for the ones MIDAS actually reconstructs.
 # Deliberately explicit rather than clever: a wrong guess here silently
 # recolours a map without any other symptom.
+#
+# The ranges are LAUE CLASSES, not crystal systems, and the two do not coincide
+# in the tetragonal case: 89-142 is 4/mmm, whose triangle closes at 45 deg on
+# [110], while 75-88 is 4/m, which has no in-plane mirror and whose triangle
+# spans the full 90 deg to [010]. Colouring a 4/m crystal with the 4/mmm
+# triangle folds by a 2-fold it does not have, so 75-88 is left OUT and refuses
+# rather than guessing. Implement `_rgb_tetragonal_4m` before widening it.
 _SG_LAUE = [
     (195, 230, CUBIC),
     (168, 194, HEXAGONAL),
     (143, 167, TRIGONAL),
+    (89, 142, TETRAGONAL),      # 4/mmm only -- see the note above
+    (16, 74, ORTHORHOMBIC),
 ]
 
 
@@ -43,7 +57,10 @@ def laue_class(space_group: int) -> str:
             return name
     raise NotImplementedError(
         f"IPF colouring for space group {space_group} is not implemented "
-        f"(have: cubic 195-230, hexagonal 168-194, trigonal 143-167). Refusing to guess."
+        f"(have: cubic 195-230, hexagonal 168-194, trigonal 143-167, "
+        f"tetragonal 4/mmm 89-142, orthorhombic 16-74). Refusing to guess. "
+        f"Note 75-88 is Laue class 4/m, whose triangle spans 90 deg, not the "
+        f"45 deg of 4/mmm; it is deliberately not implemented."
     )
 
 
@@ -67,6 +84,38 @@ def _rgb_cubic(d: np.ndarray) -> np.ndarray:
     u, v, w = d[:, 0], d[:, 1], d[:, 2]
     rgb = np.stack([w - v, (v - u) * np.sqrt(2.0), u * np.sqrt(3.0)], axis=1)
     return rgb
+
+
+
+def _rgb_tetragonal(d: np.ndarray) -> np.ndarray:
+    """Standard [001]-[100]-[110] triangle for Laue class 4/mmm.
+
+    Same construction as :func:`_rgb_hexagonal`: red is the c-axis component,
+    and the in-plane azimuth interpolates green -> blue across the triangle's
+    angular width, here 45 degrees rather than 30. Added for I4/mmm (SG 139),
+    the Ruddlesden-Popper subcell — before this the function raised, which was
+    correct: colouring a tetragonal crystal with the cubic triangle folds by a
+    3-fold the crystal does not have.
+    """
+    dz = np.abs(d[:, 2])
+    planar = np.hypot(d[:, 0], d[:, 1])
+    phi = np.degrees(np.arctan2(np.abs(d[:, 1]), np.abs(d[:, 0])))
+    phi = np.minimum(phi % 90.0, 90.0 - (phi % 90.0))      # fold to [0, 45]
+    t = np.clip(phi / 45.0, 0.0, 1.0)
+    return np.stack([dz, planar * (1.0 - t), planar * t], axis=1)
+
+
+def _rgb_orthorhombic(d: np.ndarray) -> np.ndarray:
+    """Standard [001]-[100]-[010] triangle for Laue class mmm.
+
+    The triangle spans a full 90 degrees of azimuth because mmm has no
+    in-plane rotation relating a to b. Added for Fmmm (SG 69).
+    """
+    dz = np.abs(d[:, 2])
+    planar = np.hypot(d[:, 0], d[:, 1])
+    phi = np.degrees(np.arctan2(np.abs(d[:, 1]), np.abs(d[:, 0])))
+    t = np.clip(phi / 90.0, 0.0, 1.0)
+    return np.stack([dz, planar * (1.0 - t), planar * t], axis=1)
 
 
 def _rgb_hexagonal(d: np.ndarray) -> np.ndarray:
@@ -233,6 +282,14 @@ def direction_rgb(
         rgb = _rgb_cubic(red)
     elif fam == TRIGONAL:
         rgb = _rgb_trigonal(d, sym)
+    elif fam in (TETRAGONAL, ORTHORHOMBIC):
+        dd = d.copy()
+        dd[:, :, 2] = np.abs(dd[:, :, 2])
+        pick = np.argmax(dd[:, :, 2], axis=1)          # closest to [001]
+        red = dd[np.arange(dd.shape[0]), pick]
+        red /= np.linalg.norm(red, axis=1, keepdims=True)
+        rgb = (_rgb_tetragonal(red) if fam == TETRAGONAL
+               else _rgb_orthorhombic(red))
     else:
         dd = d.copy()
         dd[:, :, 2] = np.abs(dd[:, :, 2])
@@ -245,3 +302,45 @@ def direction_rgb(
     mx = rgb.max(axis=1, keepdims=True)
     rgb = np.where(mx > 0, rgb / mx, rgb)
     return np.clip(rgb ** float(gamma), 0.0, 1.0)
+
+def sector_deg(space_group: int) -> float:
+    """Azimuthal width of the standard triangle, in degrees.
+
+    The SAME number the colour ramps fold by, so a legend built from this
+    cannot disagree with the map it explains. Cubic is excluded: its triangle
+    closes on [111], not on an in-plane direction, so an azimuth does not
+    describe it.
+    """
+    fam = laue_class(space_group)
+    if fam == CUBIC:
+        raise ValueError("the cubic triangle is not defined by an azimuth; "
+                         "its third corner is [111]")
+    if fam == TETRAGONAL:
+        return 45.0
+    if fam == ORTHORHOMBIC:
+        return 90.0
+    if fam == HEXAGONAL:
+        return 30.0
+    if fam == TRIGONAL:
+        return _trigonal_sector_deg(sym_matrices(space_group))
+    raise NotImplementedError(f"no triangle implemented for {fam}")
+
+
+def triangle_corners(space_group: int):
+    """``(corners, labels)`` for the standard triangle of this Laue class.
+
+    Cubic closes on [111]; every other implemented class is
+    [001] - [100] - (the in-plane direction at :func:`sector_deg`).
+    """
+    fam = laue_class(space_group)
+    if fam == CUBIC:
+        return (np.array([[0., 0., 1.], [1., 0., 1.], [1., 1., 1.]]),
+                ["[001]", "[101]", "[111]"])
+    phi = math.radians(sector_deg(space_group))
+    corners = np.array([[0., 0., 1.], [1., 0., 0.],
+                        [math.cos(phi), math.sin(phi), 0.]])
+    lab = {TETRAGONAL:   ["[001]", "[100]", "[110]"],
+           ORTHORHOMBIC: ["[001]", "[100]", "[010]"],
+           HEXAGONAL:    ["[0001]", r"[10$\bar{1}$0]", r"[2$\bar{1}\bar{1}$0]"],
+           TRIGONAL:     ["[0001]", r"[10$\bar{1}$0]", r"[01$\bar{1}$0]"]}[fam]
+    return corners, lab

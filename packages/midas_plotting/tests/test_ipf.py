@@ -21,11 +21,53 @@ def test_laue_class_known_families():
 
 
 def test_laue_class_refuses_unimplemented_rather_than_guessing():
-    """A silent fallback to cubic would recolour a map with no other symptom."""
-    with pytest.raises(NotImplementedError, match="not implemented"):
-        laue_class(2)          # triclinic
+    """A silent fallback to cubic would recolour a map with no other symptom.
+
+    SG 139 (tetragonal) and 69 (orthorhombic) were on this list until their
+    triangles were implemented; triclinic and monoclinic still are not, and the
+    contract is that they REFUSE rather than guess.
+
+    SG 75-88 is the subtle one. It is tetragonal by CRYSTAL SYSTEM but its Laue
+    class is 4/m, not 4/mmm: no in-plane mirror, so its triangle spans 90 deg to
+    [010] rather than 45 deg to [110]. Colouring it with the 4/mmm ramp folds by
+    a 2-fold the crystal does not have and yields a plausible, wrong map. It is
+    deliberately excluded until `_rgb_tetragonal_4m` exists.
+    """
+    for sg in (1, 2, 5, 15):                      # triclinic + monoclinic
+        with pytest.raises(NotImplementedError, match="not implemented"):
+            laue_class(sg)
+    for sg in (75, 81, 88):                       # Laue class 4/m, NOT 4/mmm
+        with pytest.raises(NotImplementedError, match="not implemented"):
+            laue_class(sg)
+
+
+def test_tetragonal_range_is_the_laue_class_not_the_crystal_system():
+    """4/mmm starts at 89. The boundary is the whole point of the split."""
+    from midas_plotting.ipf import laue_class, sector_deg, TETRAGONAL
     with pytest.raises(NotImplementedError):
-        laue_class(139)        # tetragonal
+        laue_class(88)
+    assert laue_class(89) == TETRAGONAL
+    assert sector_deg(89) == 45.0 and sector_deg(142) == 45.0
+
+
+def test_tetragonal_and_orthorhombic_triangles_are_distinct():
+    """4/mmm and mmm must not be the same colouring, and neither may be cubic.
+
+    The discriminator is [010]: under 4/mmm a 4-fold makes it equivalent to
+    [100] (both GREEN), while mmm has no in-plane rotation so [010] is the
+    third vertex (BLUE). A tetragonal map coloured with the mmm triangle -- or
+    with the cubic one, which folds by a 3-fold the crystal does not have --
+    would look plausible and be wrong.
+    """
+    import numpy as np
+    from midas_plotting.ipf import direction_rgb
+    dirs = np.array([[0., 0., 1.], [1., 0., 0.], [0., 1., 0.]])
+    tet = direction_rgb(dirs, space_group=139)
+    ort = direction_rgb(dirs, space_group=69)
+    assert tet[0, 0] > 0.9 and ort[0, 0] > 0.9        # [001] is red in both
+    assert np.allclose(tet[1], tet[2], atol=1e-6), "4/mmm: [100] and [010] must match"
+    assert not np.allclose(ort[1], ort[2], atol=0.5), "mmm: [100] and [010] must differ"
+    assert ort[2, 2] > 0.9, "mmm: [010] is the blue vertex"
 
 
 def test_sym_matrices_are_proper_rotations():

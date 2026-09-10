@@ -26,7 +26,8 @@ from typing import Optional, Sequence
 import numpy as np
 
 from .grains import GrainList, read_grains
-from .ipf import direction_rgb, ipf_rgb_from_matrix, laue_class, sym_matrices, CUBIC
+from .ipf import (direction_rgb, ipf_rgb_from_matrix, laue_class, sym_matrices,
+                  sector_deg, triangle_corners, CUBIC)
 
 __all__ = [
     "ipf_legend", "grain_map", "grain_map_3d", "grain_size_distribution",
@@ -96,11 +97,13 @@ def ipf_legend(space_group: int = 225, ax=None, *, n: int = 400,
 
     fam = laue_class(space_group)
     # Sample the stereographic plane, back-project to directions, keep the ones
-    # already inside the standard triangle.
-    if fam == CUBIC:
-        corners = np.array([[0, 0, 1.0], [1, 0, 1.0], [1, 1, 1.0]])
-    else:
-        corners = np.array([[0, 0, 1.0], [1, 0, 0.0], [np.sqrt(3) / 2, 0.5, 0.0]])
+    # already inside the standard triangle. Corners and the azimuthal sector
+    # come from midas_plotting.ipf, the SAME source the colour ramps fold by,
+    # so the key cannot describe a different triangle from the one drawn. The
+    # `else` branch here used to hard-code the 30 deg hexagonal triangle, which
+    # would have drawn a hexagonal key over a 4/mmm map once the tetragonal and
+    # orthorhombic triangles were added.
+    corners, labels = triangle_corners(space_group)
     # Normalise BEFORE projecting: the stereographic map is defined on unit
     # vectors. Projecting the raw index triple puts [111] at (0.5, 0.5)
     # instead of (0.366, 0.366), so the corner marker and its label sit
@@ -122,7 +125,8 @@ def ipf_legend(space_group: int = 225, ax=None, *, n: int = 400,
                  (d[:, 1] <= d[:, 0] + 1e-9) & (d[:, 0] <= d[:, 2] + 1e-9)
     else:
         az = np.degrees(np.arctan2(d[:, 1], d[:, 0]))
-        inside = (d[:, 2] >= -1e-9) & (az >= -1e-9) & (az <= 30.0 + 1e-9)
+        inside = (d[:, 2] >= -1e-9) & (az >= -1e-9) & \
+                 (az <= sector_deg(space_group) + 1e-9)
 
     rgb = np.ones((d.shape[0], 3))
     if inside.any():
@@ -132,8 +136,6 @@ def ipf_legend(space_group: int = 225, ax=None, *, n: int = 400,
 
     ax.imshow(img, origin="lower", alpha=alpha,
               extent=(x0, x1, y0, y1))
-    labels = (["[001]", "[101]", "[111]"] if fam == CUBIC
-              else ["[0001]", r"[10$\bar{1}$0]", r"[2$\bar{1}\bar{1}$0]"])
     for (px, py), lab in zip(zip(cx, cy), labels):
         ax.plot(px, py, "k.", ms=4)
         ax.annotate(lab, (px, py), textcoords="offset points",
