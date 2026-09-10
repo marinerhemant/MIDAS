@@ -35,6 +35,26 @@ import torch
 
 LOG = logging.getLogger(__name__)
 
+
+def _v1_scalar(v1, name: str, default: float = 0.0) -> float:
+    """Read a scalar off a ``CalibrationParams`` that may not be a field.
+
+    ``CalibrationParams`` declares only the v1 geometry it knows about and
+    parks everything else in ``.extra`` **as a string**.  ``Wedge`` is one of
+    those, so a plain ``getattr(v1, "Wedge", 0.0)`` returns the default even
+    when the file carried a value — silently, and it type-checks.  Look at the
+    attribute first, then ``.extra``, and coerce.
+    """
+    val = getattr(v1, name, None)
+    if val is None:
+        val = getattr(v1, "extra", {}).get(name)
+    if val is None or val == "":
+        return float(default)
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return float(default)
+
 #: Geometry scalars that act directly on the *predicted* side, or on the
 #: observed side by a rotation we can apply to the stored YLab/ZLab. These are
 #: refinable without recomputing the observations from raw pixels.
@@ -569,6 +589,183 @@ def make_residual(
 
 
 # ─────────────────────────────────────────────────────────── main entry point
+def corrected_paramstest_text(
+    txt: str,
+    refine_params: Sequence[str],
+    fitted: Dict[str, float],
+    v1,
+    *,
+    observed_from_raw: bool = False,
+) -> str:
+    """Return ``txt`` with the refined geometry written back into it.
+
+    Edits the ORIGINAL param text in place — replacing or appending only the
+    keys that changed — so the full v2 distortion, lattice, and acquisition
+    keys carry through verbatim.  (Round-tripping through ``V1Params`` drops
+    non-v1 keys like ``LatticeParameter`` → zero lattice → downstream hkl
+    failure.)
+
+    Kept at module scope, and taking plain floats, **so the tests can drive the
+    real thing**.  The previous version of this logic lived inline inside
+    :func:`refine_geometry_from_grains` and its test reimplemented it against a
+    hand-rolled stand-in for ``v1`` — which had ``Wedge`` as a real attribute,
+    unlike ``CalibrationParams``.  That is exactly how the dropped-``Wedge`` bug
+    below stayed green.  Do not re-inline it.
+    """
+    import re as _re
+
+    # Which refined scalars are RELATIVE to the geometry the input
+    # reconstruction already used, and so must be COMPOSED rather than
+    # overwritten when writing a paramstest for a FRESH run?
+    #
+    # The rule follows _build_model: a scalar seeded there from ``v1`` is
+    # absolute (the fit replaces it); a scalar hardcoded to 0.0 is a
+    # CORRECTION applied on top of whatever the observations already carry.
+    #
+    #   Lsd, ty, tz, BC, distortion : seeded from v1        -> ABSOLUTE
+    #   Wedge                       : geom built wedge=0.0  -> RELATIVE
+    #                                 (observed omega already carries the
+    #                                 pipeline's wedge correction)
+    #   tx                          : DEPENDS ON THE PATH
+    #       observed_from_raw=False -> geom built tx=0.0 and the trial tx
+    #           ROTATES the stored YLab/ZLab, which already carry the
+    #           pipeline's tx            -> RELATIVE
+    #       observed_from_raw=True  -> observations are re-derived from raw
+    #           pixels and tx is applied inside the detector correction
+    #           ("do NOT also rotate")   -> ABSOLUTE
+    #
+    # Without this, iterating the tool silently DISCARDS the previous pass:
+    # measured on 20-ID Au (5 grains, MinNrPx-4 spot list)
+    #     pass 1 on a tx=0 recon        -> -0.158497
+    #     pass 2 on the -0.1585 recon   -> -0.087265   (the residual)
+    #     composed total                -> -0.245762
+    # against -0.2455 from an independent ring/eta systematics fit. Writing
+    # -0.087265 back would apply a THIRD of the true roll — a second pass
+    # strictly worse than the first, with no error and no log line.
+    _relative = {"Wedge"} | (set() if observed_from_raw else {"tx"})
+
+    def _emit(name: str, value: float) -> None:
+        """Replace ``name``'s line in the param text, or append it."""
+        nonlocal txt
+        line = f"{name} {value:.10g}"
+        pat = rf"(?m)^{name}\b.*$"
+        if _re.search(pat, txt):
+            txt = _re.sub(pat, line, txt)
+        else:
+            txt += ("" if txt.endswith("\n") else "\n") + line + "\n"
+
+    written: Dict[str, float] = {}
+    for nm in refine_params:
+        value = float(fitted[nm])
+        if nm in _relative:
+            # NOTE: Wedge is NOT a CalibrationParams field — it lives in
+            # .extra as a STRING. The getattr(v1, "Wedge", 0.0) this used to
+            # do returned 0.0 and silently dropped the previous pass's Wedge
+            # from the file written out. Pass 1 from Wedge 0 was unaffected;
+            # pass 2 onward lost it. Hence _v1_scalar.
+            prior = _v1_scalar(v1, nm, 0.0)
+            if prior:
+                LOG.info(
+                    "grain-tx: %s is a correction on top of the input "
+                    "reconstruction — composing %.6g (already applied) + "
+                    "%.6g (fitted) = %.6g", nm, prior, value, prior + value)
+            value = prior + value
+        written[nm] = value
+        _emit(nm, value)
+
+    # tx and the six distortion phases are ONE object, not two.
+    #
+    # The distortion is evaluated at the LAB azimuth (midas_distortion/core.py:
+    # D = 1 + Σ_k a_k ρ^n cos(k·η' + φ_k)), and tx rolls the panel about the
+    # beam, shifting lab η by exactly tx. So a paramstest carrying φ_k fitted at
+    # tx₀ together with a NEW tx describes a DIFFERENT physical correction than
+    # the one that was fitted: the phases must rotate by k·Δtx to describe the
+    # same detector.
+    #
+    # The SIGN and the fold weight are exact, not fitted. build_tilt_matrix_torch
+    # puts Rx(tx) outermost, so ρ is invariant and lab η shifts by exactly +tx;
+    # with η' = 90 − η the relabel that leaves cos(k·η' + φ_k) fixed is
+    # φ_k → φ_k + k·Δtx. Derived symbolically and reproduced through two
+    # independent forward implementations; the wrong sign DOUBLES the error and
+    # every other fold weight is worse than doing nothing.
+    #
+    # HOW BIG — stated honestly, because the answer depends on where you look.
+    # Over 27 real fitted coefficient sets on this machine, evaluated at the
+    # ring radii an FF run actually uses (ρ ≈ 0.16–0.42, not the panel corner),
+    # a Δtx of 0.2458° gives a median 0.57 µε max / 0.24 µε rms, and 0 of 27
+    # exceed 100 µε. On the one real file these tx values came from
+    # (bt_20id_jul26b Ti-7Al, which carries unusually large 4-, 5- and 6-fold
+    # amplitudes) the same Δtx gives 57 µε. So: usually sub-µε, occasionally
+    # tens of µε, and below the ~0.25 px single-calibration determinacy floor
+    # in the known-limits ledger either way.
+    #
+    # That makes this frame-consistency bookkeeping that costs nothing, NOT a
+    # material calibration gain — do not quote it as one. An earlier version of
+    # this comment quoted 6.5–20.4 µε from a synthetic coefficient set at
+    # ρ up to 1.45 (well outside the panel) and claimed it crossed the 100 µε
+    # threshold. It does not, on any real coefficient set here.
+    #
+    # Two gates, both load-bearing:
+    #
+    #  * ONLY on the default (observed_from_raw=False) path. There the stored
+    #    YLab/ZLab already carry the pipeline's (tx₀, φ_k) and the trial tx is
+    #    an EXTRA rotation, so the written file must describe "tx₀+δ with
+    #    phases relabelled by k·δ". On the raw path the residual itself calls
+    #    apply_tilt_distortion at the trial tx with the FILE's phases, so
+    #    (tx*, φ_file) IS the fitted model and rotating would move the written
+    #    file away from it by exactly the error this is meant to remove.
+    #    That path is also the only one on which a phase can be refined at all
+    #    (every distortion name is in _DISTORTION, which forces it), so this
+    #    gate is also what stops a co-refined φ_k being clobbered here.
+    #
+    #  * only folds with a nonzero a_k — a phase is meaningless where its
+    #    amplitude is zero, and it keeps a distortion-free param file
+    #    byte-identical apart from the tx line itself.
+    if "tx" in written and not observed_from_raw:
+        delta_tx = written["tx"] - float(v1.tx)
+        if delta_tx:
+            from midas_distortion import (P_COEF_NAMES, V2_TO_V1_PNAME,
+                                          v2_coeffs_from_named)
+            named = {nm: float(v1.extra[nm])
+                     for nm in P_COEF_NAMES
+                     if nm in getattr(v1, "extra", {})}
+            named.update({f"p{i}": float(getattr(v1, f"p{i}", 0.0) or 0.0)
+                          for i in range(15)})
+            v2 = dict(zip(P_COEF_NAMES, v2_coeffs_from_named(named)))
+            rotated = []
+            for k in range(1, 7):
+                if not v2.get(f"a{k}", 0.0):
+                    continue
+                phi_name = f"phi{k}"
+                # Wrap to [-180, 180), NOT [0, 360): this module's own phi
+                # bounds are (-180, 180) (see the _DISTORTION spec block), so a
+                # phase written at 323 would rail a later run that thaws it.
+                phi_new = (v2[phi_name] + k * delta_tx + 180.0) % 360.0 - 180.0
+                # Rewrite EVERY spelling the file uses, not the first one found.
+                # calibrate-v2's compat/to_v1.py writes both P_COEF_NAMES and
+                # p0..p14, so real files carry `phi3` AND `p10` holding the same
+                # value. Updating one leaves the other stale, and the readers
+                # disagree about which wins: midas_integrate_v2's from_v1 maps
+                # p0..p14 unconditionally, so it would read the stale phase and
+                # get the full error back out of a file that looks corrected.
+                emitted = False
+                for key in (phi_name, V2_TO_V1_PNAME[phi_name]):
+                    if _re.search(rf"(?m)^{key}\b", txt):
+                        _emit(key, phi_new)
+                        emitted = True
+                if not emitted:
+                    # Neither spelling present: add the v2 name, which is what
+                    # a v2-native writer would have produced.
+                    _emit(phi_name, phi_new)
+                rotated.append(f"{phi_name} {v2[phi_name]:.6g}->{phi_new:.6g}")
+            if rotated:
+                LOG.info(
+                    "grain-tx: tx moved by %.6g deg, so the distortion phases "
+                    "were rotated by k*tx to stay in the same frame (%s). "
+                    "Wrapped to [-180,180).", delta_tx, ", ".join(rotated))
+    return txt
+
+
 def refine_geometry_from_grains(
     paramstest: Path | str,
     layer_dir: Path | str,
@@ -706,8 +903,14 @@ def refine_geometry_from_grains(
     p_arr = torch.tensor(v2_to_v1_coeffs(_v2vec), dtype=dtype)
     spec.add(Parameter("tx", init=torch.tensor(float(v1.tx), dtype=dtype),
                        refined=False, bounds=(-5.0, 5.0)))
-    spec.add(Parameter("Wedge", init=torch.tensor(float(getattr(v1, "Wedge", 0.0) or 0.0),
-                       dtype=dtype), refined=False, bounds=(-5.0, 5.0)))
+    # Wedge seeds at 0.0 ON PURPOSE — do NOT "fix" this to read v1.Wedge.
+    # The geometry below is built with wedge=0.0 and the observed omega already
+    # carries the input reconstruction's wedge, so what is fitted here is a
+    # CORRECTION on top of it (see the _relative set in the write-back). Seeding
+    # the prior would apply it twice. The prior is picked up at write-back time,
+    # where it is composed rather than overwritten.
+    spec.add(Parameter("Wedge", init=torch.zeros((), dtype=dtype),
+                       refined=False, bounds=(-5.0, 5.0)))
     # Lsd scales the predicted radius (R = Lsd·tan 2θ), so it is a genuine
     # lever on this residual and may be thawed. Frozen by default: the powder
     # calibrant constrains it far better than a few hundred grain spots do,
@@ -879,60 +1082,14 @@ def refine_geometry_from_grains(
             at_bounds.append("grain_strain")
     out_path = None
     if out_paramstest is not None:
-        # Edit the ORIGINAL param text in place — replace/append only the
-        # refined keys — so the full v2 distortion, lattice, and acquisition
-        # keys carry through verbatim. (Round-tripping through V1Params drops
-        # non-v1 keys like LatticeParameter → zero lattice → downstream hkl
-        # failure.)
-        import re as _re
         out_path = Path(out_paramstest)
-        txt = Path(paramstest).read_text()
-        # Which refined scalars are RELATIVE to the geometry the input
-        # reconstruction already used, and so must be COMPOSED rather than
-        # overwritten when writing a paramstest for a FRESH run?
-        #
-        # The rule follows _build_model: a scalar seeded there from ``v1`` is
-        # absolute (the fit replaces it); a scalar hardcoded to 0.0 is a
-        # CORRECTION applied on top of whatever the observations already carry.
-        #
-        #   Lsd, ty, tz, BC, distortion : seeded from v1        -> ABSOLUTE
-        #   Wedge                       : geom built wedge=0.0  -> RELATIVE
-        #                                 (observed omega already carries the
-        #                                 pipeline's wedge correction)
-        #   tx                          : DEPENDS ON THE PATH
-        #       observed_from_raw=False -> geom built tx=0.0 and the trial tx
-        #           ROTATES the stored YLab/ZLab, which already carry the
-        #           pipeline's tx            -> RELATIVE
-        #       observed_from_raw=True  -> observations are re-derived from raw
-        #           pixels and tx is applied inside the detector correction
-        #           ("do NOT also rotate")   -> ABSOLUTE
-        #
-        # Without this, iterating the tool silently DISCARDS the previous pass:
-        # measured on 20-ID Au (5 grains, MinNrPx-4 spot list)
-        #     pass 1 on a tx=0 recon        -> -0.158497
-        #     pass 2 on the -0.1585 recon   -> -0.087265   (the residual)
-        #     composed total                -> -0.245762
-        # against -0.2455 from an independent ring/eta systematics fit. Writing
-        # -0.087265 back would apply a THIRD of the true roll — a second pass
-        # strictly worse than the first, with no error and no log line.
-        _relative = {"Wedge"} | (set() if observed_from_raw else {"tx"})
-        for nm in refine_params:
-            value = float(unpacked[nm])
-            if nm in _relative:
-                prior = float(getattr(v1, nm, 0.0) or 0.0)
-                if prior:
-                    LOG.info(
-                        "grain-tx: %s is a correction on top of the input "
-                        "reconstruction — composing %.6g (already applied) + "
-                        "%.6g (fitted) = %.6g", nm, prior, value, prior + value)
-                value = prior + value
-            line = f"{nm} {value:.10g}"
-            pat = rf"(?m)^{nm}\b.*$"
-            if _re.search(pat, txt):
-                txt = _re.sub(pat, line, txt)
-            else:
-                txt += ("" if txt.endswith("\n") else "\n") + line + "\n"
-        out_path.write_text(txt)
+        out_path.write_text(corrected_paramstest_text(
+            Path(paramstest).read_text(),
+            refine_params,
+            {nm: float(unpacked[nm]) for nm in refine_params},
+            v1,
+            observed_from_raw=observed_from_raw,
+        ))
 
     return GrainGeomRefineResult(
         refined=refined, cost_init=cost_init, cost_final=float(cost), rc=str(rc),
