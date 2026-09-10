@@ -35,10 +35,12 @@ import math
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 import numpy as np
+from functools import lru_cache
 
 from midas_hkls import Lattice
 
 __all__ = ["Row", "candidate_row_spacings", "allowed_multiple_parity",
+           "_centring_allowed",
            "find_lattice_rows", "refine_row_spacing", "hkl_box_from_geometry",
            "index_from_ladder", "index_from_row", "index_from_pairs",
            "index_by_grid", "orientation_grid", "search_null",
@@ -80,6 +82,46 @@ def allowed_multiple_parity(hkl_step, space_group_number=139):
     if space_group_number in (69,):                  # F-centred: h,k,l same parity
         return 1 if (h % 2 == k % 2 == l % 2) else 2
     return 1
+
+
+@lru_cache(maxsize=None)
+def _space_group(space_group_number: int):
+    """``SpaceGroup`` for a number, cached.
+
+    ``match_mask`` calls the centring test once per loop iteration per domain,
+    and building a ``SpaceGroup`` each time is the expensive half. Caching the
+    object -- rather than reimplementing what it is used for -- keeps the hot
+    path cheap without giving the rule a second home.
+    """
+    from midas_hkls import SpaceGroup
+    return SpaceGroup.from_number(int(space_group_number))
+
+
+def _centring_allowed(hkl, space_group_number=139):
+    """Lattice-centring extinction mask for an (N,3) integer hkl array.
+
+    A thin wrapper that DELEGATES to :func:`midas_hkls.centring_allowed`, which
+    derives the rule from the space group's own centring translations. It exists
+    only to take a space-group NUMBER (what every caller here has) and to hand
+    the callee a cached :class:`~midas_hkls.SpaceGroup`, so a hot loop does not
+    rebuild one per iteration. It carries no rule of its own -- deliberately.
+
+    Before this, the hard-coded I-centring test ``|h+k+l| even`` was applied
+    whatever the space group was, and only when the number happened to be 139.
+
+    On an F-centred cell (Fmmm, SG 69) the I rule is wrong in BOTH directions.
+    Permissive: (110), (011), (123), (114) all have an even sum and are all
+    F-forbidden -- measured on La3Ni2O7 S5, 726 of 2161 claimed reflections
+    (33.6 %) sat at F-forbidden nodes. Blind: F allows the all-odd families and
+    the I rule rejects every one of them -- 0 of 2161 claimed reflections were
+    all-odd, against 436 of 805 once corrected.
+
+    A hand-written table is right for the centrings someone remembered and
+    silently wrong for the rest, so the rule lives in exactly one derived place
+    (``midas_hkls``) and this module calls it. Requires ``midas-hkls >= 0.11``.
+    """
+    from midas_hkls import centring_allowed
+    return centring_allowed(hkl, _space_group(space_group_number))
 
 
 def candidate_row_spacings(a, c, *, hmax=2, lmax=3, two_pi=True):
@@ -554,8 +596,10 @@ def index_from_row(q, I, u_row, hkl_step, *, a=3.6116, c=19.2516, two_pi=True,
                   & (np.abs(hi[:, 0]) <= hmax) & (np.abs(hi[:, 1]) <= hmax)
                   & (np.abs(hi[:, 2]) <= lmax)
                   & (np.abs(hi).sum(axis=1) > 0))
-            if space_group_number == 139:
-                ok &= (np.abs(hi.sum(axis=1)) % 2 < 1e-6)     # I-centring
+            # Was `if sgnum == 139: I-rule`, i.e. NO centring filter at all for
+            # any other group -- so an F cell enumerated thousands of extinct
+            # nodes. Use the space-group-aware rule.
+            ok &= _centring_allowed(hi, space_group_number)
             n = int(ok.sum())
             curve.append((sg, float(phi), n))
             if n > best[1]:
@@ -741,6 +785,9 @@ class RefinedLattice:
         return 2.0*(self.b - self.a)/(self.b + self.a)
 
 
+_FIT_FLOOR = 6        # refine_lattice's algebraic minimum; see refine_to_convergence
+
+
 def refine_lattice(q, hkl, *, two_pi=True, min_reflections=6,
                    max_cell_change=0.10, a0=None, c0=None, constrain=None,
                    sigma_rtn=None, rotation_axis=(0.0, 0.0, 1.0)):
@@ -912,10 +959,12 @@ class ConvergedDomain:
     n_iter: int
 
 
-def refine_to_convergence(q, U0, *, a0, c0, avail=None, tol_sigma=7.0,
+def refine_to_convergence(q, U0, *, a0, c0, b0=None, alpha0=90.0, beta0=90.0,
+                          gamma0=90.0, avail=None, tol_sigma=7.0,
                           sigma_rtn=(0.0071, 0.0145, 0.0094), B0=None,
                           max_iter=4, rotation_axis=(0.0, 0.0, 1.0),
-                          min_reflections=5):
+                          min_reflections=5, two_pi=True,
+                          space_group_number=139):
     """Iterate refine -> rematch until the cell and its reflections agree.
 
     A seeded search has to bootstrap its FIRST match from some other domain's
@@ -965,17 +1014,56 @@ def refine_to_convergence(q, U0, *, a0, c0, avail=None, tol_sigma=7.0,
     independently-seeded domains sit >1% from the seed cell, so that bound was
     clipping a real population. This loop and a nominal gate ship together.
 
+    **The first match forces a == b unless you give it a full cell**, because
+    ``match_mask`` builds ``Lattice(a=a, b=a, c=c)`` when no ``B`` is supplied.
+    Later iterations use the refined ``B`` and are general.
+
+    MEASURED, not assumed -- the boundary is sharp. Planting an orthorhombic cell
+    (c = 20 A, F-centred, 62 reflections, noise 0.004) and seeding tetragonally
+    at (a+b)/2:
+
+        delta = (a-b)/(a+b)   0.3 %   1 %    2 %   |   3 %    5 %    12 %
+        tetragonal seed        OK     OK     OK    |  FAILS  FAILS  FAILS
+        reflections claimed    62     62     62    |    0      0       0
+
+    Below 2 % the tetragonal seed recovers delta to 0.007 % and its output is
+    BIT-IDENTICAL to a full-cell seed -- passing ``b0`` there changes nothing. At
+    3 % it claims nothing at all and returns ``None``. So: pass ``b0`` (and the
+    angles if not 90) when the splitting may exceed ~2 %, or pass ``B0``. For
+    reference, a Ruddlesden-Popper Fmmm supercell splitting is ~0.3 %, well
+    inside the safe range.
+
     Returns ``None`` if no lattice can be fitted at all.
     """
     q = np.asarray(q, float)
     avail = np.ones(len(q), bool) if avail is None else np.asarray(avail, bool)
-    U, a, c, B = np.asarray(U0, float), float(a0), float(c0), B0
+    U, a, c = np.asarray(U0, float), float(a0), float(c0)
+    B = B0
+    if B is None and (b0 is not None or alpha0 != 90.0 or beta0 != 90.0
+                      or gamma0 != 90.0):
+        # A full seed basis. Without this the first match is tetragonal.
+        lat = Lattice(a=a, b=float(b0) if b0 is not None else a, c=c,
+                      alpha=float(alpha0), beta=float(beta0), gamma=float(gamma0))
+        B = np.asarray(lat.reciprocal_cartesian_vectors(), float).T
+        if two_pi:
+            B = B*2*math.pi
     claim = frag = hkl = resid = None
     n_iter = 0
+    # `min_reflections` is an ACCEPTANCE criterion on the converged domain, not
+    # a precondition on the first match round. Iterating needs only enough
+    # reflections to FIT, which is refine_lattice's own algebraic floor of 6.
+    # Enforcing the acceptance floor on round one discarded domains that grow
+    # past it: measured on 150 S5 positions, floor 7 kept 78 domains while
+    # floor 6 filtered post hoc to n >= 7 kept 85 -- seven domains
+    # (n = 7,7,7,8,8,9,10) that DO meet the floor were thrown away for their
+    # STARTING count. The 78 common domains are bit-identical either way
+    # (|da|=|db|=|dc|=0, misorientation 0.000 deg), so this only ever adds.
+    fit_min = min(int(min_reflections), _FIT_FLOOR)
     for _ in range(int(max_iter)):
         cl, hk, rs = match_mask(q, U, B=B, a=a, c=c, tol_sigma=tol_sigma,
                                 sigma_rtn=sigma_rtn, return_residual=True,
-                                rotation_axis=rotation_axis)
+                                rotation_axis=rotation_axis,
+                                space_group_number=space_group_number)
         cl &= avail
         fr = cl.copy()
         cl = unique_by_hkl(cl, hk, rs)
@@ -986,14 +1074,14 @@ def refine_to_convergence(q, U0, *, a0, c0, avail=None, tol_sigma=7.0,
                 if int(cl.sum()) == int(claim.sum()) else False
             if not (better_n or better_r):
                 break
-        if int(cl.sum()) < int(min_reflections):
+        if int(cl.sum()) < fit_min:
             if claim is None:
                 return None
             break
         claim, frag, hkl, resid = cl, fr, hk, rs
         cand = refine_lattice(q[claim], hkl[claim], a0=a, c0=c,
                               sigma_rtn=sigma_rtn, rotation_axis=rotation_axis,
-                              min_reflections=min_reflections)
+                              min_reflections=fit_min)
         if cand is None:
             break
         U, a, c, B = cand.U, cand.a, cand.c, cand.B
@@ -1094,18 +1182,20 @@ def index_from_pairs(q, I, B, *, a=3.6116, c=19.2516, exclude=None,
         return None, 0, None, 0
     qn = np.linalg.norm(q, axis=1)
     hb, lb = hkl_box_from_geometry(a, c)
-    hkls, gmag, gvec = [], [], []
-    for h in range(-hb, hb + 1):
-        for k in range(-hb, hb + 1):
-            for l in range(-lb, lb + 1):
-                if (h, k, l) == (0, 0, 0):
-                    continue
-                if space_group_number == 139 and (h + k + l) % 2:
-                    continue
-                g = B @ np.array([h, k, l], float)
-                hkls.append((h, k, l)); gvec.append(g)
-                gmag.append(float(np.linalg.norm(g)))
-    gmag = np.asarray(gmag)
+    # Enumerate the whole hkl box at once and mask it, rather than testing the
+    # centring rule once per triple: the per-triple form allocated a (1,3) array
+    # and re-entered the rule for every node, and cost 5x the loop it guarded.
+    # `indexing="ij"` reproduces the h-outer / k / l-inner order the loop
+    # produced, which matters because `gmag` is indexed positionally below.
+    _ax = lambda n: np.arange(-n, n + 1)
+    _h, _k, _l = np.meshgrid(_ax(hb), _ax(hb), _ax(lb), indexing="ij")
+    grid = np.stack([_h.ravel(), _k.ravel(), _l.ravel()], axis=1)
+    keep = np.abs(grid).sum(axis=1) > 0                    # drop (0, 0, 0)
+    keep &= _centring_allowed(grid, space_group_number)
+    grid = grid[keep]
+    gvec = grid.astype(float) @ B.T                        # row i = B @ hkl_i
+    gmag = np.linalg.norm(gvec, axis=1)
+    hkls = [(int(h), int(k), int(l)) for h, k, l in grid]
     idx = np.flatnonzero(avail)
     cand = {int(i): np.flatnonzero(np.abs(gmag - qn[i]) < dq_shell) for i in idx}
     # Anchors must NOT be the brightest spots alone. A weak crystallite can
@@ -1311,8 +1401,9 @@ def index_by_grid(q, B, *, a=3.6116, c=19.2516, exclude=None, tol_q=0.05,
                   & (np.abs(hi[:, :, 0]) <= hb) & (np.abs(hi[:, :, 1]) <= hb)
                   & (np.abs(hi[:, :, 2]) <= lb)
                   & (np.abs(hi).sum(axis=2) > 0))
-            if space_group_number == 139:
-                ok &= (np.abs(hi.sum(axis=2)) % 2 < 1e-6)
+            sh = hi.shape
+            ok &= _centring_allowed(hi.reshape(-1, 3),
+                                    space_group_number).reshape(sh[:2])
             out[lo:lo + chunk] = ok.sum(axis=1)
         return out
 
@@ -1358,6 +1449,7 @@ def index_by_grid(q, B, *, a=3.6116, c=19.2516, exclude=None, tol_q=0.05,
 
 
 def match_mask(q, U, *, a=3.6116, c=19.2516, two_pi=True, tol=0.10,
+               space_group_number=139,
                hmax=None, lmax=None, return_residual=False, tol_q=None,
                B=None, tol_sigma=None, sigma_rtn=(0.0071, 0.0145, 0.0094),
                rotation_axis=(0.0, 0.0, 1.0)):
@@ -1433,7 +1525,7 @@ def match_mask(q, U, *, a=3.6116, c=19.2516, two_pi=True, tol=0.10,
              & (np.abs(hi[:, 0]) <= hmax) & (np.abs(hi[:, 1]) <= hmax)
              & (np.abs(hi[:, 2]) <= lmax)
              & (np.abs(hi).sum(axis=1) > 0)
-             & (np.abs(hi.sum(axis=1)) % 2 < 1e-6))
+             & _centring_allowed(hi, space_group_number))
     if return_residual:
         return claim, hi.astype(int), resid
     return claim, hi.astype(int)

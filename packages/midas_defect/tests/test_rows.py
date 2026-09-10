@@ -978,3 +978,116 @@ def test_seed_referenced_gate_manufactures_correlation():
     assert abs(r_nom.slope) < 3 * r_nom.stderr, (
         f"nominal gate should be unbiased, got {r_nom.slope:.3f} +- {r_nom.stderr:.3f}")
     assert r_seed.slope > 4 * abs(r_nom.slope)
+
+
+def test_full_cell_seed_needed_above_two_percent_splitting():
+    """The tetragonal seed fails by delta=3%; a full-cell seed does not.
+
+    DISCRIMINATING: remove the b0/B0 plumbing from refine_to_convergence and the
+    second half of this test fails outright (the function returns None). Below
+    2% the two are bit-identical, which is why the boundary and not the
+    principle is what gets asserted -- see the measured table in the docstring.
+    """
+    from midas_defect.rows import refine_to_convergence
+    from midas_hkls import Lattice
+    from scipy.spatial.transform import Rotation as R
+    import math
+
+    def scene(A, Bx, C=20.0, seed=0, noise=0.004):
+        rng = np.random.default_rng(seed)
+        U = R.random(random_state=seed).as_matrix()
+        hs = [(h, k, l) for h in range(-3, 4) for k in range(-3, 4)
+              for l in range(-6, 7) if (h, k, l) != (0, 0, 0) and (h % 2 == k % 2 == l % 2)]
+        lat = Lattice(a=A, b=Bx, c=C, alpha=90., beta=90., gamma=90.)
+        Bm = np.asarray(lat.reciprocal_cartesian_vectors(), float).T * 2 * math.pi
+        q = np.array([U @ (Bm @ np.array(h, float)) for h in hs])
+        return U, q + rng.normal(0, noise, (len(hs), 3))
+
+    # 0.3 % -- an RP supercell splitting. Both routes work, identically.
+    A, Bx = 5.2686, 5.2384
+    U, q = scene(A, Bx, seed=1)
+    tet = refine_to_convergence(q, U, a0=(A+Bx)/2, c0=20.0)
+    full = refine_to_convergence(q, U, a0=A, c0=20.0, b0=Bx)
+    assert tet is not None and full is not None
+    assert abs(tet.lat.a - full.lat.a) < 1e-9, "should be identical below 2%"
+
+    # 5 % -- the tetragonal seed claims nothing; the full-cell seed still works.
+    A5, B5 = 5.2535*1.05, 5.2535*0.95
+    U, q = scene(A5, B5, seed=1)
+    tet5 = refine_to_convergence(q, U, a0=(A5+B5)/2, c0=20.0)
+    full5 = refine_to_convergence(q, U, a0=A5, c0=20.0, b0=B5)
+    assert tet5 is None, "tetragonal seed unexpectedly survived a 5% splitting"
+    assert full5 is not None, "full-cell seed must survive where the tetragonal one cannot"
+    d = (full5.lat.a - full5.lat.b)/(full5.lat.a + full5.lat.b)*100
+    assert abs(d - 5.0) < 0.05, f"full-cell seed recovered delta={d:.3f}%, expected 5.0%"
+
+
+def test_centring_rule_is_space_group_aware_everywhere():
+    """No code path may assume I-centring. Measured cost of the old bug: on
+    40 planted Fmmm grains the I-rule recovered a median 18 of 34 reflections;
+    the correct F-rule recovered 34/34 in 40/40 reps. On real S5 data the
+    explained fraction went 1.600 % -> 4.789 % and zero-domain positions
+    16/60 -> 35/60 (Wilcoxon p=7.9e-07).
+    """
+    from midas_defect.rows import _centring_allowed
+    hk = np.array([[1,1,0],[0,1,1],[1,2,3],[1,1,4],   # even-sum, F-FORBIDDEN
+                   [1,1,1],[3,1,1],                    # odd-sum, F-ALLOWED
+                   [2,0,0],[2,2,0],[0,0,2]])           # allowed in both
+    F = _centring_allowed(hk, 69)
+    I = _centring_allowed(hk, 139)
+    assert not F[:4].any(), "F-centring must reject mixed parity"
+    assert F[4:].all(),     "F-centring must accept all-odd and all-even"
+    assert I[:4].all() and not I[4:6].any(), "I-centring rule changed"
+    assert _centring_allowed(hk, 1).all(), "P lattice must allow everything"
+    # the four the old blanket even-sum gate wrongly admitted for an F cell
+    assert (I[:4] & ~F[:4]).sum() == 4
+    # and the two it wrongly rejected
+    assert (~I[4:6] & F[4:6]).sum() == 2
+
+
+def test_min_reflections_is_acceptance_not_precondition():
+    """The floor must judge the CONVERGED domain, not the first match round.
+
+    `refine_to_convergence` used to `return None` whenever round one matched
+    fewer than `min_reflections`, so a domain that would grow 6 -> 9 across the
+    loop died at floor 7. Measured on 150 real S5 positions: floor 7 kept 78
+    domains, floor 6 filtered post hoc to n >= 7 kept 85 -- seven domains
+    (n = 7,7,7,8,8,9,10) that DO meet the floor were discarded for their
+    STARTING count, an ~8 % undercount. The 78 common domains were bit-identical
+    either way, so the floor never perturbed what it kept.
+
+    The discriminator: seed a and c ~1 % off so round one matches few, and check
+    that a floor at or below the CONVERGED count still returns the domain. Under
+    the old code this returns None for every floor above the round-one count.
+    """
+    from midas_defect.rows import refine_to_convergence
+
+    U, q, a, c = _planted_domain(seed=5, n_hkl=40, noise=0.004)
+
+    # what the loop converges to when the floor cannot interfere
+    base = refine_to_convergence(q, U, a0=a*1.01, c0=c*1.01,
+                                      min_reflections=3, tol_sigma=7.0)
+    assert base is not None, "the permissive arm must find the domain at all"
+    n_final = int(np.asarray(base.claim).sum())
+
+    # what round one alone sees, with the same seeded cell
+    B0 = np.diag([2*np.pi/(a*1.01), 2*np.pi/(a*1.01), 2*np.pi/(c*1.01)])
+    cl0, _, _ = match_mask(q, U, B=B0, a=a*1.01, c=c*1.01, tol_sigma=7.0,
+                                sigma_rtn=(0.0071, 0.0145, 0.0094),
+                                return_residual=True)
+    n_round1 = int(cl0.sum())
+
+    # the floor is an ACCEPTANCE criterion: anything up to the converged count
+    # must still be returned, including floors strictly above the round-one count
+    for floor in range(3, n_final + 1):
+        got = refine_to_convergence(q, U, a0=a*1.01, c0=c*1.01,
+                                         min_reflections=floor, tol_sigma=7.0)
+        assert got is not None, (
+            f"floor {floor} <= converged {n_final} returned None "
+            f"(round one saw {n_round1}) -- the floor is acting as a precondition")
+        assert int(np.asarray(got.claim).sum()) >= floor
+
+    # and it must still REFUSE above the converged count -- the floor still bites
+    assert refine_to_convergence(q, U, a0=a*1.01, c0=c*1.01,
+                                      min_reflections=n_final + 6,
+                                      tol_sigma=7.0) is None
