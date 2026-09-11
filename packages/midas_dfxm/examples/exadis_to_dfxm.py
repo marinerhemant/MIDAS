@@ -126,9 +126,10 @@ def main() -> None:
         dV = relaxation_volumes_um3(net, loops)
         print(f"          relaxation volumes: {float(dV.min()):.2e} .. "
               f"{float(dV.max()):.2e} um^3")
-    print("          NOTE: the open lines carry no relaxation volume and are "
-          "invisible to the\n                small-angle forward -- but they image "
-          "fine here, which is the point.")
+    print("          NOTE: the lines carry no relaxation volume, so they vanish from "
+          "the small-angle\n                forward as q -> 0 (at finite q an edge or "
+          "mixed line scatters into a sheet;\n                a screw does not) -- and "
+          "they image fine here regardless, which is the point.")
 
     # A SLAB, not a sheet. DFXM integrates through the thickness of the
     # line-focused beam, and a zero-thickness plane through a sparse 3-D network

@@ -103,6 +103,39 @@ optics = ObjectiveOptics(two_theta_deg=tt, magnification=10.0, detector_shape=(2
 image = dfxm_image(field, hkl, center, res, optics)   # (256, 256), differentiable
 ```
 
+## Reducing a measured rocking scan (APS 6-ID-C)
+
+```python
+import midas_dfxm as dx
+
+scan = dx.load_6idc_scan("/data/S006", "/data/Dec2021_motors/motors/S006_motorInfo.csv",
+                         roi=(800, 1600, 900, 1700))
+print(scan.summary())                  # what moved, the step, repeats, every check the reader made
+print(dx.check_frame_order(scan))      # is each frame paired with its own angle?
+maps = dx.reduce_rocking(scan)         # per-pixel pedestal, centre, width, split-half error bar
+print(maps.summary())
+```
+
+The reader refuses a motor table whose row count does not match the frames, confirms the file
+order against the logged angle, and handles the 2025 layout: indexed frames, repeats per point,
+a hot first repeat, lost or zero-byte files. The reduction subtracts a per-pixel baseline,
+measured outside each pixel's own peak, before the first moment. On these detectors the
+pedestal holds most of the recorded counts, and a raw first moment shrinks every tilt toward
+zero. The rocking-curve notebook walks through it in its Part B, and `reduce_6idc_scan.ipynb` is that
+Part B on its own with a cell to pick the ROI (`python -m midas_dfxm.examples.get_notebooks` copies both out).
+
+A centre is one number for a whole rocking curve, and it is a tilt only when the curve is one
+peak. The summary's `shape` line says what fraction of lit pixels are single-peaked. When many
+are not (a 6-ID-C Ba122 scan had 30-40 mdeg curves made of sharp features, and the peak-window
+centre jumped by ~19 mdeg along a line where two features were equally tall), use
+`dx.reduce_rocking(scan, window="fixed")`: one signal window for every pixel, a line baseline
+through the frames outside it, the median of the curve as the centre (it cannot jump), the
+10-90 % span as the width, and `centre_shift`, the disagreement between two centre
+definitions, as the size of the "which centre" systematic. With repeats, `repeat_excess` maps
+where the frames at one position differ by more than photon noise (flux, beam or sample motion
+between frames); the repeat-parity error bar includes that, a photon-only error bar does not.
+`dx.example_rocking_scan("broad")` builds a synthetic scan with that behaviour, no data needed.
+
 ## Lab frame and scattering plane
 
 Two beamline conventions are settable, and both default to the ESRF ID06-HXM case

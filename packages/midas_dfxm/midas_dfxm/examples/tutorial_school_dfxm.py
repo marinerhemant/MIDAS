@@ -18,6 +18,10 @@
 # Run this file cell by cell (VSCode: click "Run Cell" above each `# %%`; Jupyter:
 # it is a valid notebook via jupytext). Everything is CPU-only and synthetic — no
 # data files, no GPU. On Windows set `KMP_DUPLICATE_LIB_OK=TRUE` first.
+#
+# **To reduce a scan measured at the beamline**, use the rocking-curve notebook instead
+# (its Part B). Copy both tutorials to a folder you can edit with
+# `python -m midas_dfxm.examples.get_notebooks`.
 
 # %%
 import torch
@@ -48,14 +52,21 @@ print("field F shape:", tuple(field.F.shape), "(N_voxels, 3, 3)")
 # The forward model needs the reflection (hkl), the goniometer setting, the
 # instrument resolution, and the objective optics. `dfxm_image` returns a
 # differentiable image: only the sub-region satisfying the Bragg condition lights
-# up, which is what gives DFXM its orientation contrast.
+# up, which is what gives DFXM its orientation contrast. The energy is 20 keV, a typical
+# APS 6-ID-C setting; the geometry here is the package default (vertical scattering plane),
+# and the rocking-curve notebook shows the horizontal plane used at 6-ID-C.
 
 # %%
+WAVELENGTH_A = 12.398419843320026 / 20.0          # 20 keV
 hkl, center = (1, 1, 1), GoniometerSetting()
 q_nom = reference_q_nom(field, hkl, center)
 res = aligned_resolution(q_nom, sigma_par=5e-3, sigma_perp=5e-3)
-tt = bragg_two_theta_deg(float(torch.linalg.vector_norm(q_nom)), wavelength_A=0.172979)
-optics = ObjectiveOptics(two_theta_deg=tt, magnification=10.0, detector_shape=(256, 256))
+tt = bragg_two_theta_deg(float(torch.linalg.vector_norm(q_nom)), wavelength_A=WAVELENGTH_A)
+print(f"2theta of {hkl} at 20 keV: {tt:.2f} deg")
+# 0.5 um voxels x 10 = 5 um on the detector: 2.5 um pixels sample that twice. With 1 um
+# pixels the voxels land 5 px apart and the image breaks into a comb of vertical lines.
+optics = ObjectiveOptics(two_theta_deg=tt, magnification=10.0, pixel_um=2.5,
+                         detector_shape=(160, 160))
 
 image = dfxm_image(field, hkl, center, res, optics)
 plt.figure(figsize=(4, 4))
@@ -80,12 +91,17 @@ fig.suptitle("rocking the crystal sweeps the diffracting region across the bend"
 fig.tight_layout(); plt.show()
 
 # %% [markdown]
-# ## 4. The full-F inverse — the extra information the twin gives
+# ## 4. The full-F inverse — what several reflections add
 # The measured per-pixel reciprocal-space shift is exactly linear in F:
-# $\Delta Q = (F^{-T}-I)\,Q_0$. With **>= 3 non-coplanar reflections** we can
-# solve for all nine components of F per voxel. Below we simulate the shifts for
-# four reflections (with a little noise) and recover F. The round-trip error is
-# tiny — this is the capability a single COM scan does not give.
+# $\Delta Q = (F^{-T}-I)\,Q_0$. With **>= 3 non-coplanar reflections** all nine
+# components of F are recoverable per voxel. Below we simulate the shifts for four
+# reflections (with a little noise) and invert them.
+#
+# **Read the error correctly.** Recovering a phantom that the same model generated shows
+# that the inverse is consistent with its own forward model. It is *not* the accuracy you
+# would get on measured frames, which carry a detector pedestal, noise, registration between
+# reflections and model error. On real data the error bar comes from a split-half or from
+# injecting a known shift into the measured frames (the rocking-curve notebook, Part B).
 
 # %%
 refls = [(2, 0, 2), (0, 2, 2), (2, 2, 0), (1, 1, 3)]
@@ -94,7 +110,8 @@ meas = meas + 1e-3 * meas.abs().mean() * torch.randn_like(meas)
 F_rec = recover_deformation_direct(meas, refls, field=field)
 
 err = (F_rec - field.F).abs()
-print(f"full-F round-trip: max |dF| = {float(err.max()):.2e}, mean = {float(err.mean()):.2e}")
+print(f"phantom round-trip (a consistency check, not accuracy): "
+      f"max |dF| = {float(err.max()):.2e}, mean = {float(err.mean()):.2e}")
 
 # compare a recovered component vs truth
 rot_true = (0.5 * (field.F[:, 1, 0] - field.F[:, 0, 1])).reshape(64, 64) * (180 / torch.pi) * 1e3
@@ -107,15 +124,13 @@ for a, d, t in [(ax[0], rot_true, "true lattice rotation (mdeg)"),
 fig.tight_layout(); plt.show()
 
 # %% [markdown]
-# ## 5. Capstone: the three canonical maps — and what one reflection can't give you
-# A DFXM study usually wants three co-registered maps of the grain: **twin domains**,
-# **elastic strain**, and **mosaicity**. The forward+inverse above produce all three
-# (see `dev/paper/runs/multimodal_capstone/capstone_psingle.py` for the full figure:
-# domains segmented at 99.9%, mosaicity to 3.5 mdeg, full strain tensor to the
-# Cramér–Rao bound). One honest limit worth learning early: **a single reflection
-# measures only the strain projected onto that g** (`eps_gg = ĝ·ε·ĝ`). Recovering the
-# **full six-component** strain tensor needs a *diverse set of reflections* — and the
-# code tells you whether a set is enough before you take the data.
+# ## 5. What one reflection cannot give you
+# A DFXM study often wants twin domains, elastic strain and mosaicity on one grain. One
+# limit worth learning early: **a single reflection measures only the strain projected onto
+# its g** (`eps_gg = ĝ·ε·ĝ`) — and in a solid solution even that is a d-spacing change, not
+# necessarily an elastic strain. The **full six-component** strain tensor needs a diverse
+# set of reflections, and the code tells you whether a set is enough before you take the
+# data.
 
 # %%
 from midas_dfxm.inverse import strain_identifiability
@@ -126,19 +141,20 @@ for name, refls in [("single reflection", one_reflection), ("6-reflection set", 
     info = strain_identifiability(refls)
     print(f"{name:18s}: rank {info['rank']}/6  full-tensor recoverable = {info['recoverable']}")
 # -> the single reflection is rank 1 (only one projected component); the diverse set is
-#    rank 6 (all six components). This is the design rule behind the CsVSb multi-reflection plan.
+#    rank 6 (all six components).
 
 # %% [markdown]
 # ## 6. Where to go next
-# - **Dislocation typing:** `examples/tutorial_dislocation_typing.py` — recover a
-#   Burgers vector (direction *and* sign) from the anisotropic contrast.
-# - **Physics-regularized inverse:** fit F through a dislocation model, not
-#   per-voxel, for far lower variance under noise.
-# - **Your own field:** replace `field.F` with any deformation gradient (from
-#   crystal plasticity, from a measurement) and re-render — the forward is
-#   differentiable, so you can also *fit* instrument and sample parameters.
+# - **A scan you measured:** the rocking-curve notebook. Part A simulates and reconstructs
+#   rocking scans; Part B loads an APS 6-ID-C scan, checks that every frame is paired with
+#   its own angle, subtracts the detector pedestal, and makes a tilt or strain map with an
+#   error bar.
+# - **Dislocation typing** (simulation):
+#   `python -m midas_dfxm.examples.tutorial_dislocation_typing` recovers a Burgers vector,
+#   direction *and* sign, from the anisotropic contrast.
+# - **Your own field:** replace `field.F` with any deformation gradient (from crystal
+#   plasticity, from a measurement) and re-render. The forward is differentiable, so you
+#   can also *fit* instrument and sample parameters.
 #
-# Everything here ran on CPU in seconds. The same code differentiates end to end,
-# which is what lets the twin do design, self-calibration, and regularized
-# inversion — see the paper for the full story.
+# Everything here ran on CPU in seconds.
 print("tutorial complete — every cell ran on CPU.")
