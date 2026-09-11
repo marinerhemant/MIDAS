@@ -244,6 +244,15 @@ frames to write: T`. Confirm `T` equals the frame count you derived from the par
 ---
 
 
+### Feeding `midas_index` a spot table you built yourself
+
+The pipeline fills `Spots.bin` correctly. A bridge from another spot finder must fill every column, and
+**column 8 is the observed radial displacement from the ring (µm) — not intensity, not the ring radius**. The
+matcher compares it with the prediction's `rad_diff` under `MarginRadial`, so a wrong column 8 makes every
+candidate fail and looks exactly like "the indexer cannot index this sample". Before blaming the indexer, run
+the bridge on spots simulated from a known grain; that positive control is what found this one (0/4 matched
+before the fix). Column table: `packages/midas_index/README.md`.
+
 ## 12. Check reproducibility on a new install
 
 Run the identical pipeline twice into a **clean** result dir and checksum every stage in
