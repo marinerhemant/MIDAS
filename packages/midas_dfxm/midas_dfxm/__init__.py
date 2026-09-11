@@ -136,6 +136,17 @@ from .mosaicity_fit import (
     rocking_lrt,
     rocking_nll,
 )
+from .rocking import (
+    FrameOrderCheck,
+    RockingMaps,
+    RockingScan,
+    baseline_sensitivity,
+    check_frame_order,
+    classify_motors,
+    example_rocking_scan,
+    reduce_rocking,
+)
+from .io_6idc import find_motor_tables, load_6idc_scan, read_motor_table
 from .joint_inverse import fit_dislocation_field, fit_dislocation_ensemble, signal_peaks
 from .finite_beam import beam_integrated_observable
 from .beamline import (Illumination, beamline_resolution, crl_abcd, crl_focal_length, crl_image, crl_na, delta_beryllium, chromatic_defocus_coeffs)
@@ -404,6 +415,18 @@ __all__ = [
     "dfxm_image_dynamical",
     "dfxm_image_dynamical_pink",
     "dfxm_image_dynamical_chromatic_pink",
+    # Measured rocking scans: reduction, checks, APS 6-ID-C reader
+    "RockingScan",
+    "RockingMaps",
+    "FrameOrderCheck",
+    "classify_motors",
+    "check_frame_order",
+    "reduce_rocking",
+    "baseline_sensitivity",
+    "example_rocking_scan",
+    "load_6idc_scan",
+    "find_motor_tables",
+    "read_motor_table",
 ]
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"

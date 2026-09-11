@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dfxm"
-version = "0.9.0"
+version = "0.10.0"
 description = "Differentiable forward + inverse for Dark-Field X-ray Microscopy (DFXM): deformation-gradient field imaging through a magnifying objective, and per-dislocation defect-type discrimination, on top of midas-stress / midas-hkls / midas-defect."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -34,6 +34,7 @@ dependencies = [
     "midas-ddd>=0.1.0",
     "midas-invert>=0.1.1",     # shared differentiable-inversion primitives (fit, losses, UQ, design)
     "midas-distortion",      # detector distortion model (single source of truth)
+    "tifffile>=2021.1",      # 6-ID-C frame reader (midas_dfxm.io_6idc)
 ]
 
 [project.optional-dependencies]
@@ -44,7 +45,8 @@ dev = ["pytest>=7.0", "matplotlib>=3.5"]
 packages = ["midas_dfxm", "midas_dfxm.examples"]
 
 [tool.setuptools.package-data]
-"midas_dfxm.examples" = ["*.mplstyle"]
+# The notebook is the student-facing tutorial: it must ship, or `pip install` users never see it.
+"midas_dfxm.examples" = ["*.mplstyle", "*.ipynb"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
