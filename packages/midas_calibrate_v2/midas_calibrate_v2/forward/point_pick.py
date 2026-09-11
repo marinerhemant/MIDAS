@@ -156,11 +156,12 @@ def pick_points(
     snr_threshold: float = 5.0,
     min_window_deg: float = 0.03,
     max_window_deg: float = 0.5,
-    min_ring_gap_deg: float = 0.0,
+    min_ring_gap_deg: float = 0.3,
     subpixel_half_px: int = 2,
     edge_margin_px: int = 5,
     panel_mask: Optional[np.ndarray] = None,
     mask_erode_iter: int = 2,
+    verbose: bool = False,
     dtype=torch.float64, device="cpu",
 ) -> PickedPoints:
     """Pick one-shot, geometry-independent local-maximum peak points.
@@ -181,11 +182,26 @@ def pick_points(
         per-pixel discretisation noise approach the gap itself; unlike a
         binned/windowed extraction, a point-pick has no mechanism to
         jointly resolve two overlapping rings, so the safer choice is to
-        not trust hopelessly close ones at all. Default 0.0 keeps every
-        ring (narrow-window only) for backward compatibility; callers
-        targeting multiplet-heavy calibrants (e.g. CeO2's closely-spaced
-        high-index reflections) should set this explicitly (e.g. a few
-        tenths of a degree).
+        not trust hopelessly close ones at all. Default 0.3 deg drops
+        CeO2-style closely-spaced high-index multiplets outright; this is
+        a brand-new module with no back-compatibility reason to default to
+        0.0 (which would silently reintroduce exactly the cross-ring
+        contamination this parameter exists to prevent), and 0.3 deg is
+        what every caller in this package already passes explicitly. Pass
+        0.0 only after checking your calibrant has no close ring pairs.
+    verbose : if True, additionally print, per kept ring, how the accepted
+        points are distributed across 8 azimuthal (η) octants. The SNR
+        floor below (``baseline``/``noise``) is computed once per ring over
+        the WHOLE annulus, so any real azimuthal intensity variation
+        (polarization, detector gain, absorption, calibrant texture) makes
+        acceptance azimuth-dependent -- bright azimuths clear
+        ``snr_threshold`` more easily than dim ones. That silently biases
+        which azimuths contribute points, which matters here because this
+        pipeline fits ``ty``/``tz``/``BC`` -- exactly the parameters an
+        uneven azimuthal sample can lean on, worse at large tilt. A flat
+        octant histogram means this is a non-issue on your data; a lopsided
+        one is a real problem to go fix (e.g. by making the SNR floor local
+        to an azimuthal sector instead of ring-global).
 
     Returns
     -------
@@ -215,6 +231,15 @@ def pick_points(
     local_max = (img == ndimage.maximum_filter(
         img, size=footprint_px, mode="nearest")) & valid_mask
 
+    # A saturated (flat-topped) peak has every pixel of its plateau equal
+    # to the neighbourhood max, so `local_max` flags all of them -- a 5x5
+    # saturated top gives 25 candidate pixels for one physical peak, which
+    # then all map to nearly the same sub-pixel centroid and enter the fit
+    # ~25 times at full weight. Label connected components ONCE, globally,
+    # so each per-ring loop iteration can collapse a plateau down to one
+    # representative candidate before scoring.
+    local_labels, _n_components = ndimage.label(local_max)
+
     half_windows, neighbor_gap = _ring_windows_deg(
         rt, min_window_deg=min_window_deg, max_window_deg=max_window_deg,
     )
@@ -242,6 +267,21 @@ def pick_points(
         if zz.size == 0:
             n_by_ring[i] = 0
             continue
+
+        # Collapse each connected local-max component to its single
+        # brightest pixel (see the `local_labels` comment above) before
+        # scoring, so a saturated plateau counts as one candidate.
+        comp_labels = local_labels[zz, yy]
+        peak_vals_all = img[zz, yy]
+        order = np.argsort(-peak_vals_all, kind="stable")
+        best_for_label: dict = {}
+        for idx in order:
+            lbl = comp_labels[idx]
+            if lbl not in best_for_label:
+                best_for_label[lbl] = idx
+        rep_idx = np.fromiter(best_for_label.values(), dtype=np.int64)
+        zz, yy = zz[rep_idx], yy[rep_idx]
+
         peak_vals = img[zz, yy]
         snr = (peak_vals - baseline) / noise
         keep = snr >= snr_threshold
@@ -258,6 +298,16 @@ def pick_points(
         else:
             Z_ref = zz_k.astype(np.float64)
             Y_ref = yy_k.astype(np.float64)
+        if verbose:
+            eta_deg = (np.degrees(np.arctan2(Z_ref - v1_seed.BC_z,
+                                              Y_ref - v1_seed.BC_y))
+                       + 360.0) % 360.0
+            octant_counts = np.bincount((eta_deg // 45.0).astype(np.int64),
+                                         minlength=8)
+            print(f"      ring {i} (2θ={tt_ring:.3f}deg): "
+                  f"{int(np.count_nonzero(keep))} points by azimuth octant "
+                  f"(45deg bins from η=0): {octant_counts.tolist()}",
+                  flush=True)
         Y_all.append(Y_ref)
         Z_all.append(Z_ref)
         ring_all.append(np.full(int(np.count_nonzero(keep)), i, dtype=np.int64))

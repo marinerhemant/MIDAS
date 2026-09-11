@@ -32,7 +32,7 @@ from ..loss.pseudo_strain import pseudo_strain_residual
 from ..loss.robust_trim import stratified_trim, azimuth_deg, evaluate_full_strain
 from ..parameters.spec import CalibrationSpec
 from ..seed.auto_max_ring import auto_detect_max_ring
-from ._common import FittedDataset, filter_ring_table, ring_table_for
+from ._common import FittedDataset, _filter_by_snr, filter_ring_table, ring_table_for
 
 
 @dataclass
@@ -134,24 +134,6 @@ def _bake_fits_to_dataset(fits: BatchedFits, v1: V1Params, rt: RingTable,
         panel_idx=panel_idx,
         rt=rt,
         ring_d_spacing_A=rt_d[fits.ring_idx],
-    )
-
-
-def _filter_by_snr(fits_ds: FittedDataset, snr_min: float = 3.0) -> FittedDataset:
-    keep = fits_ds.snr >= snr_min
-    keep &= torch.isfinite(fits_ds.Y_pix) & torch.isfinite(fits_ds.Z_pix)
-    return FittedDataset(
-        Y_pix=fits_ds.Y_pix[keep],
-        Z_pix=fits_ds.Z_pix[keep],
-        ring_idx=fits_ds.ring_idx[keep],
-        snr=fits_ds.snr[keep],
-        ring_two_theta_deg=fits_ds.ring_two_theta_deg[keep],
-        rho_d=fits_ds.rho_d,
-        weights=(fits_ds.weights[keep] if fits_ds.weights is not None else None),
-        panel_idx=(fits_ds.panel_idx[keep] if fits_ds.panel_idx is not None else None),
-        rt=fits_ds.rt,
-        ring_d_spacing_A=(fits_ds.ring_d_spacing_A[keep]
-                           if fits_ds.ring_d_spacing_A is not None else None),
     )
 
 

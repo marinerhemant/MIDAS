@@ -20,6 +20,7 @@ particularly for large-tilt / off-detector-beam-centre geometries.
 from __future__ import annotations
 
 import dataclasses
+import logging
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -35,8 +36,10 @@ from ..forward.point_pick import PickedPoints, pick_points
 from ..inference.lm import GenericLMConfig, lm_minimise
 from ..loss.pseudo_strain import pseudo_strain_residual
 from ..parameters.spec import CalibrationSpec
-from ._common import FittedDataset
-from .single_pv import IterRecord, PVCalibrationResult, _filter_by_snr
+from ._common import FittedDataset, _filter_by_snr
+from .single_pv import IterRecord, PVCalibrationResult
+
+LOG = logging.getLogger(__name__)
 
 
 def _dataset_from_picked(
@@ -57,6 +60,21 @@ def _dataset_from_picked(
         weights=None, rt=rt,
         ring_d_spacing_A=rt_d[rid],
     )
+
+
+def _clone_spec(spec: CalibrationSpec) -> CalibrationSpec:
+    """Copy ``spec`` so ``autocalibrate_frozen_point`` can freely mutate it
+    (``tx.refined``, per-parameter ``.init``) without touching the caller's
+    own object. ``dataclasses.replace(spec)`` alone is not enough: fields
+    left unspecified are carried over BY REFERENCE, so the returned spec's
+    ``.parameters`` dict -- and every ``Parameter`` inside it -- would still
+    be the exact objects the caller passed in. Each ``Parameter`` is a flat
+    dataclass of value types, so a shallow ``dataclasses.replace`` per entry
+    is sufficient to break the aliasing.
+    """
+    cloned_params = {name: dataclasses.replace(p)
+                      for name, p in spec.parameters.items()}
+    return dataclasses.replace(spec, parameters=cloned_params)
 
 
 def autocalibrate_frozen_point(
@@ -83,13 +101,16 @@ def autocalibrate_frozen_point(
     """
     if spec is None:
         spec = spec_from_v1_params(v1_params)
-    # tx (rotation about the beam axis) is unobservable from a single
-    # powder image's ring radii alone -- only the azimuthal (eta) labelling
-    # of a ring changes with tx, never its radius -- so it is a genuine
-    # gauge freedom for this kind of data, not merely poorly constrained.
-    # Frozen here regardless of what the caller's spec did, matching
-    # classic MIDAS's own no-tx-capability convention for single-image
-    # geometry refinement.
+    else:
+        spec = _clone_spec(spec)
+    # tx (rotation about the beam) reaches the ring radii ONLY through the
+    # azimuthal distortion harmonics: it shifts lab eta by exactly tx, and
+    # D is evaluated at lab eta. With the harmonics free that makes
+    # (tx, phi_k) -> (tx + d, phi_k + k*d) an exact gauge orbit -- refining
+    # tx walks it and corrupts all six phases silently. With them frozen tx
+    # is determined only by the frozen field, so a field fitted at the wrong
+    # tx returns a confident wrong tx. Either way a single powder image
+    # cannot refine it, so it is frozen here regardless of the caller's spec.
     if "tx" in spec.parameters:
         spec.parameters["tx"].refined = False
 
@@ -112,6 +133,7 @@ def autocalibrate_frozen_point(
 
     pp_kwargs = dict(point_pick_kwargs or {})
     pp_kwargs.setdefault("snr_threshold", snr_min)
+    pp_kwargs.setdefault("verbose", verbose)
     picked = pick_points(image, v1_params, rt, dtype=dtype, device=device,
                           **pp_kwargs)
 
@@ -171,7 +193,10 @@ def autocalibrate_frozen_point(
             try:
                 setattr(v1_params, name, type(cur)(float(val.detach())))
             except Exception:
-                pass
+                LOG.debug("autocalibrate_frozen_point: could not write back "
+                          "%s=%r onto v1_params (existing type %s)",
+                          name, float(val.detach()), type(cur).__name__,
+                          exc_info=True)
         if name in spec.parameters and val.numel() == 1:
             spec.parameters[name].init = float(val.detach())
 
@@ -218,10 +243,38 @@ def _bounded_geom_only_spec(
 
 
 def _reseed(template: V1Params, fit: IterRecord) -> V1Params:
-    return dataclasses.replace(
+    reseeded = dataclasses.replace(
         template, Lsd=fit.Lsd, BC_y=fit.BC_y, BC_z=fit.BC_z,
         ty=fit.ty, tz=fit.tz,
     )
+    # dataclasses.replace() carries every field not named above over BY
+    # REFERENCE, so `reseeded.Refine`/`reseeded.extra` would otherwise be
+    # the exact same dicts as `template`'s -- every "copy" in the iteration
+    # chain sharing one mutable dict with the original v1_params. Nothing
+    # in this loop writes to either today, so this is latent, not live; but
+    # copying them (cheap: flat dicts of primitives) means it stays that
+    # way even after a future change starts stashing per-iteration state.
+    reseeded.Refine = dict(template.Refine)
+    reseeded.extra = dict(template.extra)
+    return reseeded
+
+
+def _write_back_geometry(v1_params: V1Params, fit: IterRecord) -> None:
+    """Set ``v1_params``'s geometry fields to match ``fit``.
+
+    Called once, at the end of :func:`iterate_frozen_point_until_stable`,
+    so the caller's mutated object ends up agreeing with the value the
+    function actually returns -- see that function's docstring for why it
+    otherwise wouldn't.
+    """
+    for name in ("Lsd", "BC_y", "BC_z", "ty", "tz"):
+        cur = getattr(v1_params, name)
+        try:
+            setattr(v1_params, name, type(cur)(getattr(fit, name)))
+        except Exception:
+            LOG.debug("iterate_frozen_point_until_stable: could not write "
+                      "back %s onto v1_params (existing type %s)",
+                      name, type(cur).__name__, exc_info=True)
 
 
 @dataclass
@@ -300,8 +353,14 @@ def iterate_frozen_point_until_stable(
     elsewhere.
 
     Like :func:`autocalibrate_frozen_point`, this mutates ``v1_params`` in
-    place (via the first iteration's call) in addition to returning the
-    result.
+    place -- iteration 1 mutates it directly (it *is* the first ``seed``);
+    later iterations mutate a reseeded copy instead (see :func:`_reseed`),
+    so at the end the geometry this function actually returns is written
+    back onto ``v1_params`` too, in addition to being returned. Without
+    that final write-back, ``v1_params`` would be left at iteration 1's
+    geometry -- typically far from the converged answer -- which is an
+    easy trap for any caller who reads geometry back off the object they
+    passed in rather than off ``IterateResult.fit``.
 
     Returns
     -------
@@ -338,10 +397,12 @@ def iterate_frozen_point_until_stable(
             if (tz_spread < tol_tz_deg and ty_spread < tol_ty_deg
                     and bcy_spread < tol_bc_px and bcz_spread < tol_bc_px
                     and lsd_spread < tol_lsd_um):
+                _write_back_geometry(v1_params, fit)
                 return IterateResult(converged=True, n_iter=i, fit=fit,
                                       res=res, history=history)
         seed = _reseed(seed, fit)
 
+    _write_back_geometry(v1_params, history[-1])
     return IterateResult(converged=False, n_iter=max_iter, fit=history[-1],
                           res=res, history=history)
 
