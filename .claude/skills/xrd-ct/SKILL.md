@@ -160,8 +160,9 @@ missing is an in-scope dataset carried all the way through.**
 `manuals/ff-hedm/` (far-field HEDM, skill `ff-hedm`), `manuals/nf-hedm/` (near-field, skill
 `nf-hedm`), `manuals/pf-hedm/` (scanning 3DXRD — **the right doc set if your rings are spotty**,
 skill `pf-hedm`), `manuals/defect/` (diffuse scattering **between** discrete spots, skill
-`defect`), `manuals/dfxm/` (dark-field X-ray microscopy, skill `dfxm`), and in the
-LaueMatching repository the `laue` skill.
+`defect`), `manuals/dfxm/` (dark-field X-ray microscopy, skill `dfxm`), `manuals/pdf/` (total
+scattering and the pair distribution function from powder or liquid frames, skill `pdf`), and in
+the LaueMatching repository the `laue` skill.
 
 ## Log a halt
 
