@@ -280,7 +280,10 @@ manufacture a false discrepancy (Lab Notebook §3).
   against the raw rings.
 - **H2** The calibration was seeded from an existing geometry block rather than
   from `make_seed`.
-- **H3** Held-out calibrant strain ≥ 100 µε, or a large held-out/full gap.
+- **H3** Held-out calibrant strain ≥ 100 µε, or a large held-out/full gap. **Stop and
+  LOOK** — open the ring overlay and split the residual into coherent-radial and cos 2η
+  before calling the calibration failed; a radial residual cancels in any ratio
+  (RUNBOOK, *Conditions on healthy*).
 - **H4** A multi-panel detector, and `PanelShiftsFile` is named but unreadable —
   `PanelShiftsMissingWarning` fires and the integration silently uses zero
   shifts.

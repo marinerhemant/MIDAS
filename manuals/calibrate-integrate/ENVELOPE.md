@@ -222,3 +222,24 @@ Not established:
 | a per-geometry-class ring-scatter threshold | the need is measured (quad 0.286 px vs single 0.091 px); the replacement threshold is not yet chosen or tested |
 | a distortion field reused across beamtimes | tested and **INCONCLUSIVE** — one calibration pins the ge5 field only to ~0.25 px RMS against a 0.39 px field. Lab Notebook §16 |
 | recovering λ from the fit | **REFUTED**, do not retry. Lab Notebook §15, rule 9 |
+
+## Measured, and it does not work: powder rings on a DAC single-crystal frame (2026-08-25)
+
+A diamond-anvil pattern carries gasket and anvil rings on every frame, so it is tempting to use them as an
+internal calibrant. On one La3Ni2O7 DAC dataset (Pilatus 2M, λ = 0.4246 Å, two single-crystal domains over
+Re-gasket and diamond rings) the attempt was made in full. Recorded so it is not repeated without a reason
+to expect a different answer. Source: the nickelate project's `work/scripts/step29_powder_calib.py`,
+`RUNNING_LOG.md` "THE POWDER LEVER WAS PULLED".
+
+| finding | measured |
+|---|---|
+| **Scale degeneracy** — distance free together with a free 2θ per ring | Lsd ran to 1e63 mm with the residual driven to exactly zero: shrinking every 2θ in proportion leaves every residual unchanged. Something must set the scale — hold Lsd, or one ring's d |
+| **Crystal spots drag ring centroids** — intensity-weighted centroid over ±7 px | a tilt of 0.872° where the PONI (0.411°) and a self-calibration from the crystals (0.402°) agree; reflections at ~6e5 counts sit on rings at ~1e3. Use the peak of the azimuthal-MEDIAN radial profile per bin, and drop bins one feature dominates (max/median > 12) |
+| **The rings cannot tell candidate geometries apart** | ring residual rms 0.04765° (flat, Friedel centre) / 0.04781° (PONI verbatim) / 0.04696° (crystal self-calibration) / 0.04513° (best powder fit, 0.893° tilt) — all within 5 %. The ring-position floor is 0.048°, and a 0.4° tilt modulates R(η) at about that level, so the 0.893° was fitting noise |
+| **Centre and tilt are nearly degenerate for rings** | row identical by every method; column 736.64 (powder, tilt held 0) / 737.14 (Friedel bisection) / 738.22 (powder, tilt free) / 738.56 (PONI direct beam) — a 1.9 px spread set by the tilt assumption |
+
+**What to do instead.** Take the tilt from the crystals (`midas_defect.selfcal.selfcalibrate_from_crystals`;
+solve-cell `phase-1-geometry.md`), the beam centre from Friedel pairs, and carry the ~1–2 px column ambiguity
+as a systematic. A clean calibrant exposure breaks the centre–tilt degeneracy because its ring-position floor
+is far lower — which makes a calibrant a quantitatively justified request, not a preference. Note the
+separate-exposure calibrant still bounds the calibration, not the sample's frames (solve-cell phase 1).

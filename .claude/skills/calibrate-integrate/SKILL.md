@@ -91,7 +91,9 @@ data-blind constant guess.
 
 `manuals/ff-hedm/` (skill `ff-hedm`), `manuals/nf-hedm/` (`nf-hedm`),
 `manuals/pf-hedm/` (`pf-hedm`), `manuals/xrd-ct/` (`xrd-ct`), `manuals/defect/`
-(`defect`). Those consume the geometry this one produces.
+(`defect`), `manuals/pdf/` (`pdf`). Those consume the geometry this one produces.
+`pdf` needs two things `to_integration_spec()` does not carry: `RhoD` and the residual
+map (`manuals/pdf/HARD_RULES.md` rule 2).
 
 `defect` is also a **source** of geometry when no calibrant exists:
 `midas_calibrate_v2.friedel` measures a beam centre from Friedel-pair midpoints with no

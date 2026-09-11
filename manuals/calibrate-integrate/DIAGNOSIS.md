@@ -106,6 +106,34 @@ reference detector the modules sit within ~1.5 px.
 
 ---
 
+## Panels made the in-loop strain drop, but nothing downstream changed
+
+symptom: panel.not_exported
+coord: panel_layout
+
+**Test.** Does anything downstream of `calibrate()` carry the panel values? Check the result
+object, `calibration.json`, and the integration spec built from it.
+
+**It does not, as of 2026-09-10.** With `panel_layout` set the refined panel parameters live
+only inside the fit: they are not fields of `AutoCalibrationResult`, not keys of
+`calibration.json`, and not read by `spec_from_calibration_json` — only their 1σ reaches
+`sigma_vector` — and the residual-correction map is skipped when a layout is given. In the
+default `panel_mode="radius"` they are per-(panel, ring) radial offsets, which could not transfer
+to a sample's reflections even if they were exported.
+
+**So an in-loop strain drop is not evidence the geometry improved.** Measured on a 24-module
+Pilatus 2M (2026-09-08): 312 panel parameters on 677 ring arcs (p/n = 0.46), in-loop 198 → 120 µε.
+Pure noise absorption predicts ×0.734 → 169 µε, so **~72 % of the drop was parameter counting**.
+The in-line `cross_validation` gate does not refit — its own docstring says it degenerates to an
+upper-third-of-rings comparison — so it is not out-of-sample evidence for the panel model either.
+
+**Lever.** For a ratio (a/b, δ, texture) the relevant floor is the cos 2η of a ring on the *same
+frames* as the reflections: `midas_calibrate_v2.ring_anisotropy.ring_harmonics`. For absolute
+d-spacings on a tiled detector the panel corrections would have to reach integration, and
+`calibrate()` does not currently hand them over — **stop and ask** rather than improvise one.
+
+---
+
 ## Rings look right but absolute intensities are wrong
 
 symptom: map.per_row_cap
