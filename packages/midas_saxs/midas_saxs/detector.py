@@ -1,12 +1,12 @@
 """Render source terms onto a 2-D SAXS detector, and reduce frames.
 
-This is the module that makes the point of the whole exercise visible. A
-dislocation loop and a void of the same relaxation volume are **identical** in a
-radial average and **different** on the 2-D frame: the void is isotropic, the
-loop varies between ``kappa dV`` in its own plane and ``dV`` along its normal.
-Azimuthally averaging a simulated frame throws away exactly the information the
-simulation was built to produce, so :func:`radial_average` is offered for
-comparison against measurement, never as the primary output.
+A 2-D frame keeps what a radial average throws away. For aligned dislocation
+loops the small-angle amplitude goes as ``dV (1 - kappa) sin^2(theta)`` as
+q -> 0 (theta from the loop normal; distortion plus Laue term, Ehrhart,
+Trinkaus & Larson 1982), so the frame carries a null along the projected loop
+normal, while a void population is isotropic. Azimuthally averaging a simulated
+frame erases that null, so :func:`radial_average` is offered for comparison
+against measurement, never as the primary output.
 
 Everything is torch-differentiable in the geometry and in the source-term
 parameters, which is the deliverable: an ML inversion trains against this.
@@ -42,6 +42,7 @@ class Frame:
     mask: torch.Tensor                         # (Z, Y) bool, True = usable
     components: Dict[str, torch.Tensor] = field(default_factory=dict)
     warnings: List[str] = field(default_factory=list)
+    info: Dict[str, object] = field(default_factory=dict)
 
     @property
     def q_magnitude(self) -> torch.Tensor:
@@ -62,6 +63,8 @@ def simulate_frame(
     particles: Sequence = (),
     sample_volume_A3: float = 1.0,
     incoherent_loops: bool = True,
+    include_lines: bool = True,
+    periodic_resolution_fwhm_inv_A: Optional[float] = None,
     absolute_units: bool = False,
     dtype: torch.dtype = torch.float64,
     device=None,
@@ -73,16 +76,38 @@ def simulate_frame(
     geom
         Detector geometry. Its ``beamstop_radius_px`` masks the direct beam.
     network, stiffness, electron_density_e_per_A3
-        The dislocation source term (:mod:`midas_saxs.strain_source`). All three
-        are needed together; omit them for a particles-only frame.
+        The dislocation source term (:func:`midas_saxs.strain_source.network_intensities`):
+        closed loops, finite lines, and lines that close only through a periodic
+        cell's boundary. All three are needed together; omit them for a
+        particles-only frame.
+    include_lines
+        Include dislocations that are not simple closed loops. Default True; the
+        line terms are preregistered (2026-09-10) and under test, not yet verified.
+        False reproduces the loops-only behaviour of midas-saxs 0.1.x and reports
+        the line length left out.
+    periodic_resolution_fwhm_inv_A
+        Resolution (intensity FWHM, 1/A) at which lines that close through a
+        periodic cell's boundary are shown. They scatter only on the cell's
+        reciprocal lattice, so between lattice points the frame shows the
+        replicated cell seen through a window of this width, averaged over window
+        placements (:func:`midas_ddd.periodic_small_angle_intensity`). Default:
+        two lattice spacings, ``4 pi / L_min``, where the window's own ripple is
+        4e-6. Pixels below the reported floor, about three lattice spacings, are
+        not representative, and a warning gives their fraction. A component that
+        is only float64 roundoff (a pure-screw network) is reported as such.
     particles
         :class:`midas_saxs.particles.SpherePopulation` instances -- voids,
         bubbles, precipitates. Their intensities are per A^3 of sample and are
         scaled by ``sample_volume_A3``.
     incoherent_loops
-        Sum loop intensities rather than amplitudes. Default True, which is what
-        a conventional SAXS beam -- much larger than the inter-loop spacing --
-        actually measures. Set False for the coherent (speckle) case.
+        Default True: sum intensities across objects, which is what a
+        conventional SAXS beam, much larger than the spacing between objects,
+        actually measures. ``components`` then holds ``"loops"``, ``"lines"``
+        (finite line objects) and ``"periodic_lines"`` (all winding lines,
+        coherently, at the stated resolution). Set False for the coherent
+        (speckle) case, reported as one total. In a periodic cell with more than
+        one object that total is defined only on the reciprocal lattice, so it too
+        is shown at the stated resolution.
     absolute_units
         Multiply by ``r_e^2`` to get a differential cross-section rather than
         electrons².
@@ -92,7 +117,12 @@ def simulate_frame(
     Frame
         ``.intensity`` is the total; ``.components`` holds each contribution
         separately, which is how you check whether the loops are visible above
-        the voids at all.
+        the voids at all. ``.info["periodic"]`` (present only when the network
+        has a winding component, or several dislocations summed coherently in a
+        periodic cell) carries ``fwhm_inv_A``, ``q_floor_inv_A``,
+        ``n_lattice_points``, ``n_eff_median``, ``ripple_bound``,
+        ``roundoff_floor_max``, ``above_roundoff`` and ``burgers`` from
+        :func:`midas_saxs.strain_source.network_intensities`.
     """
     rows, cols = geom.pixel_grid(dtype=dtype, device=device)
     q = pixel_to_q(rows, cols, geom, dtype=dtype, device=device)     # (Z, Y, 3)
@@ -115,6 +145,7 @@ def simulate_frame(
     total = torch.zeros(q_flat.shape[0], dtype=dtype, device=device)
     components: Dict[str, torch.Tensor] = {}
     warnings: List[str] = []
+    frame_info: Dict[str, object] = {}
 
     def _unflatten(v):
         """Scatter a masked-pixel vector back onto the full panel, zeros elsewhere."""
@@ -129,21 +160,32 @@ def simulate_frame(
                 "a dislocation network needs both `stiffness` and "
                 "`electron_density_e_per_A3`; without them there is no way to turn "
                 "q.u~ into an amplitude")
-        from .strain_source import loop_amplitude
+        from .strain_source import network_intensities
 
-        out, res = loop_amplitude(
+        parts, info = network_intensities(
             network, q_flat, stiffness,
             electron_density_e_per_A3=electron_density_e_per_A3,
-            incoherent=incoherent_loops, return_result=True)
-        I_loops = out if incoherent_loops else out.abs() ** 2
-        components["loops"] = _unflatten(I_loops)
-        total = total + I_loops
-        warnings.extend(res.warnings)
-        if res.n_loops == 0:
+            include_lines=include_lines, coherent=not incoherent_loops,
+            periodic_resolution_fwhm_inv_A=periodic_resolution_fwhm_inv_A)
+        warnings.extend(info["warnings"])
+        for key, I_k in parts.items():
+            components[key] = _unflatten(I_k)
+            total = total + I_k
+        if info["periodic"] is not None:
+            frame_info["periodic"] = info["periodic"]
+            floor = info["periodic"]["q_floor_inv_A"]
+            below = float((torch.linalg.vector_norm(q_flat, dim=-1) < floor).double().mean())
+            if below > 0:
+                warnings.append(
+                    f"{100 * below:.1f} % of unmasked pixels have |q| < {floor:.3g} 1/A, the "
+                    f"floor of the periodic-cell intensity. There the excluded G = 0 term "
+                    f"and the cell's own periodicity dominate, so those pixels are not "
+                    f"representative; a larger simulation cell lowers the floor.")
+        if (info["n_loops"] == 0 and info["n_line_objects"] == 0
+                and info["n_winding_components"] == 0):
             warnings.append(
-                "the network contains no closed loops, so the dislocation term is "
-                "identically zero. Open lines have no relaxation volume; this is "
-                "physics, not a failure, but the frame shows only the particles.")
+                "the network contributed neither closed loops nor lines, so the "
+                "dislocation term is identically zero.")
 
     for k, pop in enumerate(particles):
         I_p = pop.intensity(q_flat) * sample_volume_A3
@@ -161,7 +203,7 @@ def simulate_frame(
         warnings.append("no source terms were given; the frame is identically zero.")
 
     return Frame(intensity=intensity, geometry=geom, q=q, mask=mask,
-                 components=components, warnings=warnings)
+                 components=components, warnings=warnings, info=frame_info)
 
 
 def radial_average(
@@ -204,9 +246,12 @@ def azimuthal_profile(
     """``I(azimuth)`` in a thin ``|q|`` ring. Returns ``(azimuth_deg, I, n_px)``.
 
     This is the reduction that *keeps* the anisotropy. A void population gives a
-    flat profile; a population of aligned loops gives a modulated one, and the
-    modulation depth is set by ``kappa = lambda/(lambda + 2 mu)``. Comparing the
-    two is the loop-versus-void measurement.
+    flat profile. Aligned loops whose normal lies in the detector plane give a
+    profile that goes to zero where q is parallel to the normal (``cos^4`` of the
+    azimuth from the loop plane as q -> 0); ``kappa = lambda/(lambda + 2 mu)``
+    sets the in-plane amplitude, ``(1 - kappa) dV``, not the depth of the null.
+    A flat profile does not rule loops out: isotropically oriented loops, or a
+    loop normal along the beam, give one too.
     """
     qm = frame.q_magnitude
     sel = frame.mask & (torch.abs(qm - q_centre_inv_A) <= 0.5 * q_width_inv_A)

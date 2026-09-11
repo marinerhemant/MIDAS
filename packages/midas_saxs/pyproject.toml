@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-saxs"
-version = "0.1.1"
+version = "0.1.2"
 description = "Differentiable small-angle X-ray scattering for MIDAS: particle form factors and polydispersity, plus a 2-D detector-image forward model for dislocation loops and voids driven by a discrete-dislocation network."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -41,9 +41,9 @@ dependencies = [
 # The dislocation source term. Kept optional so plain particle SAXS -- the
 # form-factor half -- installs without pulling a dislocation-dynamics stack.
 # `midas_saxs.strain_source` imports it lazily and says what to install.
-dislocations = ["midas-ddd>=0.1.0"]
+dislocations = ["midas-ddd>=0.1.2"]  # >=0.1.2: line_small_angle_amplitude, periodic_small_angle_intensity
 viz = ["matplotlib>=3.5"]
-dev = ["pytest>=7.0", "matplotlib>=3.5", "midas-ddd>=0.1.0"]
+dev = ["pytest>=7.0", "matplotlib>=3.5", "midas-ddd>=0.1.2"]
 
 [project.urls]
 Homepage = "https://github.com/marinerhemant/MIDAS"

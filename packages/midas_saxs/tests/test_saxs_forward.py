@@ -336,14 +336,188 @@ def test_incoherent_sum_scales_linearly_with_loop_count():
 
 
 @pytest.mark.unit
-def test_open_lines_produce_an_empty_frame_and_say_why():
-    """The deformation population is invisible to this kernel -- loudly."""
+def test_an_edge_line_scatters_into_a_streak_perpendicular_to_itself():
+    """An edge line along lab z puts its reciprocal-space sheet at q_z = 0: a streak
+    along the detector row through the beam centre, and almost nothing off it.
+
+    midas-saxs 0.1.x returned an identically zero frame here, on the grounds that
+    open lines have no relaxation volume. That is true as q -> 0 and wrong at finite
+    q, where the line's dilatation field scatters (Thomson, Levine & Long 1999,
+    Eq. 6; gated in midas_ddd/tests/test_line_term.py).
+    """
+    g = _geom(n=64, beamstop=4)
+    line = straight_line(length_um=2.0, burgers=(1.0, 0, 0), line=(0, 0, 1.0),
+                         slip_normal=(0, 1.0, 0), n_segments=10)
+    fr = simulate_frame(g, network=line, stiffness=isotropic_stiffness(LAM, MU),
+                        electron_density_e_per_A3=RHO_CU)
+    assert set(fr.components) == {"lines"}
+    row = g.bcz_px
+    on = fr.intensity[row, :][fr.mask[row, :]]
+    off = fr.intensity[row + 10, :][fr.mask[row + 10, :]]
+    assert float(on.mean()) > 100.0 * float(off.mean())
+    assert any("terminate inside the medium" in w for w in fr.warnings)
+
+
+@pytest.mark.unit
+def test_include_lines_false_reproduces_the_loops_only_frame_and_says_what_it_left_out():
     g = _geom(n=48)
     fr = simulate_frame(g, network=straight_line(length_um=0.5, n_segments=16),
                         stiffness=isotropic_stiffness(LAM, MU),
-                        electron_density_e_per_A3=RHO_CU)
+                        electron_density_e_per_A3=RHO_CU, include_lines=False)
     assert float(fr.intensity.abs().max()) == 0.0
-    assert any("no closed loops" in w for w in fr.warnings)
+    assert any("left out" in w for w in fr.warnings)
+
+
+@pytest.mark.unit
+def test_an_isotropic_screw_line_leaves_the_frame_empty():
+    """No dilatation, no small-angle signal -- with the edge as positive control."""
+    g = _geom(n=48)
+    C6 = isotropic_stiffness(LAM, MU)
+    kw = dict(length_um=2.0, line=(0, 0, 1.0), slip_normal=(0, 1.0, 0), n_segments=10)
+    screw = simulate_frame(g, network=straight_line(burgers=(0, 0, 1.0), **kw), stiffness=C6,
+                           electron_density_e_per_A3=RHO_CU)
+    edge = simulate_frame(g, network=straight_line(burgers=(1.0, 0, 0), **kw), stiffness=C6,
+                          electron_density_e_per_A3=RHO_CU)
+    assert float(edge.intensity.max()) > 0.0
+    assert float(screw.intensity.max()) <= 1e-20 * float(edge.intensity.max())
+
+
+@pytest.mark.unit
+def test_loops_and_lines_are_separate_components_that_sum_to_the_total():
+    g = _geom(n=48)
+    C6 = isotropic_stiffness(LAM, MU)
+    line = straight_line(length_um=0.5, burgers=(1.0, 0, 0), line=(0, 0, 1.0),
+                         slip_normal=(0, 1.0, 0), n_segments=8, cell_size_um=1.0)
+    net = combine([_aligned_loops(3), line], cell_size_um=1.0)
+    fr = simulate_frame(g, network=net, stiffness=C6, electron_density_e_per_A3=RHO_CU)
+    assert set(fr.components) == {"loops", "lines"}
+    assert torch.allclose(fr.components["loops"] + fr.components["lines"], fr.intensity,
+                          rtol=1e-12)
+    coherent = simulate_frame(g, network=net, stiffness=C6, electron_density_e_per_A3=RHO_CU,
+                              incoherent_loops=False)
+    assert set(coherent.components) == {"dislocations"}
+
+
+@pytest.mark.unit
+def test_loops_only_frame_is_unchanged_by_the_line_machinery():
+    """Regression: a loops-only network gives exactly the per-loop incoherent sum."""
+    g = _geom(n=48)
+    C6 = isotropic_stiffness(LAM, MU)
+    net = _aligned_loops(4)
+    fr = simulate_frame(g, network=net, stiffness=C6, electron_density_e_per_A3=RHO_CU)
+    ref = loop_intensity(net, fr.q[fr.mask], C6, electron_density_e_per_A3=RHO_CU,
+                         incoherent=True)
+    assert set(fr.components) == {"loops"}
+    assert torch.allclose(fr.intensity[fr.mask], ref, rtol=1e-12)
+
+
+def _periodic_bowed_line(cell=1.0, n=40, relabel_seed=None):
+    """A bowed edge line along x that closes only through the x faces of a periodic cell."""
+    dt = torch.float64
+    s = torch.arange(n, dtype=dt) / n
+    pts = torch.stack([s * cell - 0.5 * cell, 0.10 * cell * torch.sin(2 * math.pi * s),
+                       0.05 * cell * torch.sin(4 * math.pi * s + 0.7)], dim=1)
+    pts = pts - cell * torch.round(pts / cell)
+    segs = torch.stack([torch.arange(n), (torch.arange(n) + 1) % n], dim=1)
+    if relabel_seed is not None:
+        perm = torch.randperm(n, generator=torch.Generator().manual_seed(relabel_seed))
+        moved = torch.empty_like(pts)
+        moved[perm] = pts
+        pts, segs = moved, perm[segs]
+    return ddd.DislocationNetwork(
+        nodes_um=pts, segments=segs,
+        burgers_b=torch.tensor([0.0, 0.3, 1.0], dtype=dt).expand(n, 3).clone(),
+        normals=torch.zeros(n, 3, dtype=dt), b_magnitude_A=B_CU_A,
+        cell_min_um=torch.full((3,), -cell / 2, dtype=dt),
+        cell_max_um=torch.full((3,), cell / 2, dtype=dt), pbc=(True, True, True),
+        constraints=torch.zeros(n, dtype=torch.int64))
+
+
+@pytest.mark.unit
+def test_a_periodic_line_is_a_lattice_component_that_ignores_node_numbering():
+    """A line closing through the periodic boundary scatters only on the cell's
+    reciprocal lattice, so the frame shows it at a stated resolution. Renumbering its
+    nodes changes nothing; the single-window version it replaces did change (/verify
+    claim 8305670629a7)."""
+    g = _geom(n=48)
+    C6 = isotropic_stiffness(LAM, MU)
+    fr = simulate_frame(g, network=_periodic_bowed_line(), stiffness=C6,
+                        electron_density_e_per_A3=RHO_CU)
+    assert set(fr.components) == {"periodic_lines"}
+    again = simulate_frame(g, network=_periodic_bowed_line(relabel_seed=7), stiffness=C6,
+                           electron_density_e_per_A3=RHO_CU)
+    m = fr.mask
+    peak = float(fr.intensity[m].max())
+    assert peak > 0.0
+    assert torch.allclose(fr.intensity[m], again.intensity[m], rtol=1e-10, atol=1e-12 * peak)
+    assert not any("floor of the periodic-cell intensity" in w for w in fr.warnings)
+
+
+@pytest.mark.unit
+def test_a_pure_screw_periodic_network_is_reported_as_roundoff():
+    """A screw has no dilatation in isotropic elasticity. The frame is float64 residue and
+    must say so, instead of rendering it as a structured image (which is what happened to
+    the notebook's first ExaDiS lines network, all <110> screws)."""
+    g = _geom(n=48)
+    C6 = isotropic_stiffness(LAM, MU)
+    dt = torch.float64
+    n, cell = 40, 1.0
+    s = torch.arange(n, dtype=dt) / n
+    pts = torch.stack([s * cell - 0.5 * cell, torch.zeros(n, dtype=dt), torch.zeros(n, dtype=dt)], 1)
+    segs = torch.stack([torch.arange(n), (torch.arange(n) + 1) % n], dim=1)
+
+    def net(bvec):
+        return ddd.DislocationNetwork(
+            nodes_um=pts, segments=segs, burgers_b=torch.tensor(bvec, dtype=dt).expand(n, 3).clone(),
+            normals=torch.zeros(n, 3, dtype=dt), b_magnitude_A=B_CU_A,
+            cell_min_um=torch.full((3,), -cell / 2, dtype=dt), cell_max_um=torch.full((3,), cell / 2, dtype=dt),
+            pbc=(True, True, True), constraints=torch.zeros(n, dtype=torch.int64))
+
+    screw = simulate_frame(g, network=net([1.0, 0.0, 0.0]), stiffness=C6, electron_density_e_per_A3=RHO_CU)
+    edge = simulate_frame(g, network=net([0.0, 1.0, 0.0]), stiffness=C6, electron_density_e_per_A3=RHO_CU)
+    assert any("roundoff, not signal" in w for w in screw.warnings)
+    assert not any("roundoff" in w for w in edge.warnings)
+    assert float(edge.intensity.max()) > 1e20 * float(screw.intensity.max())
+
+
+@pytest.mark.unit
+def test_pixels_below_the_periodic_floor_are_flagged():
+    fr = simulate_frame(_geom(n=48), network=_periodic_bowed_line(cell=0.2),
+                        stiffness=isotropic_stiffness(LAM, MU), electron_density_e_per_A3=RHO_CU)
+    assert any("floor of the periodic-cell intensity" in w for w in fr.warnings)
+
+
+@pytest.mark.unit
+def test_coherent_loops_in_a_periodic_cell_go_through_the_lattice_and_say_so():
+    """Several loops summed coherently in a periodic cell have no total off the
+    lattice that the network defines. One loop alone does, and stays exact."""
+    g = _geom(n=48)
+    C6 = isotropic_stiffness(LAM, MU)
+    kw = dict(radius_um=0.005, burgers=(0, 0, 1.0), n_segments=24, cell_size_um=1.0,
+              pbc=(True, True, True))
+    centres = ((0.0, 0.0, 0.0), (0.2, -0.1, 0.3), (-0.3, 0.25, -0.1))
+    three = combine([prismatic_loop(center_um=c, **kw) for c in centres], cell_size_um=1.0)
+    fr = simulate_frame(g, network=three, stiffness=C6, electron_density_e_per_A3=RHO_CU,
+                        incoherent_loops=False)
+    assert set(fr.components) == {"loops"}
+    assert any("coherent sum in a periodic cell" in w for w in fr.warnings)
+    one = prismatic_loop(center_um=(0.1, 0.0, 0.0), **kw)
+    coh = simulate_frame(g, network=one, stiffness=C6, electron_density_e_per_A3=RHO_CU,
+                         incoherent_loops=False)
+    inc = simulate_frame(g, network=one, stiffness=C6, electron_density_e_per_A3=RHO_CU)
+    assert torch.allclose(coh.intensity, inc.intensity, rtol=1e-12)
+    assert not any("coherent sum in a periodic cell" in w for w in coh.warnings)
+
+
+@pytest.mark.unit
+def test_network_amplitudes_leaves_winding_lines_to_the_intensity_path():
+    from midas_saxs.strain_source import network_amplitudes
+
+    amps, info = network_amplitudes(
+        _periodic_bowed_line(), torch.tensor([[0.004, 0.002, 0.0]], dtype=torch.float64),
+        isotropic_stiffness(LAM, MU), electron_density_e_per_A3=RHO_CU)
+    assert amps["lines"].shape[0] == 0 and info["n_winding_components"] == 1
+    assert any("close only through the periodic boundary" in w for w in info["warnings"])
 
 
 @pytest.mark.unit

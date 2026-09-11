@@ -21,37 +21,52 @@ voids = SpherePopulation(radius_A=50.0, number_density_per_A3=1e-8,
 frame = simulate_frame(geom, particles=[voids], sample_volume_A3=1e15)
 ```
 
-`dev/paper/loop_vs_void_demo.py` renders the five-panel figure that motivates the
-whole package.
-
 ## Read this before promising anyone a loop measurement
 
-Three numbers, all reproducible from the demo script.
+Three numbers, measured with a development demo script that is not part of the
+package.
 
-**1. Loops are faint.** A dislocation loop of radius R displaces only its
-relaxation volume `pi R^2 b`; a void of the same radius displaces
-`4 pi R^3 / 3`. For R = 5 nm in Cu that is 26x in volume and **680x in forward
-intensity**. The loop scatters like a *sphere of radius 1.7 nm*.
+**1. Loops are faint.** A dislocation loop of radius R has relaxation volume
+`pi R^2 b`; a void of the same radius displaces `4 pi R^3 / 3`. For R = 5 nm in
+Cu that is 26x in volume, so **680x in intensity from volume alone**. The loop's
+relaxation volume is that of a sphere of radius 1.69 nm, but it does not scatter
+like that sphere: in its own plane its intensity carries a further
+`(1 - kappa)^2` (0.36 for `lambda = 100, mu = 75`, making **1890x**), and along
+its normal it is zero (point 2).
 
-**2. What separates a loop from a void is shape, not size.** The loop's
-small-angle amplitude is direction-dependent — `kappa dV` in its own plane,
-`dV` along its normal, with `kappa = lambda/(lambda + 2 mu)`. Intensity is
-therefore modulated by `1 - kappa^2` (0.84 for `lambda = 100, mu = 75`). A void
-is isotropic. **Radially averaging a frame destroys exactly this**, which is why
-this package renders 2-D frames and offers `azimuthal_profile` alongside
-`radial_average`.
+**2. Aligned loops differ from voids in shape.** A loop's small-angle amplitude
+is the distortion term *plus* the Laue term, the scattering from the loop's own
+extra or missing atoms (Ehrhart, Trinkaus & Larson, Phys. Rev. B 25 (1982) 834,
+Eq. 8a/8b). As q -> 0 it is `dV (1 - kappa) sin^2(theta)`, with theta measured
+from the loop normal and `kappa = lambda/(lambda + 2 mu)`: **zero along the
+normal**, largest in the loop plane. On the demo (24 loops, normals along
+detector z) the azimuthal profile follows `cos^4(azimuth)`, and its minimum is
+set by the bin width (I_min/I_max = 3.8e-5 with 48 bins, 2.1e-14 with 144). A
+void is isotropic. **Radially averaging a frame destroys the null**, which is
+why this package renders 2-D frames and offers `azimuthal_profile` alongside
+`radial_average`. Two limits: the minimum reaches zero only when the loop
+normal lies in the detector plane and flattens as the normal tilts toward the
+beam, and loops with isotropically distributed normals scatter isotropically,
+like voids (see Identifiability below).
 
-**3. Real voids bury the signature.** Measured on the demo: 24 aligned loops
-alone give an azimuthal contrast of **6.30x** (the closed form predicts
-`1/kappa^2 = 6.25`). Add equal-radius voids at the same number density — the
-physically realistic irradiated case — and the contrast collapses to **1.002x**,
-with the voids outshining the loops by **1089x** integrated over the frame.
+An earlier version of this README quoted `kappa dV` in the loop plane and `dV`
+along the normal, a `1/kappa^2 = 6.25` contrast, and 6.30x from the demo. That
+is the distortion term alone, and at small angle it is backwards.
+
+**3. Real voids bury the signature.** Add voids of the same radius at the same
+number density — the physically realistic irradiated case — and the azimuthal
+contrast collapses to **1.001x**, with the voids outshining the loops by
+**5212x** integrated over the frame.
 
 So: loops are detectable at small angle in a clean matrix, and essentially
 undetectable alongside a void or bubble population of comparable size. If the
-question is defect-type discrimination in an irradiated material, near-Bragg
-diffuse (Huang) scattering is stronger than the small-angle signal by
-`(G/q)^2` ~ 1e4 to 1e7 and is the better measurement.
+question is defect-type discrimination in an irradiated single crystal,
+near-Bragg diffuse (Huang) scattering is usually the better measurement. For a
+single prismatic loop (isotropic matrix, Cu 111) the median gain over q
+directions is 1.3e6, 1.3e4 and 1.3e2 at `|q|` = 1e-3, 1e-2 and 1e-1 1/A, about
+7x below the naive `(G/q)^2`. The spread covers more than three decades, and
+small-angle is the stronger signal in 9.8 % of directions at 1e-1 1/A. Method
+and the full table are in the `midas_defect.huang` module docstring.
 
 ## Identifiability — what a frame determines, and what it only appears to
 
@@ -103,12 +118,23 @@ because the answer depends on all four.
 
 ## Scope
 
-**Closed dislocation loops only.** A cut surface exists only for a closed
-circuit. Open lines — the *deformation* population — enclose no area, carry no
-relaxation volume, and contribute nothing as `q -> 0`; their small-angle
-signature is a weak transverse streak that is not modelled. `simulate_frame`
-reports how much line length it ignored rather than returning a number that
-looks complete.
+**Three dislocation populations, treated differently.** Closed loops, the
+irradiation population: exact at every q, distortion plus Laue term. Finite lines
+(open lines, junction clusters that do not wind): the line-integral amplitude at
+every q; an edge or mixed line scatters into a sheet perpendicular to itself, an
+isotropic screw not at all, and a line ending inside the medium carries its
+ends' unphysical sources off that sheet (the frame warns). Lines that close only
+through a periodic DDD cell's boundary: an amplitude only on the cell's
+reciprocal lattice, shown between lattice points at a stated resolution (default
+two lattice spacings, `periodic_resolution_fwhm_inv_A`) as the `periodic_lines`
+component, with a low-q floor of about three lattice spacings below which pixels
+are not representative; a bigger simulation cell lowers it. Pure screws in cubic
+or isotropic elasticity have no dilatation, and the frame says so when a
+component is only float64 roundoff. The line terms are preregistered and under
+adversarial verification (2026-09-11), not yet established. An earlier version
+of this README said lines contribute nothing at small angle; that holds only as
+`q -> 0`. `include_lines=False` reproduces the loops-only frames of 0.1.x and
+reports the line length it left out.
 
 ## Units
 

@@ -22,25 +22,31 @@ Quick start
     geom = SAXSGeometry(lsd_um=2.0e6, bcy_px=512, bcz_px=512, px_um=75.0,
                         wavelength_A=0.7293, n_pix_y=1024, n_pix_z=1024,
                         beamstop_radius_px=30)
-    voids = SpherePopulation(radius_A=50.0, number_density_per_A3=1e-32,
-                             delta_rho_e_per_A3=-2.2, label="voids")
+    voids = SpherePopulation(radius_A=50.0, number_density_per_A3=1e-8,
+                             delta_rho_e_per_A3=-2.45, label="voids")
     frame = simulate_frame(geom, particles=[voids], sample_volume_A3=1e15)
 
 The one number to keep in mind
 ------------------------------
-A dislocation loop of radius R displaces only its relaxation volume
-``pi R^2 b``, while a void of the same radius displaces ``4 pi R^3 / 3``. At
-R = 5 nm in Cu that is a factor 27 in volume and ~700 in forward intensity. If
-an irradiated sample has voids or bubbles, they dominate the small-angle image,
-and a dislocation-only simulation will not resemble the measurement.
+A dislocation loop of radius R has relaxation volume ``pi R^2 b``, while a void
+of the same radius displaces ``4 pi R^3 / 3``. At R = 5 nm in Cu that is a factor
+26 in volume, hence 680 in intensity from volume alone, and the loop loses a
+further ``(1 - kappa)^2`` even in its own plane (below). If an irradiated sample
+has voids or bubbles, they dominate the small-angle image, and a
+dislocation-only simulation will not resemble the measurement.
 
-What distinguishes them is not magnitude but **shape**: voids are isotropic,
-loops are not (``kappa dV`` in-plane versus ``dV`` along the normal, with
-``kappa = lambda/(lambda + 2 mu)``). That lives on the 2-D frame and is destroyed
-by radial averaging — see :func:`midas_saxs.detector.azimuthal_profile`.
+Aligned loops also differ from voids in **shape**. A loop's small-angle
+amplitude is the distortion term plus the Laue term (Ehrhart, Trinkaus & Larson,
+Phys. Rev. B 25 (1982) 834), which as q -> 0 is ``dV (1 - kappa) sin^2(theta)``,
+theta measured from the loop normal, ``kappa = lambda/(lambda + 2 mu)``: zero
+along the normal, largest in the loop plane. Voids are isotropic. The null lives
+on the 2-D frame and is destroyed by radial averaging — see
+:func:`midas_saxs.detector.azimuthal_profile`. It is not a general
+loop-versus-void test: loops with isotropically distributed normals scatter
+isotropically too.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from .core_shell import (
     core_shell_sphere_form_factor_squared,

@@ -2,25 +2,29 @@
 
 The other half of an irradiated material's small-angle signal, and in practice
 the loud half. A void of radius R displaces ``4 pi R^3 / 3`` of electron
-density; a dislocation loop of the same radius displaces only its relaxation
-volume ``pi R^2 b``. For R = 5 nm and b = 2.556 A that is a factor 27 in volume
-and therefore **~700 in forward intensity**. Simulating dislocations alone and
-comparing to a measured irradiated-material SAXS pattern will not work; this
-module is why the comparison can be made honestly.
+density; a dislocation loop of the same radius has relaxation volume only
+``pi R^2 b``. For R = 5 nm and b = 2.556 A that is a factor 26 in volume, **680 in
+intensity from volume alone**, and more once the loop's ``(1 - kappa)^2``
+in-plane factor is included. Simulating dislocations alone and comparing to a
+measured irradiated-material SAXS pattern will not work; this module is why the
+comparison can be made honestly.
 
 Built on the form factors that came into this package from ``midas_pdf.saxs``
 (:mod:`midas_saxs.form_factors`, :mod:`midas_saxs.model`), so there is one
 definition of "sphere form factor" in MIDAS and the polydispersity quadrature is
 shared with the joint SAXS+PDF refinement.
 
-Isotropy is the point
----------------------
-These scatterers are isotropic: ``I`` depends on ``|q|`` only. Dislocation loops
-are not -- they vary between ``kappa dV`` in-plane and ``dV`` along their normal.
-That contrast is the loop-versus-void discriminator, and it is only visible on a
-2-D detector, never in a radial average. :func:`void_intensity` deliberately
-takes the full ``q`` vector and reduces it to ``|q|`` internally, so a caller can
-feed both source terms the same pixel grid.
+Isotropy
+--------
+These scatterers are isotropic: ``I`` depends on ``|q|`` only. Aligned
+dislocation loops are not: their small-angle amplitude vanishes for q along the
+loop normal (distortion plus Laue term, see :mod:`midas_saxs.strain_source`).
+That anisotropy is only visible on a 2-D detector, never in a radial average,
+and it is not a general discriminator: loops with isotropically distributed
+normals, or with the normal along the beam, look isotropic too.
+:func:`void_intensity` deliberately takes the full ``q`` vector and reduces it
+to ``|q|`` internally, so a caller can feed both source terms the same pixel
+grid.
 """
 from __future__ import annotations
 
@@ -44,9 +48,12 @@ def loop_equivalent_sphere_radius_A(radius_A: float, burgers_A: float) -> float:
     """Radius of the sphere whose volume equals a loop's relaxation volume.
 
     ``dV = pi R^2 b``; the equivalent sphere has ``R_eq = (3 dV / 4 pi)^(1/3)``.
-    A 5 nm loop in Cu comes out at 1.67 nm, i.e. it scatters at ``q -> 0`` like a
-    void a third its size and about 700x weaker. Provided because that number is
-    the single most useful sanity check when a simulated frame looks surprising.
+    A 5 nm loop in Cu comes out at 1.69 nm: its relaxation volume is that of a
+    void a third its size. It does NOT scatter like that void. Its ``q -> 0``
+    amplitude is ``dV (1 - kappa) sin^2(theta)`` (theta from the loop normal), so
+    it is weaker by ``(1 - kappa)^2`` in intensity even in its own plane and
+    silent along its normal. Provided as a sanity check on magnitudes when a
+    simulated frame looks surprising.
     """
     dV = math.pi * radius_A ** 2 * burgers_A
     return (3.0 * dV / (4.0 * math.pi)) ** (1.0 / 3.0)
@@ -61,7 +68,7 @@ class SpherePopulation:
     radius_A
         Median radius (angstroms).
     number_density_per_A3
-        Scatterers per A^3. For reference, 1e22 m^-3 = 1e-8 um^-3 = 1e-32 A^-3.
+        Scatterers per A^3. For reference, 1e22 m^-3 = 1e4 um^-3 = 1e-8 A^-3.
     delta_rho_e_per_A3
         Electron-density contrast against the matrix. For a **void** this is
         ``-rho_matrix`` (all the density is missing); the sign is irrelevant to
