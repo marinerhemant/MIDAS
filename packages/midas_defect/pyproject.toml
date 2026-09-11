@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-defect"
-version = "0.1.7"
+version = "0.1.8"
 description = "Differentiable, phase-agnostic diffuse-scattering defect metrology on top of standard FF-HEDM: intensity-budget closure, per-grain dislocation density, fault-rod and selection-rule tests."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -41,10 +41,10 @@ dependencies = [
     # >=0.1.0: contrast_factor / contrast_factor_hex re-export their Stroh
     # solver, stiffness builders and slip-system tables FROM midas-ddd. Below
     # the floor those names do not exist and this package fails at import.
-    # RELEASE ORDER: midas-ddd must be on PyPI BEFORE this package is published,
-    # or `pip install midas-defect` cannot resolve. Published 0.1.5 predates
-    # this dependency and is unaffected.
-    "midas-ddd>=0.1.0",
+    # >=0.1.2: huang.huang_vs_small_angle_ratio imports
+    # midas_ddd.fourier.small_angle_amplitude, added in 0.1.2 (the Laue term).
+    # Published 0.1.5 predates the midas-ddd dependency and is unaffected.
+    "midas-ddd>=0.1.2",
 ]
 
 [project.scripts]
