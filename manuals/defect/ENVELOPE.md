@@ -358,7 +358,7 @@ brightness are a detector effect wearing a defect's clothes.
 
 ## 16. A label sum at a fixed absolute threshold is the amplitude raised to a power between 1 and 5 — intrinsic
 
-Measured on demk L5 (Cu-9at%Al, MIDAS zip floor T = 30), 2026-09-08. For a segmentation that
+Measured on demk L5 (Cu-9at%Al; components cut at T = 30, while the fullres zarr's own floor is 5), 2026-09-08. For a segmentation that
 keeps voxels above a fixed absolute value T, two identically-shaped features whose amplitudes
 differ by a factor k give
 
@@ -379,13 +379,21 @@ What it did on real data:
 * **Friedel pairs — which must be equal — came out 0.32 to 1.82 apart in label sum**, while
   intensity **per voxel** held at median 0.965 and within ±10 % for nearly every pair. The
   variation was entirely in how many voxels the label contained.
-* A segmentation-free protocol on the same voxels moved the median volume ratio
-  0.880 → **0.991** and collapsed the log-spread **5.6×** (sd 0.237 → 0.042), stable across
-  8 support variants. On the integrated ratios, rms|ln| went 0.287 → **0.134**, spread
-  2.87 → 1.53, within ±15 % of unity 4/11 → **8/11**.
-* Prediction check, so the mechanism is not merely plausible: amplitude ratio 1.136 with
-  |s| = 4.6 predicts a label-volume ratio of 1.86 against **1.75** observed; another pair
-  gives 1.172^1.24 = 1.22 against **1.191**.
+* A segmentation-free protocol on the same voxels moved the median **volume** ratio
+  0.880 → **0.991** and collapsed its log-spread **5.6×** (sd 0.237 → 0.042), stable across
+  8 support variants. That is the half that survived `/verify` (claim `736e1d2311a8`).
+* **The intensity half did not survive, so do not quote it.** A fixed-box integration that
+  took rms|ln ratio| from 0.287 to 0.134 (and 4/11 → 8/11 pairs within ±15 %) was refuted on
+  all four lenses: rms|ln| is a scatter statistic, and 0.287 is what an estimator with 0.279
+  scatter returns when there is **no** asymmetry; the box was 85–90 % pedestal for the two
+  pairs carrying 62 % of the effect; and 97.7 % of the box ratios are predicted by common-mode
+  pedestal dilution alone. A stable **0.936** intensity residual survives the
+  segmentation-free protocol and is not explained.
+* Prediction check, so the mechanism is not merely plausible: a pair with amplitude ratio
+  1.172 and |s| = 1.24 predicts 1.172^1.24 = 1.22 against **1.191** observed. A second example
+  in the ledger — 1.136 with |s| = 4.6 "predicting" 1.86 against 1.75 — does not close
+  arithmetically (1.136^4.6 = 1.80), so at least one of its inputs is rounded or wrong; do not
+  quote it until it is re-derived.
 * **The floor is size-dependent.** Size-matched control pairs that must obey Friedel returned
   rms|ln| = **0.420**; strong pairs (> 20,000 vox) returned **0.022**. For a few-hundred-voxel
   feature the method floor is 30–40 %.
@@ -398,6 +406,12 @@ convergence.** Establish the method's floor on control features that are *known*
 and **matched in profile width** — not merely in size and |q| — before quoting any difference
 as real.
 
+In the package: `midas_defect.segmentation_bias.label_volume_slope` measures `s` for one
+feature, `predicted_volume_ratio` gives the volume ratio a pure threshold effect produces (use
+it as the null), and `mirrored_dead_masks` builds the identical censoring for a crossing
+(`'col'`) or Friedel (`'row'`) pair. They carry the half of this result that survived
+`/verify`; none of them is an intensity integrator.
+
 Corollary for fitting: **any power law fitted ACROSS features of different amplitude — e.g.
 satellite intensity versus order n — inherits a bias that varies with amplitude along the very
 axis being fitted.** See §17, which is that corollary biting.
@@ -407,32 +421,51 @@ scatter σ returns rms|ln| ≈ σ, so "rms fell from 0.287 to 0.134" says the se
 less variance and says nothing about whether an asymmetry exists. Test the SIGNED mean against
 controls.
 
-## 17. An intensity-versus-order exponent is extraction-dependent, and the spread covers the competing physical answers — configured
+## 17. A rung-intensity scaling test for modulation type is mis-posed on an n·G/3 ladder — intrinsic
 
-Found 2026-09-07 on demk L5 while cross-checking a number already on a slide.
-`RESULTS_exponent_extraction_conflict.md`.
+Found and verified 2026-09-07 on demk L5 (claim `44a53a5cb198`).
+`RESULTS_exponent_extraction_conflict.md` — **read its "SUPERSEDED BY VERIFICATION" section,
+not the top half**, which records a claim that did not survive.
 
-The satellite intensity scaling `I ∝ n^p` is the discriminator between a **displacement**
-modulation (theory p = 2) and a **composition** modulation (p = 0). Two extractions of the
-same four rungs from the same cloud gave **1.95** and **0.10** — one on each answer.
+The manuscript scored the satellite rungs with a power law `I ∝ n^p`: p = 2 for a
+**displacement** modulation, p = 0 for a **composition** modulation, and reported 1.95. A
+re-extraction from the same cloud gave 0.10. The numbers fail, and so does the test.
 
-| | n=1 | n=2 | n=4 | n=5 | exponent |
-|---|---|---|---|---|---|
-| re-extraction, raw I/I₁ | 1.000 | 1.322 | 0.392 | 0.256 | |
-| Lorentz factor J/J₁ = sin 2θ | 1.000 | 1.999 | 3.994 | 4.989 | |
-| re-extraction, corrected | 1.000 | 2.644 | 1.567 | 1.279 | **0.10** |
-| manuscript, raw | 1.00 | 0.45 | 1.92 | 4.42 | |
-| manuscript, corrected | 1.00 | 0.90 | 7.68 | 22.04 | **1.95** |
+**Both numbers are unconverged artifacts of one knob.** The rungs' own transverse widths are
+flat in q (r95 = 0.082 / 0.125 / 0.075 / 0.067 Å⁻¹ at n = 1/2/4/5), so a constant-angle
+integration cone captures 1.3 % of n=1 and 100 % of n=4. Sweeping the tube radius alone walks
+the exponent through **+1.955 at R = 0.020** and **+0.106 at R = 0.042** on one monotone curve;
+past R ≈ 0.25 the integrals stop changing. The manuscript's 1.95 also carried a 95 % CI of
+**[−0.91, +4.80]** on 2 dof. The explanation first offered — unequal ω coverage — was wrong:
+exact coverage is 0.974 at n=1 and 1.000 elsewhere, and correcting for it moves the exponent
+by 0.015.
 
-The disagreement is not a tolerance question: the manuscript puts n=2 **below** n=1 (0.45)
-where the re-extraction puts it **above** (1.32). Extraction geometry for the re-extraction:
-tube `perp < max(0.05, tan(1.6°)·|par|)`, window `|par − nG/3| < 0.06`.
+**The test itself is mis-posed.** n=3 **is** the 111 and n=6 **is** the 222, so the four rungs
+are satellites of *different* parents: n=1 = 000 + G/3, n=2 = 111 − G/3, n=4 = 111 + G/3,
+n=5 = 222 − G/3. A displacive modulation scales as |G_parent · u|², giving **0 : 1 : 1 : 4** —
+the n=1 rung vanishes at first order. A compositional modulation gives 1 : 1 : 1 : 1 × f², an
+apparent exponent of **−0.63**. Neither mechanism predicts 2, and neither predicts 0.
 
-**Do not quote a modulation type from a rung-intensity exponent** until the extraction is
-pinned and the exponent is shown stable across the tube half-angle, the radial window and the
-integration method. §16 is one reason it moves — the rungs differ in amplitude by more than
-2×, so a fixed-threshold extraction biases them differently along the fitted axis.
-**Status: OPEN.** Displacement versus composition is not decided on this dataset.
+**What the converged data show:** rung intensities 1.000 / 1.507 / 0.253 / 0.326 at
+n = 1/2/4/5 — not monotone, so no power law describes them — and **n=1 is the second-brightest
+rung**, which a first-order displacive modulation does not produce. That is open and needs its
+own preregistered test.
+
+The levers that actually move a rung-intensity number on this dataset: the intensity floor
+(I = 30 versus 6 moves the exponent by −0.43 per octave), the ω branch (the data are two
+branches 173.8° apart, each rung sits almost entirely in one, and the converged exponent is
+−0.161 in one branch against −1.974 in the other), and product truncation (`cyl_n9R.npz` holds
+100 / 95 / 47 / 22 % of rungs 1/2/4/5).
+
+**How to apply.** Score a satellite against its **own parent reflection**, not against a power
+law across rungs. Integrate with a support matched to the rung's own transverse width and
+converged in radius. State the floor and the ω branch alongside the number. **Status:** §3.4's
+displacement conclusion is withdrawn, and the modulation type is not determined by this
+dataset.
+
+*Correction, 2026-09-10:* the first version of this section, committed in `d9c4cd15`, repeated
+the refuted framing — "extraction-dependent, spanning both answers" — and blamed §16's
+threshold mechanism for it. Neither holds.
 
 ## 18. Comparing the two Ewald crossings of a reflection — what actually bounds it
 
@@ -448,11 +481,11 @@ comparison and survive in the crossing one. A crossing offset "N× above the Fri
 therefore means *not truncation and not generic centroid noise*. It does **not** mean *not
 instrumental*.
 
-**But a calibration residual has closed-form leverage and is common-mode — which makes it
-falsifiable.** Finite-differencing every geometry parameter, only BC_y moves the crossing
+**PROVISIONAL, not yet through `/verify`: a calibration residual has closed-form leverage and
+is common-mode — which makes it falsifiable.** Finite-differencing every geometry parameter, only BC_y moves the crossing
 offset at all:
 
-    d|dq| / d(BC_y)  =  2 · k · px / Lsd  =  0.0188 1/A per pixel
+    d|dq| / d(BC_y)  =  2 · k · px / Lsd  =  0.0191 1/A per pixel   (finite differences: 0.0171–0.0191, mean 0.0188)
 
 (the factor 2 because the two crossings sit ~180° apart in ω, so a column shift adds rather
 than cancelling). Every tilt contributes ≤ 0.003 1/Å per 0.1°, and p0–p3 ≤ 1e-4. It is
@@ -460,9 +493,15 @@ than cancelling). Every tilt contributes ≤ 0.003 1/Å per 0.1°, and p0–p3 �
 column-antisymmetric residual predicts **one** |dq| for every reflection. On this dataset the
 observed spread was a factor **12.6**, and the tightest reflection (222 at 0.0035) caps the
 residual at ≤ 0.19 px, which predicts ≤ 0.0035 everywhere. A bounded 11-parameter fit left
-95–112 % of every offset standing. **Use this as a test:** a large reflection-to-reflection
-spread in crossing offset *excludes* a calibration residual as a sufficient cause. It does not
-tell you what does cause it.
+95–112 % of every offset standing. **Candidate test (PROVISIONAL):** a large
+reflection-to-reflection spread in crossing offset *excludes* a calibration residual as a
+sufficient cause. It does not tell you what does cause it.
+
+*Provenance:* derived 2026-09-09 by the physics lens of the refuted claim `74c222e0b301`, and
+not verified as a claim in its own right. The leverage is analytic
+(2 × 36.3234 1/Å × 172 µm / 652665.6 µm) and was checked by finite differences in
+`friedel_repro/physics_lens_74c222e0b301/p1_geom.py`; the bounded fit is `p3_bounded.py` in the
+same directory, write-up `friedel_repro/PHYSICS_LENS_74c222e0b301.md`.
 
 **Compare features of similar size, with a support that ENCLOSES each one.** Satellites and
 fundamentals differ by ~10× in width here; a sweep of h ≤ 30 px enclosed all five satellite

@@ -58,7 +58,7 @@ and that fails whenever the predicted node cloud is finer than the diffuse featu
 reference sample 0.0688 Å⁻¹ node spacing against a 0.05–0.15 Å⁻¹ halo, so neither distance nor
 direction can attribute a voxel. Check that before promising a fraction (`ENVELOPE.md` §1a).
 
-## Fourteen things to know before you start
+## Sixteen things to know before you start
 
 1. **Closure is arithmetic; attribution is the claim.** An auto-classifier on the reference
    sample reported **99.8 % intensity-budget closure** and was **~18 % wrong**. At high `|q|`
@@ -100,10 +100,11 @@ direction can attribute a voxel. Check that before promising a fraction (`ENVELO
    diagnostic looked at perpendicular q instead of ω; a real relrod was dismissed on the
    ω-sum. An entire early analysis was retracted for using the **wrong phase**, which
    propagated into the Burgers vector, the selection rules, the fault plane and the strain —
-   each independently plausible. The newest is **§3.3**, reported refuted on 2026-09-07 and
-   **not** refuted — two disjoint inputs agree to 0.58° and nine of twelve candidate ⟨111⟩
-   carry exactly zero voxels; the bad verdict is still sitting in that day's meeting brief
-   (`LAB_NOTEBOOK.md` R21). A refutation is a claim and needs the same gate as the positive
+   each independently plausible. The newest is **§3.3**, reported refuted on 2026-09-07 when only its
+   *statistic* had died. The composition-plane claim is PROVISIONAL, not established:
+   two disjoint inputs agree to within about 1–4°, but that is one orientation relation and one
+   of seven candidate axes (`LAB_NOTEBOOK.md` R21). The 9R itself is established — its off-axis
+   reflections at 4/9 and 5/9 cannot come from double diffraction (E1). A refutation is a claim and needs the same gate as the positive
    it kills. Read `LAB_NOTEBOOK.md` before re-investigating anything.
 
 8. **Which orientation convention a voxel cloud is in is a property of the CLOUD, not a
@@ -172,10 +173,24 @@ direction can attribute a voxel. Check that before promising a fraction (`ENVELO
     establish the floor on controls known to be equal and matched in **profile width**, since
     the floor is size-dependent (30–40 % for a few-hundred-voxel feature, 2 % above 20,000).
     This is distinct from point 9: it bites even when the label holds exactly the right
-    feature. It is also why an intensity-versus-order exponent is extraction-dependent —
-    the rungs differ in amplitude along the very axis being fitted, and on this dataset the
-    same cloud gave **1.95 and 0.10**, the displacement answer and the composition answer
-    (`ENVELOPE.md` §16, §17; `DIAGNOSIS.md` 20, 21).
+    feature. Only the **volume** half of that Friedel result survived `/verify`; a fixed-box
+    *intensity* comparison built on it was refuted as pedestal-dominated, so do not quote its
+    0.287 → 0.134 (`ENVELOPE.md` §16; `DIAGNOSIS.md` 20).
+
+15. **The bugs live in the composition, so the composition is now in the package.** Seed-cell
+    anchoring and a cell never fitted to its own reflections were composition bugs no primitive
+    test could see; porting the per-position driver found a third — the earlier-domain arrays for
+    `omega_smear_duplicates` built in two different orders, which missed 142 duplicates and changed 15 of 26 accept/reject decisions when the
+    real call was replayed at five positions (verified). Call `domains.find_domains` (cell and space group REQUIRED) rather
+    than re-composing `rows.*`, and `completeness.targeted_recovery` for reflections the blob
+    finder never found — judged by its same-ring null, not its raw count (`phase-2-index.md`).
+
+16. **A diffuse feature read from one frame per point loses most of itself.** Reading each L from
+    the frame where it satisfies Bragg is right for a node and wrong for anything broad in ω:
+    skirt/core 0.8 % that way, 4.1 % from the ω-maximum, on the same rod. And a split detector with
+    no control at positions with no reflection fired on 44 of 45 reflections. Which (h,k) rods
+    carry diffuse intensity is a fault-vector test only after dividing by the same rod's Bragg
+    nodes (`rod_profile.diffuse_to_bragg`, `phase-4-rods.md`).
 
 ## The half most people do not know is here
 
@@ -302,6 +317,7 @@ reciprocal direction**, skill `pf-hedm`), `manuals/nf-hedm/` (near-field, skill 
 microscopy — the other escalation for intragranular detail, skill `dfxm`), `manuals/xrd-ct/`
 (**the right doc set if your rings are continuous**, skill `xrd-ct`),
 `manuals/calibrate-integrate/` (the geometry this consumes, skill `calibrate-integrate`),
+`manuals/pdf/` (total scattering and G(r) from continuous rings, skill `pdf`),
 and `manuals/tomo/` (the coordinate-system reference, skill `tomo`).
 
 ## Log a halt

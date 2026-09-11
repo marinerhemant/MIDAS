@@ -162,6 +162,92 @@ change a gate and a loop together, you cannot attribute the result to either; ch
 time, or re-run one arm with the other's gate so the arms differ only in the thing you mean to
 test. The true size of seed-cell anchoring on this dataset is **currently unknown**.
 
+## A whole position: every domain, in one call
+
+```python
+from midas_defect.domains import find_domains
+res = find_domains(q, I, spots.row.values, spots.col.values, spots.frame.values,
+                   a=a, c=c, space_group_number=sg,          # REQUIRED -- no nickelate defaults
+                   live=~powder, seedable=~powder & ~stationary,
+                   seed_from_nominal=False)                  # True: pair-seed from (a, c) when no row exists
+for d in res.domains:
+    d.lat, d.hkl, d.claim, d.frag, d.branch, d.seeded        # lat IS the fit to q[d.claim]
+    d.seed_source                                            # "own row" | "earlier domain" | "nominal"
+```
+
+This is the composition the sections above describe, packaged — because the composition is where the
+expensive bugs lived. It was the per-position driver behind the 2604 raster (`repro/reduce_v4.py` in the
+nickelate project). Row-seeded domains come first, from a POOL of rows re-found on the residual after every
+acceptance; once one cell is known, pair-seeded domains follow against a whole-search null. **Where no row
+of three rungs exists — c* near the beam, as at every S5 position at 30 K — nothing seeds a cell and the
+call returns no domains without saying why** (a fresh-context reader hit this on a held-out S5 position,
+2026-09-10). `seed_from_nominal=True` lets the pair branch start from the declared `(a, c)`; the declared
+cell stays the seed for every pair domain there, the cell gate still references `nominal_c`, and each
+domain's `seed_source` says so. It is off by default because the 2604 raster never did it. Each rule is a
+measured fix:
+
+| rule | what it prevents | measured on 2604 |
+|---|---|---|
+| consume `frag`, count and fit `claim` | discarded fragments of one streak re-claimed as a NEW domain | claims vs distinct hkl 47/40, 29/26, 21/17 at p = 66/329/114 before `unique_by_hkl` |
+| pool rows from the full set AND each residual | a weak domain's ladder never getting a seed | p=329: two (0,0,1) rows up front, one a dying 3-rung stub; four on the residual, of 10 and 9 rungs. Re-seeding alone lost a domain at p=113 |
+| any unambiguous row seeds, not only (0,0,L) | a crystallite whose ladder is outside the wedge being unreachable | p=66: eight further rows in the leftovers that nothing could index |
+| refine → re-match on the domain's own cell, refit on the set returned (`refine_to_convergence`) | anchoring; a reported cell fitted to other reflections | 26 % of one run's stored c not the fit to its own hkl list |
+| drop ω-smeared duplicates of earlier domains, THEN refit | a postcondition broken by the drop | 3 of 4 non-first row domains, \|Δc\| up to 0.0271 Å |
+| pair floor = `search_null` threshold; a rejected candidate retires its anchors and the search retries | a margin gate stopping after one domain; a fixed 8 discarding real 5–7 reflection domains | planted 3-grain control: margin gate 1 of 3, null all 3 at ≤ 0.29° |
+| cell gate on a FIXED nominal c; γ from gated domains is never quoted | the gate manufacturing the correlation it is read as evidence of | ungated, c = 19.736 (+2.5 %) and γ = 87.13° were accepted |
+
+**Stationary cells: mark them not-`seedable`, keep them `live`.** Anvil and gasket reflections land on the same
+detector cells at every raster point, so they must not ANCHOR a search — but deleting them removed five cells
+carrying one faint crystallite's reflections, which looked stationary (lit at 15 of 24 positions, 0.62) because
+the crystallite spanned a run of neighbouring points. A wrong seed-tier call costs only a seed; a deletion
+costs reflections.
+
+**`tol_sigma` and `sigma_rtn` are one sample's numbers.** `tol_sigma = 7` sat on a plateau at three positions
+(4 collapsed p=66 to 15 reflections; 9 kept adding domains where spurious ones appear); `sigma_rtn` is that
+sample's measured (radial, transverse, normal) residual after the fractional-frame fix. Re-measure both.
+
+**If you build the "earlier domains" arrays yourself, build all three in ONE order.**
+`omega_smear_duplicates(hkl_new, rc_new, frame_new, hkl_old, rc_old, frame_old)` pairs `hkl_old[j]` with
+`rc_old[j]` and `frame_old[j]`. Concatenating per-domain hkl lists while taking positions from the union mask
+(`rc[prev]`, global index order) misaligns them as soon as two earlier domains exist, and the check then
+compares a label with some other spot's position. `find_domains` builds all three per domain. The nickelate
+project's driver did not, and neither do 17 other scripts in that project that copy its call. **Verified,
+four lenses, ESTABLISHED** (claim 5b5f7fb80b36, 2026-09-10): the pairing breaks whenever two or more earlier domains'
+per-domain spot order differs from global index order — always, in practice, because spots are numbered in label
+order and a domain spanning ω interleaves with the others. On a synthetic case it missed an exact duplicate 5.8 px
+away; replaying the real call at five 2604 positions (the remote copy that ran, current remote packages) it missed 142 duplicates the aligned call flags, 11 of them closer than 10 px, changed 20 of 26 calls and the accept/reject decision in 15, and never flagged one the aligned call did not. **On the full recorded raster** (621 positions, paired re-run; PROVISIONAL, its controls amended post hoc) aligning the check left the same driver 914 of its 1278 domains: 412 were accepted only by the misaligned call, all third-or-later, and pair-seeded domains fell from 546 to 305, while domains found both ways kept their cells (median |Δc| 0). Which count is right that run does not settle — the guard is loose on its own terms (an |hkl|
+match within 80 px and 20 frames flagged 34 of 35 spots at p=124). That driver's pair branch also re-matched against
+spots it had just dropped as duplicates, so even an aligned drop could be undone; `find_domains` drops after
+convergence on both branches.
+
+## Reflections the blob finder never found — targeted extraction
+
+```python
+from midas_defect.completeness import targeted_recovery
+rec = targeted_recovery(sub, frames, mask, live_frame_index, pred_row, pred_col,
+                        beam_centre=(ROW_BC, COL_BC), snr_min=5.0)
+print(rec)    # recovered, same-ring null rate, expected by chance, excess sigma
+```
+
+Once an orientation is known, blind detection is the wrong tool: predict every reflection (geometry-derived hkl
+box, inside the measured ω range, on the detector) and sample the frames where it must be. Pass only
+predictions no blob was found for — and, with several domains, not a site another domain has taken (the driver
+used 8 px). `sub` and `frames` are the same live stack; map raw frame numbers through the live index first.
+
+**Predicted sites sit on powder rings, and a ring has intensity at every azimuth.** So each site is re-scored at
+the SAME radius and frame but a random azimuth; a count that does not beat that expectation is the ring, and
+`excess_sigma` — not the raw count — is the result. Noise is floored at the Poisson width of the raw counts (an
+unfloored MAD gave SNR 2.7e11 on 1140 counts).
+
+**The decisive null needs your predictor, so it is not in the function:** keep the cell, replace U by a RANDOM
+rotation, predict, harvest identically. On 2604 **zero of 40 scrambles beat the real rate** at p = 66 / 329 / 114
+(z = 8.1 / 23.4 / 8.3); the same-ring null ran at 0.017–0.051 (excess 6.5–19.2σ); distinct reflections went
+**40 → 47, 26 → 44, 17 → 32**. PROVISIONAL — both nulls were the author's, not a fresh context's.
+
+It also says when the pipeline is NOT losing reflections: for domains with |h|max = 1, only 3–6 reflections with
+|h| ≥ 2 were predicted on the detector inside the ±19.5° wedge, and targeted extraction at SNR ≥ 5 found **zero**.
+That limit was the wedge, not the pipeline.
+
 ## Before you report an a/b splitting from an indexed set
 
 The count that gets quoted — "N reflections are sensitive to a vs b" — hides three things,

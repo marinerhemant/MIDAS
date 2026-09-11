@@ -21,6 +21,12 @@ how far that licenses you.
 
 ## E — Established (survived a test that could have failed)
 
+*Every entry below names its generator (provenance audit, 2026-09-10). Recovered scripts are in
+`~/Desktop/analysis/demk/fcc_reanalysis/recovered_from_transcripts/`; `scripts/` means `~/Desktop/analysis/demk/fcc_reanalysis/scripts/`;
+gdata paths are under `/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/`, mounted on copland and
+chutoro only. Where a recorded number disagreed with its own output, the output wins and the
+entry says so.*
+
 **E1 — The 9R polytype is real, discrete, and sits on the SHARED {111}.**
 A discrete `n·G/3` satellite ladder along ⟨111⟩, n = ±1..±6: `G/3, 2G/3, 4G/3, 5G/3` in
 FCC-forbidden gaps, bracketed by `111` (n±3) and `222` (n±6) fundamentals.
@@ -31,64 +37,126 @@ Three independent methods agree that the axis is the ⟨111⟩ **shared** by par
 * shared-⟨111⟩ check: **99/99** Σ3 pairs, max-satellite axis == shared axis, 0.0°.
 * full sample, all 10 layers: **1018/1025** Σ3 pairs at 0.0°; per-layer "both(shared)"
   55.6–56.0 %, 28–31× enrichment. Uniform through the bulk.
+*Source:* `scripts/cross_tab_9r.py`, `scripts/cross_tab_9r_alllayers.py`, `twin_plane_check.py`,
+`twin_plane_check_alllayers.py`; logs `demk_cc3d/cross_tab_rerun.log`, `cross_tab_alllayers.log`
+and `demk_9r_phaseunique/cross_tab_9r_L2346.json` on gdata; transcript 34738a30, 2026-06-29.
+1018/1025 re-run 2026-09-10, identical. **Read the pair counts as n = 1, not 99 or 1018:** the
+crystal has one twin variant, so every pair measures the same orientation relation (R21).
+**Double diffraction, checked 2026-09-10 — it does not explain the 9R.** Parent/twin double
+diffraction does put reflections at exactly ±1/3, ±2/3, ±4/3 and ±5/3 of G111 on the shared ⟨111⟩
+(`midas_defect/dev/paper/verify_cc54aa5246ae/own_checks/dd_sumlattice.py`), so on-axis ladder
+*positions* alone could not rule it out — and the older argument that a clean G/2 control excludes
+it does not follow, because double diffraction makes no half-order spots. What rules it out is the
+9R-unique **off-axis** reflections. Every parent and twin reciprocal-lattice point sits at a multiple
+of G111/3 along the shared axis, and so does every double-diffraction sum (5,891 points, deviation
+7e-15; `dd_cannot_make_ninths.py`), so the 9R (0 1̄ 4) at 4/9 (|q| = 3.12 Å⁻¹) and (1̄ 0 5) at 5/9
+(|q| = 3.28 Å⁻¹) are unreachable by it. Both are present: they are in the manuscript's off-axis 9R
+table, and the 2026-09-10 verification lenses found rod intensity at 4/9–5/9 on the shared-(111)
+rods (55 % of all fcc-forbidden gap intensity, none on rods rotated 30°). **The 9R is established,
+and so are the ⟨111⟩ fault rods (E10).** Double diffraction can still add intensity at the on-axis
+ladder positions, so it bears on on-axis intensity ratios, not on whether the 9R is there.
+*Correction, 2026-09-10:* an earlier version of this paragraph said ordered 9R was not shown. That
+misread the rod data and ignored the off-axis table.
 
 **E2 — The satellites are reflections, not Ewald-sampled relrods.**
-Each is compact in ω (σ ≈ **0.6°**) with a Friedel mate at ω+180.
+Each is compact in ω (σ ≈ **0.6°**; 0.57–0.72° over five labels) with a Friedel mate at ω+180.
+*Source:* `recovered_from_transcripts/E2_omega_kabra.py` (originally a /tmp script; figure
+`figures/omega_kabra.png`), transcript 34738a30, 2026-06-25.
 
 **E3 — `5G/3` is a satellite, not a `220`.**
-Nearest `220` of any of 232 grains is **0.27 Å⁻¹** away in full 3-D. Radial coincidence
-alone is worthless here. Corroborated by the forbidden shells (`G/3`, `2G/3`, `4G/3`) being
-**empty** across all grains.
+The nearest `220` of any of 232 grains is **0.22 and 0.27 Å⁻¹** away in full 3-D for the two
+`5G/3` labels (243 and 326). Radial coincidence alone is worthless here. Corroborated by the
+forbidden shells (`G/3`, `2G/3`, `4G/3`) being **empty** across all grains.
+*Source:* `recovered_from_transcripts/E3_braggprob14.py` (ran on copland), transcript 34738a30,
+2026-06-24. *Correction, 2026-09-10:* this entry said 0.27 Å⁻¹, which is label 326 only; label
+243 sits at 0.2158.
 
 **E4 — Two Ewald crossings per reflection, verified.**
-Predicted diffraction ω from `q_lab·x̂ = −|q|²/2k` matches observed ω to **<1°**. A pipeline
-assuming one crossing silently discards half a 360° scan.
+Predicted diffraction ω from `q_lab·x̂ = −|q|²/2k` matches observed ω to **within 1.0°** (worst
+of eight crossings: predicted −166.0°, observed −165.0°). A pipeline assuming one crossing
+silently discards half a 360° scan.
+*Source:* `recovered_from_transcripts/E4_ewald_two_crossings.py` (an inline `python -c`),
+transcript 34738a30, 2026-06-30. *Correction, 2026-09-10:* this entry said <1°.
 
-**E5 — The ω-doublet is real: two 9R variants.**
-Same-rung, same-side pairs separated in **ω**. See R3 — this one was wrongly retracted first.
+**E5 — The ω-doublet is real.**
+Same-rung, same-side pairs separated in **ω**, fully resolved. See R3 — this one was wrongly
+retracted first. *That the two peaks are two orientation variants is supported but NOT
+established:* the preregistered test refuted the fixed-offset alternative and was read
+INCONCLUSIVE on the variant claim itself (R18).
+*Source:* `scripts/doublet_user.py`, transcript 34738a30, 2026-06-29. *Correction, 2026-09-10:*
+the heading said "two 9R variants" as established.
 
 **E6 — HCP at grain boundaries: NOT DETECTED.**
 Two independent tests. A self-consistent-lattice scan over 232 grains × 4 c-variants found at
 most **1** HCP reflection family per orientation where the null reaches **2**. Single-`|q|`
 coincidences exist and mean nothing. A clean negative, and it stands.
+*Source:* `recovered_from_transcripts/E6_hcp_scan.py` (the lattice scan) and `hcp_weak2.py`
+(z = −1.09 / −0.36 at the 10-10 / 10-11 positions), transcript 34738a30, 2026-06-25. The scan
+**cannot be re-run as recovered** — its input `/tmp/fammodel.npz` is gone — and the
+`hcp_test.py` recovered alongside it is not what produced these numbers.
 
 **E7 — Complete attribution of the scattered intensity, with the test that it is complete.**
-Per-voxel classification, ω-summed: Bragg **64.8 %**, asterism **31.5 %** (~72 % lattice
-rotation / 28 % strain), 9R satellites **0.04 %**, inter-Bragg **~0.6 %**, smooth
-background **~1.6 %**, unexplained floor **≤ 0.2 %** and featureless. The
-discriminating test: the off-ring residual collapsed monotonically 1.24 → 0.12 % as the
-per-spot asterism cutoff widened — a real extra phase would not shrink under that.
+Per-voxel classification, ω-summed: Bragg **64.78 %**, asterism **31.54 %** (~72 % lattice
+rotation / 28 % strain), 9R satellites **0.04 %**, inter-Bragg **3.64 %** — four channels that
+sum to 100.00 %. Of the inter-Bragg channel, **1.49 %** of the total is structured residual after
+a radial-background subtraction. The discriminating test: the off-ring structured residual
+collapsed monotonically **1.22 → 0.20 → 0.12 %** of the total as the `distB` cutoff (distance
+from Bragg) widened from 0.20 to 0.70 to 1.00 — a real extra phase would not shrink under that —
+leaving a far-field floor of **0.204 %**.
+*Source:* `scripts/whats_unknown.py`, `asterism_per_grain.py` (CORE = 0.025, OUTER = 0.10),
+`asterism_floor.py`, `onring_offring_residual.py`; logs `whats_unknown.log`, `floor.log` and
+`onoff.log` in gdata `demk_9r_phaseunique/`; transcript 34738a30, 2026-06-23. *Correction,
+2026-09-10:* this entry gave inter-Bragg as ~0.6 % and a smooth background of ~1.6 %, bins that
+summed to 98.7 %. The log's inter-Bragg channel is 3.64 %, and no run printed 1.6 %. The collapse
+was quoted as 1.24 → 0.12 %, splicing `onoff.log` (1.243 % at its default cutoff) onto the
+`floor.log` sweep.
 
-> **AMENDED 2026-09-01.** The ~0.6 % bin was originally labelled "⟨111⟩ SF relrod". That
+> **AMENDED 2026-09-01.** The inter-Bragg bin (recorded here as ~0.6 %; the log gives 3.64 %) was
+> originally labelled "⟨111⟩ SF relrod". That
 > label is withdrawn: it is a **distance-bin occupancy**, not an attribution. The bins are
 > real and the closure test stands; naming the inter-Bragg bin after the fault rod does not,
 > because rod and asterism are **not separable** in this sample (`ENVELOPE.md` §1a, R12).
 > Quote the bin, not the defect.
 
 **E8 — No parent/twin dislocation asymmetry. A null that is a result.**
-Asterism rotation and strain widths identical parent ≈ twin to **1–3 %**. The twin's higher
+Asterism widths agree parent ≈ twin: strain (radial) to **0.3 %** (σ_r 0.03348 vs 0.03359) and
+rotation (tangential) to **3.1 %** (σ_t 0.03264 vs 0.03165), over 106 parent and 142 twin grains. The twin's higher
 stress and stored energy is an **elastic-anisotropy projection** of equal strain, and was
 deliberately not headlined. `ENVELOPE.md` §12.
+*Source:* `scripts/asterism_per_grain.py` (tight run) → gdata `demk_9r_phaseunique/asterism_tight.log`,
+transcript 34738a30, 2026-06-23. *Correction, 2026-09-10:* recorded as "1–3 %".
 
 **E9 — No FCC-forbidden intensity.** With the correct FCC rule, forbidden/allowed ≈ **0.000**
 = the random off-lattice control, on **0 of 248 grains**. No anti-phase boundary, no
 selection-rule-breaking defect. (Contrast R8.)
+*Source:* `scripts/c3_forbidden.py` → gdata `demk_diffuse/c3.log` and `c3_forbidden_L2346.npz`
+(2026-05-20). The script was refactored on 2026-05-28 and the current version has **not** been
+re-checked against 0.000 and 0/248.
 
 **E10 — The ⟨111⟩ relrod seen directly in raw frames.** Back-projected bright pixels land on
 integer hkl at median **0.11**; PCA direction **3.7° from ⟨111⟩**, 1-D dominant (singular
 values [49.4, 9.6, 0.6]), threading 111→200→220→311→400; bridge pixels median **16.6°** from
 ⟨111⟩ against 28° random. One deformed Σ3-twinned grain that the indexer had fragmented into
-~21 "grains" (14 sub-grains within 12° + 7 at 57–60°).
+~21 "grains": 12/21 within 10° and 14/21 within 15° of one reference, the other seven at
+56.6–60.0°.
+*Source:* `scripts/measure_streak_q.py`, `measure_bridge.py`, `streak_chord_test.py` (figures in
+`figures/`), transcript 34738a30, 2026-06-23. *Correction, 2026-09-10:* the grouping was
+recorded as "14 sub-grains within 12° + 7 at 57–60°"; the output reads as above.
 
 **E11 — Microstructure and depth uniformity.** 248 grains, median diameter 65 µm. Over 10
 layers: grain count 252 ± 19 (CV 7 %), volumetric strain 0.148 ± 0.023 %, {111} texture MRD
 4.9 ± 0.4, median misorientation 14.9 ± 1.2°. Genuinely uniform — see R7 for the bug that
 nearly manufactured this.
+*Source:* `scripts/d_depth_profile.py`, `scripts/a_microstructure.py`; re-run 2026-09-10,
+identical. The original stdout survives in no transcript.
 
 **E12 — The ingest front end reproduces a hand-built chain exactly.**
 On an independent La₃Ni₂O₇ DAC dataset: mask **byte-identical** (0 differing px of 2.48 M),
 polar background **bit-identical**, spot list **615 of 615** sub-peaks to **0.0008 px**.
 Not in the test suite; recorded in that project's `PORT_TO_MIDAS.md`.
+*Source:* `recovered_from_transcripts/E12_port_mask_and_full_chain.py`, `E12_port_background.py`,
+`E12_port_spots_615.py`, Argo transcript ef79a90a, 2026-09-01. "2.48 M" is 1679 × 1475 pixels,
+computed, not printed by any run.
 
 ---
 
@@ -351,6 +419,15 @@ summed ratio is 0.864 while the above-threshold count ratio is 1.093 and the mea
 **R17 — "There are four ladders." Then "there are two." BOTH REFUTED — and the search cone was
 manufacturing the members.**
 
+> **VOID NOTE (2026-09-10):** every angle here came from a flat, untilted detector transform (no tilts, no
+> distortion). It fails a known-zero test — a grain's 111 against its own 222 comes out 4.2–5.2° instead of 0
+> (the corrected transform gives 0.61°) — and it makes the apparent angle between two fixed directions scale
+> with |q|. The four- and two-ladder models were artefacts of it, and so is the "angular spread grows with |q|"
+> measurement. The radial positions (n·G/3 to better than 1 %) are unaffected, and the search-cone trap still
+> stands as a method warning. With the corrected transform the satellites form Friedel/crossing quartets with a
+> doublet at n = 1 and 2 only, 6.1° and 6.5° apart (`RESULTS_L5_three_open_points.md`). Source: the VOID section
+> of `midas_defect/dev/paper/CHECKPOINT.md`.
+
 *2026-09-08.* The radii are excellent: every picked component lands at `n·G/3` to better than
 1 %. The directions are not collinear through the origin.
 
@@ -370,8 +447,8 @@ n=1 there are four discrete directions at 2.03 / 4.43 / 8.16 / 10.51° from axis
 ladders hold spread/n fixed; a fixed transverse offset makes it fall. Neither describes this.
 **Cause unknown, and it is in tension with R18** — see `phase-4-rods.md`.
 
-**R18 — "The 9R doublet is two orientation variants." STANDS — preregistered, two layers, and
-a positive control that passed.**
+**R18 — "The 9R doublet is two orientation variants." PARTLY — the alternative is refuted, the
+claim itself is INCONCLUSIVE by its own registration, and it has not been verified.**
 
 *2026-09-07.* `PREREGISTER_doublet_scaling.md` fixed the discriminator before the measurement:
 two variants give **Δω constant** with rung order, a fixed transverse q-offset gives
@@ -380,18 +457,38 @@ predicted. H0 refuted. Valley depths 0.00 and 0.02–0.03 — the peaks are full
 shoulder. Measure Δω, not the q-separation: two referees measured the q-separation and
 disagreed (0.175–0.205 vs 0.128 at n=2) because it is not independent of Δω.
 
+The registration was read **INCONCLUSIVE** (skill log, 2026-09-07 02:14): its own pre-declared
+inconclusive branch applied, because the high orders (n=4, 5) are single-peaked and all the
+leverage rests on n=1 and n=2. What is solid is narrower than "two variants": **H0 (Δω ∝ 1/n)
+is refuted outright** — it required 3.25° at n=2 and both layers gave 6.50°. H1 is consistent
+with two rungs, untested beyond them, **not through `/verify`**, and consistent with the corrected-transform directions of the satellite components, 6.1° and 6.5°
+apart at n = 1 and 2 (`RESULTS_L5_three_open_points.md`; the q-space "tension" once cited from R17 came
+from a void transform).
+
+*Correction, 2026-09-10:* this entry first read "STANDS", committed in `d9c4cd15`.
+
 Note this is the **third** correction of R3's territory, which was itself a wrongly-retracted
 positive. Read R3, R17 and R18 together before touching the doublet.
 
 **R19 — "The §3.4 order-scaling exponent is 1.95, so the modulation is displacement."
-RETRACTED — the exponent is extraction-dependent and spans both answers.**
+RETRACTED — and so was the first explanation of why.**
 
-*2026-09-07.* Re-extracting the same four rungs from the same cloud gave **0.10** against the
-recorded **1.95** — the composition answer against the displacement answer, theory 0 and 2. Not
-a tolerance question: the manuscript puts n=2 **below** n=1 (0.45), the re-extraction **above**
-(1.32). `ENVELOPE.md` §17. **Status OPEN**; displacement versus composition is not decided on
-this dataset. R16 is one reason the number moves — the rungs differ in amplitude by more than
-2×, so a fixed-threshold extraction biases them along the very axis being fitted.
+*2026-09-07.* A re-extraction gave 0.10 against the recorded 1.95. The first write-up called
+that extraction-dependence spanning both physical answers. `/verify` the same night (claim
+`44a53a5cb198`) **refuted that claim as stated**, while the withdrawal of §3.4 survived on
+better grounds: both numbers are unconverged artifacts of one knob, the tube radius; the
+manuscript value's 95 % CI was [−0.91, +4.80]; and the stated cause, unequal ω coverage, was
+wrong — coverage is 0.974 at n=1 and 1.000 elsewhere.
+
+The lasting finding is that **the test was mis-posed**. n=3 is the 111 and n=6 is the 222, so
+the rungs are satellites of different parents: a displacive modulation predicts 0 : 1 : 1 : 4
+(n=1 vanishes at first order) and a compositional one an apparent exponent of −0.63. Neither is
+2 or 0. In the converged data n=1 is the **second-brightest** rung, which a first-order
+displacive modulation does not produce — open, and it needs its own preregistered test.
+`ENVELOPE.md` §17.
+
+*Correction, 2026-09-10:* the first version of this entry, committed in `d9c4cd15`, repeated the
+refuted framing and blamed R16's threshold mechanism for the spread. Neither holds.
 
 **R20 — "The satellite Ewald-crossing offset is a calibration residual, not satellite-specific."
 RETRACTED — 4 of 4 lenses. And the reading it replaced is withdrawn too.**
@@ -412,9 +509,10 @@ Bragg 111 by **2.49×**. Two of my own group definitions were wrong: 220 g1/g2 a
 grain (59.3° is the fcc {220}∧{220} angle of 60°), and its Friedel mates **do** exist — ids
 59, 66, 68, 71.
 
-**What survives, and it is worth more than the claim was:** a column-antisymmetric calibration
-residual is **quantitatively excluded** as a sufficient cause. Only BC_y has leverage, at
-`2·k·px/Lsd = 0.0188 1/A per pixel`, **common-mode to ±6 % over ten reflections**, so it
+**What survives — PROVISIONAL, not itself through `/verify`:** a column-antisymmetric
+calibration residual is **quantitatively excluded** as a sufficient cause. Only BC_y has
+leverage, at `2·k·px/Lsd` = 0.0191 1/Å per pixel analytically (finite differences 0.0171–0.0191
+over ten reflections, mean 0.0188), **common-mode to ±6 %**, so it
 predicts one |dq| for all of them; the observed spread is a factor **12.6**, and a bounded
 11-parameter fit leaves 95–112 % of every offset standing. `ENVELOPE.md` §18.
 
@@ -424,33 +522,62 @@ cubes are re-cut at ±110 columns (111 is currently not measurable), a support-c
 criterion is registered in advance, and the centring convention is decided on its merits.
 
 **R21 — "§3.3 (the 9R lies on the Σ3 twin composition plane) is refuted." THE RETRACTION WAS
-WRONG. §3.3 stands, and is better supported than the manuscript's own version of it.**
+WRONG — but the claim it protected is PROVISIONAL and weaker than first written. The 9R itself is
+not in doubt.**
 
-*Reported refuted 2026-09-07; corrected.* **Do not reinstate the refutation from
-`MEETING_BRIEF_2026-09-07.md` or `REEVALUATION_2026-09-07.md`** — both were written that day
-and both carry the bad verdict.
+*Reported refuted 2026-09-07; corrected; put through `/verify` 2026-09-10 (claim
+`cc54aa5246ae`: all four lenses back (statistics UNCERTAIN, reproduction SURVIVES, physics UNCERTAIN, artifact UNCERTAIN): PROVISIONAL).* **Do not reinstate the refutation from `MEETING_BRIEF_2026-09-07.md` or
+`REEVALUATION_2026-09-07.md`:** what died on 09-07 was the manuscript's *statistic* (99/99 against
+a 25 % baseline), not the claim.
 
-The direct test, two quantities computed from **disjoint** inputs:
+The measurement, from two inputs that share no file:
 
 | quantity | derived from | value |
 |---|---|---|
-| ladder direction | diffuse shell alone, 12,246 voxels, **zero** grain input | [−0.2973, −0.8654, −0.4034] |
-| composition-plane normal | Σ3 pairs alone, **zero** diffuse input | [+0.2884, +0.8661, +0.4083] |
+| ladder axis | G/3 diffuse shell alone, 12,246 voxels | [−0.2973, −0.8654, −0.4034] |
+| shared Σ3 ⟨111⟩ | 99 parent–twin pairs alone | [+0.2884, +0.8661, +0.4083] |
 
-As axes they agree to **0.58°**. Of the twelve distinct ⟨111⟩ in the twin family, the three
-that are the composition plane carry **98–99 %** of the shell intensity and the other nine
-carry **exactly zero voxels**. Nine directions with genuinely zero support is a discrimination
-the manuscript's own statistic never had.
+They agree to **0.58°** as axes. The computation was an unsaved inline script until 2026-09-10;
+it is now `midas_defect/dev/paper/repro/recovered_plane_angle_20260907.py`, re-runs to the same
+numbers under midas_defect 0.1.7, and an independent pipeline rebuilt the ladder axis from the raw
+detector zip to four decimals. `repro/claims.py` still hard-codes 0.58 as a literal.
 
-**Replace the manuscript's statistic, though.** "99 of 99 Σ3 pairs agree, median 0.0°, against
-a 25 % chance baseline" is weak for two reasons: the crystal has **one** twin variant, so all
-99 pairs point at one physical direction and the effective n is **1**, not 99; and the 25 %
-baseline argmaxes over four candidate tubes of which three hold no data, so it compares
-"measured" against "no data" and **random pairing scores 1.000 ± 0.000**.
+**What verification did to the claim:**
 
-*Why this entry exists:* it is the fourth retraction in this notebook that was itself wrong.
-**R3** (a real two-variant doublet dismissed as mosaic — the diagnostic looked at
-perpendicular q instead of ω) and **R11** (a real ⟨111⟩ relrod dismissed on the ω-sum,
-reinstated as E10) are two of the others. A refutation is a claim and needs the same gate as
-the positive it kills — see `feedback_refuted_statistic_is_not_refuted_claim`: a
-refuter attacks the claim as posed, and framing is never audited.
+* **The precision is about 1–4°, not 0.58°.** Bootstrap 95 % intervals run [0.13, 1.88]° over
+  twin grains and [0.20, 4.19]° over grains and rotation blocks together; the ten layers give
+  0.23–2.06°.
+* **The discrimination is about one in seven, not 99 pairs.** The crystal has exactly seven
+  distinct ⟨111⟩ axes — one shared, three parent-only, three twin-only. The 99 pairs are one
+  orientation relation (63 distinct twin grains), and random parent × twin pairings reproduce the
+  normal within 0.58° in 24.8 % of draws. The ladder sits 0.17° from the shared axis and about 70°
+  from the other six, so *which* axis it is, is clear.
+* **"Nine of twelve ⟨111⟩ carry zero" does not survive.** The twelve directions in the original
+  output are the twin's four ⟨111⟩ counted about three times each: the three "composition-plane"
+  hits are 8.7–9.3° apart and their shares sum to 297 %. The parent's three other ⟨111⟩ were never
+  examined, and 22 of the 24 predicted G/3 positions for the six non-shared axes hold no voxel in
+  any frame, so whether they were observable at all is unknown.
+* **"Composition plane" is assumed.** What is measured is the shared Σ3 ⟨111⟩. It is the
+  composition-plane normal only for coherent {111} twin boundaries, which far-field data does not
+  measure; and parallel is not "lies on".
+* **Parallel, not located.** The 0.58° is the mean direction of eight compact spots that each sit
+  1.94–4.23° off the normal. It shows crystallographic parallelism only; whether the 9R sits at the
+  boundary or in the bulk on a shared direction is not decidable from these data (`ENVELOPE.md` §4).
+* **"Zero" means "below 30 counts".** This layer's raw zip is pre-thresholded at 30 counts, while
+  the ladder's own voxels have a median of 79, so absence on the other axes is censored, not
+  measured.
+* **Double diffraction does not explain the 9R** (E1): it can only produce reflections at multiples
+  of G111/3 along the shared axis, and the 9R-unique off-axis (0 1̄ 4) and (1̄ 0 5) at 4/9 and 5/9
+  are present. It can add on-axis intensity; it is not a reason to doubt the ladder.
+* **A frame-convention trap sits beside this number:** `geometry.py`'s docstring had the z sign
+  reversed (corrected 2026-09-10). Rebuilding q from the old docstring moves the ladder axis 47.9°.
+
+**For the manuscript:** replace the 99/99 statistic with the two-vector agreement, quoted as
+"within about 1–4°; one orientation relation; one of seven candidate axes". The 9R itself needs no
+such hedge: its off-axis reflections exclude double diffraction as its origin.
+
+*Why this entry exists:* it is the fourth retraction in this notebook that was itself wrong —
+**R3** and **R11** are two of the others. A refutation is a claim and needs the same gate as the
+positive it kills, and so does the correction of one: the first version of this entry
+(`d9c4cd15`) called §3.3 "better supported than the manuscript's own version", quoted "nine of
+twelve carry zero", and had never been verified.

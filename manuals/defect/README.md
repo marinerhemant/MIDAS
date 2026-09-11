@@ -46,9 +46,9 @@ rings, this is the wrong doc set entirely: that is `xrd-ct`.
 | **`README.md`** (this) | scope gate, install gate, the order, hard rules, halt conditions | always |
 | `phase-0-survey.md` | what you actually have; is there a diffuse field at all? | first |
 | `phase-1-ingest.md` | raw frames → mask → background → 3-D spots → voxel cloud, plus the **calling contract** (exact signatures) and the calibration trap table | **if you are starting from frames — copy the chain from here** |
-| `phase-2-index.md` | orientation from the cloud: bright-core seeding, **row and pair seeding for weak domains**, the search null, refine-to-convergence, and the **completeness audit** | before any per-grain number |
+| `phase-2-index.md` | orientation from the cloud: bright-core seeding, **row and pair seeding for weak domains**, **every domain at a position in one call (`find_domains`)**, targeted extraction at predicted sites, the search null, refine-to-convergence, and the **completeness audit** | before any per-grain number |
 | `phase-3-classify.md` | Bragg/diffuse split, intensity budget, and what closure means | always |
-| `phase-4-rods.md` | rods in the cloud and on the frame stack; satellites; polytype; **the Friedel/crossing quartet and how to verify a pairing**; variants vs a fixed q-offset; **a ladder can be right in \|q\| and not be a ladder** | fault / polytype work |
+| `phase-4-rods.md` | rods in the cloud and on the frame stack; **which (h,k) rods carry intensity** (the in-plane fault-vector test); an open split / one-sided record; satellites; polytype; **the Friedel/crossing quartet and how to verify a pairing**; variants vs a fixed q-offset; **a ladder can be right in \|q\| and not be a ladder** | fault / polytype work |
 | `phase-5-asterism.md` | asterism fit, Williamson–Hall, sub-grains, Burgers population | dislocation work |
 | `phase-6-mechanics.md` | GND, stress, Schmid, variants, energy, Mecking–Kocks, CPFEM handoff | if the goal is mechanics, not just defects |
 | `phase-7-report.md` | what to state, what to label provisional, provenance | at the end |
@@ -79,7 +79,7 @@ attribution. See `LAB_NOTEBOOK.md` entry R1.
 ```bash
 python -c "import midas_defect as m; print(m.__version__)"          # expect >= 0.1.5
 python -c "from midas_defect import ingest, completeness, rod_profile, \
-           residual_decomposition, rod_detect, seed_index, honesty; print('ok')"
+           residual_decomposition, rod_detect, seed_index, honesty, domains, selfcal; print('ok')"
 python -c "from midas_defect.bragg_diffuse import check_orientation_convention; print('ok')"
 ```
 

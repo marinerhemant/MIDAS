@@ -36,6 +36,7 @@ coverage.
 | `dpdf.termination_ripple` | radial profile along the candidate direction against a control direction, on the same grid |
 | `null.beaten_by_a_decoy` | a deliberately wrong model run through the identical machinery |
 | `null.censored_by_a_floor` | the null re-run with the estimator's minimum-match floor lowered |
+| `feature.one_sided_or_split_from_sampling` | the same extraction from the ω-maximum and from one frame per point; the asymmetry's sign across rods; the split detector's rate at positions with no reflection |
 
 ---
 
@@ -465,6 +466,11 @@ gate then rejects them — 43 pair domains lost (532 → 489) on the old gate. 4
 independently-seeded domains sit >1 % from the seed cell, so that bound was clipping a real
 population. Loop and nominal gate ship together or not at all.
 
+**Caution (2026-09-10).** Every arm of this 2x2 ran through `reduce_v4` copies whose duplicate check misaligned
+its arrays from the third domain on (`phase-2-index.md`). A paired re-run of the full raster found that aligning
+it alone removes 241 of 546 pair-seeded domains (provisional). The pair-domain counts above (532 → 489, 24 of
+530) and the anchoring slopes pooled over them are re-derived before reuse.
+
 **Second, quieter form.** Check that the reported cell is the least-squares fit to the
 reflections stored alongside it. Assigning the candidate inside a refine→rematch loop reports a
 cell fitted to the previous iteration, or to a rejected round: **26 %** of one run's stored `c`
@@ -502,20 +508,23 @@ applying it to the column gaps, where it returns an impossible 5.1.
 **Symptom.** A second extraction of a published number lands somewhere else — not marginally,
 but on a different physical conclusion.
 
-**Discriminating test.** Ask what the two extractions **weight differently**, then check
-whether the quantity varies along that axis. The most common case here: features of different
-amplitude compared at a fixed threshold, where the bias varies with amplitude along the very
-axis being fitted (`ENVELOPE.md` §16).
+**Discriminating test.** Before asking which extraction is right, ask whether **either has
+converged**. Sweep each one's free parameters — support radius, window, floor, ω branch — and
+see whether the number is still moving. Then check whether the two differ by a factor you can
+name.
 
-**Worked case.** The satellite intensity-versus-order exponent came out **1.95** (displacement
-modulation, theory 2) and **0.10** (composition modulation, theory 0) from the same cloud. The
-raw ratios disagree in ordering, not just in scale — one puts n=2 below n=1 at 0.45, the other
-above at 1.32 (`ENVELOPE.md` §17). Status OPEN.
+**Worked case.** The satellite intensity-versus-order exponent came out **1.95** in the
+manuscript and **0.10** on re-extraction from the same cloud, one on each of the two physical
+predictions, and it looked like a clean case of "the answer depends on the extraction". It was
+not. Both values sit on **one monotone curve** traced by a single unconverged knob — the tube
+radius: +1.955 at R = 0.020, +0.106 at R = 0.042, flat only past R ≈ 0.25 — and the
+manuscript's value carried a 95 % CI of [−0.91, +4.80]. The first write-up of this case called
+it extraction-dependence and blamed threshold bias; `/verify` refuted that (`ENVELOPE.md` §17).
 
-**Lever.** Do not adjudicate by picking the more careful-looking extraction. Sweep the free
-choices — tube half-angle, radial window, integration method, threshold — and report the
-exponent's range across them. If the range spans the competing predictions, that **is** the
-result, and the modulation type is not determined by this measurement.
+**Lever.** Converge first, compare second. Then **audit the target**: ask what each hypothesis
+actually predicts for these particular reflections. Here the rungs turned out to be satellites
+of different parent reflections, so neither hypothesis predicted either number. The question
+was wrong, not the extraction.
 
 **Related trap, same shape.** Two files giving one quantity two values is a reconciliation job
 before it is anything else, and the cause is often aggregation rather than measurement: on
@@ -523,3 +532,25 @@ before it is anything else, and the cause is often aggregation rather than measu
 significant figures on every fixed configuration. The difference was a broken centring mode
 polluting one median. Check a single fixed configuration in both before believing either
 summary.
+
+## 22. A rod looks split, or its skirt sits on one side only
+
+**Symptom.** A cut perpendicular to a rod shows a side peak or a second line, or a skirt present on one
+side only.
+
+**Discriminating test.** Three, all cheap. (1) Re-extract from the maximum over frames AND from one frame
+per point: a feature broad in ω nearly vanishes from the single-frame version. (2) Repeat on every rod and
+compare the SIGN of the asymmetry on one detector side: structure follows the crystal, an extraction
+artifact follows the unmasked windows. (3) Run the split detector at positions with no reflection; a split
+rate means nothing until that rate is known.
+
+**Worked case.** On 2604 the (0,0,L) skirt/core was 4.1 % from the ω-maximum and 0.8 % from one frame per
+point. A one-sided skirt changed sign between rods (+12.7, +27.1, −25.5, −29.5), and a per-frame split test
+over all 45 indexed reflections found splits on both sides (left 21/22, right 23/23, Fisher p = 0.49) — the
+"one side" was where the unmasked windows fell. The same detector fired on 44 of 45 reflections, which is
+what a detector that fires on noise returns.
+
+**Lever.** Collapse ω by the maximum and state its bias (~+2σ high; the sum accumulates the background's
+negative per-frame bias instead); attach the no-reflection control to any split rate; and keep a
+max-projection "double line" apart from a per-frame two-peak result — different quantities, and the first is
+still untested. Open record: `phase-4-rods.md`.

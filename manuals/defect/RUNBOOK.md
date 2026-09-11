@@ -66,6 +66,31 @@ Ingest is embarrassingly parallel over raster points; a 900-point map is ~15 min
 
 ## Current pick-up point
 
+**2026-09-10.** A test run of the solve-cell doc set on two delivered La3Ni2O7 positions, and a fold-in of
+the nickelate project's remaining local-only work. Nothing is running. Uncommitted.
+
+* **P12 — a package bug, fixed.** `indexing.index_from_cloud` converged its cell through
+  `refine_to_convergence` WITHOUT the crystal's space group (default 139, I-centring), and
+  `rows.index_from_pairs` / `index_by_grid` dropped an in-scope `space_group_number` at three `match_mask`
+  calls. On S5 (Fmmm) the fix took `index_from_cloud` from 9 to 11 INDEXED and the median residual from
+  2.05 to 0.61 px; 2604 (sg 139) is byte-identical. `test_space_group_forwarded.py` fails on any new
+  in-package call that drops one.
+* **The composition is now in the package:** `domains.find_domains` (the per-position multi-domain driver),
+  `completeness.targeted_recovery` (predicted-site extraction against a same-ring null),
+  `selfcal.selfcalibrate_from_crystals` (detector tilts from indexed domains), `rod_profile.diffuse_to_bragg`
+  and `centred_L_nodes` (the (h,k) rod test); from 2026-09-09/10, `geometry.detector_angle_maps` and
+  `honesty.decoy_test` / `feature_in_raw`.
+* **The driver port found a misalignment** in how the local driver called `omega_smear_duplicates` once two
+  earlier domains existed — verified ESTABLISHED (four lenses): replaying the real call at five 2604 positions it
+  missed 142 duplicates and changed 15 of 26 accept/reject decisions. `find_domains` builds the arrays per domain.
+  **Re-run done (provisional):** aligning the check removes 364 of 1278 domains across the raster (pair-seeded
+  546 → 305); domains found both ways keep their cells. Re-derive any count of third-or-later or pair-seeded
+  domains before reviving it.
+* The 2026-09-07 next action 1 is settled: `refine_to_convergence` has in-package callers
+  (`index_from_cloud`, `find_domains`).
+* `test_manual_calling_contract.py` now executes the PONI → live frames → angle maps → ω-mapping contract,
+  with a dead frame in the scene so mixing live and raw frame indices fails.
+
 **2026-09-07.** The doc set gained an indexing chain, two hard limits, and a
 calling contract. Nothing is running. Suite **925 pass / 14 skip** (932 with
 `MIDAS_DEFECT_REAL_DATA=1`, 946 collected).
