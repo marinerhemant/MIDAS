@@ -106,7 +106,20 @@ def distortion_condition(hkl: np.ndarray) -> float:
 
 
 def ab_separable(hkl: np.ndarray) -> bool:
-    """Can this reflection set separate a from b at all? (rank >= 2)"""
+    """Can this reflection set separate a from b at all? (rank >= 2)
+
+    **Necessary, not sufficient.** Rank 2 says the ``(h^2, k^2)`` design has two
+    independent columns; it does not say the a - b difference is protected. Only
+    an ``(h,k)/(k,h)`` PARTNER compares a with b at the same nominal ``|G|``, where
+    a radial (2-theta-dependent) systematic cancels; without one, each family's
+    radial error enters the splitting directly. So also check
+    :func:`ab_sensitive_mask` / :func:`partner_multiplicity` and
+    :func:`index_asymmetry`. Measured on La3Ni2O7 2604 domain 1 (2026-09-10):
+    True with ZERO partners and every ``h != k`` reflection on the ``|h| > |k|``
+    side (12 : 0) -- and a joint orthorhombic fit on that set returned
+    delta = 1.8 % with a bootstrap interval [0.17, 10.4] that excludes zero. An
+    interval excluding zero on an unprotected set is the artifact, not a result.
+    """
     return distortion_rank(hkl) >= 2
 
 
