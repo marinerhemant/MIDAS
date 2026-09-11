@@ -841,7 +841,7 @@ independently from the frames. Working tree
 `chiltepin:/scratch/s1iduser/sharma/datasetG_dfxm/`; report and retractions in
 `$ANALYSIS/dfxm_datasetG/`.
 
-**Value of the campaign: eight of our own claims were refuted before any left the room.** The
+**Value of the campaign: twelve of our own claims were refuted before any left the room.** The
 transferable content is *how* each error bar and each attribution failed, below. A blind
 positive control (a Σ3 disorientation identity in `midas_stress`) ran through the same four
 lenses and survived 4/4, so the refutation rate is not the machinery killing everything.
@@ -936,6 +936,10 @@ independent quantity, or on the raw data.**
 Related, from the same comparison: a median over a **bimodal** population describes no pixel.
 Our quoted −24.4 mdeg sat in the gap between our own map's two modes (p25 −147, p75 −0.2).
 
+**Postscript (2026-09-10).** Their map turned out to be of a different dataset (§11f), so the
+specific numbers above compare two datasets. The lesson is methodological and stands: selecting on
+one map's tail manufactures a difference in either direction.
+
 ### 11e. Photon transfer with a pedestal AND a PSF: use the covariance sum
 
 Three routes on the same frames gave 0.5, 8.7 and 11–360 ADU/quantum, every one with a
@@ -952,30 +956,62 @@ The estimator that works: `Σ_d cov(S_i, S_{i+d})` summed over **all** lags, div
 mean, on frame-differenced data (which kills pedestal and fixed pattern). That gives
 **g ≈ 1.8–2.6 ADU/quantum** here, consistent with §7b's 2.23 on a sibling detector.
 
-### 11f. Two products of the same frames can differ, legitimately
+### 11f. Two products disagree: prove they came from the same frames first
 
-Our full-volume intensity sum and the collaborator's `total_intensity.mat` correlate at only
-**r = 0.40** inside the grain, with internal features ~13 µm apart — while the grain outline
-agrees (IoU 0.945) and **the pixel grids align exactly** (26 hot-pixel fiducials give
-dy = dx = 0.00 px; identity beats all 8 dihedral transforms).
+**Resolved 2026-09-10: they did not.** The collaborator confirmed that their `.mat` products had
+been built from the wrong dataset (ESRF dataset numbering starts at 0) and sent a corrected set
+the same day. Which dataset the first set came from was not stated. A preregistered comparison
+(`$ANALYSIS/dfxm_datasetG/PREREGISTER.md`; `new_mats_compare/compare_new_mats.log`), run with
+identical code on both sets, then settled it:
 
-What it is **not**: a pedestal difference (our sum differs from the raw sum by a per-pixel
+| their product vs ours | first (wrong) set | corrected set |
+|---|---|---|
+| COM-χ, 4–8 px band-pass r | 0.006 | **0.941** |
+| COM-µ, 4–8 px band-pass r | 0.172 | **0.962** |
+| total intensity, Pearson r in the grain | 0.397 | **0.960** |
+| COM-µ / COM-χ, full-map r | 0.868 / 0.906 | **0.994 / 0.997** |
+| elastic strain, full-map r | 0.893 | **0.999** |
+| best shift between the intensity maps (±20 px) | (−7, −6) px, cc 0.13 | **(0, 0)**, cc 0.96 |
+
+Preregistered and read as CONFIRMED, but not /verify-ed: the claim (`799e2c2ec41c`) was sampled
+VERIFY:SKIP, so the corrected-set numbers are unverified.
+
+Everything below was measured before the cause was known. It is kept because it shows how far a
+mechanism analysis gets on the wrong input.
+
+Our full-volume intensity sum and the collaborator's `total_intensity.mat` correlated at only
+**r = 0.40** inside the grain, with internal features ~13 µm apart, while the grain outline
+agreed (IoU 0.945) and **the pixel grids aligned exactly** (26 hot-pixel fiducials gave
+dy = dx = 0.00 px; identity beat all 8 dihedral transforms).
+
+What it was **not**: a pedestal difference (our sum differs from the raw sum by a per-pixel
 *constant*, and a constant cannot move a correlation off 1.0); a scale, rotation or
 translation; a smoothing; a peak-vs-sum choice; or any linear reweighting (59 unconstrained
 marginal weights cap at r = 0.68).
 
-What it is consistent with: **angular selectivity**. Their dark features sit where the raw χ
-peak is displaced +120 mdeg with a broadened, bimodal profile, and a *parent-orientation
-window on our own raw data* reproduces their contrast (0.11–0.29 against their 0.17). One
-reflection images one orientation; material outside the accepted window is legitimately dark
-(ENVELOPE). **Whose product is "right" depends on their algorithm, which was not delivered —
-§7d applies: do not attribute without the script.**
+What it was **consistent with**, and why that identified nothing: their dark features sat where
+the raw χ peak is displaced +120 mdeg, a *parent-orientation window on our own raw data*
+reproduced their contrast (0.11–0.29 against their 0.17), and a χ-bin sub-sum lifted the
+correlation from 0.40 to 0.63. Each fitted a pattern in a map of a different acquisition. The two
+claims built on the comparison were then verified and refuted (§11l, items 7–8): the COM-χ
+"tracking" was a large-scale position field, and the left-edge feature was absent from our map.
+The working hypothesis we carried, a **different layer**, was the right family: detector-fixed
+fiducials align, the outline barely changes, and inclined internal boundaries cut at different
+positions. Our own file has `uz` constant at −2.345523 mm.
 
-A working hypothesis that remains open and is cheap for them to settle: the delivered
-reconstruction may come from a **different layer**. Detector-fixed fiducials would still align
-perfectly, the outline would barely change, and inclined internal boundaries would cut at
-different lateral positions. Our own file has `uz` constant at −2.345523 mm despite the folder
-being named `layers_uz15um`.
+**The lesson, and it is the boring one.** Before any mechanism analysis of a discrepancy between
+two products, confirm they were made from the same raw files: ask for the exact input path and
+dataset index, and remember that ESRF dataset numbering starts at 0. A perfect detector-grid
+alignment does not establish it, because hot pixels are detector-fixed and match any acquisition
+on that detector. Two fingerprints turned up in the verification lenses afterwards, and the corrected set tested
+them on this one known case:
+- **Fine-scale agreement: strong.** The 4–8 px band-pass correlation of the COM maps went from
+  0.006–0.17 (wrong dataset) to 0.94–0.96 (right one). For scale, two of our own estimator variants
+  agree at 0.88 in that band (`verify_v7/v7_cd90_art/s7_stripes.log`).
+- **Single-frame zingers: weak.** The fraction of our single-frame zinger pixels with an excess in
+  their map rose only from 0.046 to 0.169 (hot pixels: 0.986 and 0.828). That is consistent with some
+  spike suppression in their processing, which was not tested
+  (`verify_v7/v7_cd90_phys/s8_their_spikes.log`, `new_mats_compare/compare_new_mats.log`).
 
 ### 11g. Numbers that need their convention stated
 
@@ -1047,18 +1083,59 @@ choose measures the size of a bias you already removed, not the uncertainty in r
   and 0.96 with g = 2.2 — so the measured 1.64 carries a **1.7× unexplained excess**. The COM
   error is dominated by read noise in the empty, high-lever-arm wing bins rather than by photon
   statistics in the peak. Call it "empirical per-pixel scatter", not "photon + read noise".
-- **Three claims that were logged and never verified.** `cd90f336ce19` (the intensity
-  disagreement tracks COM-χ, Spearman −0.58) and `aaee3ebdc059` (the left-edge feature is present
-  in our map at lower contrast) printed VERIFY:REQUIRED and never went through the lenses.
-  `b6ae99e760ce` (a column-only χ ramp at +0.157/+0.186 mdeg/px against a parameter-free
-  +0.1288) was sampled VERIFY:SKIP. All three are provisional. `VERDICT_row_ramp.md` lists the χ
-  ramp under "what survives", which is stronger than its log status.
+- **A rocking-curve centroid can be pulled toward an arbitrary window's centre near a scan end —
+  three designs tried, one settled, one bound abandoned as unreliable.** A window-sweep test on real
+  frames (slide a pixel's peak from a window's centre to its edge; the true centroid cannot depend on
+  the window, so any change is estimator bias) found our then-current script's baseline-removed,
+  clipped centroid moved **10.0 mdeg** at the edge of a 17-frame window (claim `acbe915ff284`,
+  REFUTED 4/4 on its "exactly window-invariant" wording, but the core number reproduced). Chasing a
+  fix took three rounds (`midas_dfxm.rocking_edge`, `$ANALYSIS/dfxm_datasetG/edge_fix/`):
+  - **v1** forced a symmetric window around the peak. REFUTED: −17 mdeg bias at a window's edge, from
+    discarding real recorded data on the longer side — the fix was worse than the disease.
+  - **v2** summed the *entire* recorded curve, unclipped, reasoning that a zero-mean baseline error
+    averages away regardless of how many points it's summed over. Measured −2 to −4 mdeg residual bias
+    on real Mg-4Al frames anyway — **worse than simply using the package's own existing
+    `reduce_rocking(window="peak")`** (+0.2 to +0.6 mdeg on the same test), because the real angular
+    background is not perfectly flat across the whole scan (§11a), and summing over more points
+    exposes the centroid to that shape rather than diluting it. Building v2 also found a second, real
+    bug: the shared `_baseline` routine's fallback (too few frames outside the peak) is a
+    systematically low estimate (≈ −0.67σ for a Gaussian background) — but the fix for it, scoped from
+    one synthetic test, changed the answer for **11.7 % of all real pixels**, not just edge cases
+    (median margin of the affected pixels: 10 of 12 available, nowhere near an edge). **Recorded, not
+    patched**: a safe fix needs owning `rocking.py`'s baseline routine directly, not working around it
+    from one caller.
+  - **v3 stopped inventing an estimator.** Centroid now *is*
+    `midas_dfxm.reduce_rocking(window="peak")`'s, exactly (checked: 0.00 mdeg max difference on
+    778,156 real pixels) — it already avoids v1's mistake (its window narrows to the array bound on
+    one side without discarding the other) and measured the smallest bias of everything tried:
+    **confirmed edge-safe once one real frame of margin exists** (−0.36 mdeg, 95 % CI
+    [−0.52, −0.23]), inconclusive at literal margin-zero (too few real tail-free pixels there to
+    resolve ±2.5 mdeg either way, n = 1375).
+  - **The truncation *bound* (a) never reached a reliable coverage, on either dataset, across all three
+    designs.** Calibrated against each dataset's own well-recorded pixels: Mg-4Al pooled coverage on
+    planted cuts was **0.60** even at the widest candidate ratio (30×, the calibration search's own
+    ceiling); a second, broader-curved dataset ranged 0.86–0.93 across three scans and could not be
+    calibrated at all on a fourth (zero eligible pixels). **Verdict: report the bound as scale only, not
+    as an interval** — the honest deliverable per cut pixel is the truncation *flag* (reliable: a
+    direct read of whether real signal sits above noise at the boundary) plus a lineshape
+    *extrapolation* (c) accepted only when the peak itself is recorded, which **is** reliable when it
+    fires (83–96 % within a quarter FWHM) and degrades predictably as the missing fraction grows
+    (90 % → 42 % from a 5 % to a 30 % cut on the broader dataset) — state that degradation alongside
+    any fitted value, not implicitly. *Rule:* a bound built from an assumed flank shape needs its
+    coverage measured against real held-out cuts before it is trusted, on every dataset it will be
+    used on — passing a synthetic test is not evidence for the real one.
+- **A claim logged and never verified.** `b6ae99e760ce` (a column-only χ ramp at +0.157/+0.186
+  mdeg/px against a parameter-free +0.1288) was sampled VERIFY:SKIP and is provisional.
+  `VERDICT_row_ramp.md` lists it under "what survives", which is stronger than its log status. The
+  two other unverified claims, `cd90f336ce19` and `aaee3ebdc059`, were verified on 2026-09-10 and
+  both refuted (§11l, items 7–8).
 
 ### 11l. The interpretations that died
 
-§11b–§11j carry the two error-bar refutations (`55b8bf397402`, `dac1eff536a5`). The other six
-were interpretations. Full records: `$ANALYSIS/dfxm_datasetG/`
-`{RETRACTION_strain,VERDICT_row_ramp,VERDICT_mu_rotation,VERDICT_map_comparison}.md`.
+§11b–§11j carry the two error-bar refutations (`55b8bf397402`, `dac1eff536a5`). The other nine
+were interpretations. Items 4–8 concern the collaborator's first map, which turned out to be of a
+different dataset (§11f); item 9 concerns their corrected one. Full records: `$ANALYSIS/dfxm_datasetG/`
+`{RETRACTION_strain,VERDICT_row_ramp,VERDICT_mu_rotation,VERDICT_map_comparison,VERDICT_left_edge_feature,VERDICT_cd90_com_chi}.md`.
 
 1. **"The Δd/d map is an elastic strain field"** (`60b091781be0`). A gradient along the
    detector-row (2θ) axis carried 54.7 % of the map's variance (std 400.7 → 269.7 µε once
@@ -1098,11 +1175,58 @@ were interpretations. Full records: `$ANALYSIS/dfxm_datasetG/`
    their 0.166–0.174): the two maps are angularly selective to different degrees (§11f). The
    "1.007" ratio behind the claim was one array computed twice, and the pedestal dilutes any such
    ratio ~10× toward unity. *Rule:* §7d; do not attribute a collaborator's feature to a pipeline
-   step without their script.
+   step without their script. *Postscript:* their map was of a different dataset (§11f).
 6. **"Their COM-µ at boundary pixels is unsupported by the raw profile"** (`8adeccfad99e`, 4/4).
    Polarity reversed. On genuinely bimodal pixels selected from the raw data (n = 3133), 85 % of
    *our* centroids land in the empty valley between the modes (0.035 of raw intensity within
    ±1 bin) against 0 % of theirs (0.564). The "raw" arbiter had been our own baseline-left-in
    centroid, the estimator rule 1 forbids, and the pixels had been selected on the tail of their
    map (§11d). *Rules:* at two-orientation pixels a first moment is the wrong estimator; never use
-   a forbidden estimator as ground truth; select on the raw data or a third quantity.
+   a forbidden estimator as ground truth; select on the raw data or a third quantity. *Postscript:*
+   their map was of a different dataset (§11f), so "theirs is best supported" is void; our
+   centroid landing between the modes at raw-selected bimodal pixels is a property of our
+   estimator on our data and stands.
+7. **"The theirs-vs-ours intensity disagreement tracks COM-χ"** (`cd90f336ce19`; physics,
+   statistics and artifact REFUTED, reproduction UNCERTAIN). The global Spearman −0.58 reproduces
+   and beats spatially matched nulls, but it is carried by a smooth field in detector position:
+   removing a cubic surface in (row, col) takes it from −0.56 to between −0.03 and −0.16; across
+   sharp COM-χ jumps the intensity ratio does not change, while a planted χ-window mechanism tuned
+   to the same −0.58 shows local coupling in all 25 seeds; and a map with no χ window at all still
+   picks χ bins 0:13 as the best window. The quoted 1.37 → 0.54 was one µ row of a 5 × 5 table;
+   across χ quintiles the ratio runs 1.23 → 0.68. χ rows also ascend in time in every entry, so χ
+   and acquisition time are aliased. *Rules:* test a claimed per-pixel coupling locally and against
+   a planted mechanism, not with a global rank correlation; a best-window search reproduces any
+   large-scale association. `VERDICT_cd90_com_chi.md`, lens records `verify_v7/v7_cd90_*/`.
+8. **"The left-edge dark feature is present in our map at lower contrast"** (`aaee3ebdc059`,
+   REFUTED 4/4). Along their band our full sum is no darker than its flanks (0.996–1.014, against
+   their 0.22–0.23, inside translated-footprint nulls); the evidence script's own y = 200 row puts
+   our dip at x = 13.8 µm, not 24.1; and the strip contrast (p95−p5)/p50 is set by our grain-mask
+   edge, ranking at the 47th–56th percentile of same-size windows. *Rule:* a whole-strip
+   percentile contrast cannot tell present from absent; sample the other map along the feature's
+   own path against offset controls (DIAGNOSIS). `VERDICT_left_edge_feature.md`.
+9. **"Their corrected COM-µ combs at the µ step (26.65 % within 0.1 of the readback grid); tilt RMS
+   after offset 12.4 / 10.5 mdeg"** (`708835173752`; physics, statistics and artifact REFUTED,
+   reproduction UNCERTAIN). Every number reproduced; the reading did not. Their COM-µ values sit
+   exactly on 20.1574 + 0.0384·k, the commanded start with a step 4 % short of the recorded 0.04°, so
+   the 26.65 % scored a beat between two grids (47 % on their own lattice), and the "constant"
+   −35.8 mdeg offset was largely an axis-scale error: rescaled onto the recorded axis, the median
+   offset is −1.9 mdeg, zero within its uncertainty. *Rules:* a median offset between two products can hide an axis
+   scale error, so read the other product's axis from pixels lit in a single frame before removing
+   one; score a comb against the lattice its spikes actually sit on; an RMS dominated by the grain rim
+   is not a noise floor. The axis finding was then verified as provisional (`f30d1b1504fd`: three lenses SURVIVES,
+   statistics UNCERTAIN on the rescaled offset). Bit-exact values map to raw frames, and on that axis
+   their COM-µ rebuilds from raw frames to within 1 mdeg for 98.8 % of pixels.
+   `VERDICT_corrected_set_details.md`, `VERDICT_mu_axis.md`.
+10. **"A better centroid estimator, and a bound on what truncation hides"** (`acbe915ff284` and
+    two later rounds; `$ANALYSIS/dfxm_datasetG/edge_fix/`). The original claim — our script's
+    baseline-removed, clipped centroid is pulled 10.0 mdeg toward an arbitrary window's centre near
+    its edge — reproduced and was REFUTED 4/4 only on its "exactly window-invariant" wording. Fixing
+    it took three preregistered rounds: forcing a symmetric window (REFUTED, −17 mdeg, worse than
+    the disease); summing the whole curve unclipped (measured −2 to −4 mdeg on real frames, still
+    worse than the package's own `reduce_rocking(window="peak")`, +0.2 to +0.6 mdeg); settling on
+    that existing reducer, unchanged (confirmed edge-safe once one frame of margin exists). A
+    calibrated truncation *bound* built alongside it never reached reliable coverage on either of two
+    real datasets across all three designs (0.60 pooled on one, 0.86-0.93 or uncalibratable on the
+    other) and is reported as a diagnostic, not an interval; a gated lineshape extrapolation is
+    reliable when it fires and degrades predictably with the missing fraction. §11k, `VERDICT_edge_centres_final.md`.
+

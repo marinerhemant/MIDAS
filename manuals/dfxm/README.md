@@ -317,6 +317,36 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
     data. A **negative read-noise intercept is a rejected model**, not a small correction — all
     three of our first attempts had one, and gave 0.5, 8.7 and 11–360 ADU/quantum.
 
+29. **Before explaining a discrepancy between two products, prove they came from the same raw
+    files (Notebook §11f).** Ask for the exact input path and dataset index; ESRF dataset
+    numbering starts at 0. On the Mg-4Al ID03 set a collaborator's products were of a different
+    dataset, and a string of mechanism analyses (angular selectivity, a χ sub-window, COM-χ
+    "tracking", a "missing" feature) each found a pattern before anyone asked. A perfect
+    detector-grid alignment does not establish shared frames: hot pixels are detector-fixed. What
+    does separate the cases (one known case, unverified) is fine-scale agreement: the 4–8 px band-pass correlation of the COM
+    maps was 0.006–0.17 against the wrong dataset and 0.94–0.96 against the right one.
+
+30. **Sum more of a curve is not automatically a better centroid (Notebook §11k).** A
+    baseline-subtracted moment over the *whole* recorded curve, unclipped, is unbiased only
+    if the background is genuinely flat across the whole scan — real angular backgrounds
+    (rule 23) usually are not, and summing over more points then exposes the centroid to
+    that shape rather than diluting it. On real frames this was **worse** (−2 to −4 mdeg) than
+    the package's own windowed `reduce_rocking(window="peak")` reducer (+0.2 to +0.6 mdeg),
+    which already handles a peak near a scan end without discarding good data on the far side
+    — do not replace it with a "more principled" full-curve sum without measuring the
+    trade-off on real data first.
+
+31. **A truncation bound needs its coverage measured against real held-out cuts, on every
+    dataset it will be used on, before it is trusted (Notebook §11k).** Calibrating a flank
+    ratio against a dataset's own well-recorded pixels is necessary but not sufficient: on one
+    real dataset three designs all fell short of a 90 % coverage target (0.60 pooled at the
+    widest candidate ratio tried); on a second, broader-curved dataset coverage varied
+    0.86–0.93 across scans and could not be calibrated at all on one of them (zero eligible
+    pixels). Report the bound as a scale, not an interval, unless its measured coverage says
+    otherwise — and prefer a gated lineshape extrapolation (accepted only when the peak itself
+    is still recorded) over an assumed flank shape; it degrades predictably with the missing
+    fraction instead of failing silently.
+
 ### Traps that silently corrupt results
 
 | Trap | Symptom if missed | Where |
@@ -335,6 +365,9 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
 | an uncertainty term that scales with the signal | it is a dilution factor, not an uncertainty; it vanishes with the signal | Notebook §11b |
 | a sampling floor quoted in mdeg across a step-size change | the estimator is scale-equivariant; only the error *in units of the step* transfers | Notebook §11b |
 | pixels selected on one of the two maps being compared | regression to the mean, and it is symmetric — swap the roles and the verdict swaps | Notebook §11d |
+| a collaborator's product compared as if built from your frames | ask for the input file and dataset index (ESRF numbering starts at 0); grid-aligned hot pixels do not prove shared frames | Notebook §11f |
+| a full-curve, unclipped moment used to "fix" an edge-biased windowed centroid | can be *worse* on real data if the background is not flat across the scan; measure both before switching | Notebook §11k |
+| a truncation bound trusted because its calibration ran without error | calibration succeeding is not the same as reaching the coverage target; read the reported number | Notebook §11k |
 | gain from a high-pass photon transfer with an optical PSF | biased low by sum(w^2); a negative read intercept means the model is rejected | Notebook §11e |
 | a Miller string ("the 400 reflection") quoted without its index frame | channel inverts: ortho 400 (=tet [110]) is strain-sensing, tet 400 (cube axis) is tilt-sensing | Notebook §9a |
 | round-trip quoted as physical accuracy | 1e-16 "validation" that tests only the linear algebra | §2 |

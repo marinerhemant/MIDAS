@@ -40,7 +40,7 @@ Question:        <orientation map | strain map | full-F tensor | dislocation typ
 
 DFXM's silent failures are different from HEDM's. These are the ones a context-free session
 gets wrong, each earned on real data or verified against the dynamical forward (Lab Notebook
-cites the measurement for each). The spine carries **twenty** numbered hard rules; these are
+cites the measurement for each). The spine carries **thirty-one** numbered hard rules; these are
 the ones worth loading before you read anything else.
 
 1. **Subtract the detector pedestal before you take the first moment.** On raw ID03 frames
@@ -120,7 +120,7 @@ other way. Newest entries: a centroid histogram that combs at the motor step; tw
 of the same frames that agree on orientation but not intensity; a feature present in one
 reduction and absent in another; and a budget whose terms are not independent.
 
-Before re-investigating anything, read **`manuals/dfxm/LAB_NOTEBOOK.md`** — **twenty**
+Before re-investigating anything, read **`manuals/dfxm/LAB_NOTEBOOK.md`** — **twenty-one**
 attractive claims are recorded there as *refuted or softened*, each with the measurement or
 reference that killed it (§5; §11b and §11l). None died of new physics: they died of a detrending choice, an
 iid bootstrap on correlated pixels, a symmetric alternative that could not move a centroid, a

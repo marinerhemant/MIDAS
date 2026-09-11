@@ -165,8 +165,9 @@ doc sets agree.
 complete and verified correct (two from-scratch rebuilds: intensity max|diff| = 0, µ centroid
 r = 0.99975). Orientation and tilt maps are solid. A talk and speaker notes are in
 `$ANALYSIS/dfxm_talk/`; the technical report, survey and retractions in
-`$ANALYSIS/dfxm_datasetG/`. Working tree
-`chiltepin:/scratch/s1iduser/sharma/datasetG_dfxm/`.
+`$ANALYSIS/dfxm_datasetG/`. The working tree moved to copland `/gdata` on 2026-09-10 and the
+chiltepin copy is gone; the exact path is in the thread's local checkpoint. Scripts still hard-code
+the old chiltepin prefix.
 
 **What is NOT settled, in priority order.**
 
@@ -179,15 +180,19 @@ r = 0.99975). Orientation and tilt maps are solid. A talk and speaker notes are 
    shutter is supported by one analysis (V in row, vertex at the sensor centre, R² = 0.70) and
    excluded by another (wrong size, column dependence). Scan direction is aliased with χ parity
    in this data, so it may not be separable here at all.
-4. **Whether the delivered `.mat` products come from a different layer** (Notebook §11f) — one question
-   to the collaborator, and it would explain a 13 µm feature offset that nothing else does.
+4. ~~Whether the delivered `.mat` products come from a different layer~~ **Resolved 2026-09-10.**
+   The collaborator had built them from the wrong dataset (ESRF numbering starts at 0) and sent a
+   corrected set. It agrees with ours: total intensity r 0.960, COM-µ / COM-χ 0.994 / 0.997,
+   strain 0.999, zero shift (preregistered but unverified; Notebook §11f).
 
-**Six questions drafted for the collaborator, NOT yet sent**
+**Five questions drafted for the collaborator, NOT yet sent**
 (`$ANALYSIS/dfxm_datasetG/message_to_collaborator.md`): darks/flats; obpitch zero offset;
-whether a finer µ step exists; the labDCT grain-averaged orientation for g9; whether the sample
-translated anywhere; and which layer the delivered `.mat` maps are from.
+whether a finer µ step exists; the labDCT grain-averaged orientation for g9; and whether the
+sample translated anywhere. The sixth, which dataset the `.mat` maps came from, was asked
+separately and answered (item 4).
 
 **Do not re-open** without reading Notebook §11 first: the strain interpretation, its optical
 attribution, a "row-only lattice rotation", a railed dark-line tracker, an intensity-rejection
-claim, a reversed COM-µ comparison, a photon-noise margin and an uncertainty budget were all
-refuted there (Notebook §11b, §11l). Three more claims were never verified (Notebook §11k).
+claim, a reversed COM-µ comparison, a COM-χ "tracking" of the intensity disagreement, a
+"present at lower contrast" left-edge feature, a photon-noise margin and an uncertainty budget
+were all refuted there (Notebook §11b, §11l). One more claim was never verified (Notebook §11k).
