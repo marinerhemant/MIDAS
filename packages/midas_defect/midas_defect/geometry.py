@@ -34,7 +34,10 @@ Convention (matches MIDAS FF, ImTransOpt=0):
   * Lab coordinates of a pixel (no tilt):
       x_lab = Lsd
       y_lab = -(col - BCy) * px
-      z_lab =  (BCz - row) * px
+      z_lab =  (row - BCz) * px     # larger row index -> +z
+    (Sign checked against the code 2026-09-10: a pixel 100 rows past BCz gives
+    q_z > 0. This line used to read (BCz - row); rebuilding q from that moves
+    the demk 9R ladder axis 47.9 deg off the grain-derived Sigma3 <111>.)
   * ω-rotation axis = lab +Z (vertical rotation stage); sample frame is the
     crystal-rest frame. q_sample = R_z(-ω) @ q_lab (matches MIDAS `_spot_to_gv`:
     z-component invariant, x/y mixed). The detector model (tilt + radial
@@ -61,6 +64,7 @@ __all__ = [
     "pixel_to_qlab",
     "qlab_to_qsample",
     "qsample_to_qlab",
+    "detector_angle_maps",
 ]
 
 
@@ -547,3 +551,42 @@ def ewald_crossings(
             "q_lab": q_lab,
         })
     return out
+
+
+def detector_angle_maps(
+    geom: Geometry,
+    *,
+    device: Optional[Union[str, torch.device]] = None,
+    dtype: Optional[Union[str, torch.dtype]] = None,
+) -> "tuple[np.ndarray, np.ndarray]":
+    """Per-pixel ``(2θ, η)`` maps in degrees, each of shape ``(n_pix_z, n_pix_y)``.
+
+    These are the ``tth_deg`` / ``azimuth_deg`` arrays that
+    :func:`midas_defect.ingest.subtract_background`, ``choose_sectors`` and
+    ``detect_powder_rings`` consume. Until 2026-09-10 nothing in the package built
+    them and every caller did it by hand -- one project's local helper had 94
+    importers, and took η from UNTILTED pixel offsets while its 2θ came from the
+    tilted :func:`pixel_to_qlab`.
+
+    Both maps come from :func:`pixel_to_qlab`, so tilts and radial distortion in
+    ``geom`` reach them exactly as they reach every spot's q. η is in the forward
+    model's convention, the one :func:`midas_defect.indexing.observed_coords` uses;
+    on a flat detector the two agree to rounding, which the tests pin.
+
+    The η convention does not move the polar background: a convention differing by
+    sign, or by a reflection about 45°, gives the same sector partition for every
+    sector count ``choose_sectors`` tries.
+
+    Built on the CPU in float64 unless ``device``/``dtype`` say otherwise. A map is a
+    one-off; a float32 map carries ~2e-5 deg of rounding in η, and the default
+    device resolver picks a GPU where one exists -- MPS has no float64 at all.
+    """
+    rr, cc = np.mgrid[0:geom.n_pix_z, 0:geom.n_pix_y]
+    dev = "cpu" if device is None else device
+    dt = dtype if dtype is not None else ("float64" if str(dev).startswith("cpu") else None)
+    q = pixel_to_qlab(rr.ravel().astype(float), cc.ravel().astype(float), geom,
+                      device=dev, dtype=dt).detach().cpu().numpy().astype(np.float64)
+    s = np.clip(np.linalg.norm(q, axis=1) * geom.wavelength_A / (4.0 * math.pi), -1.0, 1.0)
+    tth = np.degrees(2.0 * np.arcsin(s)).reshape(geom.n_pix_z, geom.n_pix_y)
+    eta = np.degrees(np.arctan2(-1 * q[:, 1], 1 * q[:, 2])).reshape(geom.n_pix_z, geom.n_pix_y)
+    return tth, eta

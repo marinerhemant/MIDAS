@@ -64,6 +64,7 @@ __all__ = [
     "RodPath", "RodProfile", "WidthResult",
     "rod_path", "matched_control_path", "profile_along",
     "rod_significance", "ring_L_marks", "transverse_width",
+    "centred_L_nodes", "diffuse_to_bragg",
 ]
 
 #: Reasons a point on the rod is not observable. Never conflate with zero.
@@ -104,7 +105,25 @@ def rod_path(U: np.ndarray, B: np.ndarray, h: float, k: float,
     ``B`` must be in the same convention as ``q_convention``: ``"1/d"`` for a
     plain ``diag(1/a, 1/b, 1/c)``, or ``"2pi/d"`` for one scaled by 2π (the
     convention the rest of :mod:`midas_defect` uses). The Bragg condition is
-    written for whichever is supplied, so mixing them cannot pass silently.
+    written for whichever is supplied. **The default is ``"1/d"`` although the rest
+    of :mod:`midas_defect` is 2π/d.** A 2π-scaled ``B`` left on the default does not
+    raise: the Bragg condition then fails for most ``L`` and the points land in
+    ``RodPath.dropped`` instead. An unexpectedly short path is the symptom.
+
+    **The detector is FLAT.** Points are projected onto a plane normal to the beam
+    at ``lsd_um``, with ``Y = -(col - bc_col)·px`` and ``Z = +(row - bc_row)·px``: no
+    tilt, no ``tx``, no radial distortion. On a tilted detector a predicted point is
+    off by up to about ``lsd_um·tan(tilt)/pixel_um`` px -- ~14 px at 0.4° and
+    Lsd ≈ 350 mm -- so every rod walked this way carries that error.
+
+    **``omega_sign`` changes only the REPORTED ω.** The rotation that places a point
+    on the detector is always the physical angle ``w`` solving the Bragg condition;
+    ``omega_sign`` enters only ``omega = omega_sign·w``, which is both the value
+    returned and the value tested against ``[omega_lo_deg, omega_hi_deg]``. It turns
+    a physical rotation into a motor reading. It does **not** mirror reciprocal space:
+    if the sample-frame vectors behind ``U`` were built with the opposite rotation
+    sense, fix that where they were built. With a window symmetric about zero,
+    ``+1`` and ``-1`` give identical pixels and negated ω (pinned by a test).
 
     Points that cannot be observed are **counted, not fabricated** — see
     ``RodPath.dropped``.
@@ -354,3 +373,109 @@ def transverse_width(diffuse_fwhm_inv_A: float, bragg_fwhm_inv_A: float
     excess = math.sqrt(diffuse_fwhm_inv_A ** 2 - bragg_fwhm_inv_A ** 2)
     return WidthResult(diffuse_fwhm_inv_A, bragg_fwhm_inv_A, excess,
                        1.0 / excess, None, False)
+
+
+# ── The (h,k) dependence of a rod: what encodes an in-plane fault vector ────
+#
+# Ported 2026-09-10 from the La3Ni2O7 project's step23_hk_map.py. For planar
+# disorder with an in-plane displacement R between faulted blocks the diffuse
+# intensity on the (h,k) rod carries a factor 1 - cos(2 pi (h,k).R): it vanishes
+# where (h,k).R is an integer and peaks where it is a half-integer, so WHICH rods
+# carry diffuse intensity measures R. A Ruddlesden-Popper offset R = (1/2, 1/2)
+# predicts rods where h + k is ODD and none where it is EVEN.
+
+def centred_L_nodes(h: int, k: int, L_min: float, L_max: float, centring: str = "P") -> np.ndarray:
+    """Integer L at which the (h, k) rod has an ALLOWED Bragg node, by lattice centring.
+
+    ``"P"`` every L; ``"I"`` h + k + L even; ``"F"`` h, k, L all the same parity
+    (none at all if h and k differ in parity); ``"C"`` h + k even (then every L).
+    The between-node exclusion of :func:`diffuse_to_bragg` must come from THIS,
+    not from a fixed integer grid: under I-centring even and odd (h + k) rows have
+    their nodes at L of opposite parity.
+    """
+    Ls = np.arange(int(math.ceil(L_min)), int(math.floor(L_max)) + 1)
+    c = centring.upper()
+    if c == "P":
+        keep = np.ones(len(Ls), bool)
+    elif c == "I":
+        keep = (h + k + Ls) % 2 == 0
+    elif c == "F":
+        keep = ((h % 2) == (k % 2)) & ((Ls % 2) == (h % 2))
+    elif c == "C":
+        keep = np.full(len(Ls), (h + k) % 2 == 0)
+    else:
+        raise ValueError(f"centring must be one of P, I, F, C; got {centring!r}")
+    return Ls[keep].astype(float)
+
+
+def diffuse_to_bragg(rod: RodProfile, control: RodProfile, bragg_L, *, near_bragg: float = 0.35,
+                     bragg_core: float = 0.12, exclude=None, min_points: int = 60,
+                     min_bragg_points: int = 10, min_peak_sigma: float = 10.0) -> dict:
+    """Diffuse level between the Bragg nodes, over the node height, on ONE rod.
+
+    **The normalisation is the whole point.** Raw diffuse intensity also scales
+    with the parent structure factor ``|F(h,k)|^2``, so a row with weak Bragg
+    peaks has a weak rod for a trivial reason, and ranking rods by raw level
+    recovers "rods where the reflections are bright" -- not a selection rule.
+    Compare this ratio across (h, k): flat means no rule, a switch with the
+    parity of (h, k) . R is a fault vector.
+
+    ``rod`` and ``control`` come from :func:`profile_along` on :func:`rod_path`
+    and :func:`matched_control_path`. ``bragg_L`` are the allowed nodes
+    (:func:`centred_L_nodes`). ``exclude`` is an optional boolean mask aligned
+    with ``rod.L`` for ring crossings. Points within ``near_bragg`` of a node are
+    kept out of the diffuse level; points within ``bragg_core`` of one give the
+    peak (95th percentile). The control's median and robust sigma give the
+    significance of the diffuse level.
+
+    Returns a dict with ``usable`` and ``reason``, and when usable ``diffuse``,
+    ``peak``, ``ratio``, ``sigma``, ``n_diffuse``, ``n_bragg``.
+
+    **A row with no normaliser is not evidence.** If no allowed node reaches the
+    Ewald sphere inside the measured omega range the ratio is noise over noise;
+    the row comes back ``usable=False`` and must be reported as unusable, never
+    as a zero. A node counts only if its peak stands ``min_peak_sigma`` control
+    sigmas above THIS rod's own between-node level -- not above the control: a
+    real diffuse floor already clears the control, which is the quantity being
+    measured, so comparing the node to the control would pass a row with no node
+    at all. (The original required 1e3 counts; this form transfers between
+    exposures.)
+    """
+    L = np.asarray(rod.L, float)
+    I = np.asarray(rod.intensity, float)
+    nodes = np.asarray(bragg_L, float).ravel()
+    out = dict(usable=False, reason="")
+    if nodes.size == 0:
+        out["reason"] = "no allowed Bragg node on this rod"
+        return out
+    ctl = np.asarray(control.intensity, float)
+    ctl = ctl[np.isfinite(ctl)]
+    if ctl.size < min_points:
+        out["reason"] = f"control has {ctl.size} observable points (< {min_points})"
+        return out
+    cb = float(np.median(ctl))
+    cs = 1.4826 * float(np.median(np.abs(ctl - cb)))
+    if not np.isfinite(cs) or cs <= 0:
+        out["reason"] = "control noise is zero or undefined"
+        return out
+    dist = np.min(np.abs(L[:, None] - nodes[None, :]), axis=1)
+    ok = np.isfinite(I)
+    if exclude is not None:
+        ok &= ~np.asarray(exclude, bool)
+    dif = ok & (dist >= near_bragg)
+    brg = ok & (dist < bragg_core)
+    if int(dif.sum()) < min_points:
+        out["reason"] = f"{int(dif.sum())} observable between-node points (< {min_points})"
+        return out
+    if int(brg.sum()) < min_bragg_points:
+        out["reason"] = f"{int(brg.sum())} observable points at Bragg nodes (< {min_bragg_points})"
+        return out
+    peak = float(np.percentile(I[brg], 95))
+    d = float(np.median(I[dif]))
+    if (peak - d) / cs < min_peak_sigma:
+        out["reason"] = ("no Bragg node reaches the Ewald sphere in this omega range -- no "
+                         "normaliser; not evidence of anything")
+        return out
+    out.update(usable=True, diffuse=d, peak=peak, ratio=d / peak, sigma=(d - cb) / cs,
+               n_diffuse=int(dif.sum()), n_bragg=int(brg.sum()))
+    return out

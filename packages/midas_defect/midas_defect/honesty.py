@@ -22,7 +22,9 @@ from typing import Callable, Optional, Sequence
 
 import numpy as np
 
-__all__ = ["systematic_uq", "Probe", "IndependenceError", "assert_independent"]
+__all__ = ["systematic_uq", "Probe", "IndependenceError", "assert_independent",
+    "decoy_test", "inflated_cell", "feature_in_raw",
+]
 
 
 def systematic_uq(
@@ -101,3 +103,106 @@ def assert_independent(probes: Sequence[Probe]) -> None:
                     + " — they are one measurement, not independent probes "
                       "(AUDIT_2026-06-23.md)."
                 )
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-10 -- the two controls the La3Ni2O7 port dispositioned into this module on
+# 2026-09-01 (work/scripts/step17_domain2_check.py, step55_raw_check.py). They never
+# landed; the port's FINAL STATE table dropped them without a word.
+# ---------------------------------------------------------------------------
+
+def inflated_cell(cell, fraction, axes=(0,)):
+    """A deliberately wrong cell: lengths on ``axes`` scaled by ``1 + fraction``."""
+    out = [float(x) for x in cell]
+    for i in axes:
+        out[i] *= 1.0 + float(fraction)
+    return tuple(out)
+
+
+def decoy_test(score_of, cell, decoys, *, threshold):
+    """Does a deliberately WRONG model pass too? If so, passing means nothing.
+
+    Beating a null is necessary and not sufficient. Run the same machinery on the real
+    ``cell`` and on each decoy; ``score_of(cell)`` returns the statistic the acceptance
+    rule thresholds (a matched-reflection count, a figure of merit).
+
+    Measured on La3Ni2O7 (2026-08-26): a second-domain orientation beat its omega null
+    (27 matched against a null maximum of 6, p = 0.000) while its cell floated +0.70 %
+    from domain 1's at the same grid point -- and a decoy cell with ``a`` inflated 3 %
+    also beat the null. Only a structural test settled it.
+
+    Parameters
+    ----------
+    score_of : callable, ``cell -> float``
+    cell : the model under test
+    decoys : mapping ``label -> cell`` of deliberately wrong models, e.g.
+        ``{"a +3 %": inflated_cell(cell, 0.03)}``
+    threshold : the acceptance threshold the real analysis applies
+
+    Returns
+    -------
+    dict with ``real``, ``decoys`` (label -> score), ``real_passes``,
+    ``decoys_passing`` and ``verdict``: ``"informative"`` (the real model passes and
+    no decoy does), ``"uninformative"`` (a decoy passes too, so the acceptance does not
+    discriminate), or ``"real_fails"``.
+    """
+    real = float(score_of(cell))
+    scores = {str(k): float(score_of(v)) for k, v in dict(decoys).items()}
+    passing = [k for k, v in scores.items() if v >= threshold]
+    real_passes = real >= threshold
+    verdict = "real_fails" if not real_passes else ("uninformative" if passing else "informative")
+    return dict(real=real, decoys=scores, threshold=float(threshold),
+                real_passes=bool(real_passes), decoys_passing=passing, verdict=verdict)
+
+
+def feature_in_raw(raw, processed, rows, cols, perp_rows, perp_cols, *,
+                   half_width=20, core=2, min_sigma=5.0):
+    """Is a feature in the RAW frames, or made by the processing?
+
+    A smooth background estimate can both CREATE a ridge (by over-subtracting either
+    side of it) and ERASE one (by absorbing it), so a feature measured on a
+    background-subtracted image must be checked against pixels nothing was done to.
+    Takes the median perpendicular profile across a path in both images and compares
+    its core against its wings, in robust wing sigma (Poisson-floored on a flat patch,
+    where a zero MAD means a flat patch, not certainty).
+
+    Parameters
+    ----------
+    raw, processed : 2-D images on one pixel grid (e.g. max over frames)
+    rows, cols : path points, pixels
+    perp_rows, perp_cols : unit perpendicular at each path point, pixels
+    half_width : profile half-length, pixels
+    core : ``|offset| <= core`` is the feature
+    min_sigma : core-minus-wing contrast needed to call it present
+
+    Returns
+    -------
+    dict with ``offsets``, ``raw_profile``, ``processed_profile``, ``raw_sigma``,
+    ``processed_sigma``, ``in_raw``, ``in_processed`` and ``verdict``: ``"in_raw"``,
+    ``"processing_only"`` (present only after processing -- the step may have made it),
+    or ``"absent"``.
+    """
+    import numpy as _np
+    raw = _np.asarray(raw, float); processed = _np.asarray(processed, float)
+    rows = _np.asarray(rows, float); cols = _np.asarray(cols, float)
+    pr = _np.asarray(perp_rows, float); pc = _np.asarray(perp_cols, float)
+    off = _np.arange(-half_width, half_width + 1, dtype=float)
+
+    def _profile(img):
+        rr = _np.clip(_np.rint(rows[:, None] + pr[:, None] * off[None, :]).astype(int), 0, img.shape[0] - 1)
+        cc = _np.clip(_np.rint(cols[:, None] + pc[:, None] * off[None, :]).astype(int), 0, img.shape[1] - 1)
+        return _np.nanmedian(img[rr, cc], axis=0)
+
+    def _sigma(prof):
+        wing = _np.abs(off) >= 0.5 * half_width
+        base = _np.nanmedian(prof[wing])
+        sd = 1.4826 * _np.nanmedian(_np.abs(prof[wing] - base))
+        sd = sd if sd > 0 else _np.sqrt(max(abs(base), 1.0))
+        return float((_np.nanmean(prof[_np.abs(off) <= core]) - base) / sd)
+
+    rp, pp = _profile(raw), _profile(processed)
+    rs, ps = _sigma(rp), _sigma(pp)
+    in_raw, in_proc = rs >= min_sigma, ps >= min_sigma
+    verdict = "in_raw" if in_raw else ("processing_only" if in_proc else "absent")
+    return dict(offsets=off, raw_profile=rp, processed_profile=pp, raw_sigma=rs,
+                processed_sigma=ps, in_raw=bool(in_raw), in_processed=bool(in_proc), verdict=verdict)
