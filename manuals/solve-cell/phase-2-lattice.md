@@ -25,6 +25,20 @@ from midas_hkls.conventional import to_conventional
 conv = to_conventional(res.cell)
 ```
 
+**`success=True` is not a verdict.** On the delivered S5 position `index_ab_initio` reported success on a
+cell with a **1.466 Å** axis and 13 % of spots indexed — physically impossible for any oxide. Check the
+shortest length (no lattice translation in a real crystal is much under ~2 Å), the volume against the
+formula volume and the indexed fraction before converting or seeding anything from it. On the delivered
+2604 position it succeeded properly (81 of 415 spots, primitive 3.657/3.774/9.902 Å) — and `sigma_g`
+changed nothing on either position (identical cells with `None` and `2.76e-3`).
+
+**`to_conventional` decides the crystal system ONCE, at one tolerance.** On the delivered 2604 position the
+primitive cell above converted to **triclinic** at the default tolerance, and to a non-standard
+**orthorhombic-P** at `rel_tol = 0.0768` — derived from the cell's own σ, and identically from
+`tolerance_from_fit` on a UB fit — never to the body-centred cell that the row repeat and the declared hand
+index describe. Do not let the conversion choose the lattice: take c from a row repeat (Route B), test a
+DECLARED candidate cell (Route C), and decide the symmetry after the a/b gate (`ENVELOPE.md` §16).
+
 ## Route B — from reciprocal-lattice rows
 
 Works when ab initio will not, and it is the route to prefer when one axis is obvious (a
@@ -44,6 +58,11 @@ answer. Measured on one sample: 9.5978 Å over 7 rungs, which is c/2 = 19.20 for
 **PASS `a`, `c` AND `space_group_number` EXPLICITLY.** They default to La3Ni2O7
 (3.6116 / 19.2516 / 139). A call that omits them is silently seeded with a nickelate.
 
+With `identify=False` the finder looks only for a repeat. On the delivered 2604 position, with no cell
+supplied, it found a **13-rung row repeating every 9.6188 Å** — c/2, so c ≈ 19.24 Å (an independent route
+gave 9.5978 Å, 0.2 % away). On S5, where c* lies near the beam, it found only 3-rung rows: there is no
+ladder to find, which is itself the answer.
+
 ## Route C — seeded from bright spots
 
 ```python
@@ -54,6 +73,38 @@ from midas_defect.seed_index import find_seed_orientation
 are (00L), which have **zero observed spots** in that geometry, while the brightest spots in
 the dataset sat in a family ranked **18th of 23** and were never tried. Rank by observed
 intensity, or sweep all families.
+
+### The packaged route: `index_from_cloud`, with the ω sign scanned
+
+Contract in `README.md` (a callable cloud for `resolve_conventions`, one set of tolerances spelled two ways).
+What it measured on the delivered positions: the ω sign was decisive on both (2604 +1: 58 against −1: 1;
+S5 +1: 11 against 2); 2604 came to **58 INDEXED / 0 MISSED / 5 MASKED / 37 ABSENT** of 100 predicted at
+d_min 0.93 Å (the recorded gate: 51 / 0 / 5 / 16 of 72 at 1.10 Å), S5 to 11 / 0 / 2 / 22.
+
+**Feed the sign scan only seedable spots.** `resolve_conventions` seeds from the `n_bright` brightest spots it
+is given. On a held-out 2604 position (dry run 2026-09-10) those were gasket and anvil spots: the scan returned
+−1 at 4 : 1, "decisive" under the ratio rule, and wrong — the crystal's own reflections gave +1 at 38 : 0
+(`find_domains`) and the cell-free rows 10 : 2. Pass `~pw & ~stationary` spots, and note that
+`ConventionScan.decisive` now also requires the winner to reach `min_assigned` (8): a 4 : 1 is not a verdict.
+
+**A declared seed confirms nothing about the cell** (README trap 2). These runs start from the hand-indexed
+or the collaborators' cell, so they test the orientation and the completeness, not the lattice.
+
+**Before 2026-09-10, `index_from_cloud` converged every crystal's cell with I4/mmm extinctions** — it did
+not pass the crystal's space group on (`PACKAGE_NOTES.md` §10). On S5 (Fmmm) the fix took INDEXED 9 → 11
+and the median residual 2.05 → 0.61 px; on 2604 (I4/mmm) the log is byte-identical. Re-run anything
+non-I-centred indexed through it before then.
+
+**More than one domain at a position: `midas_defect.domains.find_domains`** (contract in the defect
+manual, `phase-2-index.md`): row-seeded domains first, then pair-seeded ones against a whole-search null,
+with the cell and space group required. Where c* lies near the beam and no row of three rungs exists — S5
+at 30 K — pass `seed_from_nominal=True`, or the call returns nothing without saying why; a held-out S5
+reader (2026-09-10) had to rebuild the pair search by hand for that reason. `index_from_cloud` above finds
+ONE orientation.
+
+**`frame` is the RAW fractional frame index.** `resolve_conventions` rebuilds ω as
+`omega_first_deg + omega_step_deg * frame`, so map the ingest's live-stack centroid through the live
+indices first.
 
 ## Rules that apply to all three routes
 
@@ -88,10 +139,14 @@ it. See `ENVELOPE.md` §1.
 ## Completeness, as soon as you have a candidate
 
 ```python
-from midas_defect.completeness import ...     # INDEXED / MISSED / MASKED / ABSENT
+from midas_defect.completeness import audit_completeness, window_from_residuals   # INDEXED / MISSED / MASKED / ABSENT
 ```
 
 **MISSED is the number that matters** — predicted, unmasked, and not observed. A good result
 looks like 51 INDEXED / **0 MISSED** / 5 MASKED / 16 ABSENT of 72. A weak one looks like
 4 INDEXED / 26 ABSENT of 32, and that sample never did produce a quotable cell.
 **A spot count is not a completeness.**
+
+
+On this doc set's own test run: 2604 **58 INDEXED / 0 MISSED** / 5 MASKED / 37 ABSENT of 100; S5 11 / 0 / 2 /
+22 of 35 after the P12 fix. Zero MISSED on both — and on S5 that is 11 reflections, which no splitting survives.

@@ -31,7 +31,10 @@ sample. It is not universal.
 **This is the step most often skipped, and it inverts conclusions.**
 
 ```python
-from midas_hkls import distortion_mode, ab_separable, shear_separable, distortion_condition
+from midas_hkls import ab_separable, shear_separable, distortion_condition
+from midas_hkls.distortion_mode import (can_distinguish_modes, diagonal_B_can_express,
+                                        supercell_to_subcell, supercell_hkl_to_subcell)
+# distortion_mode is a MODULE, not a function
 ```
 
 In a Ruddlesden-Popper **subcell**, an Fmmm supercell distortion is a **γ SHEAR** —
@@ -41,9 +44,14 @@ matrix cannot express the real mode at all.
 
 | question | function | what it means |
 |---|---|---|
-| can this set separate a from b at all? | `ab_separable` | rank ≥ 2 |
+| can this set separate a from b at all? | `ab_separable` | rank ≥ 2 — **necessary, NOT sufficient**: also a partner (`partner_multiplicity`) and `index_asymmetry` (`ENVELOPE.md` §14) |
 | can it separate a, b AND the γ shear? | `shear_separable` | rank == 3 — **required if a shear is possible** |
 | how WELL do a and b separate? | `distortion_condition` | finite = separable; large = badly conditioned |
+
+`supercell_to_subcell(A, B)` turns an Fmmm supercell (A, B) into the subcell `(a, b, γ)` it really is;
+`supercell_hkl_to_subcell(H, K, L)` re-indexes reflections so the subcell tests can run on them;
+`can_distinguish_modes(subcell_hkls)` says whether a set holds BOTH the a≠b-sensitive and the
+shear-sensitive families; and `diagonal_B_can_express("gamma_shear")` is False — a diagonal B pins γ = 90°.
 
 The two modes are probed by **different reflections, and they are complementary**: `(1,0)/(0,1)`
 splits under a≠b and NOT at all under the γ shear; `(1,1)/(1,-1)` is the reverse. A pipeline
@@ -52,10 +60,17 @@ that only ever looks at one pair cannot tell you which mode it is in.
 ## Symmetry from the metric — per entry, and not sharing a σ
 
 ```python
-from midas_hkls.niggli import niggli_reduce
-from midas_hkls.lattice_symmetry import holohedry
-holo = holohedry(niggli_reduce(cell).cell, rel_tol=1e-3)
+from midas_hkls.ub_refine import refine_ub_from_gvectors
+from midas_hkls.lattice_symmetry import holohedry_from_fit, tolerance_from_fit
+fit  = refine_ub_from_gvectors(hkl, g / (2*np.pi))   # g = 1/d for an Angstrom cell (fit.q_convention_note)
+holo = holohedry_from_fit(fit)
 ```
+
+**A hand-picked tolerance is a guess; the fit's covariance is not — but it is only as good as the fit.** On
+the test run `holohedry(rel_tol=1e-3)` said triclinic on both positions, while `holohedry_from_fit` said
+**orthorhombic** on 2604 (tolerance 0.0126) and **tetragonal** on S5 (0.108, from 12 reflections). The 2604
+set had zero a/b partners and a condition number of 1395: a σ from that fit is small along exactly the
+direction the data do not constrain. **Decide the system only after the a/b gate** (`ENVELOPE.md` §14, §16).
 
 **Tolerance must be applied PER ENTRY of the metric tensor, not to `max|G|`.** A single global
 tolerance scaled by the largest metric entry mislabels a `c/a ≈ 5` cell as triclinic, because
@@ -72,7 +87,12 @@ reporting the lattice returns body-centred/cubic at 97.5 % — the selector impo
 
 ## Reporting an a/b splitting, if the envelope allows one at all
 
-Check `ENVELOPE.md` §1–§5 first. Then, always together:
+Check `ENVELOPE.md` §1–§5 and §14 first. **Gate, in this order:** `ab_separable` (rank) → a partner, on
+more than one spot (`partner_multiplicity`) → `index_asymmetry` → `shear_separable` if a shear is possible
+→ only then δ, by bootstrap, against the counting requirement of §5. The order is measured: on the test run
+2604 passed rank and returned **δ = 1.80 % [0.17, 10.36] from zero partners**. S5 had partners, but each pair
+rested on ONE spot on one side ((0,1) 2 : 1, (1,2) 1 : 3) — so it fails the second gate too — and returned
+0.94 % [0.10, 9.11] from 12 reflections. Then, always together:
 
 ```python
 from midas_hkls import ab_sensitive_mask, partner_multiplicity, index_asymmetry

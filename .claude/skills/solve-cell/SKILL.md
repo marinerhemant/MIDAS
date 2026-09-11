@@ -48,7 +48,7 @@ Goal:      cell | symmetry | a/b splitting | phase / series member | pressure | 
 | a powder calibrant | detector geometry | `calibrate-integrate` |
 | a lattice, and you want atom positions | Rietveld / structure solution | **NOT IN SCOPE — say so** |
 
-## Twelve things to know before you start
+## Eighteen things to know before you start
 
 Each cost a real retraction on La3Ni2O7 (Ruddlesden-Popper n = 2, DAC) or on the samples
 before it. Long form and evidence: `manuals/solve-cell/`.
@@ -115,6 +115,38 @@ before it. Long form and evidence: `manuals/solve-cell/`.
     `<sample>_LT/wide_25K` records a TEMPERATURE. A verification lens read "ambient pressure,
     no cell" out of it; the frame log contained only exposure times and file paths, and the
     sample was in a diamond anvil cell at tens of GPa.
+
+13. **`BC_y` is the ROW in `midas_integrate_v2` and the COLUMN in `midas_defect`.** Feeding
+    `poni_file_to_bc` into `midas_defect.Geometry` swaps the axes silently — this doc set's own test
+    run seeded a centre 123 px off that way. Use `poni_file_to_row_col`. (`README.md` trap 3)
+
+14. **A Friedel beam centre with few pairs and p = 0 is a spurious optimum.** Seeded far off with the
+    default 30 px window it returned 7 pairs on the search edge against 71 unseeded, and still said
+    p = 0.0. Run unseeded or widen the search; compare pair counts, not p. (`phase-1-geometry.md`)
+
+15. **`ab_separable` True is not permission.** Rank without an (h,k)/(k,h) partner does not
+    protect a splitting from a radial systematic: followed literally, this doc set returned δ =
+    1.80 % [0.17, 10.36] on 2604 from zero partners and a 12 : 0 index asymmetry — an interval
+    that excludes zero, from a set that cannot measure it. Gate on rank AND partners AND
+    asymmetry. (`ENVELOPE.md` §14)
+
+16. **A pressure gauge "found" in a dense ring list needs distinct lines and a null.** With
+    33–60 rings on a frame, some ring lies within ±0.04° of 11–19 % of the band. Followed
+    literally, this doc set reported "Pt, 3 lines, 41.7 GPa" on 2604 — 2 distinct lines, one on
+    the Re gasket's (110), Pt's strong (200) absent — and "Re, 4 lines, 108.9 GPa" on S5 with
+    Re's strongest line missing. Count distinct lines, require the strong ones, and run the
+    scan for a phase known to be absent. (`ENVELOPE.md` §15)
+
+17. **Decide the crystal system after the a/b gate, not before.** `holohedry_from_fit` said
+    orthorhombic on that same zero-partner set (condition number 1395); a σ from an
+    ill-conditioned fit is small along exactly the direction the data do not constrain.
+    (`ENVELOPE.md` §16)
+
+18. **Until 2026-09-10 `index_from_cloud` indexed every crystal with I-centring rules.** It did
+    not pass the space group into its cell convergence; on S5 (Fmmm) the fix took 9 → 11
+    reflections and 2.05 → 0.61 px. Re-run anything non-I-centred indexed through it before
+    then, and still pass your cell and space group to every `rows.*` call. (`PACKAGE_NOTES.md`
+    §10)
 
 ## Read the envelope before promising an answer
 

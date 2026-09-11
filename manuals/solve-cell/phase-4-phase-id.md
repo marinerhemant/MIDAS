@@ -3,7 +3,11 @@
 ## Identifying a phase, or a member of a structural series
 
 ```python
-from midas_hkls.phase_id import ...        # line counts + volume-correct null
+from midas_hkls.phase_id import PhaseCandidate, identify_phase
+ranked = identify_phase(d_obs, [PhaseCandidate(name, crystal, cell_source="ambient"), ...],
+                        free_scale=True, n_null_draws=200)
+# each PhaseMatch: n_lines, worst_free_pct, best_scale, p_value (against a random phase
+# with the SAME number of lines), cell, cell_source
 ```
 
 **Three traps fire together here, and on one dataset all three did.**
@@ -25,12 +29,33 @@ almost no `c` information and `c` is the only parameter separating the series, t
 **cannot** decide — measured, c-term 0.00–5.61 % of 1/d² on six spots, with n = 2 and n = 3
 differing in-plane by 0.31 %, absorbed by any free scale. See `ENVELOPE.md` §4.
 
+**Use the c-axis repeat when you have one — it outranks d-matching — and give d-matching ONE domain's
+indexed reflections.** On the delivered 2604 position, `identify_phase` fed the un-indexed kept spots ranked RP
+n = 3 (0.592 %, p = 0.025, 171 lines) ABOVE n = 2 (0.796 %, p = 0.05, 127 lines). Fed the 12 distinct d of one
+domain's INDEXED reflections, it ranked n = 2 first (0.235 %, p = 0.0, 115 lines) against n = 3 (0.937 %,
+p = 0.175, 155 lines). The cell-free row finder had decided it either way: a 13-rung row repeating every
+**9.6188 Å** along c* matches n = 2's c/2 at its fitted scale to +0.0 %, against +51.4 % for n = 3 and −25.0 %
+for n = 1. Where a ladder is accessible read the member off it; where it is not (S5, c-term median 0.020 of
+1/d²) the member is undeterminable, and both n = 2 and n = 3 then "match" at p = 0.0.
+
+**`identify_phase`'s free scale is ISOTROPIC.** A layered phase under pressure compresses far more along c,
+so the two-scale (ab, c) freedom the envelope calls for cannot be expressed through this API. A ranking it
+produces for a layered phase at pressure is provisional by construction.
+
 **Do not forget the non-sample phases.** A DAC pattern contains the gasket (Re), the anvils
 (diamond), a pressure marker (Pt, ruby...) and possibly a medium (Ne, cBN). All of them must
 be in the candidate list before any unexplained spot is called sample material. Read which
 ones are present **from the delivered record for the sample in hand** — pressure markers and
 pressures do not transfer between projects, and one such number leaked between two unrelated
 DAC datasets and inverted a compression argument.
+
+**Assign harmonic lines before inferring a new phase or a longer period.** A beam with harmonic contamination
+diffracts the strong phases a second time at λ/3: the diamond anvils' (111) (d = 2.059 Å, 2θ ≈ 11.8° at
+λ = 0.4246 Å) reappears near 2θ ≈ 3.97°. On both delivered La3Ni2O7 positions that ring, 3.97–4.14°, was the
+ONLY ring in the collaborators' own table with real azimuthal-median contrast (+13.6 % on 2604, +9.0 / +7.3 %
+on S5, against +0.11–0.19 % median for the rest of their table). Unassigned, it reads as a d ≈ 6.2 Å line —
+exactly the kind of long spacing that gets called a new phase or a superlattice. Put `λ/3` (and, on a
+monochromator that passes them, `λ/2`) copies of every strong phase in the candidate list.
 
 ## Getting a pressure
 
@@ -46,17 +71,49 @@ sample's own cell are three different gauges of three different things:
 | marker (Pt, ruby) | near the sample | the intended gauge; use it if present |
 | the sample's own cell | the sample | needs a published P–V ladder that REACHES this pressure |
 
+**Take gauge rings from the UNSUBTRACTED image.** The defect ingest contract detects rings on the
+background-subtracted maximum, and the polar background removes powder rings by design — that is its job.
+On the delivered 2604 position those rings matched only 2 Re gasket lines, so there was no gauge. Run
+`detect_powder_rings` on the median over live frames, with maps from `detector_angle_maps`.
+Done that way, the test run re-derived **Re a = 2.669 Å from 5 of its 6 lines (8 matched rings), V/V₀ = 0.9033,
+46.0 GPa** on 2604 —
+the recorded gasket compression (0.903–0.905; that claim is PROVISIONAL) — and Pt a = 3.8475 Å from 2 lines
+(18.7 GPa) on S5.
+
+**Report the matched lines and the degrees of freedom with every pressure.** A cubic marker has one lattice
+parameter, so two matched lines give one check; an hcp gasket with c/a free has two and needs three. On S5
+the Pt marker gave a = 3.846 Å from two lines (19.1 GPa at 300 K), agreeing with an independent fit
+(3.84499 Å) — quotable, but on one degree of freedom.
+
+**Count DISTINCT lines, and check the strong ones are there.** With 33–60 rings on a frame, some ring lies
+within ±0.04° of 11–19 % of the 3–21° band, so a scan over the lattice parameter always finds a few
+coincidences. The test run's harness counted matched rings and reported "Pt, 3 lines, 41.7 GPa" on 2604 —
+2 distinct lines, the (220) sitting on the Re gasket's (110), the strong (200) absent — and "Re, 4 lines,
+108.9 GPa" on S5 — 3 distinct lines, Re's strongest (101) absent. Neither phase had been shown to be present.
+Run the same scan for a phase known to be absent before believing a match (`ENVELOPE.md` §15).
+
 **Quote the model-free compression alongside the pressure.** `V/V₀` is what you measured;
 the GPa is `V/V₀` plus somebody's equation of state plus an ambient reference, and those add
 several GPa of spread on their own. Measured across four published Re EoS, two V₀ values and
 two temperatures: **38.5–48.0 GPa** from one `V/V₀ = 0.903–0.905`.
+With one sourced set — Anzellini, Dewaele, Occelli, Loubeyre and Mezouar, J. Appl. Phys. 115, 043511
+(2014): K₀ = 352.6 GPa, K₀' = 4.56, 300 K, helium medium, to 144 GPa — the recorded V/V₀ = 0.903–0.906 gives
+**43.7–45.3 GPa** (Vinet and BM3 differ by 0.2 GPa); the uncited (360, 4.5) that produced the first "45" sits
+0.8 GPa higher. That is what a citation buys: a number someone else can re-derive.
+
+**Write the EoS parameters and their source next to every pressure.** No MIDAS package carries them and
+this doc set does not either. On a held-out S5 position (dry run 2026-09-10) the reader quoted six Pt
+parameter sets from memory and flagged them unverified — correctly, but a remembered parameter is a
+systematic nobody can bound, and the project's own gasket scripts carry Re K₀ = 360 GPa, K₀' = 4.5 with no
+citation. Look the parameters up, cite the paper and the table, and state V₀ with its temperature.
 
 **The low-temperature correction is usually a model, not a measurement.** For Pt at 30 K it is
 worth **−2.11 GPa (~11 %), six times the entire spread across every published EoS** — and for
 Re below 77 K no measured lattice parameters could be found at all. Say which it is. And note
 that substituting a cold V₀ into a 300 K EoS is **not** a cold isotherm: K_T stiffens too
 (Anderson–Grüneisen moved one answer +3 %). Use a published thermal EoS if the number is
-load-bearing.
+load-bearing; when there is none for a cold gauge, report the 300 K-V₀ and the cold-V₀ numbers together as
+the envelope, each labelled a model, and do not pick one.
 
 **Sanity-check against a known case.** Run the whole chain on a sample whose pressure is
 independently stated and see whether you recover it. Measured: an 18 GPa sample came back at
