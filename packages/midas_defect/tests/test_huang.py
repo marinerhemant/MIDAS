@@ -66,17 +66,16 @@ def test_huang_intensity_follows_the_inverse_q_squared_law():
 
 
 @pytest.mark.unit
-def test_G_over_q_squared_is_an_upper_bound_attained_at_the_best_direction():
-    """(G/q)^2 is the NAIVE estimate, and it is a bound, not the typical value.
+def test_G_over_q_squared_is_not_a_bound_once_the_laue_term_is_in():
+    """(G/q)^2 is the NAIVE estimate. It is neither typical nor a bound.
 
-    Over random q directions the maximum reaches the bound almost exactly, while
-    the median sits ~18x below it. Advising a collaborator with the bound would
-    overstate the near-Bragg advantage by more than an order of magnitude.
-
-    The exact bound is ``((|G| + |q|)/|q|)^2``, not ``(G/q)^2``: the amplitude
-    contracts against ``G + q``, whose magnitude exceeds ``|G|`` when q points
-    along G. At q = 0.1 1/A that is a 6 % difference, which is why the looser
-    form fails a 5 % tolerance.
+    An earlier version of this test pinned ``((|G| + |q|)/|q|)^2`` as an upper
+    bound attained in the best direction. That held only because the
+    small-angle side was ``|q . u~|^2``, the distortion term alone, which never
+    falls below ``kappa dV``. With the Laue term the small-angle amplitude is
+    ``dV (1 - kappa) sin^2(theta)``, zero along the loop normal, so the ratio
+    diverges there: measured, about 20 % of 400 random directions exceed the
+    old bound at every q, while the median sits ~7x below ``(G/q)^2``.
     """
     C6 = isotropic_stiffness(LAM, MU)
     net = _loop()
@@ -86,7 +85,9 @@ def test_G_over_q_squared_is_an_upper_bound_attained_at_the_best_direction():
     for qm in (10.0, 100.0, 1000.0):
         r = huang_vs_small_angle_ratio(net, G_CU_111, d * qm, C6)
         bound = ((Gmag + qm) / qm) ** 2
-        assert float(r.max()) == pytest.approx(bound, rel=0.01)
+        frac_above = float((r > bound).double().mean())
+        assert 0.1 < frac_above < 0.3
+        assert float(r.max()) > 10.0 * bound
         assert float(r.median()) < 0.2 * bound
 
 
@@ -117,15 +118,57 @@ def test_ratio_scales_as_q_to_the_minus_two():
 
 @pytest.mark.unit
 def test_median_advantage_across_a_realistic_saxs_range():
-    """The number to actually quote: median over directions, not the bound."""
+    """The number to actually quote: the median over directions.
+
+    Measured 1.27e2 at q = 0.1 1/A and 1.33e6 at 1e-3 1/A. The windows exclude
+    the medians the distortion-only denominator gave (5.7e1 and 5.3e5), so
+    reverting to ``|q . u~|^2`` fails here.
+    """
     C6 = isotropic_stiffness(LAM, MU)
     net = _loop()
     torch.manual_seed(0)
     d = _unit(torch.randn(400, 3, dtype=torch.float64))
     med_lo = float(huang_vs_small_angle_ratio(net, G_CU_111, d * 1000.0, C6).median())
     med_hi = float(huang_vs_small_angle_ratio(net, G_CU_111, d * 10.0, C6).median())
-    assert 10.0 < med_lo < 1e3          # q = 0.1 1/A
-    assert 1e4 < med_hi < 1e7           # q = 1e-3 1/A
+    assert 80.0 < med_lo < 300.0        # q = 0.1 1/A
+    assert 8e5 < med_hi < 3e6           # q = 1e-3 1/A
+
+
+@pytest.mark.unit
+def test_small_angle_side_is_the_laue_corrected_total():
+    """The denominator is the TOTAL small-angle amplitude, checked two ways.
+
+    Along the loop normal the total vanishes, so the ratio is inf; the
+    distortion term alone would give a finite number there. Off the normal, at
+    qR = 0.05, the ratio matches the closed-form isotropic q -> 0 amplitudes of
+    a prismatic loop -- algebra, not the kernel:
+
+        (G+q).u~ / (i dV) = (|G|/mu q)[lam g.qh + 2 mu c g.n
+                                       - beta g.qh (lam + 2 mu c^2)]
+                            + kappa + (1 - kappa) c^2
+        total    / (i dV) = (1 - kappa)(1 - c^2)
+
+    with c = qh.n, g = G/|G|, beta = (lam + mu)/(lam + 2 mu).
+    """
+    C6 = isotropic_stiffness(LAM, MU)
+    net = _loop()
+    normal = torch.tensor([[0.0, 0.0, 100.0]], dtype=torch.float64)
+    assert math.isinf(float(huang_vs_small_angle_ratio(net, G_CU_111, normal, C6)[0]))
+
+    qm = 10.0                                              # qR = 0.05
+    kappa = LAM / (LAM + 2 * MU)
+    beta = (LAM + MU) / (LAM + 2 * MU)
+    Gmag = float(torch.linalg.norm(G_CU_111))
+    g = G_CU_111 / Gmag
+    n = torch.tensor([0.0, 0.0, 1.0], dtype=torch.float64)
+    d = _unit(torch.tensor([[1.0, 0.0, 0.0], [0.6, 0.0, 0.8], [0.3, 0.4, 0.866]]))
+    c, gq, gn = d @ n, d @ g, float(g @ n)
+    near = ((Gmag / (MU * qm)) * (LAM * gq + 2 * MU * c * gn
+                                  - beta * gq * (LAM + 2 * MU * c ** 2))
+            + kappa + (1 - kappa) * c ** 2)
+    total = (1 - kappa) * (1 - c ** 2)
+    r = huang_vs_small_angle_ratio(net, G_CU_111, d * qm, C6)
+    assert torch.allclose(r, (near / total) ** 2, rtol=5e-3)
 
 
 @pytest.mark.unit

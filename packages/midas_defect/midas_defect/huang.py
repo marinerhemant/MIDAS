@@ -9,33 +9,46 @@ so the whole near-Bragg diffuse field of a dislocation microstructure is again
 the scalar :func:`midas_ddd.q_dot_u_tilde`, contracted against ``G + q`` rather
 than ``q``. Nothing about the elasticity is re-derived here.
 
-Why this is the stronger measurement, and by exactly how much
--------------------------------------------------------------
-The small-angle amplitude carries ``q . u~``; the near-Bragg amplitude carries
-``(G + q) . u~``. With ``|G| ~ 3 1/A`` against a small-angle ``|q| ~ 1e-3 to
-1e-1 1/A``, the naive expectation is a factor ``(G/q)^2``, i.e. 1e3 to 1e7.
+Why this is the stronger measurement, and by how much
+-----------------------------------------------------
+The near-Bragg amplitude carries ``(G + q) . u~``. The small-angle amplitude is
+``q . u~`` PLUS the Laue term (Ehrhart, Trinkaus & Larson, Phys. Rev. B 25
+(1982) 834, Eq. 8a), which :func:`midas_ddd.fourier.small_angle_amplitude`
+computes; for a prismatic loop it vanishes along the loop normal. With
+``|G| ~ 3 1/A`` against a small-angle ``|q| ~ 1e-3 to 1e-1 1/A`` the naive
+expectation is a factor ``(G/q)^2``, i.e. 1e3 to 1e7.
 
-Measured over 400 random q directions for a single prismatic loop
-(:func:`huang_vs_small_angle_ratio`), the picture is more specific than that:
+Measured with :func:`huang_vs_small_angle_ratio` for a single prismatic loop
+(R = 5 nm, b || z), Cu 111 along x, isotropic ``lambda = 100, mu = 75``, over
+400 random q directions (seed 0; the configuration of ``tests/test_huang.py``):
 
-===========  ==============  ==============  ==============
-|q| (1/A)    max over dirs   median          naive (G/q)^2
-===========  ==============  ==============  ==============
-1e-3         9.4e6           5.2e5           9.4e6
-1e-2         9.5e4           5.2e3           9.4e4
-1e-1         1.0e3           5.7e1           9.4e2
-===========  ==============  ==============  ==============
+===========  ======  ======  ======  ===========  ==============
+|q| (1/A)    p10     median  p90     ratio < 1    naive (G/q)^2
+===========  ======  ======  ======  ===========  ==============
+1e-3         2.1e4   1.3e6   5.6e7   0 %          9.4e6
+1e-2         1.6e2   1.3e4   5.6e5   1.3 %        9.4e4
+1e-1         1.2e0   1.3e2   5.1e3   9.8 %        9.4e2
+===========  ======  ======  ======  ===========  ==============
 
-So ``(G/q)^2`` is an **upper bound**, attained almost exactly in the most
-favourable direction; the typical gain is about 18x smaller. And in special
-directions -- where ``G . u~`` nearly vanishes while ``q . u~`` does not -- the
-ratio drops below 1 and small-angle is momentarily the better probe. Quote the
-median, not the bound, when advising on beamtime.
+Three things follow. ``(G/q)^2`` is **not** a bound: about 20 % of directions
+exceed ``((|G| + |q|)/|q|)^2``, and the ratio diverges toward the loop normal,
+where the small-angle amplitude is zero. The typical gain is about 7x below the
+naive estimate. And the spread covers more than three decades, with small-angle
+the stronger signal in 1.3 % of directions at 1e-2 1/A and 9.8 % at 1e-1 1/A.
+Quote the median and the spread, never the maximum. With real Cu cubic
+stiffness (168.4 / 121.4 / 75.4 GPa) the medians come out about 4x higher.
 
-The advice still holds overwhelmingly: for defect-type discrimination in a
-single crystal, near-Bragg beats small-angle by two to five orders of magnitude
-in a typical direction. Small-angle wins when you cannot reach a Bragg peak, or
-when the sample is not a single crystal.
+An earlier version of this table divided by ``|q . u~|^2``, the distortion term
+alone. It reported medians 2.2-2.6x lower and ``(G/q)^2`` as an upper bound
+attained in the best direction; both followed from the missing Laue term. The
+reproduction of the old table, the new one and a closed-form gate are in a
+development script, ``dev/huang_ratio_2026-09-10/huang_ratio_table.py`` (not
+shipped).
+
+The advice still holds: for defect-type discrimination in a single crystal,
+near-Bragg beats small-angle by two to six orders of magnitude in a typical
+direction. Small-angle wins when you cannot reach a Bragg peak, or when the
+sample is not a single crystal.
 
 What this does NOT give you: interstitial/vacancy typing
 --------------------------------------------------------
@@ -203,13 +216,17 @@ def huang_vs_small_angle_ratio(
 ) -> torch.Tensor:
     """``I(G + q) / I(q)`` -- near-Bragg over small-angle, same defect, same q.
 
-    The number that decides which experiment to do. Expected to scale as
-    ``(G/q)^2``, so 1e4 to 1e7 across a normal small-angle range. Measured, not
-    assumed: :func:`midas_defect.huang.huang_vs_small_angle_ratio` divides two
-    evaluations of one kernel.
+    The number that decides which experiment to do. The near-Bragg side is
+    ``|(G + q) . u~|^2``. The small-angle side is the TOTAL small-angle
+    amplitude, :func:`midas_ddd.fourier.small_angle_amplitude` -- distortion
+    plus Laue term. An earlier version divided by ``|q . u~|^2``, the distortion
+    term alone, which is not the small-angle intensity and is largest exactly
+    where the true one vanishes. For q along a prismatic loop's normal the
+    small-angle amplitude is zero and this returns ``inf``; quote the median
+    over directions (see the module docstring), never the maximum.
     """
     _require_ddd()
-    from midas_ddd.fourier import u_tilde
+    from midas_ddd.fourier import small_angle_amplitude, u_tilde
 
     q = torch.as_tensor(q_inv_um, dtype=net.nodes_um.dtype,
                         device=net.nodes_um.device)
@@ -228,5 +245,9 @@ def huang_vs_small_angle_ratio(
     cdt = res.u_tilde.dtype
     near = torch.einsum("qi,qi->q", (G.unsqueeze(0) + res.q).to(cdt),
                         res.u_tilde).abs() ** 2
-    small = torch.einsum("qi,qi->q", res.q.to(cdt), res.u_tilde).abs() ** 2
-    return near / small.clamp(min=1e-300)
+    # The small-angle side must include the Laue term. |q . u~|^2 alone is the
+    # distortion term, which is largest along the loop normal -- exactly where
+    # the true small-angle amplitude is zero.
+    small = small_angle_amplitude(net, res.q, C6).abs() ** 2
+    return torch.where(small > 0, near / small.clamp(min=1e-300),
+                       torch.full_like(near, math.inf))
