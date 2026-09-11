@@ -46,8 +46,10 @@ LOG = logging.getLogger(__name__)
 def _dataset_from_picked(
     picked: PickedPoints, v1: V1Params, rt: RingTable, dtype, device,
 ) -> FittedDataset:
-    px = 0.5 * (v1.pxY + v1.pxZ) if v1.pxZ > 0 else v1.pxY
-    rho_d = v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad * px
+    # v1.RhoD is resolved to canonical µm (see forward.sanity.resolve_v1_rho_d_um)
+    # by autocalibrate_frozen_point before this is ever called -- no fallback
+    # needed here.
+    rho_d = v1.RhoD
     Y = torch.tensor(picked.Y_pix, dtype=dtype, device=device)
     Z = torch.tensor(picked.Z_pix, dtype=dtype, device=device)
     rid = torch.tensor(picked.ring_idx, dtype=torch.long, device=device)
@@ -100,6 +102,17 @@ def autocalibrate_frozen_point(
     kept for compatibility with existing reporting/plotting code, even
     though there is no outer loop here.
     """
+    v1_params.validate()
+    # RhoD to canonical µm before anything reads it (the spec, the point-pick
+    # window placement, and the residual all normalise the distortion
+    # polynomial by it) -- matches every other v2 pipeline's entry point.
+    # This pipeline's own ad hoc fallback (``MaxRingRad * px``) happened to
+    # already be dimensionally correct, but delegating to the single shared
+    # implementation is what keeps it that way as the normalisation logic
+    # evolves elsewhere.
+    from ..forward.sanity import resolve_v1_rho_d_um
+    resolve_v1_rho_d_um(v1_params, verbose=verbose,
+                         label="autocalibrate_frozen_point")
     if spec is None:
         spec = spec_from_v1_params(v1_params)
     else:
