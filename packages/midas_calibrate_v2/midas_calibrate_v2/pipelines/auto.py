@@ -367,6 +367,16 @@ def calibrate(
       ``panel_tol_rot_deg`` bound the shift and rotation; this is what brings
       a multi-module Pilatus from a few-hundred µε monolithic fit down to the
       sub-20 µε regime.  Leave ``None`` for monolithic detectors (GE, Varex).
+      **The refined panel values are not returned.** They are not fields of
+      :class:`AutoCalibrationResult`, not keys of ``calibration.json`` and not
+      read by ``spec_from_calibration_json``; only their 1-sigma reaches
+      ``sigma_vector``, and the residual-correction map is skipped when a
+      layout is given. In the default ``panel_mode="radius"`` they are
+      per-(panel, ring) offsets, which could not transfer to a sample's
+      reflections anyway -- so the in-loop strain they buy does not reach
+      data. Measured on a 24-module Pilatus 2M (2026-09-08): 312 panel
+      parameters on 677 ring arcs, and ~72 % of a 198 -> 120 µε in-loop drop
+      was parameter counting.
     * ``BC_guess`` — optional ``(BC_y, BC_z)`` in pixels.  When supplied,
       the auto-seed step is **bypassed**; ``BC_guess`` + ``initial_Lsd``
       become the seed and LM refinement proceeds.  Use this as an explicit
