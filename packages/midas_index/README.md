@@ -86,6 +86,31 @@ Indexer.run() takes the same `backend=` kwarg. `paramstest_path` is
 required when `backend="c-omp"` unless the Indexer was constructed via
 `from_param_file` (which captures the path).
 
+### Building the spot table yourself (`obs`, `Spots.bin`)
+
+The pipeline writes `Spots.bin` for you. A bridge that feeds `midas_index` spots from any other source must
+fill the same columns, and one of them fails silently when it is wrong:
+
+| col | quantity | unit |
+|---|---|---|
+| 0, 1 | y, z on the detector, lab frame | µm |
+| 2 | ω | deg |
+| 3 | ring radius (the radial pass compares it with the ring's reference radius) | µm |
+| 4 | spot id | — |
+| 5 | ring number | — |
+| 6 | η | deg |
+| 7 | 2θ (as the package's own tests build it) | deg |
+| 8 | **radial displacement from the ring**: observed radius − ring radius | µm |
+| 9 | scan number (unified / pf `Spots.bin` only) | — |
+
+**Column 8 is not intensity and not the ring radius.** A candidate is accepted only if
+`|theor[..., 13] − obs[..., 8]| < MarginRadial`, where theoretical column 13 is
+`rad_diff = sqrt(yl_disp² + zl_disp²) − ring_radius` (`compute/forward_numba.py`, `compute/matching.py`,
+`compute/seeds.py`). A bridge that packed spot intensity there (1000.0 for every spot) made every candidate fail
+the radial test, and "midas_index fails on this sample" stood until a 120-spot synthetic positive control found
+it; filling column 8 from the prediction's `rad_diff` took that control from 0/4 to 1/2 matched (La3Ni2O7
+project, 2026-08-20). Validate any bridge on spots simulated from a known grain before blaming the indexer.
+
 ### Use from `midas-pipeline`
 
 ```bash
