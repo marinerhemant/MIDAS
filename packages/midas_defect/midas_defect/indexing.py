@@ -193,12 +193,20 @@ class ConventionScan:
     """Which ω sign the data prefers, and by how much — the evidence, not a verdict."""
     best_omega_sign: int
     table: List[Dict]
+    min_assigned: int = 8             # a ratio between tiny counts is not a verdict
 
     @property
     def decisive(self) -> bool:
-        """True when the winner more than doubles the runner-up."""
+        """True when the winner more than doubles the runner-up AND reaches ``min_assigned``.
+
+        The ratio alone was not enough. On a held-out La3Ni2O7 position (2026-09-10) the
+        bright-core seeds were gasket and anvil spots: the scan returned -1 at 4 : 1,
+        "decisive" by the ratio, and wrong -- the crystal's own reflections gave +1 at
+        38 : 0. Feed the scan seedable spots (non-powder, non-stationary), and treat a
+        winner below the floor as no verdict.
+        """
         n = sorted((r["n_assigned"] for r in self.table), reverse=True)
-        return len(n) > 1 and n[0] >= 2 * max(n[1], 1)
+        return len(n) > 1 and n[0] >= self.min_assigned and n[0] >= 2 * max(n[1], 1)
 
     def __str__(self) -> str:
         body = ", ".join(f"omega {r['omega_sign']:+d}: {r['n_assigned']}"
@@ -283,12 +291,18 @@ def index_from_cloud(q_sample: np.ndarray, intensity: np.ndarray,
                      n_bright: int = 30,
                      apply_tilts: Optional[bool] = None,
                      convention: Optional[ConventionScan] = None,
+                     sigma_rtn: Optional[tuple] = None,
+                     tol_sigma: Optional[float] = None,
                      device: str = "cpu") -> IndexResult:
     """Cloud + spot list → orientation, assignment and completeness audit.
 
     The one call a per-raster-point loop should make. Pass ``convention`` from
     :func:`resolve_conventions` if the ω sign is not already settled; this
     function does **not** silently choose one for you.
+
+    ``sigma_rtn`` (radial, transverse, normal residual budget, 1/Å) and ``tol_sigma`` reach the cell
+    convergence. Left None, `refine_to_convergence` runs on its defaults, which are La3Ni2O7's measured
+    budget — measure yours (`window_from_residuals`) and pass it.
 
     Every tolerance is required and none has a default — see the module
     docstring for why a single scalar will not do.
@@ -314,12 +328,17 @@ def index_from_cloud(q_sample: np.ndarray, intensity: np.ndarray,
     # reflections it actually used. The full seed cell is passed (not just a/c):
     # below ~2 % splitting it makes no difference, above ~3 % a tetragonal seed
     # claims nothing at all -- see `rows.refine_to_convergence`.
+    # Pass the crystal's OWN space group. refine_to_convergence defaults to 139
+    # (La3Ni2O7, I-centring), and omitting it here applied I4/mmm extinctions to the
+    # cell convergence of EVERY other crystal indexed through this function -- the
+    # F-vs-I centring error that once halved S5 indexing. Found 2026-09-10.
     from .rows import refine_to_convergence
     lat0 = crystal.lattice
     conv = refine_to_convergence(
         q_sample, U, a0=lat0.a, b0=lat0.b, c0=lat0.c,
         alpha0=lat0.alpha, beta0=lat0.beta, gamma0=lat0.gamma,
-        min_reflections=max(5, min(8, len(q_sample)//4)))
+        min_reflections=max(5, min(8, len(q_sample)//4)), space_group_number=int(crystal.space_group.number),
+        **{k: v for k, v in (("sigma_rtn", sigma_rtn), ("tol_sigma", tol_sigma)) if v is not None})
     if conv is not None:
         U = np.asarray(conv.lat.U) if hasattr(conv.lat, "U") else U
         crystal = dataclasses.replace(

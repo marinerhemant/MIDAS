@@ -1236,7 +1236,7 @@ def index_from_pairs(q, I, B, *, a=3.6116, c=19.2516, exclude=None,
                     if U is None:
                         continue
                     cl, hk, rs = match_mask(q, U, B=B, a=a, c=c, tol_q=tol_q,
-                                            return_residual=True)
+                                            return_residual=True, space_group_number=space_group_number)
                     cl &= avail
                     n = int(unique_by_hkl(cl, hk, rs).sum())
                     if n > best[1]:
@@ -1433,7 +1433,7 @@ def index_by_grid(q, B, *, a=3.6116, c=19.2516, exclude=None, tol_q=0.05,
         for V in _local_rotations(grid[top], 1.5*step_deg, refine_step_deg):
             cl, hk, rs = match_mask(q, V, B=B, a=a, c=c, tol_q=tol_q,
                                     tol_sigma=tol_sigma, sigma_rtn=sigma_rtn,
-                                    return_residual=True)
+                                    return_residual=True, space_group_number=space_group_number)
             n = int(unique_by_hkl(cl & avail, hk, rs).sum())
             if n > best[1]:
                 best = (V, n)
@@ -1442,7 +1442,7 @@ def index_by_grid(q, B, *, a=3.6116, c=19.2516, exclude=None, tol_q=0.05,
             break
         cl, hk, rs = match_mask(q, U, B=B, a=a, c=c, tol_q=tol_q,
                                 tol_sigma=tol_sigma, sigma_rtn=sigma_rtn,
-                                return_residual=True)
+                                return_residual=True, space_group_number=space_group_number)
         found.append((U, n, n - rival))
         avail &= ~(cl & avail)
     return found
