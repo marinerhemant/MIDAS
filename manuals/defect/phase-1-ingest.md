@@ -98,12 +98,27 @@ of the traps in this table the same afternoon building a new sample's front end.
 Reconstructing the chain from prose does not work; copy the block.
 
 ```python
-from midas_defect.ingest import (build_mask, subtract_background, find_blobs_3d,
-                                 detect_powder_rings, flag_powder)
-from midas_defect.geometry import Geometry, pixel_to_qlab, qlab_to_qsample
+import numpy as np, tifffile, torch
+from midas_integrate_v2.compat.pyfai import poni_file_to_row_col
+from midas_defect.ingest import (live_frames, build_mask, subtract_background,
+                                 find_blobs_3d, detect_powder_rings, flag_powder)
+from midas_defect.geometry import (Geometry, detector_angle_maps, pixel_to_qlab,
+                                   qlab_to_qsample)
 
-frames = np.stack([tifffile.imread(path(p, k)) for k in range(NFRAME)])
+raw    = np.stack([tifffile.imread(path(k)) for k in range(NFRAME)]).astype(np.float32)
+live, _ = live_frames(raw)                          # dead / shutter-ramp frames out
+fidx   = np.flatnonzero(live)                       # RAW index of every kept frame
+frames = raw[live]
 
+# A PONI gives a SEED, never the centre. At this boundary use the row/col function:
+row0, col0 = poni_file_to_row_col(PONI)             # NOT poni_file_to_bc -- see the traps
+# ...flip the row if your reader disagrees with the calibration's, then MEASURE the centre
+# from Friedel pairs (midas_calibrate_v2.friedel) and re-run from here on it.
+g = Geometry(lsd_um=LSD, bcy_px=COL_BC, bcz_px=ROW_BC, px_um=PX, wavelength_A=LAM,
+             n_pix_y=NCOL, n_pix_z=NROW, omega_first_deg=OMEGA0,   # centre of RAW frame 0
+             omega_step_deg=DOMEGA, n_frames=NFRAME)
+
+tth, az = detector_angle_maps(g)                    # the maps every call below needs
 m    = build_mask(frames)
 mask = m.mask if hasattr(m, "mask") else m          # returns an OBJECT
 sub  = subtract_background(frames, tth, az, mask)   # (frames, TTH, AZ, mask)
@@ -113,15 +128,20 @@ spots, counts = find_blobs_3d(sub, mask, threshold=200.0, min_vol=10,
                               return_counts=True)   # returns a TUPLE
 spots = spots[spots.n_frames >= 2].reset_index(drop=True)
 
+# spots.frame is a FRACTIONAL index into the LIVE stack. Map it back through fidx; never floor it.
+omega = OMEGA0 + DOMEGA*np.interp(spots.frame.values, np.arange(len(fidx)), fidx)
+
 qlab = pixel_to_qlab(spots.row.values, spots.col.values, g, device="cpu")
+q    = qlab_to_qsample(qlab, torch.deg2rad(torch.as_tensor(omega, dtype=qlab.dtype))
+                       ).detach().cpu().numpy()     # sample frame, q = 2 pi / d
 qn   = np.linalg.norm(qlab.detach().cpu().numpy(), axis=1)
 stth = np.degrees(2*np.arcsin(np.clip(qn*LAM/(4*np.pi), -1, 1)))
-rad  = np.hypot(spots.row.values - BCR, spots.col.values - BCC)
+rad  = np.hypot(spots.row.values - ROW_BC, spots.col.values - COL_BC)
 
 rings = detect_powder_rings(sub.max(axis=0), tth, mask, azimuth_deg=az)
 pw    = flag_powder(stth,
-                    np.degrees(np.arctan2(spots.row.values - BCR,
-                                          spots.col.values - BCC)),
+                    np.degrees(np.arctan2(spots.row.values - ROW_BC,
+                                          spots.col.values - COL_BC)),
                     rad, rings)
 keep = ~pw
 ```
@@ -129,7 +149,10 @@ keep = ~pw
 | trap | symptom | fix |
 |---|---|---|
 | **`detect_powder_rings` without `azimuth_deg`** | occupancy comes back all-`NaN`, 3–6× too many "rings", **half the real reflections discarded as powder** | always pass `azimuth_deg=az`. Measured on one sample: 105–152 rings → 17–50, kept spots 1133 → 1776 |
-| `pixel_to_qlab` default device | `TypeError: can't convert cuda:0 device type tensor to numpy` | `device="cpu"` |
+| **`poni_file_to_bc` fed to `Geometry`** | the beam centre lands on the wrong AXES — 123/59 px on one Pilatus, every ring and q wrong, nothing raised | `midas_integrate_v2` calls the ROW axis `BC_y`; `midas_defect.Geometry` calls the COLUMN `bcy_px`. Use `poni_file_to_row_col` and pass `bcz_px=row, bcy_px=col` |
+| **flooring `spots.frame`, or treating it as a RAW frame after `live_frames`** | half the transverse q residual (0.0199 → 0.0141 1/Å, anisotropy 2.92 → 2.01), or every ω off by the number of dropped leading frames | keep the fractional centroid and map it through the live indices, as in the block above. One project's long-standing "frame i == raw frame i+2" offset was exactly this |
+| hand-built `tth` / `az` maps | η from untilted pixel offsets while 2θ is tilted; one project's local helper had 94 importers | `detector_angle_maps(g)` (added 2026-09-10) |
+| `pixel_to_qlab` / `qlab_to_pixel` default device | `TypeError: can't convert cuda:0` (or `mps:0`) `device type tensor to numpy` | `device="cpu"` |
 | `find_blobs_3d(..., return_counts=True)` | unpacking error, or a DataFrame where you expected one | it returns `(spots, counts)` |
 | `build_mask` | `tth_deg shape () != frame` further down | it returns an object; take `.mask` |
 | `flag_powder` argument order | wrong spots rejected, silently | `(spot_tth, spot_azimuth, spot_radius, rings)` — arrays, not the spots frame |
