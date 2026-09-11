@@ -1,0 +1,22 @@
+{
+ "argv": [
+  "generate_exadis_cu_networks.py",
+  "--out",
+  "/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/exadis_saxs_networks/2026-09-10"
+ ],
+ "exadis_repo": "/home/beams12/S1IDUSER/opt/exadis",
+ "exadis_git": "d550bc0",
+ "generated": "2026-09-10 14:02:22",
+ "seconds": 2.38,
+ "b_magnitude_A": 2.556,
+ "loops": {
+  "file": "exadis_cu_loops.data",
+  "nodes": 4044,
+  "segments": 4044
+ },
+ "lines": {
+  "file": "exadis_cu_lines.data",
+  "nodes": 1680,
+  "segments": 1680
+ }
+}

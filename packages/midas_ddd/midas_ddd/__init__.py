@@ -26,7 +26,7 @@ ParaDiS ``.data`` file bridge works without it; the in-process ``pyexadis`` path
 is optional and imported lazily.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from .elasticity import (
     bcc_slip_systems,
@@ -44,14 +44,19 @@ from .fourier import (
     FourierResult,
     acoustic_tensor,
     isotropic_stiffness,
+    lattice_small_angle_amplitude,
+    line_small_angle_amplitude,
     loop_small_q_limit,
+    periodic_small_angle_intensity,
     prismatic_loop_small_q_limit,
     prismatic_loop_small_q_limit_total,
     q_dot_u_tilde,
     q_dot_u_tilde_per_loop,
+    segment_components,
     small_angle_amplitude,
     surface_form_factor,
     u_tilde,
+    winding_components,
 )
 from .network import DislocationNetwork, read_paradis, write_paradis
 from .realspace import (
@@ -92,14 +97,19 @@ __all__ = [
     "FourierResult",
     "acoustic_tensor",
     "isotropic_stiffness",
+    "lattice_small_angle_amplitude",
+    "line_small_angle_amplitude",
     "loop_small_q_limit",
+    "periodic_small_angle_intensity",
     "prismatic_loop_small_q_limit",
     "prismatic_loop_small_q_limit_total",
     "q_dot_u_tilde",
     "q_dot_u_tilde_per_loop",
+    "segment_components",
     "small_angle_amplitude",
     "surface_form_factor",
     "u_tilde",
+    "winding_components",
     # real-space distortion (ELASTIC part; see the module docstring)
     "SegmentDislocation",
     "green_gradient_isotropic",

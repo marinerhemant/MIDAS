@@ -300,10 +300,16 @@ def generate_line_config(
 
     ``theta_deg`` is the list of allowed character angles (0 = screw, 90 = edge).
 
-    These lines are periodic and open -- they enclose no area, so they carry no
-    relaxation volume and contribute nothing at ``q -> 0``. That is physics, not
-    a limitation: it is the reason the loop population and the line population
-    are separable at small angle in the first place.
+    These lines close only through the periodic boundary: they enclose no area,
+    carry no relaxation volume and contribute nothing at ``q -> 0``. At finite q an
+    edge or mixed line scatters into a sheet perpendicular to itself, and a
+    periodic line has that amplitude only on the cell's reciprocal lattice
+    (:func:`midas_ddd.periodic_small_angle_intensity`).
+
+    **ExaDiS's default character assignment made 24 pure <110> screws here
+    (2026-09-10).** A screw has no dilatation in cubic or isotropic elasticity and
+    therefore no small-angle signal at all; that frame was float64 roundoff. Pass
+    ``theta_deg`` (for example ``[0, 30, 60, 90]``) for a population that scatters.
     """
     _, utils = require_pyexadis()
     N = utils.generate_line_config(

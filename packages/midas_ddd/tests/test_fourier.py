@@ -18,8 +18,10 @@ Two negative controls carry the most weight:
   reason the kernel does the surface integral rather than the cheap line
   integral, and without this test that decision looks arbitrary.
 * `test_open_line_contributes_nothing` -- a line encloses no area, so it has no
-  relaxation volume and no q -> 0 signal. If a future change makes open lines
-  contribute something at small q, that is a bug, not a feature.
+  cut surface and `u_tilde` (the displacement field of CLOSED loops) must ignore
+  it. That is a statement about `u_tilde`, not about scattering: the small-angle
+  amplitude of open lines comes from the line-integral form, gated in
+  `test_line_term.py`.
 """
 import math
 
@@ -290,8 +292,9 @@ def test_transverse_gauge_would_destroy_the_signal():
 
 @pytest.mark.unit
 def test_open_line_contributes_nothing():
-    """A line encloses no area: no cut surface, no relaxation volume, no q -> 0
-    signal. The deformation population is genuinely invisible to this kernel."""
+    """A line encloses no area, so `u_tilde` -- which needs a cut surface -- ignores
+    it and says how much line it ignored. Small-angle scattering from lines is the
+    line-integral form's job (`test_line_term.py`), not this kernel's."""
     C6 = isotropic_stiffness(LAM, MU)
     line = straight_line(length_um=0.5, n_segments=32)
     res = u_tilde(line, DIRS * 1e-2, C6)

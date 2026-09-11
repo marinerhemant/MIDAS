@@ -268,10 +268,12 @@ def segment_dislocations(
 ) -> list:
     """Every segment of ``net`` as a :class:`SegmentDislocation`.
 
-    Open lines are included: unlike the Fourier kernel, the real-space
-    superposition of segments is well defined for an open network (it is just
-    the field of those segments), so a deformation structure images perfectly
-    well in DFXM even though it has no small-angle signature.
+    Open lines are included: the real-space superposition of segments is well
+    defined for any network (it is just the field of those segments), so a
+    deformation structure images perfectly well in DFXM. Its small-angle
+    signature is a separate matter: no relaxation volume, so nothing as
+    ``q -> 0``, but a finite-q sheet per edge or mixed line
+    (:func:`midas_ddd.line_small_angle_amplitude`).
     """
     lam, mu = lame_from_voigt(C6.to(dtype=net.nodes_um.dtype,
                                     device=net.nodes_um.device))

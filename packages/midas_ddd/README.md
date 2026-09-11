@@ -5,9 +5,9 @@ Dislocation networks for MIDAS: ingest a discrete-dislocation-dynamics network
 forward models consume.
 
 ```
-q . u~(q)          ->  small-angle scattering       (midas_saxs)
-(G+q) . u~(q)      ->  near-Bragg diffuse / Huang   (midas_defect.huang)
-real-space beta(r) ->  DFXM contrast                (midas_dfxm)
+q . u~(q) + Laue term  ->  small-angle scattering       (midas_saxs)
+(G+q) . u~(q)          ->  near-Bragg diffuse / Huang   (midas_defect.huang)
+real-space beta(r)     ->  DFXM contrast                (midas_dfxm)
 ```
 
 Everything is torch-differentiable.
@@ -24,17 +24,19 @@ eigendistortion on the cut contributes `-dV`. That relation is the
 cross-modality gate in `tests/test_realspace.py`. When the two kernels first
 appeared to disagree by a clean functional factor, this was why.
 
-**Scope differs between the two.** The Fourier kernel handles CLOSED LOOPS only
-(a cut surface needs a closed circuit), so open deformation lines contribute
-nothing at small angle and `u_tilde` reports the line length it ignored. The
-real-space kernel has no such limit — an open network images perfectly well in
-DFXM.
+**Scope differs between the two.** `u_tilde`, the distortion field for near-Bragg
+work, handles CLOSED LOOPS only (a cut surface needs a closed circuit) and reports
+the line length it ignored. The total small-angle amplitude has no such limit: by
+Stokes it is a line integral, so `line_small_angle_amplitude` covers finite lines
+at every q, and lines that close only through a periodic cell's boundary get an
+intensity from the cell's reciprocal lattice (`periodic_small_angle_intensity`).
+The real-space kernel images any network in DFXM.
 
 ## Quick start
 
 ```python
 from midas_ddd import read_paradis, validate_network, prismatic_loop
-from midas_ddd import q_dot_u_tilde, isotropic_stiffness
+from midas_ddd import small_angle_amplitude, isotropic_stiffness
 import torch
 
 # A network from ExaDiS, via the file bridge that always works
@@ -44,8 +46,12 @@ print(validate_network(net, q_max_inv_A=0.1))
 # Or build one here, with no ExaDiS installed
 loop = prismatic_loop(radius_um=0.005, burgers=(0, 0, 1), n_segments=64)
 
-q = torch.tensor([[0.0, 0.0, 1e-2]], dtype=torch.float64)   # inverse micrometers
-amp = q_dot_u_tilde(loop, q, isotropic_stiffness(100.0, 75.0))
+# q in the loop plane, inverse micrometers. Along the normal, (0, 0, q), the
+# small-angle amplitude is exactly zero.
+q = torch.tensor([[1e-2, 0.0, 0.0]], dtype=torch.float64)
+# Distortion PLUS Laue term. `q_dot_u_tilde` is the distortion term alone and
+# is not the small-angle answer.
+amp = small_angle_amplitude(loop, q, isotropic_stiffness(100.0, 75.0))
 ```
 
 ## Three things worth knowing before you use it
@@ -57,26 +63,35 @@ conservation at the junction node. The 5055-node FCC-Cu network in this repo has
 54 such segments; normalising them made 60 nodes fail conservation with a
 residual of exactly `sqrt(2) - 1`.
 
-**2. The cut surface is physical, not a gauge.** Stokes gives the part of the
-surface form factor perpendicular to `q` from a cheap line integral, which looks
-like a way to avoid choosing a cut surface. It is not: for a prismatic loop
-probed along its own normal — where it scatters most strongly — the transverse
-projection returns *exactly zero*. The kernel integrates an explicit fan
-triangulation from each loop's centroid. Gated by
-`test_transverse_gauge_would_destroy_the_signal`.
+**2. For `u_tilde`, the cut surface is physical, not a gauge.** Stokes gives
+the part of the surface form factor perpendicular to `q` from a cheap line
+integral, which looks like a way to avoid choosing a cut surface. For the
+displacement field it is not: for a prismatic loop probed along its own normal,
+where `q . u~` is largest, the transverse projection returns *exactly zero*. The
+kernel integrates an explicit fan triangulation from each loop's centroid.
+Gated by `test_transverse_gauge_would_destroy_the_signal`.
 
-**3. Only closed loops contribute.** A finite cut surface exists only for a
-closed circuit. Open lines — the deformation population — enclose no area, carry
-no relaxation volume, and contribute nothing as `q -> 0`. `u_tilde` reports how
-much line length it ignored rather than quietly returning a number that looks
-complete. Their small-angle signature is a weak transverse streak this kernel
-does not model.
+**3. Loops, finite lines and periodic lines are three different objects.** A
+closed loop has a cut surface and a relaxation volume `dV = b . A`, and its
+amplitude is exact at every q. A finite line has neither, so it contributes
+nothing as `q -> 0`; at finite q its dilatation field scatters into a sheet
+perpendicular to the line (Thomson, Levine & Long, Acta Cryst. A 55, 433 (1999),
+Eq. 6; an isotropic screw gives exactly zero), and `line_small_angle_amplitude`
+computes that from the same line-integral form the loops use. A line that closes
+only through a periodic cell's boundary has an amplitude only on the cell's
+reciprocal lattice; `periodic_small_angle_intensity` shows it between lattice
+points at a stated resolution (default two lattice spacings), which is what a
+window of that width sees, and reports a low-q floor below which the cell's own
+periodicity dominates. An earlier version of this README said lines contribute
+nothing at small angle; that holds only as `q -> 0`. The periodic treatment is
+preregistered and under adversarial verification (2026-09-11), not established.
+`u_tilde` still takes closed loops only and reports the line length it ignored.
 
-## The gate
+## The gates
 
 For isotropic elasticity and a prismatic loop (`b || A || n`) the small-q limit
-has an exact closed form, verified to 2e-15 against the tensor expression over
-1200 random directions and four moduli:
+of the **distortion term** has an exact closed form, verified to 2e-15 against
+the tensor expression over 1200 random directions and four moduli:
 
 ```
 q . u~(q -> 0) = i dV [ kappa + (1 - kappa) (n.qhat)^2 ]
@@ -84,14 +99,25 @@ q . u~(q -> 0) = i dV [ kappa + (1 - kappa) (n.qhat)^2 ]
     kappa = lambda / (lambda + 2 mu)
 ```
 
-Read that twice: **the limit is anisotropic**. A loop does not scatter like a
-compact particle of volume `dV`. It scatters `kappa dV` in its own plane and
-`dV` along its normal — a contrast ratio of `(lambda + 2 mu)/lambda`, which is
-2.5 for `lambda = 100, mu = 75`. A void of the same volume is isotropic.
+**That is not the small-angle scattering amplitude.** At small angle the
+scattering vector is the deviation itself, and the Laue term (scattering from
+the loop's own extra or missing atoms) is the same order as the distortion term
+(Ehrhart, Trinkaus & Larson, Phys. Rev. B 25 (1982) 834, Eq. 8a). The total,
+`small_angle_amplitude`, has the limit
 
-That anisotropy is the loop-versus-void discriminator, it is present at `q -> 0`
-rather than only at finite q, and it is why a 2-D detector image is worth
-simulating instead of a radially averaged `I(q)`.
+```
+q . u~ + Laue  ->  i dV (1 - kappa) sin^2(theta)       theta from the loop normal
+```
+
+verified to 7e-16 over 1500 directions and five moduli. The two laws sum to `dV`
+identically and point opposite ways: the total **vanishes along the normal**,
+where the distortion term alone is largest, and peaks in the loop plane. A void
+of the same volume is isotropic. Use `small_angle_amplitude` for SAXS;
+`q_dot_u_tilde` is the distortion building block.
+
+That anisotropy is why a 2-D detector image is worth simulating instead of a
+radially averaged `I(q)` — but it is **not** a general loop-versus-void
+discriminator; see the known-limitations table below.
 
 ## ExaDiS
 
@@ -166,9 +192,12 @@ averages back to uniform (contrast 1.0004, SE 699 %).
 character — interstitial versus vacancy — is unrecoverable from small-angle
 intensity, but IS reachable near Bragg through the structure-factor phase
 `Phi = -1` on **odd** reflections for extrinsic loops (Ehrhart 1982). And open
-(line) dislocations contribute nothing at small angle: they enclose no area and
-carry no relaxation volume, so they are absent from the SAXS forward entirely.
-They image perfectly well in DFXM.
+(line) dislocations carry no relaxation volume, so they contribute nothing as
+`q -> 0`; at finite q they do scatter (a sheet perpendicular to each edge or mixed
+line, nothing from an isotropic screw), and the SAXS forward now includes them
+(`midas_saxs.simulate_frame`, components `lines` and `periodic_lines`). An earlier
+version said they were absent from small angle entirely; that was the `q -> 0`
+limit stated as a rule. They image perfectly well in DFXM.
 
 ## Numerical traps, all of them found the hard way
 

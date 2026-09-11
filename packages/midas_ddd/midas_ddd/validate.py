@@ -10,11 +10,14 @@ internal node. A network that violates it still *runs* and returns numbers that
 depend on where you put the cap point -- which is the worst failure mode there
 is. So this is a hard gate, on by default in :func:`read_paradis`.
 
-**Loop inventory** (:func:`find_loops`). A prismatic loop's entire small-angle
-signature is its relaxation volume ``dV = b . A``, and ``A`` only exists for a
-*closed* circuit. Open lines contribute nothing at ``q -> 0``. Separating the two
-populations is therefore not bookkeeping, it is the physics -- and it is what
-lets the ``dV`` gate be written at all.
+**Loop inventory** (:func:`find_loops`). A prismatic loop's small-angle signature
+as ``q -> 0`` is its relaxation volume ``dV = b . A``, and ``A`` only exists for a
+*closed* circuit; open lines contribute nothing in that limit (their finite-q
+sheets are another matter, :func:`midas_ddd.line_small_angle_amplitude`).
+Separating the populations is therefore not bookkeeping, it is the physics -- and
+it is what lets the ``dV`` gate be written at all. A circuit that closes only
+through a periodic face is neither a loop nor a finite line: it is reported as a
+winding line and handled on the cell's reciprocal lattice.
 
 **Resolution report** (:func:`resolution_report`). A nodal DDD code discretises a
 2 nm loop into a handful of segments, and SAXS at ``q ~ 1/R`` probes exactly that
@@ -167,7 +170,7 @@ class Loop:
     uniform_burgers: bool
 
 
-def find_loops(net, *, burgers_tol: float = 1e-6) -> List[Loop]:
+def find_loops(net, *, burgers_tol: float = 1e-6, return_winding: bool = False):
     """Find closed circuits made of degree-2 nodes.
 
     This deliberately finds only the *simple* loops -- circuits every one of
@@ -176,7 +179,24 @@ def find_loops(net, *, burgers_tol: float = 1e-6) -> List[Loop]:
     relaxation volume carries the small-angle signal. Circuits that pass through
     a junction node (degree > 2) are not enumerated: their decomposition into
     loops is not unique, so silently picking one would be inventing a number.
+
+    **A circuit that closes only THROUGH a periodic face is not a loop.** A
+    straight line in a periodic DDD cell -- what ``generate_line_config`` makes --
+    is a chain of degree-2 nodes that comes back to its start on the torus, but
+    its minimum-image walk ends one lattice vector away: it is an infinite
+    periodic line with no enclosed area. Such circuits are excluded here, and
+    returned separately when ``return_winding=True`` as lists of segment indices.
+    (Measured before this check existed: a (1,2,3) line in a 0.2 um periodic cell
+    came back as one "closed loop" with an area of 1e-19 um^2, which would have
+    handed the Fourier kernel a cut surface that does not exist.)
+
+    Returns
+    -------
+    list of Loop, or ``(loops, winding)`` when ``return_winding`` is True.
     """
+    segvec = net.segment_vectors_um().detach()
+    seg_len = torch.linalg.vector_norm(segvec, dim=-1).tolist()
+    winding: List[List[int]] = []
     deg: Dict[int, int] = {}
     adj: Dict[int, List[Tuple[int, int]]] = {}     # node -> [(segment, other node)]
     for s, (i, j) in enumerate(net.segments.tolist()):
@@ -228,6 +248,11 @@ def find_loops(net, *, burgers_tol: float = 1e-6) -> List[Loop]:
                     break
             if closed and len(segs) >= 3 and not (set(segs) & visited_seg):
                 visited_seg.update(segs)
+                closure = torch.stack([segvec[s] * o for s, o in zip(segs, ors)]).sum(dim=0)
+                length = sum(seg_len[s] for s in segs)
+                if float(torch.linalg.vector_norm(closure)) > 1e-6 * max(length, 1e-300):
+                    winding.append(list(segs))      # closes on the torus only
+                    continue
                 bvecs = torch.stack([net.burgers_b[s] * o for s, o in zip(segs, ors)])
                 b0 = bvecs[0]
                 uniform = bool(torch.all(
@@ -235,7 +260,7 @@ def find_loops(net, *, burgers_tol: float = 1e-6) -> List[Loop]:
                 loops.append(Loop(node_indices=nodes, segment_indices=segs,
                                   orientations=ors, burgers_b=b0,
                                   uniform_burgers=uniform))
-    return loops
+    return (loops, winding) if return_winding else loops
 
 
 def loop_area_vectors_um2(net, loops: Sequence[Loop]) -> torch.Tensor:
@@ -269,12 +294,12 @@ def loop_area_vectors_um2(net, loops: Sequence[Loop]) -> torch.Tensor:
 def relaxation_volumes_um3(net, loops: Sequence[Loop]) -> torch.Tensor:
     """``dV = b . A`` per loop, µm³. ``(L,)``.
 
-    This is *the* quantity the small-angle signal is made of -- but note that a
-    loop does NOT simply scatter like a compact particle of volume ``dV``: its
-    ``q -> 0`` amplitude is direction dependent, running from ``kappa dV`` in the
-    loop plane to ``dV`` along the normal. ``dV`` sets the SCALE; the angular
-    dependence is in :mod:`midas_ddd.fourier`. For a circular prismatic loop of
-    radius R the magnitude reduces to ``pi R^2 |b|``.
+    This sets the scale of the small-angle signal -- but a loop does NOT scatter
+    like a compact particle of volume ``dV``: its ``q -> 0`` small-angle amplitude
+    (distortion plus Laue term) is ``dV (1 - kappa) sin^2(theta)``, zero along the
+    normal and largest in the loop plane; see
+    :func:`midas_ddd.fourier.small_angle_amplitude`. For a circular prismatic loop
+    of radius R the magnitude reduces to ``pi R^2 |b|``.
     """
     A = loop_area_vectors_um2(net, loops)
     if A.shape[0] == 0:
@@ -357,10 +382,18 @@ def validate_network(net, *, q_max_inv_A: Optional[float] = None) -> Dict[str, o
     The one-call survey for "what did I just load".
     """
     cons = check_burgers_conservation(net, raise_on_fail=False)
-    loops = find_loops(net)
+    loops, winding = find_loops(net, return_winding=True)
     dV = relaxation_volumes_um3(net, loops)
     res = resolution_report(net, q_max_inv_A=q_max_inv_A)
     n_uniform = sum(1 for lp in loops if lp.uniform_burgers)
+    warnings = list(res.warnings)
+    if not cons.ok:
+        warnings.append(f"Burgers not conserved at {cons.n_violating} node(s)")
+    if winding:
+        warnings.append(
+            f"{len(winding)} circuit(s) close only through the periodic boundary: "
+            f"infinite periodic lines, not loops. They enclose no area and carry "
+            f"no relaxation volume.")
     return {
         "n_nodes": net.n_nodes,
         "n_segments": net.n_segments,
@@ -370,8 +403,8 @@ def validate_network(net, *, q_max_inv_A: Optional[float] = None) -> Dict[str, o
         "burgers_max_residual_b": cons.max_residual,
         "n_loops": len(loops),
         "n_loops_uniform_b": n_uniform,
+        "n_winding_lines": len(winding),
         "total_relaxation_volume_um3": float(dV.sum()) if dV.numel() else 0.0,
         "resolution": res,
-        "warnings": res.warnings + ([] if cons.ok else
-                                    [f"Burgers not conserved at {cons.n_violating} node(s)"]),
+        "warnings": warnings,
     }
