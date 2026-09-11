@@ -184,6 +184,15 @@ between channels of different width — and it can manufacture apparent two-popu
 downstream. Check the producing pipeline's intent first: edge frames are sometimes its dark
 reference by design.
 
+Where a pixel's peak sits close enough to a scan's end that a fixed window can clip it, do not
+write a bespoke fix — three rounds on real data found that both an obvious symmetric-window
+correction and an obvious "sum the whole curve" correction made the centroid *worse*
+(rules 30–31, Notebook §11k). Use `midas_dfxm.rocking_edge.edge_centres`: it returns the centre
+from the package's own `reduce_rocking(window="peak")` unchanged, a reliable truncation flag,
+and a gated lineshape extrapolation for the recoverable cases — read `EdgeCentres.status` per
+pixel (`"ok"` / `"recovered"` / `"undetermined"`) rather than trusting the returned bound as a
+numeric interval, which never reached reliable coverage on real data.
+
 **Output of Phase 2:** per-pixel orientation (and, for a θ scan, normal-strain) maps for
 *each reflection separately*, each on its own grid, plus the measured gain, the per-pixel
 rocking width, and the background's θ-correlation. Fusing reflections is Phase 3, and only

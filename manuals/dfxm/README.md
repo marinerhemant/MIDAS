@@ -334,7 +334,8 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
     the package's own windowed `reduce_rocking(window="peak")` reducer (+0.2 to +0.6 mdeg),
     which already handles a peak near a scan end without discarding good data on the far side
     — do not replace it with a "more principled" full-curve sum without measuring the
-    trade-off on real data first.
+    trade-off on real data first. `midas_dfxm.rocking_edge.edge_centres` packages this
+    reducer with a truncation flag and a gated fit — call it, don't rebuild it (§2f).
 
 31. **A truncation bound needs its coverage measured against real held-out cuts, on every
     dataset it will be used on, before it is trusted (Notebook §11k).** Calibrating a flank

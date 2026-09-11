@@ -131,6 +131,12 @@ Skipped on a given run but perfectly possible. These read identically to hard li
   fitted centre moved ours by 6.8–9.9 mdeg — larger than photon noise, sampling and every
   systematic combined. Until rule 20's asymmetric-lineshape test is run, the per-pixel error
   bar is unbounded below by that amount.
+- **A truncated rocking curve's true centroid cannot be bounded reliably, only flagged.**
+  `midas_dfxm.rocking_edge.calibrate_flank_ratio`'s bound, calibrated against each dataset's
+  own well-recorded pixels, never reached its 90 % coverage target: 0.60 pooled on one real
+  dataset even at the widest candidate ratio, 0.86–0.93 on a second (uncalibratable on one of
+  its scans entirely). Report the truncation flag and a gated fit where accepted (rules 30–31,
+  Notebook §11k) — treat the returned `lower`/`upper` as a scale, never as an interval.
 
 **Did not, but could.**
 

@@ -36,7 +36,7 @@ Reflection(s):   <e.g. 002, 111 — or "find it from the geometry">
 Question:        <orientation map | strain map | full-F tensor | dislocation typing>
 ```
 
-## Eight things to know before you start
+## Eleven things to know before you start
 
 DFXM's silent failures are different from HEDM's. These are the ones a context-free session
 gets wrong, each earned on real data or verified against the dynamical forward (Lab Notebook
@@ -111,6 +111,17 @@ yours (rules 11–20, Lab Notebook §7):
     And if `samx/samy/samz` never move, a detector-frame optical term and a real sample
     gradient are **exactly degenerate** — one scan at a known translation separates them
     (ENVELOPE §6, Notebook §11f).
+
+11. **A centroid must not depend on where the analysis window sits — measure that, don't
+    assume it.** A window-sweep test on real frames (slide a pixel's peak from a window's
+    centre to its edge; the true centroid can't move) found a script's clipped centroid
+    moved **10.0 mdeg** at a window's edge. Two fixes made it *worse* before the third
+    worked: forcing a symmetric window discarded real data (−17 mdeg); summing the whole
+    curve unclipped exposed the centroid to a non-flat background instead of diluting it
+    (−2 to −4 mdeg). What won was reusing the package's own untouched
+    `reduce_rocking(window="peak")` for the centre, with `midas_dfxm.rocking_edge.edge_centres`
+    adding a truncation flag and a gated fit on top — call that before inventing a new
+    estimator at a scan boundary (rules 30–31, Notebook §11k).
 
 ## When something looks wrong
 
