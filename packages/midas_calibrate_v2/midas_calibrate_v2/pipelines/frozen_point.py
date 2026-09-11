@@ -34,6 +34,7 @@ from ..compat.from_v1 import spec_from_v1_params
 from ..forward.distortion import P_COEF_NAMES
 from ..forward.point_pick import PickedPoints, pick_points
 from ..inference.lm import GenericLMConfig, lm_minimise
+from ..io.transforms import apply_im_trans
 from ..loss.pseudo_strain import pseudo_strain_residual
 from ..parameters.spec import CalibrationSpec
 from ._common import FittedDataset, _filter_by_snr
@@ -103,6 +104,21 @@ def autocalibrate_frozen_point(
         spec = spec_from_v1_params(v1_params)
     else:
         spec = _clone_spec(spec)
+
+    # The image transform is part of the calibration description and rides
+    # on the spec (see io/transforms.apply_im_trans for the three ways doing
+    # this by hand fails silently) -- every other v2 pipeline applies it this
+    # way. Guarded so the no-transform path -- every caller before this spec
+    # field existed -- is byte-identical to before. This pipeline has no
+    # separate dark/mask arguments of its own (masking is opt-in via
+    # ``point_pick_kwargs["panel_mask"]``), so unlike the cake-based
+    # pipelines only ``image`` rides through here -- a caller supplying both
+    # a non-trivial ``im_trans`` AND a ``panel_mask`` must pass the mask
+    # already in the post-transform frame.
+    if spec.im_trans:
+        image, _, _, spec.NrPixelsY, spec.NrPixelsZ = apply_im_trans(
+            image, None, None, spec.im_trans)
+
     # tx (rotation about the beam) reaches the ring radii ONLY through the
     # azimuthal distortion harmonics: it shifts lab eta by exactly tx, and
     # D is evaluated at lab eta. With the harmonics free that makes
