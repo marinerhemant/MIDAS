@@ -483,14 +483,23 @@ class RockingMaps:
         lines = [f"{self.scan_type} map: {n} lit px ({lit.mean():.1%} of the ROI); "
                  f"{int((lit & self.truncated).sum())} of them have their {edge} "
                  "(centre may be biased; left out below)"]
-        v = self.value if self.value.ndim == 2 else None
-        if v is not None and good.any():
-            q = np.nanpercentile(v[good], [2, 25, 50, 75, 98])
+        what = "median of each pixel's curve" if fixed else "first moment in the peak window"
+        if self.value.ndim == 2 and good.any():
+            q = np.nanpercentile(self.value[good], [2, 25, 50, 75, 98])
             q = np.where(np.abs(q) < 1e-6, 0.0, q)          # the median is 0 by construction
-            what = "median of each pixel's curve" if fixed else "first moment in the peak window"
             lines.append(f"value       median {q[2]:.3g} {self.unit}, IQR [{q[1]:.3g}, {q[3]:.3g}], "
                          f"p2-p98 [{q[0]:.3g}, {q[4]:.3g}] (relative to the reference; {what})")
             lines.append(f"reference   {float(self.reference_deg):.5f} deg (median centre, lit pixels)")
+        elif self.value.ndim == 3 and good.any():
+            for a in range(self.value.shape[-1]):
+                q = np.nanpercentile(self.value[good, a], [2, 25, 50, 75, 98])
+                q = np.where(np.abs(q) < 1e-6, 0.0, q)
+                lines.append(f"value[{self.axes[a]}] median {q[2]:.3g} {self.unit}, "
+                             f"IQR [{q[1]:.3g}, {q[3]:.3g}], p2-p98 [{q[0]:.3g}, {q[4]:.3g}] "
+                             f"(relative to the reference; {what})")
+            ref = np.asarray(self.reference_deg, float).reshape(-1)
+            lines.append("reference   " + ", ".join(f"{self.axes[a]}={ref[a]:.5f}" for a in range(ref.size))
+                         + " deg (median centre, lit pixels)")
         if self.single_peaked is not None and lit.any():
             sp = float(self.single_peaked[lit].mean())
             lines.append(f"shape       {sp:.1%} of lit pixels are single-peaked (>= 45 % of the "
@@ -1281,9 +1290,14 @@ def baseline_sensitivity(scan: RockingScan, *, roi=None, variants=None, block: i
     while 8x8 block means moved by at most 0.7 mdeg with slopes 0.99-1.01. A small block
     difference says the variants agree with each other; it does not show that either is
     free of a bias they share.
+
+    For a mesh (``tilt2d``) ``centre_deg`` has one component per axis: ``block_rms`` and
+    ``pixel_spread`` are the magnitude of the per-block/per-pixel tilt-vector difference
+    (both components combined in quadrature), and ``block_slope`` is one regression pooled
+    over both axes' blocks (does the choice rescale tilts, independent of which axis).
     """
     scale, unit = _value_scale(scan)
-    first = (lambda v: v if v.ndim == 2 else v[..., 0])
+    as3 = (lambda v: v[..., None] if v.ndim == 2 else v)
     base = reduce_rocking(scan, roi=roi, split_half=False, **kwargs)
     if variants is None:
         if kwargs.get("window") == "fixed":
@@ -1300,33 +1314,40 @@ def baseline_sensitivity(scan: RockingScan, *, roi=None, variants=None, block: i
                         dict(baseline="percentile", baseline_percentile=25.0),
                         dict(baseline="percentile", baseline_percentile=50.0)]
     sel = base.lit & ~base.truncated
-    bc = first(base.centre_deg) * scale
+    bc = as3(base.centre_deg) * scale
     rows = []
     for var in variants:
         m = reduce_rocking(scan, roi=roi, split_half=False, **{**kwargs, **var})
-        mc = first(m.centre_deg) * scale
-        both = sel & np.isfinite(bc) & np.isfinite(mc)
+        mc = as3(m.centre_deg) * scale
+        both = sel & np.isfinite(bc).all(-1) & np.isfinite(mc).all(-1)
         row = dict(variant=var, n_pixels=int(both.sum()), n_blocks=0, block_rms=float("nan"),
                    block_slope=float("nan"), pixel_spread=float("nan"), unit=unit)
         if both.sum() >= 3:
-            a = np.where(both, bc - np.median(bc[both]), 0.0)
-            c = np.where(both, mc - np.median(mc[both]), 0.0)
-            d = (c - a)[both]
-            row["pixel_spread"] = float(1.4826 * np.median(np.abs(d - np.median(d))))
+            K = bc.shape[-1]
+            a = np.stack([np.where(both, bc[..., k] - np.median(bc[..., k][both]), 0.0)
+                          for k in range(K)], -1)
+            c = np.stack([np.where(both, mc[..., k] - np.median(mc[..., k][both]), 0.0)
+                          for k in range(K)], -1)
+            d = (c - a)[both]                                    # (n_pixels, K)
+            dn = d[:, 0] if K == 1 else np.sqrt((d ** 2).sum(-1))  # signed for 1-D, magnitude for mesh
+            row["pixel_spread"] = float(1.4826 * np.median(np.abs(dn - np.median(dn))))
             H, W = both.shape
             h, w = H // block, W // block
             if h and w:
                 shp = (h, block, w, block)
                 full = both[:h * block, :w * block].reshape(shp).all(axis=(1, 3))
                 if full.sum() >= 3:
-                    ba = a[:h * block, :w * block].reshape(shp).mean(axis=(1, 3))[full]
-                    bb = c[:h * block, :w * block].reshape(shp).mean(axis=(1, 3))[full]
-                    ba = ba - np.median(ba)
-                    bb = bb - np.median(bb)
-                    den = float(np.dot(ba, ba))
+                    num = 0.0; den = 0.0; sq = []
+                    for k in range(K):
+                        ba = a[:h * block, :w * block, k].reshape(shp).mean(axis=(1, 3))[full]
+                        bb = c[:h * block, :w * block, k].reshape(shp).mean(axis=(1, 3))[full]
+                        ba = ba - np.median(ba)
+                        bb = bb - np.median(bb)
+                        num += float(np.dot(ba, bb)); den += float(np.dot(ba, ba))
+                        sq.append((bb - ba) ** 2)
                     row.update(n_blocks=int(full.sum()),
-                               block_rms=float(np.sqrt(np.mean((bb - ba) ** 2))),
-                               block_slope=float(np.dot(ba, bb) / den) if den > 0 else float("nan"))
+                               block_rms=float(np.sqrt(np.mean(np.sum(sq, axis=0)))),
+                               block_slope=float(num / den) if den > 0 else float("nan"))
         rows.append(row)
     return rows
 
@@ -1374,49 +1395,74 @@ def example_rocking_scan(kind: str = "broad", *, shape=(64, 64), n_points: int =
     ``kind="step"``: the same box, plus a real 20 mdeg tilt step across the line (left half
     -12, right half +8). Both centres must show it.
 
+    ``kind="mesh"``: a two-axis (theta, chi) rock -- classifies as ``tilt2d``. One peak per
+    pixel, as in ``"single"``, but centred in a plane over both axes; the planted answer is a
+    smooth ~5.5 mdeg ramp on theta and a smooth ~5 mdeg ramp on chi (independent of each
+    other), in ``scan.meta["truth"]["tilt_mdeg"]`` as ``(H, W, 2)``. The grid is a square of at
+    least 20 x 20 points (``n_points`` only sets it larger, via its square root); ``two_theta``
+    is ignored.
+
     Frames are Poisson at ``gain`` electrons per count over a ``pedestal``, ``n_repeats`` per
     point, averaged; the repeat halves are kept for the split-half error bar. ``motion_px``
     plants a rigid random shift of the image per frame (rms, in pixels), to show what frames
     that are not copies of each other do. ``scan.meta["truth"]`` holds the planted tilt map
     (mdeg) and the planted horn ratio.
     """
-    if kind not in ("single", "broad", "step"):
-        raise ValueError("kind must be 'single', 'broad' or 'step'")
+    if kind not in ("single", "broad", "step", "mesh"):
+        raise ValueError("kind must be 'single', 'broad', 'step' or 'mesh'")
     rng = np.random.default_rng(seed)
     H, W = shape
     x0 = 7.300
-    x = x0 + 1e-3 * step_mdeg * np.arange(n_points)                     # deg
     rr, cc = np.mgrid[0:H, 0:W]
     u = (cc - (W - 1) / 2) / (W / 2)                                      # -1 .. 1 across
     v = (rr - (H - 1) / 2) / (H / 2)
-    xm = x[:, None, None]
-    if kind == "single":
-        tilt = 12.0 * u + 4.0 * v                                          # mdeg, smooth
-        cen = x0 + 1e-3 * (38.0 + tilt)
-        sig = 1e-3 * 5.0 / 2.3548
-        signal = np.exp(-0.5 * ((xm - cen[None]) / sig) ** 2)
+    if kind == "mesh":
+        n1 = n2 = max(int(round(math.sqrt(n_points))), 20)
+        th_ax = x0 + 1e-3 * step_mdeg * np.arange(n1)
+        chi_ax = 1e-3 * step_mdeg * np.arange(n2)
+        TH, CHI = np.meshgrid(th_ax, chi_ax, indexing="ij")
+        th_flat = TH.ravel(); chi_flat = CHI.ravel()
+        n_frames = th_flat.size
+        tilt_th = 4.0 * u + 1.5 * v                                        # mdeg, smooth
+        tilt_chi = -3.0 * u + 2.0 * v                                      # mdeg, smooth, independent
+        cen_th = th_ax[n1 // 2] + 1e-3 * tilt_th
+        cen_chi = chi_ax[n2 // 2] + 1e-3 * tilt_chi
+        sig = 1e-3 * 4.0 / 2.3548
+        signal = np.exp(-0.5 * (((th_flat[:, None, None] - cen_th[None]) / sig) ** 2
+                                + ((chi_flat[:, None, None] - cen_chi[None]) / sig) ** 2))
+        tilt = np.stack([tilt_th, tilt_chi], -1)                           # (H, W, 2)
         ratio = np.ones((H, W))
     else:
-        tilt = np.zeros((H, W)) if kind == "broad" else np.where(u < 0, -12.0, 8.0)
-        e1 = x0 + 1e-3 * (37.5 + tilt)
-        e2 = x0 + 1e-3 * (67.5 + tilt)
-        t = u + 0.3 * v
-        hl = 2.5 * (0.5 - 0.5 * np.tanh(3 * t))                            # left horn height
-        hr = 2.5 * (0.5 + 0.5 * np.tanh(3 * t))                            # right horn height
-        ratio = hl / hr
-        box = 0.5 * (_erf((xm - e1[None]) / (1e-3 * math.sqrt(2))) - _erf((xm - e2[None]) / (1e-3 * math.sqrt(2))))
-        horns = (hl[None] * np.exp(-0.5 * ((xm - e1[None] - 1e-3) / 1e-3) ** 2)
-                 + hr[None] * np.exp(-0.5 * ((xm - e2[None] + 1e-3) / 1e-3) ** 2))
-        signal = box + horns
+        x = x0 + 1e-3 * step_mdeg * np.arange(n_points)                     # deg
+        n_frames = n_points
+        xm = x[:, None, None]
+        if kind == "single":
+            tilt = 12.0 * u + 4.0 * v                                          # mdeg, smooth
+            cen = x0 + 1e-3 * (38.0 + tilt)
+            sig = 1e-3 * 5.0 / 2.3548
+            signal = np.exp(-0.5 * ((xm - cen[None]) / sig) ** 2)
+            ratio = np.ones((H, W))
+        else:
+            tilt = np.zeros((H, W)) if kind == "broad" else np.where(u < 0, -12.0, 8.0)
+            e1 = x0 + 1e-3 * (37.5 + tilt)
+            e2 = x0 + 1e-3 * (67.5 + tilt)
+            t = u + 0.3 * v
+            hl = 2.5 * (0.5 - 0.5 * np.tanh(3 * t))                            # left horn height
+            hr = 2.5 * (0.5 + 0.5 * np.tanh(3 * t))                            # right horn height
+            ratio = hl / hr
+            box = 0.5 * (_erf((xm - e1[None]) / (1e-3 * math.sqrt(2))) - _erf((xm - e2[None]) / (1e-3 * math.sqrt(2))))
+            horns = (hl[None] * np.exp(-0.5 * ((xm - e1[None] - 1e-3) / 1e-3) ** 2)
+                     + hr[None] * np.exp(-0.5 * ((xm - e2[None] + 1e-3) / 1e-3) ** 2))
+            signal = box + horns
     beam = np.exp(-0.5 * (u / 0.7) ** 2 - 0.5 * (v / 0.7) ** 2)          # illumination falls off
     clean = pedestal + amplitude * beam[None] * signal
-    frames = np.zeros((n_points, H, W)); A = np.zeros_like(frames); B = np.zeros_like(frames)
+    frames = np.zeros((n_frames, H, W)); A = np.zeros_like(frames); B = np.zeros_like(frames)
     nA = 0; nB = 0
     for r in range(n_repeats):
         img = clean
         if motion_px > 0:
             img = np.stack([_shift2d(clean[m] - pedestal, *rng.normal(0, motion_px, 2)) + pedestal
-                            for m in range(n_points)])
+                            for m in range(n_frames)])
         f = rng.poisson(np.clip(img, 0, None) * gain) / gain
         frames += f
         if r % 2 == 0:
@@ -1425,8 +1471,11 @@ def example_rocking_scan(kind: str = "broad", *, shape=(64, 64), n_points: int =
             B += f; nB += 1
     frames /= n_repeats
     halves = (A / nA, B / nB) if nB else None
-    tth = 2.0 * x if two_theta else np.full(n_points, 2 * 8.32)
-    motors = {"th": x, "tth": tth, "Num": np.arange(n_points)}
+    if kind == "mesh":
+        motors = {"th": th_flat, "chi": chi_flat, "Num": np.arange(n_frames)}
+    else:
+        tth = 2.0 * x if two_theta else np.full(n_points, 2 * 8.32)
+        motors = {"th": x, "tth": tth, "Num": np.arange(n_points)}
     return RockingScan.from_arrays(frames.astype(np.float32), motors, halves=halves,
                                    n_repeats=n_repeats, source=f"example_rocking_scan({kind!r})",
                                    meta={"truth": {"tilt_mdeg": tilt, "horn_ratio": ratio,
