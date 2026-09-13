@@ -133,6 +133,13 @@ class ConstrainedFit:
     cell_sigma_bootstrap: Optional[Tuple[float, ...]] = None
     n_bootstrap: int = 0
     free_names: Tuple[str, ...] = ()
+    #: Every individual bootstrap resample's full expanded cell, (n_kept, 6) array of
+    #: (a, b, c, alpha, beta, gamma), or None when n_bootstrap=0 or too few resamples
+    #: succeeded. `cell_sigma_bootstrap` is this array's std; kept here too because a
+    #: single sigma number cannot show a skewed or multi-modal spread, and "the envelope
+    #: IS the result" (this project's own standing lesson) applies to a, b, c individually,
+    #: not only to their difference.
+    cell_bootstrap_samples: Optional[np.ndarray] = None
 
     def __str__(self) -> str:
         c, s = self.cell, self.cell_sigma
@@ -228,15 +235,18 @@ def refine_cell_joint(domains: Sequence[DomainData], *, system: str,
                 keep.append(_expand(system, r2.x[:nfree]))
             except Exception:
                 continue
+        keep_arr = None
         if len(keep) > 4:
-            boot = tuple(float(v) for v in np.std(np.array(keep), axis=0, ddof=1))
+            keep_arr = np.array(keep)
+            boot = tuple(float(v) for v in np.std(keep_arr, axis=0, ddof=1))
 
     return ConstrainedFit(
         system=system, cell=tuple(float(v) for v in cell), cell_sigma=cell_sigma,
         rotvecs=[res.x[nfree+3*i:nfree+3*i+3] for i in range(len(doms))],
         rms=rms, n_reflections=n, n_domains=len(doms), two_pi=two_pi,
         cell_sigma_bootstrap=boot, n_bootstrap=len(keep) if boot else 0,
-        free_names=tuple(FREE_PARAMS[system]))
+        free_names=tuple(FREE_PARAMS[system]),
+        cell_bootstrap_samples=keep_arr if n_bootstrap > 0 else None)
 
 
 def refine_cell_constrained(hkl, g, *, system: str, cell0, **kw) -> ConstrainedFit:
