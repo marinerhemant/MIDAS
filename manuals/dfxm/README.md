@@ -348,6 +348,21 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
     is still recorded) over an assumed flank shape; it degrades predictably with the missing
     fraction instead of failing silently.
 
+32. **The top-ranked peak in a periodicity spectrum is not automatically the real one — confirm
+    it by eye, every time the region or cutoff changes (kyay_dfxm_dec2025/artifact_check/,
+    2026-09-12).** Azimuthal whitening fixes the well-known red-spectrum failure (a raw argmax
+    rails at the lowest wavevector), but whitening alone is not sufficient: on a real Ba122
+    θ-2θ width map, the whitened spectrum's rank-1 peak (41 px, 168° from vertical, 74× the
+    radial-mean power) pointed the wrong way entirely across a comb pattern visible to the eye;
+    the real feature was rank-3 in the same list (39 px, 2°, 24× power). The failure is not
+    obvious from the numbers alone — 74× looks like the more confident answer — only an overlay
+    of the candidate direction on the real map shows which one actually tracks the visible
+    structure. This does not transfer between crops or cutoffs: a peak confirmed on one region
+    or one high-pass sigma is not confirmed on another; re-render and re-check every time either
+    changes, and prefer a cutoff-free cross-check (row/column autocorrelation, or a line profile
+    plus a two-parameter cosine fit, the one method a related earlier campaign found robust when
+    six other estimators failed) as a second read before quoting a period or angle.
+
 ### Traps that silently corrupt results
 
 | Trap | Symptom if missed | Where |
@@ -391,6 +406,8 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
 | one fixed rocking window reused across a raster while θ_B drifts | truncated positions bias widths and integrals, and manufacture apparent two-population structure | §2 |
 | Λ assumed similar for a weak satellite and a strong parent | Λ ∝ 1/\|F\|, so the dynamical boundary can bind for one and never for the other | §1 |
 | rocking-width / Darwin-width used as a dynamical-relevance criterion | the criterion is t_coherent/Λ; a wide rocking curve does not bound dynamical effects | §1, §4 |
+| rank-1 peak of an azimuthally-whitened periodicity spectrum trusted without a visual overlay | picks a real but wrong-direction feature; the true one can be several ranks down and lower-power | rule 32 |
+| a detrend/high-pass cutoff chosen before inspecting a raw profile of the region | can remove the very periodicity being searched for if the cutoff sits below the real period | rule 32 |
 
 ---
 
