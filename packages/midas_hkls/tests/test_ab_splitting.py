@@ -136,3 +136,78 @@ def test_ab_sensitive_mask_edge_cases():
     assert ab_sensitive_mask(np.zeros((0, 3), dtype=int)).shape == (0,)
     assert not ab_sensitive_mask(np.array([[0, 0, 2]])).any()      # h==k==0
     assert ab_sensitive_mask(np.array([[2, -1, 0], [1, 2, 0]])).all()   # sign-insensitive
+
+
+# ---------------------------------------------------------------- asymmetry_sign_test
+# Added 2026-09-13: the raster-wide magnitude-only check in
+# `06_raster_lattice_batch.ipynb` cannot tell a real crystal-to-crystal a/b trend from the
+# SAME index-asymmetry artifact expressing itself with different severity per position --
+# both produce a spread of |a-b|. This tests the mechanism `index_asymmetry` documents
+# directly: whether sign(a-b) tracks which of h, k dominates that SAME domain's own
+# reflections. The null (random, unrelated signs) must be able to pass, and a forced
+# correlation (the documented mechanism, planted) must be caught -- both checked below.
+
+def _lopsided_hkl(rng, h_dominant, n=20):
+    """n reflections with |h|>|k| if h_dominant else |k|>|h|, random l."""
+    lo = rng.integers(-15, 16, n)
+    if h_dominant:
+        return np.column_stack([np.full(n, 3), np.ones(n, int), lo])
+    return np.column_stack([np.ones(n, int), np.full(n, 3), lo])
+
+
+def test_asymmetry_sign_test_null_is_not_significant_when_signs_are_independent():
+    """A null that cannot fail licenses nothing: domains whose a>b is UNRELATED to their own
+    h/k dominance must not be flagged, however many of them there are."""
+    from midas_hkls import asymmetry_sign_test
+    rng = np.random.default_rng(0)
+    domains = []
+    for _ in range(60):
+        h_dom = bool(rng.integers(0, 2))
+        a_bigger = bool(rng.integers(0, 2))          # INDEPENDENT of h_dom, by construction
+        a, b = (4.0, 3.9) if a_bigger else (3.9, 4.0)
+        domains.append((_lopsided_hkl(rng, h_dom), a, b))
+    r = asymmetry_sign_test(domains)
+    assert r["n_used"] == 60
+    assert r["p_value"] > 0.05, f"a genuinely independent null must not read as significant: {r}"
+    assert 0.35 < r["agree_fraction"] < 0.65, r
+
+
+def test_asymmetry_sign_test_catches_the_documented_mechanism_when_planted():
+    """The positive control: force EXACTLY the mechanism index_asymmetry's docstring
+    describes (h-dominant domains consistently fitted a>b) and confirm it is caught hard,
+    not just noted."""
+    from midas_hkls import asymmetry_sign_test
+    rng = np.random.default_rng(1)
+    domains = []
+    for _ in range(40):
+        h_dom = bool(rng.integers(0, 2))
+        a, b = (4.0, 3.9) if h_dom else (3.9, 4.0)    # PLANTED: tracks h_dom every time
+        domains.append((_lopsided_hkl(rng, h_dom), a, b))
+    r = asymmetry_sign_test(domains)
+    assert r["n_used"] == 40
+    # planted: h-dominant domains get a>b, i.e. the MORE populous index's own axis comes out
+    # LONGER -- "opposite sense" in the function's naming (see its docstring).
+    assert r["direction"] == -1
+    assert r["agree_fraction"] > 0.95
+    assert r["p_value"] < 1e-6, f"a perfect planted correlation must be caught decisively: {r}"
+
+
+def test_asymmetry_sign_test_excludes_uninformative_domains():
+    """A tied index count or a == b carries no directional information -- must be excluded,
+    not silently coerced into a sign."""
+    from midas_hkls import asymmetry_sign_test
+    tied_hkl = np.array([[2, 1, 0], [1, 2, 0]])       # one |h|>|k|, one |k|>|h|: tied
+    r = asymmetry_sign_test([(tied_hkl, 4.0, 3.9), (np.array([[3, 1, 0]]), 4.0, 4.0)])
+    assert r["n_used"] == 0
+    assert r["direction"] == 0
+    assert r["p_value"] != r["p_value"]               # NaN, not a fabricated number
+
+
+def test_asymmetry_sign_test_is_a_two_sided_binomial_not_a_gaussian_approximation():
+    """Small-N sanity: 3 of 3 agreeing should already read as somewhat unusual, without
+    needing dozens of domains -- confirms the exact test isn't silently returning 1.0."""
+    from midas_hkls import asymmetry_sign_test
+    domains = [(_lopsided_hkl(np.random.default_rng(i), True), 4.0, 3.9) for i in range(3)]
+    r = asymmetry_sign_test(domains)
+    assert r["n_used"] == 3 and r["agree_fraction"] == 1.0
+    assert r["p_value"] == pytest.approx(0.25, abs=1e-9)   # exact binomial: 2*(0.5)**3

@@ -32,7 +32,8 @@ import numpy as np
 
 __all__ = ["hkl_box_from_geometry", "distortion_rank",
            "distortion_condition", "ab_separable", "shear_separable",
-           "ab_sensitive_mask", "partner_multiplicity", "index_asymmetry"]
+           "ab_sensitive_mask", "partner_multiplicity", "index_asymmetry",
+           "asymmetry_sign_test"]
 
 
 def hkl_box_from_geometry(a: float, c: float, *, wavelength_A: float,
@@ -226,10 +227,31 @@ def index_asymmetry(hkl: np.ndarray) -> dict:
 
     The consequence is that ``1/a^2`` rides on a sparse design column:
     ``sigma(1/a^2)/sigma(1/b^2)`` had median 5.46 and exceeded 2 in 71.8 % of
-    domains. Any radial systematic then pushes ``a`` one way, and the fitted
-    splitting comes out with a CONSISTENT SIGN across domains -- 19 of 25 in
-    that data. Since a<->b labelling is a per-domain gauge, a common sign is
-    impossible physically and is the signature of this artifact.
+    domains. A ``|q|``- or ``2theta``-DEPENDENT systematic (detector distance,
+    beam centre, a distortion residual -- an ordinary geometry-calibration
+    error) then pushes ``a`` one way, and the fitted splitting comes out with
+    a CONSISTENT SIGN across domains -- 19 of 25 in that data. Since a<->b
+    labelling is a per-domain gauge, a common sign is impossible physically
+    and is the signature of this artifact.
+
+    **Not any systematic.** A uniform, ISOTROPIC error (e.g. a wavelength
+    miscalibration, which scales every ``q`` by the same fraction) is exactly
+    degenerate with an overall cell-scale change and produces NO splitting at
+    all, however sparse the design (verified 2026-09-13 by a /verify physics
+    lens: zero-noise Monte Carlo, flat ~50 % agreement up to a fractional
+    dilation 20x the plausible size). The mechanism needs the systematic's
+    SIZE to depend on ``|q|``/2theta, not just be present.
+
+    **This diagnosis is itself not yet decisive.** A /verify artifact lens
+    (2026-09-13, claim ``d93ca3c0a6e2``) showed a synthetic control with
+    ``a == b`` planted EXACTLY, this SAME index-population skew, and one small
+    SHARED (not domain-specific) quadratic radial distortion reproduces the
+    raster's own measured sign-consistency (agreement, significance) with
+    zero real crystallographic splitting. Detecting this pattern is evidence
+    of SOME non-physical contribution, not proof of which one, and not proof
+    the sample carries no real splitting at all -- see
+    :func:`asymmetry_sign_test` and ``midas_defect.raster``'s module
+    docstring for the full finding.
 
     Returns ``n_k_gt_h``, ``n_h_gt_k``, ``ratio`` and ``sigma_ratio`` (the
     relative uncertainty of 1/a^2 against 1/b^2 from the design alone). Report
@@ -247,3 +269,78 @@ def index_asymmetry(hkl: np.ndarray) -> dict:
         sr = float("inf")
     return dict(n_k_gt_h=nk, n_h_gt_k=nh,
                 ratio=(nk/nh if nh else float("inf")), sigma_ratio=sr)
+
+
+def asymmetry_sign_test(domains: Sequence[Tuple[np.ndarray, float, float]]) -> dict:
+    """Does the SIGN of a domain's own a-vs-b fit track which of h, k dominates its own hkl set?
+
+    ``index_asymmetry``'s own finding is that a sparse, one-sided (h, k) design manufactures
+    "a fake splitting of a CONSISTENT SIGN" (its docstring; measured raster-wide as a consistent
+    sign in 19 of 25 domains). A raster-wide check that only compares the MAGNITUDE of an a/b
+    split against an identical-crystal null (as ``06_raster_lattice_batch.ipynb``'s Step 3 did
+    until 2026-09-12, ``manuals/solve-cell/ENVELOPE.md`` #14 caveat) is blind to this: the
+    artifact and a real crystal-to-crystal trend can produce the SAME spread of ``|a-b|``. This
+    tests the thing the mechanism actually predicts instead: whether ``sign(a-b)`` correlates
+    with whether ``|h|>|k|`` or ``|k|>|h|`` dominates that SAME domain's own reflections.
+
+    This is gauge-safe where a magnitude comparison across domains is not: which axis a domain's
+    fit calls "a" and which its own reflections call "h" share ONE arbitrary per-domain
+    labelling (a 90 deg rotation about c* swaps both together), so correlating a domain's own
+    ``sign(a-b)`` against its own ``sign(n_h_gt_k - n_k_gt_h)`` needs no cross-domain convention
+    fixed first -- unlike comparing "a" between two different domains, which does.
+
+    ``domains``: one ``(hkl, a, b)`` triple per domain, from an INDEPENDENT (not
+    tetragonal-constrained) per-domain fit -- e.g. ``Domain.hkl``, ``Domain.lat.a``,
+    ``Domain.lat.b`` from :func:`midas_defect.domains.find_domains`. A domain with a tied index
+    count (as many ``|h|>|k|`` as ``|k|>|h|``) or ``a == b`` exactly carries no directional
+    information and is excluded; ``n_used`` says how many remain.
+
+    Each domain sorts into one of two GAUGE-EQUIVALENT buckets, not a literal pairing: "same
+    sense" lumps together ``|h|>|k| with a>b`` AND ``|k|>|h| with a<b`` (both say the same
+    thing -- "the more-populous index's own axis came out shorter" -- under the OTHER domain's
+    own h<->k<->a<->b relabelling), and "opposite sense" lumps the other two combinations. This
+    lumping is deliberate, not a bug (/verify's reproduction lens flagged 2026-09-13 that
+    field names naming a literal ``h_gt_k``/``a_gt_b`` pairing would misdescribe it): reported
+    as ``n_same_sense``/``n_opposite_sense`` below, never as a single literal combination.
+
+    Returns ``n_used``, ``n_same_sense``, ``n_opposite_sense``, the larger fraction as
+    ``agree_fraction``, ``p_value`` (two-sided EXACT binomial test against 0.5 -- no Gaussian
+    assumption), and ``direction`` (``+1`` if "same sense" dominates -- the more-populous index
+    tends to come out with the SHORTER axis -- ``-1`` for the other way, ``0`` if ``n_used`` is
+    0).
+
+    **A small ``p_value`` here is evidence of SOME non-physical contribution -- it does not by
+    itself say which one, or that the sample carries no real splitting at all.** /verify
+    REFUTED that stronger reading on the 2604 raster (2026-09-13, claim ``d93ca3c0a6e2``): a
+    synthetic control with ``a == b`` planted EXACTLY, the SAME (already-measured) index
+    population skew, and one small SHARED quadratic radial distortion -- no domain-specific
+    physics at all -- reproduced this raster's own agreement fraction and significance almost
+    exactly. This function is real progress over comparing MAGNITUDE spread to a null (which
+    cannot see a sign at all), not a settled verdict: read a strong result here as "treat any
+    a/b split from this data with more suspicion," not as confirmation of which mechanism, real
+    or artifactual, is responsible.
+    """
+    from scipy.stats import binomtest
+
+    n_same, n_opposite = 0, 0
+    for hkl, a, b in domains:
+        asym = index_asymmetry(hkl)
+        if asym["n_h_gt_k"] == asym["n_k_gt_h"] or a == b:
+            continue
+        h_dominant = asym["n_h_gt_k"] > asym["n_k_gt_h"]
+        a_bigger = a > b
+        # "same sense": the more-populous index's OWN axis is the shorter one -- h-dominant
+        # with a<b, or (the gauge-mirror of that) k-dominant with b<a. Both read the same way
+        # once a domain's own h<->k<->a<->b labelling is allowed to flip together.
+        if h_dominant != a_bigger:
+            n_same += 1
+        else:
+            n_opposite += 1
+    n_used = n_same + n_opposite
+    if n_used == 0:
+        return dict(n_used=0, n_same_sense=0, n_opposite_sense=0,
+                    agree_fraction=float("nan"), p_value=float("nan"), direction=0)
+    p = float(binomtest(n_same, n_used, 0.5, alternative="two-sided").pvalue)
+    return dict(n_used=n_used, n_same_sense=n_same, n_opposite_sense=n_opposite,
+                agree_fraction=max(n_same, n_opposite) / n_used, p_value=p,
+                direction=(1 if n_same >= n_opposite else -1))
