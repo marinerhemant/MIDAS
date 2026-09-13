@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import time
 from dataclasses import dataclass
 from typing import Dict, Optional, Union
@@ -63,10 +64,19 @@ import numpy as np
 
 # ── optional fast background estimator ──────────────────────────────────────
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")  # macOS OpenMP guard
-try:
-    import diplib as _DIPLIB
-    _HAS_DIPLIB = True
-except Exception:
+# macOS-ONLY (2026-09-13): importing diplib here hung a Windows kernel with zero
+# CPU and no way to interrupt it -- a DLL-loader-lock deadlock, not the macOS
+# dylib-load-order race this import exists to dodge. use_diplib defaults to
+# False everywhere in this module, so skipping the import entirely on other
+# platforms costs nothing. See seed/__init__.py's fuller note.
+if sys.platform == "darwin":
+    try:
+        import diplib as _DIPLIB
+        _HAS_DIPLIB = True
+    except Exception:
+        _DIPLIB = None
+        _HAS_DIPLIB = False
+else:
     _DIPLIB = None
     _HAS_DIPLIB = False
 

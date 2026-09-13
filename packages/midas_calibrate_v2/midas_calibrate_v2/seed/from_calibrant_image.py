@@ -23,6 +23,7 @@ column-axis position, BC_z is the row-axis position.
 """
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
@@ -52,11 +53,17 @@ class AutoSeedResult:
 # Step 1: median filter (mirror AutoCalibrateZarr._safe_median_filter)
 # ----------------------------------------------------------------------
 
-# diplib's median filter is 10–30× faster on big images; use when available.
-try:
-    import diplib as _DIP_BG
-    _HAVE_DIPLIB_BG = True
-except ImportError:
+# diplib's median filter is 10-30x faster on big images; use when available.
+# macOS-ONLY (2026-09-13): importing it hung a Windows kernel (DLL-loader-lock
+# deadlock, zero CPU, uninterruptible) -- see seed/__init__.py's fuller note.
+if sys.platform == "darwin":
+    try:
+        import diplib as _DIP_BG
+        _HAVE_DIPLIB_BG = True
+    except ImportError:
+        _DIP_BG = None
+        _HAVE_DIPLIB_BG = False
+else:
     _DIP_BG = None
     _HAVE_DIPLIB_BG = False
 

@@ -21,6 +21,7 @@ Returns a ``SeedResult`` ready to plug into a v2 spec.
 """
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -28,9 +29,14 @@ from typing import Optional, Tuple
 # that diplib's libomp.dylib loads first.  If we let scipy load its OpenMP
 # runtime first, diplib's MedianFilter silently hangs.  See project memory
 # `feedback_calib_strain_threshold.md` / AutoCalibrateZarr's load order.
-try:
-    import diplib as _DIPLIB
-except ImportError:
+# macOS-ONLY (2026-09-13): this hung a Windows kernel instead (DLL-loader-lock
+# deadlock, zero CPU, uninterruptible) -- see seed/__init__.py's fuller note.
+if sys.platform == "darwin":
+    try:
+        import diplib as _DIPLIB
+    except ImportError:
+        _DIPLIB = None
+else:
     _DIPLIB = None
 
 import numpy as np
