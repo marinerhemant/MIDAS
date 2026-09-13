@@ -296,24 +296,35 @@ def _matrix_to_rotvec(U: np.ndarray) -> np.ndarray:
 
 def predict_q_from_U(
     U: torch.Tensor, hkls: torch.Tensor, a: torch.Tensor, c: torch.Tensor,
+    b: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    """Predicted sample-frame q-vectors. Differentiable in (U, a, c).
+    """Predicted sample-frame q-vectors. Differentiable in (U, a, b, c).
 
     Parameters
     ----------
     U : (3, 3) torch.Tensor
     hkls : (N, 3) torch.Tensor (any dtype; will be promoted)
     a, c : scalar tensors (lattice constants in Å)
+    b : scalar tensor, optional. **Defaults to `a` (tetragonal/cubic h,k share one axis)
+        -- every call site that predates 2026-09-13 relies on this default and must keep
+        getting it.** Pass the domain's own refined `b` explicitly for anything orthorhombic
+        (h and k on separate axes): `/verify` REFUTED an orientation-uncertainty claim
+        (claim b82502d6b5ad) that fed this function `a, c` only for a domain the caller's
+        OWN joint lattice fit (`rows.refine_lattice`) had already determined was NOT
+        tetragonal -- silently forcing every h/k reflection's k-component onto the wrong
+        axis length, biasing the fitted U itself for exactly the a != b domains this
+        project's a/b-splitting work cares about most.
 
     Returns
     -------
-    q : (N, 3) torch.Tensor — `U @ (2π h/a, 2π k/a, 2π l/c)` per row.
+    q : (N, 3) torch.Tensor — `U @ (2π h/a, 2π k/b, 2π l/c)` per row.
     """
     hkls_t = hkls.to(dtype=U.dtype, device=U.device)
     twopi = 2.0 * math.pi
+    b_ = a if b is None else b
     g_cry = torch.stack([
         twopi * hkls_t[..., 0] / a,
-        twopi * hkls_t[..., 1] / a,
+        twopi * hkls_t[..., 1] / b_,
         twopi * hkls_t[..., 2] / c,
     ], dim=-1)
     return (U @ g_cry.unsqueeze(-1)).squeeze(-1)
@@ -507,6 +518,7 @@ def refine_U_from_centroids(
     weights: Optional[np.ndarray] = None,
     *,
     a: float, c: float,
+    b: Optional[float] = None,
     refine_lattice: bool = False,
     n_steps: int = 400,
     lr: float = 5e-3,
@@ -529,8 +541,15 @@ def refine_U_from_centroids(
     weights
         Optional per-pair weight (e.g., the asterism's integrated intensity).
         Equal weights if omitted.
+    b
+        The k-axis lattice constant. **Defaults to `a` (tetragonal) -- pass the domain's
+        own already-refined `b` for anything orthorhombic**, see `predict_q_from_U`'s
+        docstring for why this matters (verify claim b82502d6b5ad). Held FIXED even when
+        `refine_lattice=True`, which only ever jointly refines `(a, c)` with `U` -- if the
+        caller already has a trustworthy `b` (e.g. from `rows.refine_lattice`'s joint fit),
+        re-refining it here from a handful of resampled centroids is not the intended use.
     refine_lattice
-        If True, also refine (a, c) jointly with U.
+        If True, also refine (a, c) jointly with U. `b` stays fixed regardless.
 
     Returns
     -------
@@ -558,6 +577,7 @@ def refine_U_from_centroids(
                           ).clone().requires_grad_(refine_lattice)
     c_t = torch.as_tensor(c, dtype=dtype_, device=device_,
                           ).clone().requires_grad_(refine_lattice)
+    b_t = torch.as_tensor(a if b is None else b, dtype=dtype_, device=device_)  # fixed, never refined here
     params = [rotvec] + ([a_t, c_t] if refine_lattice else [])
     opt = torch.optim.Adam(params, lr=lr)
 
@@ -565,7 +585,7 @@ def refine_U_from_centroids(
     for _ in range(n_steps):
         opt.zero_grad()
         U = _rotvec_to_matrix(rotvec)
-        q_pred = predict_q_from_U(U, hkls_t, a_t, c_t)
+        q_pred = predict_q_from_U(U, hkls_t, a_t, c_t, b_t)
         # weighted cosine-similarity loss
         dot = (q_pred * q_obs_t).sum(dim=-1)
         np_ = torch.linalg.vector_norm(q_pred, dim=-1)
@@ -586,6 +606,7 @@ def bootstrap_orientation_uncertainty(
     U_init: np.ndarray,
     *,
     a: float, c: float,
+    b: Optional[float] = None,
     n_boot: int = 25,
     keep_fraction: float = 0.7,
     weights: Optional[np.ndarray] = None,
@@ -598,11 +619,29 @@ def bootstrap_orientation_uncertainty(
     """Bootstrap angular uncertainty of `refine_U_from_centroids`.
 
     Returns dict with `U_mean` (3, 3), `angular_spread_deg` (pairwise stats),
-    and the full list of bootstrap U's.
+    and the full list of bootstrap U's, plus `n_distinct_subsets` and
+    `independent_resamples` (see below).
+
+    **Pass `b` for anything orthorhombic** -- see `predict_q_from_U`'s docstring
+    (`/verify` claim b82502d6b5ad, REFUTED partly on this). Omitting it silently
+    assumes h and k share one axis length, biasing every fitted `U` for a domain
+    whose own joint lattice fit already found a != b.
+
+    **Read `independent_resamples` before trusting the spread on a small domain.**
+    With `keep_n` resampled from only `n` centroids without replacement, there are
+    only `C(n, keep_n)` distinct possible subsets; `/verify` (same claim) found that
+    for a real 6-reflection domain (`keep_n=4`, `C(6,4)=15`), 25 bootstrap draws
+    cannot be 25 independent looks at the data -- they are highly overlapping
+    resamples of a tiny combinatorial pool, and the resulting "spread" reflects
+    that degeneracy at least as much as genuine orientation uncertainty. This
+    function does not refuse to run in that regime (a wide, honestly-labeled
+    envelope is still more informative than a bare point estimate), but it tells
+    you when you're in it.
     """
     rng = np.random.default_rng(seed)
     n = len(hkl_q_centroids)
     keep_n = max(4, int(keep_fraction * n))
+    n_distinct_subsets = math.comb(n, keep_n)
     U_list = []
     for _ in range(n_boot):
         idx = rng.choice(n, size=keep_n, replace=False)
@@ -610,7 +649,7 @@ def bootstrap_orientation_uncertainty(
         sub_w = (np.array([weights[i] for i in idx])
                   if weights is not None else None)
         U_b, _, _, _ = refine_U_from_centroids(
-            U_init, sub, weights=sub_w, a=a, c=c,
+            U_init, sub, weights=sub_w, a=a, c=c, b=b,
             refine_lattice=False, n_steps=n_steps, lr=lr,
             device=device, dtype=dtype,
         )
@@ -636,6 +675,11 @@ def bootstrap_orientation_uncertainty(
         pair_angle_p95_deg=float(np.percentile(pair_angles, 95)) if pair_angles else 0.0,
         n_boot=n_boot,
         keep_n=keep_n,
+        n_distinct_subsets=n_distinct_subsets,
+        # False whenever n_boot cannot be that many independent looks at the data --
+        # a necessary, not sufficient, check (even n_boot <= n_distinct_subsets can
+        # still overlap heavily; this only catches the guaranteed-duplicate regime).
+        independent_resamples=bool(n_boot <= n_distinct_subsets),
     )
 
 

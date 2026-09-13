@@ -113,10 +113,12 @@ from .geometry import (Geometry, detector_angle_maps, ewald_crossing_omegas, pix
 from .honesty import decoy_test, feature_in_raw, inflated_cell
 from .ingest import build_mask, detect_powder_rings, find_blobs_3d, flag_powder, subtract_background
 from .rows import hkl_box_from_geometry
+from .seed_index import bootstrap_orientation_uncertainty
 
 __all__ = ["PositionResult", "reduce_one_position", "reduce_raster_block",
           "assemble_raster_results", "omega_sign_check", "OmegaSignCheck",
-          "predict_reflections", "raster_wide_asymmetry_sign_test"]
+          "predict_reflections", "raster_wide_asymmetry_sign_test",
+          "plot_domain_overlay", "plot_orientation_envelope", "plot_lattice_envelope"]
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +204,49 @@ class PositionResult:
     split_pct: Optional[Tuple[float, float, float]]   # (delta, sigma, z) from split_with_error, or None
     notes: List[str] = field(default_factory=list)
     quotable: bool = False
+    #: SKETCH, 2026-09-13. **`/verify` REFUTED the claim that this envelope's width is "a real,
+    #: differentiating signal of orientation determinability"** (claim b82502d6b5ad: physics,
+    #: statistics, and artifact lenses all REFUTED; independent reproduction SURVIVED -- the
+    #: numbers themselves are computed correctly, the interpretation was not). Do not present
+    #: a sparse-domain envelope as evidence that domain's orientation is "real but uncertain"
+    #: without also checking `decoy` for that domain -- a domain the pipeline's own honesty
+    #: gate does not trust can show a wide envelope for reasons having nothing to do with
+    #: orientation physics (see `bootstrap_orientation_uncertainty`'s docstring for the full
+    #: mechanism: generic 1/sqrt(n) bootstrap scaling, non-independent resamples from a tiny
+    #: combinatorial pool below ``keep_n``, or -- the bug actually fixed by this claim -- a
+    #: silently-tetragonal orientation fit for a domain that is not tetragonal).
+    #:
+    #: One entry per domain (aligned with ``domains.domains``), from
+    #: ``seed_index.bootstrap_orientation_uncertainty``, or ``None`` where not computed
+    #: (default: not computed at all, see ``reduce_one_position``'s ``orientation_uncertainty``
+    #: flag -- this is NOT free, each entry re-runs the orientation fit
+    #: ``n_orientation_boot`` times). Keys: ``pair_angle_mean_deg`` / ``pair_angle_p95_deg`` /
+    #: ``pair_angle_max_deg`` (pairwise misorientation across the bootstrap U's), plus
+    #: ``U_mean``/``U_bootstraps``/``n_distinct_subsets``/``independent_resamples`` -- READ
+    #: ``independent_resamples`` before trusting a spread from a sparse domain.
+    #:
+    #: ``max`` several times ``mean`` is NOT by itself evidence of a bimodal/non-unimodal
+    #: spread -- checked directly on the cleanest synthetic domain available (321 reflections,
+    #: textbook single orientation): max/mean still came out ~3.7x, purely from comparing the
+    #: MAX of many bootstrap pairs against their MEAN (an order-statistics effect, not a
+    #: property of the underlying distribution's shape). To check for a genuinely multi-modal
+    #: spread, inspect ``U_bootstraps`` directly rather than reading a ratio off the summary
+    #: numbers.
+    orientation_envelope: List[Optional[dict]] = field(default_factory=list)
+    #: SKETCH, 2026-09-13, not yet independently /verify'd. (n_kept, 6) array of every
+    #: bootstrap resample's full expanded cell -- (a, b, c, alpha, beta, gamma) -- from
+    #: `midas_hkls.refine_cell_joint`'s own resampling loop, or None when no domain reached
+    #: `refine_cell_joint` (``refined_cell is None``) or too few resamples succeeded.
+    #: `split_pct`'s sigma is this array's std on columns 0/1; this is the same data before
+    #: being collapsed to that one number -- read individual a/b/c ranges from columns
+    #: 0/1/2, not just their difference.
+    cell_bootstrap_samples: Optional[np.ndarray] = None
+    #: (a, b, c, alpha, beta, gamma) bootstrap sigma, i.e. ``cell_bootstrap_samples.std(axis=0,
+    #: ddof=1)`` -- the compact, per-parameter summary of the same data, kept separately
+    #: because it (not the full array) is what belongs in a raster-wide map: cheap to carry
+    #: through JSON for hundreds of positions, where the full bootstrap array is not (see
+    #: ``to_dict()``, which drops ``cell_bootstrap_samples`` but keeps this).
+    cell_sigma_bootstrap: Optional[Tuple[float, ...]] = None
 
     def summary(self) -> str:
         lines = [f"position {self.point}: {self.n_spots} spots, {self.omega_sign}",
@@ -238,6 +283,20 @@ class PositionResult:
         d["omega_sign"] = dict(chosen_sign=self.omega_sign.chosen_sign,
                               n_explained=self.omega_sign.n_explained,
                               decisive=self.omega_sign.decisive)
+        # orientation_envelope/cell_bootstrap_samples carry raw bootstrap arrays (U_bootstraps:
+        # n_domains * n_orientation_boot * 3x3 floats; cell_bootstrap_samples: n_bootstrap * 6
+        # floats) meant for one position's own live plotting (05), not for a whole raster's
+        # worth of JSON files (06/reduce_raster_block) -- keep only the compact summaries a
+        # raster map actually needs; U_mean/cell_bootstrap_samples stay in-memory-only.
+        d["orientation_envelope"] = [
+            None if oe is None else
+            dict(U_mean=oe["U_mean"].tolist(), pair_angle_mean_deg=oe["pair_angle_mean_deg"],
+                pair_angle_p95_deg=oe["pair_angle_p95_deg"], pair_angle_max_deg=oe["pair_angle_max_deg"],
+                n_boot=oe["n_boot"], keep_n=oe["keep_n"], n_distinct_subsets=oe["n_distinct_subsets"],
+                independent_resamples=oe["independent_resamples"])
+            for oe in self.orientation_envelope
+        ]
+        d["cell_bootstrap_samples"] = None
         return d
 
     def save(self, path) -> None:
@@ -328,6 +387,124 @@ def predict_reflections(U: np.ndarray, B: np.ndarray, hkl: np.ndarray, geom: Geo
            hkl[kept_idx].astype(int), kept_idx)
 
 
+# ---------------------------------------------------------------------------
+# Reporting plots -- SKETCH, 2026-09-13. matplotlib is the package's optional `viz`
+# extra, imported lazily inside each function so it stays optional at module import time.
+# ---------------------------------------------------------------------------
+
+def plot_domain_overlay(frames: np.ndarray, res: "PositionResult", geom: Geometry, *, ax=None):
+    """The max-intensity projection over ``frames``, with every domain's own claimed
+    reflections predicted back onto it (same discipline DFXM calls "look at the curves
+    before the summary"). One color per domain, labelled with its `decoy_test` verdict --
+    a domain whose own honesty gate failed should look suspect here too, not just in a table.
+    """
+    import matplotlib.pyplot as plt
+    fig = None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(7.5, 6.6))
+    colors = plt.cm.tab10(np.linspace(0, 1, max(len(res.domains.domains), 1)))
+    im = ax.imshow(np.log10(np.clip(frames.max(axis=0), 1, None)), cmap="magma")
+    if fig is not None:
+        fig.colorbar(im, ax=ax, fraction=0.046, label="log10(max over frames)")
+    for i, dom in enumerate(res.domains.domains):
+        pr, pc, _pw, _phkl, _kept = predict_reflections(dom.U, dom.lat.B, dom.hkl, geom,
+                                                        res.omega_sign.chosen_sign)
+        ax.scatter(pc, pr, s=32, facecolors="none", edgecolors=[colors[i]], linewidths=1.3,
+                  label=f"domain {i} ({len(pr)} claimed, decoy={res.decoy[i]['verdict']})")
+    ax.set_title(f"position {res.point}: {len(res.domains.domains)} domain(s) found")
+    ax.set_xlabel("column"); ax.set_ylabel("row")
+    if res.domains.domains:
+        ax.legend(fontsize=8, frameon=False, loc="lower right")
+    return fig
+
+
+def plot_orientation_envelope(res: "PositionResult"):
+    """Per domain, a histogram of each bootstrap ``U``'s misorientation from the bootstrap
+    mean -- the visual form of ``PositionResult.orientation_envelope``.
+
+    **Read this plot, not just the summary numbers, before trusting a sparse domain's
+    envelope.** `/verify` REFUTED an early version of this envelope as a general
+    "orientation determinability signal" (claim ``b82502d6b5ad``) partly because a domain
+    resampled from too few reflections draws from a tiny combinatorial pool
+    (``n_distinct_subsets``) and can show a visibly LUMPY, non-smooth, even bimodal
+    histogram rather than a genuine continuous spread -- exactly the kind of thing a summary
+    mean/p95/max cannot show but a histogram does immediately. Domains with
+    ``orientation_envelope[i] is None`` (fewer than 4 claimed reflections) are skipped.
+    """
+    import matplotlib.pyplot as plt
+    n_dom = len(res.domains.domains)
+    fig, axes = plt.subplots(1, max(n_dom, 1), figsize=(5.5 * max(n_dom, 1), 4.2), squeeze=False)
+    axes = axes[0]
+    colors = plt.cm.tab10(np.linspace(0, 1, max(n_dom, 1)))
+    for i in range(n_dom):
+        ax = axes[i]
+        oe = res.orientation_envelope[i] if i < len(res.orientation_envelope) else None
+        dom = res.domains.domains[i]
+        if oe is None:
+            ax.text(0.5, 0.5, "not computed\n(<4 claimed reflections, or\n"
+                              "orientation_uncertainty=False)", ha="center", va="center",
+                   transform=ax.transAxes, fontsize=9)
+            ax.set_title(f"domain {i}"); ax.set_xticks([]); ax.set_yticks([])
+            continue
+        U_mean = oe["U_mean"]
+        angles = []
+        for Ub in oe["U_bootstraps"]:
+            delta = Ub @ np.asarray(U_mean).T
+            c = np.clip((np.trace(delta) - 1) / 2, -1, 1)
+            angles.append(np.degrees(np.arccos(c)))
+        ax.hist(angles, bins=min(12, max(len(angles) // 2, 3)), color=colors[i], edgecolor="k", alpha=0.85)
+        ax.axvline(oe["pair_angle_mean_deg"], color="k", ls="--", lw=1,
+                  label=f"mean pairwise = {oe['pair_angle_mean_deg']:.3f} deg")
+        ax.set_xlabel("misorientation vs bootstrap mean U (deg)")
+        ax.set_ylabel(f"count (of {oe['n_boot']} resamples)")
+        indep = "independent" if oe["independent_resamples"] else "NOT independent (too few reflections)"
+        ax.set_title(f"domain {i}: {len(dom.hkl)} claimed refl., keep_n={oe['keep_n']}\n"
+                    f"decoy={res.decoy[i]['verdict']}, resamples {indep}", fontsize=9)
+        ax.legend(fontsize=8, frameon=False)
+    fig.suptitle(f"Orientation envelope -- position {res.point} "
+                f"(/verify claim b82502d6b5ad: REFUTED as a general determinability signal; "
+                f"mechanism correctness-fixed, read decoy_test alongside this)", fontsize=9)
+    fig.tight_layout()
+    return fig
+
+
+def plot_lattice_envelope(res: "PositionResult"):
+    """``a``, ``b``, ``c`` bootstrap distributions, individually -- NOT just their difference.
+
+    Needs ``res.cell_bootstrap_samples``, which is only populated in-memory by
+    :func:`reduce_one_position` (never persisted through :meth:`PositionResult.to_dict`,
+    since it is one position's full raw bootstrap array, not something a whole raster's
+    JSON files should carry). Call this on a live ``reduce_one_position`` result, not on
+    something read back via :func:`assemble_raster_results`.
+    """
+    import matplotlib.pyplot as plt
+    if res.cell_bootstrap_samples is None:
+        raise ValueError(
+            "res.cell_bootstrap_samples is None -- either no domain reached refine_cell_joint "
+            "(res.refined_cell is None), too few bootstrap resamples succeeded, or this "
+            "PositionResult came from assemble_raster_results (which does not carry it; "
+            "see this function's docstring)."
+        )
+    samples = res.cell_bootstrap_samples
+    a_fit, b_fit, c_fit = res.refined_cell[0], res.refined_cell[1], res.refined_cell[2]
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.2))
+    for j, (lab, fit_val) in enumerate(zip(["a", "b", "c"], [a_fit, b_fit, c_fit])):
+        ax = axes[j]
+        vals = samples[:, j]
+        ax.hist(vals, bins=15, color="steelblue", edgecolor="k", alpha=0.85)
+        ax.axvline(fit_val, color="crimson", lw=1.5, label=f"joint fit: {fit_val:.5f} A")
+        lo, hi = np.percentile(vals, [2.5, 97.5])
+        ax.axvspan(lo, hi, color="crimson", alpha=0.08, label=f"95% range: [{lo:.5f}, {hi:.5f}]")
+        ax.set_xlabel(f"{lab} (A)")
+        ax.set_ylabel(f"count (of {len(vals)} bootstrap resamples)")
+        ax.set_title(f"{lab}: {fit_val:.5f} +/- {vals.std(ddof=1):.5f} A", fontsize=10)
+        ax.legend(fontsize=7, frameon=False)
+    fig.suptitle(f"Lattice envelope -- position {res.point}, joint fit over "
+                f"{len(res.domains.domains)} domain(s) (quotable={res.quotable})", fontsize=10)
+    fig.tight_layout()
+    return fig
+
+
 def reduce_one_position(
     frames: np.ndarray, geom: Geometry, *,
     a: float, c: float, space_group_number: int,
@@ -343,6 +520,8 @@ def reduce_one_position(
     seed_from_nominal: bool = False,
     ingest_kwargs: Optional[dict] = None,
     find_domains_kwargs: Optional[dict] = None,
+    orientation_uncertainty: bool = False,
+    n_orientation_boot: int = 25,
 ) -> PositionResult:
     """One raster position, start to finish: frames -> a gated a/b splitting, if one is possible.
 
@@ -364,6 +543,18 @@ def reduce_one_position(
     Nothing here decides FOR you whether a splitting is real. ``PositionResult.quotable`` is
     only set once every gate in ``phase-3-refine.md``'s order has been checked; read
     ``PositionResult.notes`` for which one, if any, said no.
+
+    ``orientation_uncertainty`` (SKETCH, 2026-09-13, off by default): also bootstrap each
+    domain's OWN orientation fit (``seed_index.bootstrap_orientation_uncertainty``,
+    ``n_orientation_boot`` resamples each) and report the result in
+    ``PositionResult.orientation_envelope`` -- the same "don't report a bare point estimate"
+    discipline ``split_with_error`` already applies to the cell, extended to ``U``. This is
+    NOT free: it re-runs an Adam refinement ``n_orientation_boot`` times per domain, on top of
+    everything else this function already does, so it defaults to off for raster-wide batch
+    runs where that cost multiplies by every position. Independent of the a/b gate chain --
+    computed for every domain FOUND, not only ones that reach ``refine_cell_joint``, since
+    orientation determinability is a property of a domain's own indexing fit, not of whether
+    its a/b split is separable.
     """
     ik = dict(ingest_kwargs or {})
     fk = dict(find_domains_kwargs or {})
@@ -444,6 +635,7 @@ def reduce_one_position(
     decoy_list: List[dict] = []
     feature_list: List[dict] = []
     gate_list: List[dict] = []
+    orientation_list: List[Optional[dict]] = []
     fit_domains = []
 
     hkl_box = _hkl_box(hmax, hmax, lmax, space_group_number)
@@ -452,6 +644,38 @@ def reduce_one_position(
 
     for dom in domains.domains:
         claim_idx = np.flatnonzero(dom.claim)
+
+        # SKETCH, 2026-09-13. /verify REFUTED an early version of this on real La3Ni2O7
+        # 2601_LT p364 data (claim b82502d6b5ad, physics+statistics+artifact lenses; numbers
+        # reproduced exactly, REPRODUCTION survived -- the interpretation did not):
+        #  - physics: the FIRST version called bootstrap_orientation_uncertainty with only
+        #    (a, c), silently assuming h and k share one axis (tetragonal) -- wrong for any
+        #    domain this project's own a/b work has already found is NOT tetragonal. Fixed:
+        #    dom.lat.b is now passed explicitly.
+        #  - statistics/artifact: a sparse domain's "wider envelope" is not automatically a
+        #    meaningful determinability signal -- it can be (a) the generic 1/sqrt(n) scaling
+        #    any bootstrap M-estimator shows regardless of data quality, compounded by (b) too
+        #    few centroids to draw independent resamples at all (see
+        #    `independent_resamples`/`n_distinct_subsets` in the returned dict), and (c) the
+        #    domain itself may be one the pipeline's OWN honesty gates (decoy_test) do not
+        #    trust -- check `res.decoy[i]['verdict']` alongside this envelope, not instead of
+        #    it, before reading a wide spread as "this domain's orientation is real but
+        #    uncertain" rather than "this domain's fit may not be trustworthy at all."
+        # Off by default (orientation_uncertainty=False) -- see reduce_one_position's
+        # docstring for the cost tradeoff. Computed for every domain FOUND, independent of the
+        # a/b gate chain below (a domain's orientation determinability is not the same
+        # question as whether its a/b split is separable) -- but NOT independent of whether
+        # the domain's own fit passes `decoy_test`; read both together.
+        if orientation_uncertainty:
+            centroids = list(zip((tuple(int(x) for x in row) for row in dom.hkl), q[claim_idx]))
+            if len(centroids) >= 4:
+                orientation_list.append(bootstrap_orientation_uncertainty(
+                    centroids, dom.U, a=float(dom.lat.a), b=float(dom.lat.b), c=float(dom.lat.c),
+                    n_boot=n_orientation_boot))
+            else:
+                orientation_list.append(None)   # bootstrap_orientation_uncertainty floors keep_n at 4
+        else:
+            orientation_list.append(None)
 
         # completeness: predict this domain's own cell/orientation over the WHOLE box, and
         # separately over its own claimed hkl (to derive the window from its own residuals --
@@ -568,6 +792,8 @@ def reduce_one_position(
 
     refined_cell = None
     split_pct = None
+    cell_bootstrap_samples = None
+    cell_sigma_bootstrap = None
     if fit_domains:
         from midas_hkls import DomainData, refine_cell_joint, split_with_error
         dd = [DomainData(hkl=d.hkl, g=q[np.flatnonzero(d.claim)], label=f"domain{i}")
@@ -577,10 +803,12 @@ def reduce_one_position(
                                n_bootstrap=n_bootstrap)
         refined_cell = fit.cell
         split_pct = split_with_error(fit)
+        cell_bootstrap_samples = fit.cell_bootstrap_samples   # (n_kept, 6): a,b,c,alpha,beta,gamma
+        cell_sigma_bootstrap = fit.cell_sigma_bootstrap
     else:
         notes.append("no domain passed the a/b gate chain; no cell was jointly refined")
 
-    fit_passed_decoy = all(decoy_list[i]["verdict"] != "uninformative"
+    fit_passed_decoy = all(decoy_list[i]["verdict"] == "informative"
                           for i, g in enumerate(gate_list) if g.get("passed_to_refine"))
     quotable = (
         bool(fit_domains)
@@ -589,8 +817,16 @@ def reduce_one_position(
         and np.isfinite(split_pct[1])
     )
     if fit_domains and not fit_passed_decoy:
-        notes.append("a domain that passed the a/b gate chain did not pass the decoy test "
-                    "(a deliberately wrong cell scored as well) -- not quotable")
+        failing_verdicts = sorted({decoy_list[i]["verdict"]
+                                  for i, g in enumerate(gate_list) if g.get("passed_to_refine")}
+                                 - {"informative"})
+        if "real_fails" in failing_verdicts:
+            notes.append("a domain that passed the a/b gate chain did not pass the decoy test "
+                        "(the real fit itself did not clear the acceptance threshold) -- "
+                        "not quotable")
+        if "uninformative" in failing_verdicts:
+            notes.append("a domain that passed the a/b gate chain did not pass the decoy test "
+                        "(a deliberately wrong cell scored as well) -- not quotable")
     if split_pct is not None and not np.isfinite(split_pct[1]):
         notes.append("a and b are equal by the refined symmetry: no splitting is being measured")
 
@@ -599,7 +835,9 @@ def reduce_one_position(
                          completeness=completeness_list, recovery=recovery_list,
                          decoy=decoy_list, feature_in_raw=feature_list, ab_gates=gate_list,
                          refined_cell=refined_cell, split_pct=split_pct, notes=notes,
-                         quotable=bool(quotable))
+                         quotable=bool(quotable), orientation_envelope=orientation_list,
+                         cell_bootstrap_samples=cell_bootstrap_samples,
+                         cell_sigma_bootstrap=cell_sigma_bootstrap)
 
 
 # ---------------------------------------------------------------------------

@@ -84,6 +84,101 @@ def test_reduce_one_position_recovers_planted_cell_and_split():
     assert z > 5, "a 2.6% split on ~300 reflections should be highly significant"
 
 
+def test_orientation_envelope_is_off_by_default_and_optional_when_on():
+    """SKETCH, 2026-09-13: the orientation envelope (seed_index.bootstrap_orientation_uncertainty,
+    wired into reduce_one_position via orientation_uncertainty=). Default must stay None per
+    domain -- this is not free (it re-runs the orientation refit n_orientation_boot times per
+    domain) and must never fire silently. When turned on, it must return real numbers with the
+    documented keys, and the bootstrap mean orientation must sit close to the domain's own
+    point-estimate fit (both are estimates of the same planted U)."""
+    geom, frames, truth, U = _one_domain_frames(A, B_SPLIT, C, seed=0)
+
+    res_off = reduce_one_position(frames, geom, a=A, c=C, space_group_number=SG,
+                                  sigma_rtn=SIGMA_RTN, n_bootstrap=20)
+    assert res_off.orientation_envelope == [None]
+
+    res_on = reduce_one_position(frames, geom, a=A, c=C, space_group_number=SG,
+                                 sigma_rtn=SIGMA_RTN, n_bootstrap=20,
+                                 orientation_uncertainty=True, n_orientation_boot=15)
+    assert len(res_on.orientation_envelope) == 1
+    oe = res_on.orientation_envelope[0]
+    assert oe is not None
+    for k in ("U_mean", "U_bootstraps", "pair_angle_mean_deg",
+             "pair_angle_p95_deg", "pair_angle_max_deg", "n_boot", "keep_n"):
+        assert k in oe
+    assert oe["n_boot"] == 15
+    # the bootstrap mean orientation and the domain's own point-estimate fit are both
+    # estimates of the SAME planted U -- they must agree to a small angle, not merely both
+    # exist. This is the actual correctness check, not just "did it run".
+    dom = res_on.domains.domains[0]
+    delta_U = dom.U @ oe["U_mean"].T
+    angle_deg = np.degrees(np.arccos(np.clip((np.trace(delta_U) - 1) / 2, -1, 1)))
+    assert angle_deg < 2.0, f"bootstrap mean U disagrees with the point estimate by {angle_deg} deg"
+    # a well-populated, noise-free-ish synthetic domain should show a TIGHT envelope --
+    # this is what makes the envelope a real signal rather than a number that's always large.
+    assert oe["pair_angle_p95_deg"] < 1.0
+
+
+def test_cell_bootstrap_samples_gives_individual_a_b_c_ranges():
+    """refine_cell_joint's bootstrap loop already computes every resample's full cell, then
+    used to discard everything but the std. cell_bootstrap_samples now carries the raw
+    (n_kept, 6) array through; cell_sigma_bootstrap is the compact per-parameter summary of
+    the SAME data. Both must be populated together, agree with each other (sigma ==
+    samples.std), and land near the known planted a/b/c on a clean synthetic domain."""
+    geom, frames, truth, U = _one_domain_frames(A, B_SPLIT, C, seed=0)
+    res = reduce_one_position(frames, geom, a=A, c=C, space_group_number=SG,
+                              sigma_rtn=SIGMA_RTN, n_bootstrap=50)
+    assert res.refined_cell is not None
+    assert res.cell_bootstrap_samples is not None
+    assert res.cell_sigma_bootstrap is not None
+    samples = res.cell_bootstrap_samples
+    assert samples.shape[1] == 6, "one column each for a, b, c, alpha, beta, gamma"
+    assert samples.shape[0] > 4
+    for j in range(3):
+        assert samples[:, j].std(ddof=1) == pytest.approx(res.cell_sigma_bootstrap[j], rel=1e-9)
+    # a <-> b is a gauge choice (same reasoning as test_reduce_one_position_recovers_
+    # planted_cell_and_split above) -- check the SET of means, not which one lands in
+    # column 0.
+    a_mean, b_mean = samples[:, 0].mean(), samples[:, 1].mean()
+    assert sorted([a_mean, b_mean]) == pytest.approx(sorted([A, B_SPLIT]), abs=0.05)
+
+
+def test_to_dict_drops_bulky_bootstrap_arrays_but_keeps_summaries():
+    """A raster of hundreds of positions writes one JSON file per point
+    (reduce_raster_block) -- the full orientation U_bootstraps and cell_bootstrap_samples
+    arrays belong on the live, single-position object (for 05's own plotting) and must NOT
+    be replicated into every position's JSON file. The compact summaries
+    (cell_sigma_bootstrap, and each domain's pair_angle_*/U_mean/independent_resamples) must
+    survive into the JSON form, since a raster-wide map is built from exactly those."""
+    geom, frames, truth, U = _one_domain_frames(A, B_SPLIT, C, seed=0)
+    res = reduce_one_position(frames, geom, a=A, c=C, space_group_number=SG,
+                              sigma_rtn=SIGMA_RTN, n_bootstrap=20,
+                              orientation_uncertainty=True, n_orientation_boot=10)
+    d = res.to_dict()
+    assert d["cell_bootstrap_samples"] is None
+    assert d["cell_sigma_bootstrap"] is not None
+    oe = d["orientation_envelope"][0]
+    assert oe is not None
+    assert "U_bootstraps" not in oe, "the bulky per-resample U array must not reach JSON"
+    for k in ("U_mean", "pair_angle_mean_deg", "pair_angle_p95_deg", "pair_angle_max_deg",
+             "n_boot", "keep_n", "n_distinct_subsets", "independent_resamples"):
+        assert k in oe
+    json.dumps(d, default=str)  # must actually serialize, not just look dict-shaped
+
+
+def test_orientation_envelope_skips_domains_with_too_few_reflections():
+    """bootstrap_orientation_uncertainty's own resample floor (keep_n = max(4, 0.7*n)) means
+    fewer than 4 centroids makes it try to choose 4 distinct items from a smaller population
+    without replacement, which numpy raises on -- confirmed directly below. reduce_one_position
+    guards this with `len(centroids) >= 4` before ever calling it (see raster.py); this test
+    pins WHY that guard exists, so it cannot be "simplified" away as defensive dead code later."""
+    from midas_defect.seed_index import bootstrap_orientation_uncertainty
+
+    too_few = list(zip([(1, 0, 0), (0, 1, 0), (0, 0, 1)], np.eye(3)))
+    with pytest.raises(ValueError):
+        bootstrap_orientation_uncertainty(too_few, np.eye(3), a=A, c=C, n_boot=5)
+
+
 def test_reduce_one_position_omega_sign_is_decisive_and_correct():
     geom, frames, truth, U = _one_domain_frames(A, B_SPLIT, C, seed=0)
     res = reduce_one_position(frames, geom, a=A, c=C, space_group_number=SG,
@@ -113,6 +208,36 @@ def test_decoy_test_rejects_a_deliberately_wrong_cell():
     assert dt["verdict"] == "informative"
     assert dt["real_passes"]
     assert not dt["decoys_passing"], f"a 5% decoy should not pass: {dt}"
+
+
+def test_quotable_is_false_when_the_real_fit_fails_the_decoy_test(monkeypatch):
+    """`decoy_test` has THREE verdicts (`informative`, `uninformative`, `real_fails`), and
+    `quotable` must require the first one. Found on real La3Ni2O7 2601 data (2026-09-13,
+    positions 332 and 364): `fit_passed_decoy` checked `verdict != "uninformative"`, which is
+    also true for `real_fails` (the real fit itself does not clear the acceptance threshold,
+    a stronger failure than a decoy merely tying it) -- so a domain whose own fit failed
+    outright was reported `quotable: True`. Force `real_fails` on an otherwise-quotable
+    scenario and pin that `quotable` is False and a note names the real cause."""
+    import midas_defect.raster as raster_mod
+
+    geom, frames, truth, U = _one_domain_frames(A, B_SPLIT, C, seed=0)
+
+    real_decoy_test = raster_mod.decoy_test
+
+    def _force_real_fails(score_of, cell, decoys, *, threshold):
+        result = real_decoy_test(score_of, cell, decoys, threshold=threshold)
+        result = dict(result, real_passes=False, verdict="real_fails")
+        return result
+
+    monkeypatch.setattr(raster_mod, "decoy_test", _force_real_fails)
+    res = reduce_one_position(frames, geom, a=A, c=C, space_group_number=SG,
+                              sigma_rtn=SIGMA_RTN, n_bootstrap=20)
+
+    assert any(g.get("passed_to_refine") for g in res.ab_gates), \
+        "test setup: the ab gate chain itself must still pass so only the decoy verdict differs"
+    assert res.decoy[0]["verdict"] == "real_fails"
+    assert not res.quotable, "a domain whose own fit fails the decoy test must not be quotable"
+    assert any("did not clear the acceptance threshold" in n for n in res.notes)
 
 
 def test_ab_gate_fails_when_only_weak_partners_exist():

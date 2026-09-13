@@ -226,6 +226,38 @@ def test_predict_q_from_U_gradient_wrt_a_c():
     assert g_auto_c.item() == pytest.approx(g_fd_c.item(), rel=1e-3, abs=1e-6)
 
 
+def test_predict_q_from_U_b_defaults_to_a_but_is_not_silently_ignored():
+    """/verify REFUTED an orientation-uncertainty claim (2026-09-13, claim b82502d6b5ad)
+    partly because a caller fed this function (a, c) only for a domain its OWN joint lattice
+    fit had already found was NOT tetragonal -- silently putting k on the wrong axis length.
+    Pin both halves of the fix: omitting b must still reproduce the old tetragonal behavior
+    exactly (so every pre-2026-09-13 caller is unaffected), and passing a genuinely different
+    b must change the prediction for a k-only reflection but not an h-only one (confirming b
+    is actually wired to the k-axis, not silently dropped or wired to the wrong axis)."""
+    hkls = torch.tensor([[2, 0, 0], [0, 2, 0], [0, 0, 2]], dtype=torch.float64)
+    U = torch.eye(3, dtype=torch.float64)
+    a = torch.tensor(6.0, dtype=torch.float64)
+    c = torch.tensor(4.0, dtype=torch.float64)
+
+    q_default = predict_q_from_U(U, hkls, a, c)
+    q_explicit_equal_b = predict_q_from_U(U, hkls, a, c, b=a)
+    assert torch.allclose(q_default, q_explicit_equal_b), \
+        "omitting b must be identical to passing b=a -- the documented default"
+
+    b_different = torch.tensor(5.0, dtype=torch.float64)
+    q_split = predict_q_from_U(U, hkls, a, c, b=b_different)
+    # (2,0,0) depends only on a -- must be unaffected by b
+    assert torch.allclose(q_split[0], q_default[0])
+    # (0,0,2) depends only on c -- must be unaffected by b
+    assert torch.allclose(q_split[2], q_default[2])
+    # (0,2,0) depends only on b -- must move, and move to the value b actually predicts.
+    # U=I here, so q == g_cry directly; (0,2,0)'s g_cry is (0, 2*2pi/b, 0).
+    assert not torch.allclose(q_split[1], q_default[1])
+    assert q_split[1][1].item() == pytest.approx((2 * 2 * math.pi / b_different).item())
+    assert q_split[1][0].item() == pytest.approx(0.0, abs=1e-12)
+    assert q_split[1][2].item() == pytest.approx(0.0, abs=1e-12)
+
+
 # ---------------------------------------------------------------------------
 # 3. Device portability
 # ---------------------------------------------------------------------------
