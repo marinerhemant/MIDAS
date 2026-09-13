@@ -41,6 +41,7 @@ found nothing at 20. `rows.py` is the second route in, and it does not rank by i
 from midas_defect.rows import (hkl_box_from_geometry, candidate_row_spacings,
                                find_lattice_rows, index_from_row)
 hmax, lmax = hkl_box_from_geometry(geom, wavelength_A, a, c)   # do NOT guess these
+intensity = spots.integrated.values.astype(float)   # NOT spots.n_frames -- see below
 rows = find_lattice_rows(q, intensity, spacings=candidate_row_spacings(a, c, sgnum=139))
 U, n, cell = index_from_row(q, intensity, rows[0], a=a, c=c)
 ```
@@ -51,7 +52,16 @@ without seeding from intensity, so it reaches a domain a bright-core seeder cann
 measures that direction's spacing directly, fixing two of three orientation degrees of freedom
 and leaving a 1-D scan (`row_scan_range`).
 
-Four things about rows were wrong until verification caught them:
+Five things about rows were wrong until verification caught them:
+
+* **The row-seed pool must be ranked by real intensity, not by how many frames a blob spans.**
+  `find_lattice_rows` trims its candidate pool by `argsort(-intensity)`, so whatever array is
+  passed as `intensity` directly decides which spots get tried. Measured on a real, gasket
+  /anvil-contaminated position (2026-09-12): ranking by `spots.n_frames` let broad, dim,
+  many-frame debris outrank the crystal's own genuinely bright reflections, and indexing found
+  nothing at either ω sign; switching to `spots.integrated` (true integrated counts) fixed it.
+  This is unrelated to `find_seed_orientation`'s own bright-core ranking above — both take an
+  `intensity` argument, and both are wrong in the same way if fed the same wrong array.
 
 * **Parity is per direction, from the space group** — not a blanket "even multiples only". With
   the blanket rule, synthetic rows along (1,0,0), (1,1,1), (0,1,2), (1,1,2) and (1,2,1) returned

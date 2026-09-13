@@ -138,7 +138,8 @@ qn   = np.linalg.norm(qlab.detach().cpu().numpy(), axis=1)
 stth = np.degrees(2*np.arcsin(np.clip(qn*LAM/(4*np.pi), -1, 1)))
 rad  = np.hypot(spots.row.values - ROW_BC, spots.col.values - COL_BC)
 
-rings = detect_powder_rings(sub.max(axis=0), tth, mask, azimuth_deg=az)
+rings = detect_powder_rings(np.median(frames, axis=0), tth, mask, azimuth_deg=az)
+# NEVER sub.max(axis=0) here -- the background step REMOVES powder rings by design (see the trap row below)
 pw    = flag_powder(stth,
                     np.degrees(np.arctan2(spots.row.values - ROW_BC,
                                           spots.col.values - COL_BC)),
@@ -151,6 +152,7 @@ keep = ~pw
 | **`detect_powder_rings` without `azimuth_deg`** | occupancy comes back all-`NaN`, 3–6× too many "rings", **half the real reflections discarded as powder** | always pass `azimuth_deg=az`. Measured on one sample: 105–152 rings → 17–50, kept spots 1133 → 1776 |
 | **`poni_file_to_bc` fed to `Geometry`** | the beam centre lands on the wrong AXES — 123/59 px on one Pilatus, every ring and q wrong, nothing raised | `midas_integrate_v2` calls the ROW axis `BC_y`; `midas_defect.Geometry` calls the COLUMN `bcy_px`. Use `poni_file_to_row_col` and pass `bcz_px=row, bcy_px=col` |
 | **flooring `spots.frame`, or treating it as a RAW frame after `live_frames`** | half the transverse q residual (0.0199 → 0.0141 1/Å, anisotropy 2.92 → 2.01), or every ω off by the number of dropped leading frames | keep the fractional centroid and map it through the live indices, as in the block above. One project's long-standing "frame i == raw frame i+2" offset was exactly this |
+| **`detect_powder_rings` on the background-**`sub`**tracted stack** (`sub.max(axis=0)`) | ring detection finds only what the background step missed — measured on a real, heavily gasket/anvil-contaminated position (2026-09-12): 6 rings flagged 2.2 % of spots as powder, vs. 59 rings / 21.8 % from the unsubtracted median; the row-seed pool was swamped by un-flagged debris and indexing found nothing at either ω sign | detect on the **unsubtracted** frames — `np.median(frames, axis=0)`, never `sub`. The polar background subtraction removes powder rings BY DESIGN; that is its job |
 | hand-built `tth` / `az` maps | η from untilted pixel offsets while 2θ is tilted; one project's local helper had 94 importers | `detector_angle_maps(g)` (added 2026-09-10) |
 | `pixel_to_qlab` / `qlab_to_pixel` default device | `TypeError: can't convert cuda:0` (or `mps:0`) `device type tensor to numpy` | `device="cpu"` |
 | `find_blobs_3d(..., return_counts=True)` | unpacking error, or a DataFrame where you expected one | it returns `(spots, counts)` |
