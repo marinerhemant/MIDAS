@@ -280,3 +280,57 @@ def test_row_seeding_intensity_is_integrated_counts_not_frame_span(monkeypatch):
     assert seen["intensity"] == pytest.approx(spots.integrated.values.astype(float)), (
         "reduce_one_position must rank the row-seed pool by spots.integrated (real brightness), "
         "not spots.n_frames (frame span) -- see this test's docstring")
+
+
+# ---------------------------------------------------------------------------
+# raster_wide_asymmetry_sign_test: the sign-aware alternative to the magnitude-only
+# check /verify REFUTED on real 2604 data (2026-09-12, claim a1c6f1f505cb).
+# ---------------------------------------------------------------------------
+
+def test_raster_wide_asymmetry_sign_test_null_is_not_significant():
+    """A raster whose domains' a/b signs are UNRELATED to their own h/k dominance --
+    built from independent synthetic positions -- must not be flagged, however many points."""
+    from midas_defect.raster import raster_wide_asymmetry_sign_test
+    rng = np.random.default_rng(2)
+    rows = []
+    for p in range(30):
+        h_dom = bool(rng.integers(0, 2))
+        b_p = A + 0.1 if h_dom else A - 0.1              # sign(a-b) tied to h_dom BY DESIGN...
+        if rng.integers(0, 2):                            # ...half the time, randomly flip it
+            b_p = 2 * A - b_p                             # so the two are UNCORRELATED overall
+        hkl = np.array([[3, 1, l] for l in range(-8, 9)]) if h_dom else \
+              np.array([[1, 3, l] for l in range(-8, 9)])
+        rows.append(dict(domains=[dict(hkl=hkl.tolist(), a=A, b=b_p)]))
+    r = raster_wide_asymmetry_sign_test(rows)
+    assert r["n_domains_pooled"] == 30
+    assert r["p_value"] > 0.05, f"an independent null must not read as significant: {r}"
+
+
+def test_raster_wide_asymmetry_sign_test_catches_a_planted_correlation():
+    """The positive control: plant EXACTLY the documented mechanism (h-dominant domains
+    consistently fitted a>b) and confirm it is caught, pooled across positions."""
+    from midas_defect.raster import raster_wide_asymmetry_sign_test
+    rng = np.random.default_rng(3)
+    rows, none_row = [], None
+    for p in range(25):
+        h_dom = bool(rng.integers(0, 2))
+        a_p, b_p = (4.0, 3.9) if h_dom else (3.9, 4.0)    # PLANTED: tracks h_dom every time
+        hkl = np.array([[3, 1, l] for l in range(-8, 9)]) if h_dom else \
+              np.array([[1, 3, l] for l in range(-8, 9)])
+        rows.append(dict(domains=[dict(hkl=hkl.tolist(), a=a_p, b=b_p)]))
+    rows.insert(5, None)                                  # an unfinished shard -- must be skipped
+    r = raster_wide_asymmetry_sign_test(rows)
+    assert r["n_domains_pooled"] == 25
+    # planted: h-dominant domains get a>b -- "opposite sense" in asymmetry_sign_test's naming.
+    assert r["direction"] == -1
+    assert r["p_value"] < 1e-4, f"a perfect planted correlation must be caught: {r}"
+
+
+def test_raster_wide_asymmetry_sign_test_pools_multiple_domains_per_position():
+    """A position with several domains contributes all of them, not just one."""
+    from midas_defect.raster import raster_wide_asymmetry_sign_test
+    hkl_h = [[3, 1, 0]] * 5
+    hkl_k = [[1, 3, 0]] * 5
+    rows = [dict(domains=[dict(hkl=hkl_h, a=4.0, b=3.9), dict(hkl=hkl_k, a=3.9, b=4.0)])] * 10
+    r = raster_wide_asymmetry_sign_test(rows)
+    assert r["n_domains_pooled"] == 20

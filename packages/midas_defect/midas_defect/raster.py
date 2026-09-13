@@ -70,6 +70,29 @@ delivered La3Ni2O7 2604 raster position (p=329, 40 frames) and four real neighbo
   "trend supported" conclusions as provisional until the null's own surviving-point count is
   checked, not just its reported spread.
   See `phase-3-refine.md` before trusting a single position's split regardless of `quotable`.
+* **A sign-aware successor to the magnitude check exists, but does NOT settle the question
+  either -- /verify REFUTED it too (2026-09-13, claim `d93ca3c0a6e2`, 3 SURVIVES, 1 REFUTED).**
+  :func:`raster_wide_asymmetry_sign_test` tests the thing the documented artifact actually
+  predicts: whether ``sign(a-b)`` correlates with which of ``|h|``, ``|k|`` dominates that SAME
+  domain's own reflections (gauge-safe -- no cross-domain a/b convention, no null raster
+  needed). On the full historical 2604 raster (621 positions, both the recorded driver and its
+  duplicate-check-aligned re-run) it found 65-69% agreement, n=792-1102 domains, p ~ 1e-25 to
+  1e-27 -- physics, statistics and reproduction lenses all SURVIVED that math. But the artifact
+  lens built a synthetic control with ``a == b`` PLANTED EXACTLY (zero real crystallographic
+  splitting), the SAME already-documented index-population skew this raster carries, plus one
+  small SHARED (not domain-specific) quadratic radial detector-distortion term, and reproduced
+  the observed agreement and significance almost exactly (0.61-0.65, p down to 2e-19) with no
+  real physics at all. **The sign test is real diagnostic progress -- it is not blind to the
+  documented mechanism the way the magnitude check was -- but on THIS raster it cannot yet
+  separate "the ENVELOPE.md #14 index-asymmetry artifact" from "an even more mundane, ordinary
+  shared geometric-calibration residual."** Net effect: this raster's a/b story is not
+  established as real crystal physics by either check, and the honest reading (the sign
+  correlation appearing SO easily under a null of zero splitting) is if anything an argument
+  for MORE caution about quoting one, not less. `index_asymmetry`'s own docstring in
+  ``ab_splitting.py`` was also corrected: "any radial systematic" is imprecise -- an ISOTROPIC
+  (uniform, wavelength-type) error is exactly degenerate with an overall scale change and
+  produces NO effect; the mechanism needs a \|q\|- or 2theta-DEPENDENT systematic (detector
+  distance, beam centre, or distortion residual), which the artifact lens's control used.
 """
 from __future__ import annotations
 
@@ -93,7 +116,7 @@ from .rows import hkl_box_from_geometry
 
 __all__ = ["PositionResult", "reduce_one_position", "reduce_raster_block",
           "assemble_raster_results", "omega_sign_check", "OmegaSignCheck",
-          "predict_reflections"]
+          "predict_reflections", "raster_wide_asymmetry_sign_test"]
 
 
 # ---------------------------------------------------------------------------
@@ -613,6 +636,43 @@ def reduce_raster_block(
         tmp.write_text(json.dumps(result.to_dict(), indent=1, default=str))
         tmp.rename(out_dir / f"position_{p}.json")
     return shard
+
+
+def raster_wide_asymmetry_sign_test(rows: Sequence[Optional[dict]]) -> dict:
+    """The sign-aware, gauge-safe alternative to comparing a raster's MAGNITUDE spread of
+    a/b splits against an identical-crystal null.
+
+    /verify REFUTED that magnitude-spread comparison's conclusion on a real 5-position 2604
+    block (2026-09-12, claim ``a1c6f1f505cb``): the artifact this whole doc set documents
+    (``ENVELOPE.md`` #14, ``midas_hkls.index_asymmetry``'s own docstring) manufactures a fake
+    splitting of a CONSISTENT SIGN, and a magnitude-only test cannot see a sign, so it cannot
+    tell a real crystal-to-crystal trend from the SAME artifact expressing itself with
+    different severity at each position.
+
+    This calls :func:`midas_hkls.asymmetry_sign_test` on every domain pooled across the WHOLE
+    raster (not just "quotable" positions, and using each domain's own INDEPENDENT free fit,
+    not a position-level joint one) -- gauge-safe, because it only ever compares a domain's own
+    ``sign(a-b)`` against that SAME domain's own ``sign(n_h_gt_k - n_k_gt_h)``, never one
+    domain's "a" against another's. Verified (2026-09-13, claim ``d93ca3c0a6e2``) on the full
+    historical 2604 raster (621 positions, both the recorded driver and its duplicate-check
+    -aligned re-run): 65-69% agreement, n=792-1102 domains, p ~ 1e-25 to 1e-27, direction
+    ``|h|>|k| -> a<b`` -- see this function's own docstring history / the project's CHECKPOINT
+    for the verified verdict once logged.
+
+    ``rows``: results as returned by :func:`assemble_raster_results` (or a list of
+    :meth:`PositionResult.to_dict` outputs) -- ``None`` entries (an unfinished shard, or a
+    position where ``find_domains`` found nothing) are skipped, matching
+    ``assemble_raster_results``'s own "a partial raster stays visibly partial" convention.
+
+    Returns :func:`midas_hkls.asymmetry_sign_test`'s own dict, plus ``n_domains_pooled``. A
+    small ``n_used`` (fewer domains passed the internal tie/rank exclusion than were pooled)
+    means this batch is too small to trust either way -- check it before reading ``p_value``.
+    """
+    from midas_hkls import asymmetry_sign_test
+    domains = [(dom["hkl"], dom["a"], dom["b"]) for r in rows if r for dom in r.get("domains", [])]
+    result = asymmetry_sign_test(domains)
+    result["n_domains_pooled"] = len(domains)
+    return result
 
 
 def assemble_raster_results(out_dir, point_indices: Sequence[int]) -> List[Optional[dict]]:
