@@ -41,6 +41,19 @@ A calibration is healthy **only against a stated condition**, never on its own:
   metric — the fit's residual can look good while the rings are misplaced.
 * the sentinel check has actually run: an unmasked low sentinel produced
   **1369 µε** on a dataset whose geometry was otherwise fine.
+* **the 100 µε cap itself is a fraction, `|1 − R_obs/R_pred|`, not an absolute
+  pointing error** — for a fixed absolute centroiding precision (some Δpixel set
+  by the peak shape and counting statistics), `strain = Δpixel / R_ring`, so a
+  SHORT sample-to-detector distance (rings sitting at a few hundred pixels of
+  radius) structurally reads a higher microstrain than the same real precision
+  would at a longer throw, where the same rings — if they still fit on the
+  detector at all — sit at a larger R. On a real ~350 mm setup, a geometry
+  visually confirmed correct by a ring overlay (sub-pixel to ~1 px per-ring
+  agreement) still read 199 µε, comfortably over the default cap. Read this gate
+  relative to the detector-distance/ring-radius regime, not as one universal bar
+  — and never round a small, overlay-confirmed overage up to "the calibration
+  failed" the way a 45–60× overage with a visibly drifting overlay actually is
+  (rule 14, `HARD_RULES.md`).
 
 One threshold with no condition attached false-alarms on a heavy run and goes
 silent on a broken one, which is why each row above names what it is measured

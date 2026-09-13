@@ -187,10 +187,15 @@ on throughput, not on accuracy.
 with §4b (two calibrants on one exposure). It is one read, in this order: clean the
 frame (both sentinel conventions), seed *after* cleaning, then the four-stage fit.
 
-The two things that belong in the spine, because skipping them invalidates the run:
-**never seed from an existing geometry block**, and **never substitute
+The three things that belong in the spine, because skipping them invalidates the run:
+**never seed from an existing geometry block**, **never substitute
 `img[img < 0] = 0` for `read_image(..., return_mask=True)`** — that line is blind to
-the EIGER high sentinel.
+the EIGER high sentinel — and **a correct seed does not guarantee a correct
+refinement**: `first_time_calibrate` diverged into a bad basin even from a good,
+identical `make_seed` output on a real masked detector image, while `calibrate()`
+converged cleanly from the same starting point. The validated entry point is
+`calibrate()` / `autocalibrate_four_stage`, not `first_time_calibrate`
+(`HARD_RULES.md` rules 14–15).
 ## §5. Integrate
 
 ### §5a. One file

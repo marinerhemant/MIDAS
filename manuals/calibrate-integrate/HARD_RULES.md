@@ -150,4 +150,33 @@
    ~36 at 2° on the same frame. Read the distribution off `ring_quality()` rather
    than copying a threshold.
 
+14. **Not every automated seeder in this package is equally reliable — verify
+   `seed_method`, don't assume it.** `midas_calibrate_v2.pipelines.first_time.
+   first_time_calibrate` ships its own internal seed (a simplified Hough vote).
+   On a real, heavily-masked Pilatus CdTe frame (8.26 % of pixels are gaps) it
+   matched only 3 of 37 detected ring arcs and converged 45–60× over the
+   `strain_cap` default, confirmed wrong by a ring overlay drifting visibly off
+   the real rings at larger radius. `midas_calibrate_v2.seed.auto_seed.make_seed`
+   — the seeder `autocalibrate_pv`/`calibrate()` use — converged cleanly on the
+   *identical* image. Both are equally "from scratch" (zero operator input); they
+   are not equally trustworthy on every detector. Check `result.seed_method` and
+   treat anything other than `"make_seed"` as unverified.
+   (`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/first_time.py`,
+   `.../seed/auto_seed.py`.)
+
+15. **A correct seed does not guarantee a correct refinement — the pipeline
+   entry point matters independently.** Feeding `first_time_calibrate` the
+   *identical* good `make_seed` output (same BC/Lsd to the pixel/micron) still
+   diverged into a bad basin on the frame in rule 14 — strain 5960–8752 µε,
+   beam centre drifting ~20 px from its own seed across repeated runs.
+   `midas_calibrate_v2.pipelines.auto.calibrate()`, given the same seed (or
+   self-seeding the same way when no seed is passed), stayed within ~1 px of it
+   and converged to 199 µε. The seed was never the problem in that comparison;
+   the multi-stage LM sequence inside `first_time_calibrate` was. **The
+   validated, from-scratch entry point for a single monolithic-or-tiled image is
+   `calibrate()` (or `autocalibrate_four_stage`, phase-4-calibrate.md) — not
+   `first_time_calibrate`.** A "from scratch, zero seed" calibration is not
+   verified by that property alone; it still needs the ring-overlay and gate
+   checks above run against whichever pipeline actually produced it.
+
 ---
