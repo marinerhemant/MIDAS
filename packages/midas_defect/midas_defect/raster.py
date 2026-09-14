@@ -303,6 +303,34 @@ class PositionResult:
         Path(path).write_text(json.dumps(self.to_dict(), indent=1, default=str))
 
 
+@dataclass
+class IngestBundle:
+    """Exactly :func:`_ingest_position`'s own return values, named -- the
+    expensive part of one position's reduction (background subtraction + 3-D
+    blob-finding), captured so it can be computed once and reused, instead of
+    silently redone every time something downstream needs the spot cloud
+    (found 2026-09-14: `midas_defect.spatial_coherence` was calling
+    `_ingest_position` a second time on the same frames `reduce_one_position`
+    had already ingested, to get `qlab`/`omega_deg` for its own use).
+
+    ``reduce_one_position(..., ingested=bundle)`` skips its internal
+    `_ingest_position` call and uses this instead -- ``frames`` is still a
+    required argument even then: the LATER, cheaper honesty checks
+    (`targeted_recovery`, `feature_in_raw`) and ring detection look at raw
+    pixel values at specific ad hoc positions the ingest step never
+    enumerates, and caching those would mean caching the whole raw stack
+    again, defeating the point. Only the expensive step is cached.
+
+    See :mod:`midas_defect.persistence` for HDF5 save/load.
+    """
+    spots: "pd.DataFrame"
+    qlab: "torch.Tensor"
+    omega_deg: np.ndarray
+    mask: np.ndarray
+    sub: np.ndarray
+    ingest_counts: dict
+
+
 def _ingest_position(frames: np.ndarray, geom: Geometry, *,
                      mask_low_count_threshold: float = 20.0,
                      blob_threshold_sigma: float = 8.0,
@@ -522,6 +550,7 @@ def reduce_one_position(
     find_domains_kwargs: Optional[dict] = None,
     orientation_uncertainty: bool = False,
     n_orientation_boot: int = 25,
+    ingested: Optional[IngestBundle] = None,
 ) -> PositionResult:
     """One raster position, start to finish: frames -> a gated a/b splitting, if one is possible.
 
@@ -555,12 +584,35 @@ def reduce_one_position(
     computed for every domain FOUND, not only ones that reach ``refine_cell_joint``, since
     orientation determinability is a property of a domain's own indexing fit, not of whether
     its a/b split is separable.
+
+    ``ingested``, if given, SKIPS the internal ingest call (background
+    subtraction + 3-D blob-finding -- the expensive step) and reuses this
+    already-computed :class:`IngestBundle` instead (see its own docstring;
+    ``midas_defect.persistence`` builds/saves/loads one). ``frames`` is still
+    required even then -- ring detection and the later honesty checks
+    (`targeted_recovery`, `feature_in_raw`) look at raw pixel values at ad hoc
+    positions the ingest step never enumerates.
     """
     ik = dict(ingest_kwargs or {})
     fk = dict(find_domains_kwargs or {})
     notes: List[str] = []
 
-    spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(frames, geom, **ik)
+    if ingested is not None:
+        if ingested.sub is None:
+            raise ValueError(
+                "ingested.sub is None -- this bundle was saved with save_dense=False "
+                "(midas_defect.persistence.save_position_hdf5), which drops the dense "
+                "background-subtracted array to save space. That array is used well beyond "
+                "blob-finding (targeted_recovery, feature_in_raw), so a sparse-only bundle "
+                "cannot stand in for a real ingest here -- it is still useful for lighter reuse "
+                "(e.g. midas_defect.spatial_coherence only needs .spots/.qlab/.omega_deg), just "
+                "not as reduce_one_position's ingested= argument. Re-save with save_dense=True, "
+                "or omit ingested= and let this call ingest frames fresh.")
+        spots, qlab, omega_deg, mask, sub, ingest_counts = (
+            ingested.spots, ingested.qlab, ingested.omega_deg, ingested.mask,
+            ingested.sub, ingested.ingest_counts)
+    else:
+        spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(frames, geom, **ik)
     n_spots = len(spots)
     if n_spots == 0:
         notes.append("ingest found no spots with >= 2 frames; nothing to index")
@@ -846,7 +898,8 @@ def reduce_one_position(
 
 def reduce_raster_block(
     loader: Callable[[int], np.ndarray], geom: Geometry, point_indices: Sequence[int],
-    out_dir, *, block_nr: int = 0, n_blocks: int = 1, **position_kwargs,
+    out_dir, *, block_nr: int = 0, n_blocks: int = 1,
+    save_hdf5: bool = False, save_dense: bool = True, **position_kwargs,
 ) -> List[int]:
     """Run :func:`reduce_one_position` over one shard of a raster, one file per point.
 
@@ -861,6 +914,16 @@ def reduce_raster_block(
     Writes ``out_dir/position_{p}.json`` per point -- idempotent (a rerun overwrites, never
     leaves a partial file: written to a temp path and renamed) so an interrupted block can
     simply be resubmitted. Returns the list of point indices this call actually processed.
+
+    ``save_hdf5`` (default off -- this is extra I/O every position pays for, and the JSON above
+    already covers what most callers need) ALSO writes ``out_dir/position_{p}.h5`` via
+    :func:`midas_defect.persistence.save_position_hdf5`: the dense (``save_dense``) and sparse
+    ingest data plus the full results, including what the JSON above deliberately drops (claim
+    boolean masks, bootstrap arrays). Ingest runs ONCE either way -- ``reduce_one_position``
+    consumes the same :class:`IngestBundle` this then saves, not a second independent ingest.
+    Feed a saved file back in via ``persistence.load_ingest_hdf5`` +
+    ``reduce_one_position(..., ingested=...)`` to skip re-ingesting on a later run, or to
+    :func:`midas_defect.spatial_coherence.recover_domains_across_raster`'s own ``cache_dir=``.
     """
     if n_blocks < 1 or not (0 <= block_nr < n_blocks):
         raise ValueError(f"invalid sharding: block_nr={block_nr}, n_blocks={n_blocks}")
@@ -869,7 +932,17 @@ def reduce_raster_block(
     shard = list(point_indices)[block_nr::n_blocks]
     for p in shard:
         frames = loader(p)
-        result = reduce_one_position(frames, geom, point=p, **position_kwargs)
+        if save_hdf5:
+            ik = dict(position_kwargs.get("ingest_kwargs") or {})
+            spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(frames, geom, **ik)
+            bundle = IngestBundle(spots=spots, qlab=qlab, omega_deg=omega_deg, mask=mask,
+                                  sub=sub, ingest_counts=ingest_counts)
+            result = reduce_one_position(frames, geom, point=p, ingested=bundle, **position_kwargs)
+            from .persistence import save_position_hdf5
+            save_position_hdf5(out_dir / f"position_{p}.h5", bundle=bundle, res=result,
+                              save_dense=save_dense)
+        else:
+            result = reduce_one_position(frames, geom, point=p, **position_kwargs)
         tmp = out_dir / f".position_{p}.json.tmp"
         tmp.write_text(json.dumps(result.to_dict(), indent=1, default=str))
         tmp.rename(out_dir / f"position_{p}.json")

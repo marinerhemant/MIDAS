@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-defect"
-version = "0.6.0"
+version = "0.7.0"
 description = "Differentiable, phase-agnostic diffuse-scattering defect metrology on top of standard FF-HEDM: intensity-budget closure, per-grain dislocation density, fault-rod and selection-rule tests."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -28,6 +28,11 @@ dependencies = [
     "tifffile>=2023.0",
     "scikit-image>=0.20",       # ingest.py: h-maxima seeds + 3-D watershed split
     "zarr>=2.14",                # full-res voxel cloud reader (examples/validation)
+    "h5py>=3.0",                  # persistence.py: ingest + result caching
+    "hdf5plugin>=4.0",            # persistence.py: zstd compression -- beats gzip on both
+                                 # size and speed for this project's background-subtracted
+                                 # arrays (measured 2026-09-14: zstd clevel=9 43.2MB/2.6s
+                                 # vs gzip level 9 43.75MB/22.9s on the same array)
     # Sibling MIDAS packages -- all reused via the MIDAS reuse map in
     # implementation_plan.md Section 2. Do NOT re-port their primitives.
     "midas-transforms>=0.1",     # det <-> q transforms, device/dtype resolution
