@@ -18,7 +18,15 @@ def _friedel_points(r0, c0, n=90, seed=0):
 
 
 GEO = dict(n_rows=NR, n_cols=NC, lsd_um=349621.8, pixel_um=172.0, rot1_rad=0.0063, rot2_rad=0.0035,
-           n_null=40)
+           n_null=40,
+           # 2026-09-13: the default search_px=150.0 drives beam_centre_from_pairs' brute-force
+           # grid search to (2*150+1)^2 = 90,601 candidate centres -- ~120s per test, the three
+           # slowest tests in this package's whole suite. Every planted offset here is 7-14 px
+           # (see each test's poni1_px/poni2_px), so a 30 px search is still >2x that with wide
+           # margin (production's own "the search must be wide" caution is about a REAL,
+           # unknown beamstop-shadow offset -- these synthetic offsets are known and small).
+           # Cuts the grid to (2*30+1)^2 = 3,721, ~24x fewer candidates.
+           search_px=30.0)
 
 
 def test_there_are_eight_readings():
