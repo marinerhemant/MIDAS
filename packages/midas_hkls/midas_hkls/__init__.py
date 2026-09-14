@@ -73,7 +73,9 @@ from .ab_splitting import (
 )
 from .cell_constrained import (
     FREE_PARAMS, ConstrainedFit, DomainData,
-    refine_cell_constrained, refine_cell_joint, split_with_error,
+    refine_cell_constrained, refine_cell_joint, refine_cell_radial,
+    refine_cell_joint_robust, refine_cell_radial_robust,
+    tukey_biweight, split_with_error,
 )
 from .lattice_symmetry import (
     Holohedry, holohedry, lattice_symmetry_operations,
@@ -83,14 +85,16 @@ from .niggli import NiggliCell, niggli_reduce, same_lattice
 from .space_group import SpaceGroup, list_space_groups, centring_allowed
 from .symops import SymOp
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 
 __all__ = [
     "hkl_box_from_geometry", "distortion_rank", "distortion_condition",
     "ab_separable", "shear_separable", "ab_sensitive_mask", "partner_multiplicity",
     "index_asymmetry", "asymmetry_sign_test",
     "FREE_PARAMS", "ConstrainedFit", "DomainData",
-    "refine_cell_constrained", "refine_cell_joint", "split_with_error",
+    "refine_cell_constrained", "refine_cell_joint", "refine_cell_radial",
+    "refine_cell_joint_robust", "refine_cell_radial_robust",
+    "tukey_biweight", "split_with_error",
     "Holohedry", "holohedry", "lattice_symmetry_operations",
     "tolerance_from_fit", "holohedry_from_fit",
     "NiggliCell", "niggli_reduce", "same_lattice",
