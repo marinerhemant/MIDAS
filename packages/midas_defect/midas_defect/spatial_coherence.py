@@ -49,12 +49,13 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
 from .geometry import Geometry, qlab_to_qsample
-from .raster import reduce_one_position, PositionResult, _ingest_position
+from .raster import reduce_one_position, PositionResult, IngestBundle, _ingest_position
 from .rows import refine_to_convergence, _misorientation_422
 from midas_hkls.cell_constrained import DomainData
 
@@ -201,12 +202,24 @@ def recover_domains_across_raster(
     null_alpha: float = 0.05,
     rng: Optional[np.random.Generator] = None,
     reduce_kwargs: Optional[dict] = None,
+    cache_dir: Optional[str] = None,
+    save_dense: bool = True,
 ) -> RasterCoherenceResult:
     """Pass 1 (free search, every position) -> dedup orientations (symmetry-
     aware, ORIENTATION ONLY -- cell is deliberately not part of dedup) -> pass
     2 (seed-and-refit every candidate at every OTHER position, nominal-cell
     seeded) -> accept on a random-orientation null specific to that position
     (NOT a fixed count -- noise-capture rate can differ by position).
+
+    ``cache_dir``, if given, makes pass 1 write-through: for each position,
+    ``<cache_dir>/position_{p}.h5`` is read (via ``midas_defect.persistence
+    .load_ingest_hdf5``) instead of re-ingesting when it already exists, and
+    written (ingest bundle + full results, ``save_dense`` controlling whether
+    the dense background-subtracted array is included) when it does not.
+    ``loader(p)`` still runs either way -- raw frames stay needed for ring
+    detection and the later honesty checks even when ingest itself is
+    cached; only the expensive background-subtraction + 3-D blob-finding
+    step is skipped on a cache hit.
 
     ``n_null_draws`` random orientations (``scipy.spatial.transform.Rotation
     .random``) are seeded at each position with the SAME real spot cloud (not
@@ -226,14 +239,35 @@ def recover_domains_across_raster(
     rng = rng or np.random.default_rng(0)
     reduce_kwargs = dict(reduce_kwargs or {})
 
+    import torch
+
     per_position: Dict[int, PositionCoherence] = {}
     all_candidates: List[dict] = []
     for p in point_indices:
         frames = loader(p)
+        # ingest ONCE, feed the SAME bundle to reduce_one_position -- this used to call
+        # _ingest_position a second time on the same frames purely to get qlab/omega_deg,
+        # redundantly redoing the expensive background-subtraction + 3-D blob-finding step
+        # reduce_one_position had just done internally. Found 2026-09-14.
+        cache_path = Path(cache_dir) / f"position_{p}.h5" if cache_dir else None
+        if cache_path is not None and cache_path.exists():
+            from .persistence import load_ingest_hdf5
+            bundle = load_ingest_hdf5(cache_path)
+            if bundle.sub is None:   # a sparse-only cache -- reduce_one_position needs sub too
+                spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(frames, geom)
+                bundle = IngestBundle(spots=spots, qlab=qlab, omega_deg=omega_deg, mask=mask,
+                                      sub=sub, ingest_counts=ingest_counts)
+        else:
+            spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(frames, geom)
+            bundle = IngestBundle(spots=spots, qlab=qlab, omega_deg=omega_deg, mask=mask,
+                                  sub=sub, ingest_counts=ingest_counts)
+        qlab, omega_deg = bundle.qlab, bundle.omega_deg
         res = reduce_one_position(frames, geom, a=a, c=c, space_group_number=space_group_number,
-                                  sigma_rtn=sigma_rtn, point=p, **reduce_kwargs)
-        spots, qlab, omega_deg, mask, sub, _ = _ingest_position(frames, geom)
-        import torch
+                                  sigma_rtn=sigma_rtn, point=p, ingested=bundle, **reduce_kwargs)
+        if cache_path is not None and not cache_path.exists():
+            from .persistence import save_position_hdf5
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            save_position_hdf5(cache_path, bundle=bundle, res=res, save_dense=save_dense)
         q_all = qlab_to_qsample(qlab, torch.deg2rad(torch.as_tensor(
             res.omega_sign.chosen_sign * omega_deg, dtype=qlab.dtype))).detach().cpu().numpy()
         per_position[p] = PositionCoherence(point=p, res=res, q_all=q_all,

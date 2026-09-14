@@ -174,6 +174,34 @@ def test_null_is_suspect_flag_logic():
     assert not pc_empty.null_is_suspect
 
 
+def test_cache_dir_round_trips_and_second_call_matches_first(tmp_path):
+    """A cache_dir write-through: first call ingests fresh and writes
+    position_{p}.h5 per point; second call reads those back and must give
+    IDENTICAL native domain counts -- the whole point of caching is that it
+    changes speed, not the answer."""
+    geom = _geom()
+    U0 = Rotation.from_euler("zyx", [15.0, 25.0, -8.0], degrees=True).as_matrix()
+    frames = {}
+    frames[1], _ = synthetic_position_frames([U0], a=A, b=B_SPLIT, c=C, space_group_number=SG,
+                                              geom=geom, hmax=8, kmax=8, lmax=14, seed=0)
+
+    def loader(p):
+        return frames[p]
+
+    cache_dir = tmp_path / "cache"
+    r1 = recover_domains_across_raster(loader, geom, [1], a=A, c=C, space_group_number=SG,
+                                       sigma_rtn=SIGMA_RTN, dedup_threshold_deg=1.0, n_null_draws=5,
+                                       rng=np.random.default_rng(0), cache_dir=str(cache_dir))
+    assert (cache_dir / "position_1.h5").exists()
+
+    r2 = recover_domains_across_raster(loader, geom, [1], a=A, c=C, space_group_number=SG,
+                                       sigma_rtn=SIGMA_RTN, dedup_threshold_deg=1.0, n_null_draws=5,
+                                       rng=np.random.default_rng(0), cache_dir=str(cache_dir))
+    n1 = [d.n for d in r1.per_position[1].res.domains.domains]
+    n2 = [d.n for d in r2.per_position[1].res.domains.domains]
+    assert n1 == n2 and len(n1) > 0
+
+
 def test_dedup_threshold_controls_how_readily_domains_merge():
     """Unit-level check on the dedup step alone (no synthetic frames needed):
     two orientations 1.5deg apart merge at a 2deg threshold and stay separate
