@@ -296,8 +296,13 @@ def _four_point_raster():
 
 
 def test_reduce_raster_block_shards_are_disjoint_and_complete(tmp_path):
+    # 2026-09-13: was points=list(range(4)) -- shard disjointness/union is a property of the
+    # BLOCK-NR ARITHMETIC (point_indices[block_nr::n_blocks]), not of how many points there
+    # are or of reduce_one_position's own physics. 2 points still forces both shards non-empty
+    # (n_blocks=2 -> shard0=[0], shard1=[1]) and cuts this test's cost roughly in half (it was
+    # the single slowest test in the suite at ~84s, almost entirely reduce_one_position calls).
     geom, raster = _four_point_raster()
-    points = list(range(4))
+    points = [0, 1]
     shard0 = reduce_raster_block(raster.loader, geom, points, tmp_path, block_nr=0, n_blocks=2,
                                  a=A, c=C, space_group_number=SG, sigma_rtn=SIGMA_RTN,
                                  n_bootstrap=20)
@@ -312,8 +317,13 @@ def test_reduce_raster_block_shards_are_disjoint_and_complete(tmp_path):
 
 
 def test_reduce_raster_block_rerun_is_idempotent(tmp_path):
+    # 2026-09-13: was points=[0, 1] -- idempotency (does a second, independent
+    # reduce_one_position call on the SAME point reproduce split_pct exactly) is a per-point
+    # property; a second point adds cost without adding coverage. 1 point still forces a real
+    # re-computation (not a cache hit) for the actual determinism check, and halves this
+    # test's cost (~85s, the single slowest test alongside the sharding test above).
     geom, raster = _four_point_raster()
-    points = [0, 1]
+    points = [0]
     reduce_raster_block(raster.loader, geom, points, tmp_path, a=A, c=C,
                         space_group_number=SG, sigma_rtn=SIGMA_RTN, n_bootstrap=20)
     first = assemble_raster_results(tmp_path, points)
@@ -325,12 +335,16 @@ def test_reduce_raster_block_rerun_is_idempotent(tmp_path):
 
 
 def test_assemble_raster_results_leaves_unrun_points_as_none(tmp_path):
+    # 2026-09-13: was reducing [0, 2] and reading back [0, 1, 2, 3] -- the "ran vs never
+    # attempted" distinction only needs ONE real reduction and ONE never-requested point to
+    # prove; a second real point (2) added a full reduce_one_position call (~20s) with no
+    # additional coverage of this function's own None-filling behavior.
     geom, raster = _four_point_raster()
-    reduce_raster_block(raster.loader, geom, [0, 2], tmp_path, a=A, c=C,
+    reduce_raster_block(raster.loader, geom, [0], tmp_path, a=A, c=C,
                         space_group_number=SG, sigma_rtn=SIGMA_RTN, n_bootstrap=20)
-    rows = assemble_raster_results(tmp_path, [0, 1, 2, 3])
-    assert rows[0] is not None and rows[2] is not None
-    assert rows[1] is None and rows[3] is None
+    rows = assemble_raster_results(tmp_path, [0, 1])
+    assert rows[0] is not None
+    assert rows[1] is None
 
 
 def test_reduce_raster_block_rejects_invalid_sharding(tmp_path):
