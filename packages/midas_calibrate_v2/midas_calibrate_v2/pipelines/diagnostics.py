@@ -12,6 +12,14 @@ Three lightweight gates:
   2. ``strain_cap_check(history, threshold_uE)`` — flags runs whose
      converged strain exceeds a calibrant threshold.  Catches every
      basin escape in the B6 sweep (strain ≥ 800 μϵ in failure cases).
+     Its FRACTIONAL threshold reads high on a short-Lsd/small-ring-radius
+     setup for the same absolute pointing accuracy (see
+     ``pointing_precision_check``'s docstring), so whenever the history
+     carries an absolute-pixel residual (``mean_abs_px``, populated by
+     ``pipelines/single.py``), ``run_all_gates`` uses
+     ``pointing_precision_check(history, fail_px, warn_px)`` instead — same
+     gate identity (``name="strain_cap"``), a metric that does not have that
+     scale dependence.
 
   3. ``basin_check(v1_init, unpacked)`` — measures the Lsd / BC drift
      between seed and converged values.  Drift outside the B6 basin
@@ -381,6 +389,109 @@ def strain_cap_check(
     )
 
 
+def pointing_precision_check(
+    history,                              # list of IterRecord with mean_abs_px
+    *,
+    fail_px: float = 1.0,
+    warn_px: float = 0.5,
+    n_rings: Optional[int] = None,
+    min_rings_for_ok: int = 3,
+    px_um: Optional[float] = None,
+) -> DiagnosticResult:
+    """Absolute-residual replacement for :func:`strain_cap_check`'s
+    fractional 100 μϵ cap.
+
+    ``strain_cap_check`` thresholds ``mean(|1 - R_obs/R_pred|)``, which is a
+    FRACTIONAL quantity: for a fixed absolute pointing/centroiding error
+    (set by the PSF and counting statistics, roughly constant in physical
+    units — measured at 0.2-0.5 px), that fraction is ``Δr / R_pred`` and
+    ``R_pred = Lsd·tan(2θ)/px``, so it is systematically LARGER at short Lsd
+    or small ring radii for the SAME absolute accuracy. A 100 μϵ cap tuned
+    against ~600 mm-1.2 m reference datasets rejects an equally-good
+    calibration at ~350 mm purely because it is closer to the detector.
+
+    MEASURED: a real DAC nickelate CeO2 calibration
+    (``00_step0_ceo2_calibration.ipynb``, Lsd ~350 mm) reads 199.1 μϵ —
+    "fail" under the old cap — despite a good ring overlay and per-ring
+    absolute deviations of 0.1-1.0 px, within normal centroiding precision.
+
+    This gate thresholds ``history[-1].mean_abs_px`` (pixels) instead, which
+    does not have that scale dependence. ``fail_px``/``warn_px`` default to
+    2x / 1x the top of the 0.2-0.5 px measured centroiding-precision range —
+    a principled first cut, NOT YET validated against the B6 basin-escape
+    sweep (``dev/paper/midas_v2_test/run_robustness_sweep.py``, whose
+    fixture data is not available on every host); treat as provisional until
+    that sweep is re-run against these thresholds.
+
+    Returns ``name="strain_cap"`` (not a new name) because ``first_time.py``
+    and ``run_robust_smoke.py`` key their own accept-logic off that string —
+    this is a metric change under the same gate identity, not a new gate.
+    See :func:`run_all_gates`, which dispatches to this function only when
+    ``history[-1]`` actually carries ``mean_abs_px`` (i.e. it was produced by
+    a pipeline that has been updated to compute it); older/other pipelines
+    still get :func:`strain_cap_check` unchanged.
+    """
+    if not history:
+        return DiagnosticResult(
+            name="strain_cap",
+            severity="warn",
+            message="no iterations recorded",
+            metrics={"abs_px": float("nan")},
+        )
+    final = history[-1]
+    d_px = float(getattr(final, "mean_abs_px", float("nan")))
+    strain_uE = float(getattr(final, "mean_strain_uE", float("nan")))
+    um_note = f" ({d_px * px_um:.1f} µm)" if px_um else ""
+    strain_note = f" (≈{strain_uE:.0f} μϵ)" if strain_uE == strain_uE else ""
+    if d_px != d_px:                       # NaN
+        return DiagnosticResult(
+            name="strain_cap",
+            severity="fail",
+            message="converged pointing residual is NaN — LM diverged",
+            metrics={"abs_px": float("nan")},
+        )
+    if d_px > fail_px:
+        return DiagnosticResult(
+            name="strain_cap",
+            severity="fail",
+            message=(f"converged pointing residual {d_px:.2f} px{um_note} "
+                     f"exceeds the {fail_px:.2f} px cap{strain_note} — "
+                     f"likely basin escape (B6 failure mode)"),
+            metrics={"abs_px": d_px, "fail_px": fail_px},
+        )
+    if d_px > warn_px:
+        return DiagnosticResult(
+            name="strain_cap",
+            severity="warn",
+            message=(f"converged pointing residual {d_px:.2f} px{um_note} "
+                     f"above warn level {warn_px:.2f} px{strain_note} — "
+                     f"review residual distribution"),
+            metrics={"abs_px": d_px, "warn_px": warn_px},
+        )
+    if n_rings is not None and n_rings < min_rings_for_ok:
+        return DiagnosticResult(
+            name="strain_cap",
+            severity="warn",
+            message=(f"converged pointing residual {d_px:.2f} px{um_note}, "
+                     f"but the fit rests on only {n_rings} "
+                     f"ring{'s' if n_rings != 1 else ''} "
+                     f"(< {min_rings_for_ok}) — a low residual on this "
+                     f"little support does not mean the geometry is right; "
+                     f"check the ring overlay before using it"),
+            metrics={"abs_px": d_px, "n_rings": float(n_rings),
+                     "min_rings_for_ok": float(min_rings_for_ok)},
+        )
+    return DiagnosticResult(
+        name="strain_cap",
+        severity="ok",
+        message=(f"converged pointing residual {d_px:.2f} px{um_note}{strain_note} "
+                 f"— within precision"
+                 + (f" ({n_rings} rings)" if n_rings is not None else "")),
+        metrics={"abs_px": d_px,
+                 **({"n_rings": float(n_rings)} if n_rings is not None else {})},
+    )
+
+
 def basin_check(
     v1_init,                              # V1Params at the seed (before LM)
     unpacked: Dict[str, torch.Tensor],
@@ -717,18 +828,44 @@ def run_all_gates(
     n_train_rings: Optional[int] = None,
     strain_threshold_uE: float = 100.0,
     strain_warn_uE: float = 50.0,
+    pointing_fail_px: float = 1.0,
+    pointing_warn_px: float = 0.5,
 ) -> List[DiagnosticResult]:
     """Run every gate, returning a list of DiagnosticResult.  The gates that
     need fitted points are skipped if ``fits`` is None.
     """
     out: List[DiagnosticResult] = []
-    # Ring count feeds the strain gate so the headline number carries the same
-    # caution the coverage gates already have.
+    # Ring count feeds the strain/pointing gate so the headline number
+    # carries the same caution the coverage gates already have.
     n_rings_used = n_rings_from_fits(fits)
-    out.append(strain_cap_check(history,
-                                  threshold_uE=strain_threshold_uE,
-                                  warn_uE=strain_warn_uE,
-                                  n_rings=n_rings_used))
+    # Prefer the absolute-pixel gate (pointing_precision_check) whenever the
+    # history actually carries mean_abs_px -- i.e. it came from a pipeline
+    # that computes it (pipelines/single.py). Older IterRecord shapes, or a
+    # pipeline not yet updated (single_pv.py, single_pv_2d.py), fall back to
+    # the legacy fractional strain_cap_check unchanged. See
+    # pointing_precision_check's docstring for why the fractional metric is
+    # not comparable across detector distances.
+    final = history[-1] if history else None
+    # NOTE: `is not None`, not a truthy check -- mean_abs_px's own dataclass
+    # default is 0.0 (single.py IterRecord), which is falsy but a perfectly
+    # legitimate (if implausibly good) real value. A truthy check would
+    # silently misroute that fit to the legacy fractional gate instead.
+    if final is not None and getattr(final, "mean_abs_px", None) is not None:
+        px_um = None
+        try:
+            px_um = float(unpacked.get("pxY")) if unpacked is not None else None
+        except (TypeError, ValueError):
+            px_um = None
+        out.append(pointing_precision_check(history,
+                                              fail_px=pointing_fail_px,
+                                              warn_px=pointing_warn_px,
+                                              n_rings=n_rings_used,
+                                              px_um=px_um))
+    else:
+        out.append(strain_cap_check(history,
+                                      threshold_uE=strain_threshold_uE,
+                                      warn_uE=strain_warn_uE,
+                                      n_rings=n_rings_used))
     out.append(basin_check(v1_init, unpacked))
     if fits is not None:
         out.append(cross_validation_gate(fits, unpacked,
@@ -813,6 +950,7 @@ __all__ = [
     "detector_scope_gate",
     "cross_validation_gate",
     "strain_cap_check",
+    "pointing_precision_check",
     "basin_check",
     "azimuth_coverage_gate",
     "rho_d_scaling_gate",

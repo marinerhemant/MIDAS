@@ -9,7 +9,7 @@ LM over the parameter spec).  v2's value over v1 here is:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -21,7 +21,7 @@ from ..compat.from_v1 import spec_from_v1_params
 from ..io.transforms import apply_im_trans
 from ..forward.panels import PanelLayout
 from ..inference.lm import lm_minimise
-from ..loss.pseudo_strain import pseudo_strain_residual
+from ..loss.pseudo_strain import pseudo_strain_residual, pseudo_strain_residual_both
 from ..parameters.spec import CalibrationSpec
 from ._common import FittedDataset, run_estep_v1
 
@@ -44,6 +44,14 @@ class IterRecord:
     # are the apples-to-apples numbers vs the C tool.
     median_strain_uE: float = 0.0
     trim_strain_uE: float = 0.0
+    # Absolute radial residual (pixels), R_pred - R_obs.  Unlike the
+    # *_strain_uE fields above (fractional, 1/Lsd-scaled — see
+    # loss/pseudo_strain.py), this does not read higher on a short-Lsd
+    # setup for the same physical pointing accuracy.  Feeds
+    # diagnostics.pointing_precision_check.
+    mean_abs_px: float = 0.0
+    median_abs_px: float = 0.0
+    trim_abs_px: float = 0.0
 
 
 @dataclass
@@ -219,28 +227,38 @@ def autocalibrate(
                     panel_layout, fits_scored.Y_pix, fits_scored.Z_pix)
 
         def _score(fd, unp):
-            return pseudo_strain_residual(
+            return pseudo_strain_residual_both(
                 fd.Y_pix, fd.Z_pix, fd.ring_two_theta_deg, unp,
                 rho_d=fd.rho_d, weights=fd.weights,
                 panel_layout=panel_layout, panel_idx=fd.panel_idx,
                 ring_idx=fd.ring_idx,
             )
 
-        with torch.no_grad():
-            r_final = _score(fits_scored, unpacked)
-            abs_r = r_final.abs()
-            mean_strain_uE = float(abs_r.mean()) * 1e6
-            median_strain_uE = float(abs_r.median()) * 1e6
-            if abs_r.numel() >= 20:
-                cut = torch.quantile(abs_r, 0.95)
-                inl = abs_r[abs_r <= cut]
-                trim_strain_uE = float(inl.mean()) * 1e6 if inl.numel() else mean_strain_uE
+        def _robust_summary(x: torch.Tensor) -> Tuple[float, float, float]:
+            mean_x = float(x.mean())
+            median_x = float(x.median())
+            if x.numel() >= 20:
+                cut = torch.quantile(x, 0.95)
+                inl = x[x <= cut]
+                trim_x = float(inl.mean()) if inl.numel() else mean_x
             else:
-                trim_strain_uE = mean_strain_uE
+                trim_x = mean_x
+            return mean_x, median_x, trim_x
+
+        with torch.no_grad():
+            r_final, d_px_final = _score(fits_scored, unpacked)
+            abs_r = r_final.abs()
+            mean_strain_uE, median_strain_uE, trim_strain_uE = _robust_summary(abs_r)
+            mean_strain_uE *= 1e6
+            median_strain_uE *= 1e6
+            trim_strain_uE *= 1e6
+            mean_abs_px, median_abs_px, trim_abs_px = _robust_summary(d_px_final.abs())
 
         rec = IterRecord(
             iteration=it, n_fitted=int(fits_scored.Y_pix.numel()),
             cost=cost, rc=rc, mean_strain_uE=mean_strain_uE,
+            mean_abs_px=mean_abs_px, median_abs_px=median_abs_px,
+            trim_abs_px=trim_abs_px,
             Lsd=float(unpacked["Lsd"]),
             BC_y=float(unpacked["BC_y"]), BC_z=float(unpacked["BC_z"]),
             ty=float(unpacked["ty"]), tz=float(unpacked["tz"]),
@@ -256,6 +274,7 @@ def autocalibrate(
             print(f"[v2 iter {it}] n_fits={rec.n_fitted:4d}  rc={rc}  "
                   f"strain={mean_strain_uE:8.1f}μϵ "
                   f"(med={median_strain_uE:6.1f}, trim5%={trim_strain_uE:6.1f})  "
+                  f"|Δr|={mean_abs_px:.3f}px  "
                   f"Lsd={rec.Lsd:.2f}  BC=({rec.BC_y:.3f},{rec.BC_z:.3f})  "
                   f"ty={rec.ty:.4f}  tz={rec.tz:.4f}")
 

@@ -59,6 +59,72 @@ def test_strain_cap_empty_history():
     assert res.severity == "warn"
 
 
+# -------------------------------------------------- pointing_precision_check
+
+
+def test_pointing_precision_ok():
+    from midas_calibrate_v2.pipelines.diagnostics import pointing_precision_check
+
+    # The nickelate DAC case: high fractional strain (199 µε) but a good
+    # absolute residual, because Lsd is short (~350 mm).
+    history = [SimpleNamespace(mean_abs_px=0.18, mean_strain_uE=199.1)]
+    res = pointing_precision_check(history, fail_px=1.0, warn_px=0.5)
+    assert res.severity == "ok"
+    assert "0.18" in res.message
+    assert res.name == "strain_cap"
+
+
+def test_pointing_precision_warn():
+    from midas_calibrate_v2.pipelines.diagnostics import pointing_precision_check
+
+    history = [SimpleNamespace(mean_abs_px=0.7, mean_strain_uE=500.0)]
+    res = pointing_precision_check(history, fail_px=1.0, warn_px=0.5)
+    assert res.severity == "warn"
+
+
+def test_pointing_precision_fail():
+    from midas_calibrate_v2.pipelines.diagnostics import pointing_precision_check
+
+    history = [SimpleNamespace(mean_abs_px=12.0, mean_strain_uE=9000.0)]
+    res = pointing_precision_check(history, fail_px=1.0, warn_px=0.5)
+    assert res.severity == "fail"
+    assert "basin escape" in res.message.lower()
+
+
+def test_pointing_precision_nan():
+    from midas_calibrate_v2.pipelines.diagnostics import pointing_precision_check
+
+    history = [SimpleNamespace(mean_abs_px=float("nan"), mean_strain_uE=float("nan"))]
+    res = pointing_precision_check(history)
+    assert res.severity == "fail"
+    assert "nan" in res.message.lower() or "diverged" in res.message.lower()
+
+
+def test_pointing_precision_empty_history():
+    from midas_calibrate_v2.pipelines.diagnostics import pointing_precision_check
+
+    res = pointing_precision_check([])
+    assert res.severity == "warn"
+
+
+@pytest.mark.parametrize("n_rings", [1, 2])
+def test_pointing_precision_low_residual_on_too_few_rings_is_not_ok(n_rings):
+    from midas_calibrate_v2.pipelines.diagnostics import pointing_precision_check
+
+    history = [SimpleNamespace(mean_abs_px=0.1, mean_strain_uE=10.0)]
+    res = pointing_precision_check(history, n_rings=n_rings)
+    assert res.severity == "warn"
+    assert "ring" in res.message
+
+
+def test_pointing_precision_reports_um_when_px_size_given():
+    from midas_calibrate_v2.pipelines.diagnostics import pointing_precision_check
+
+    history = [SimpleNamespace(mean_abs_px=0.2, mean_strain_uE=100.0)]
+    res = pointing_precision_check(history, px_um=172.0)
+    assert "34.4" in res.message  # 0.2 px * 172 um
+
+
 # -------------------------------------------------- basin_check
 
 
@@ -230,6 +296,63 @@ def test_run_all_gates_fail():
     diags = run_all_gates(v1_init=seed, unpacked=unp, history=history,
                           fits=None)
     assert worst_severity(diags) == "fail"
+
+
+def test_run_all_gates_dispatches_to_pointing_precision_when_available():
+    """A history carrying mean_abs_px (i.e. produced by the updated
+    pipelines/single.py) must get the absolute-pixel gate, not the old
+    fractional one -- this is the case that fixes the nickelate DAC
+    false-positive (high µε, good px residual, short Lsd)."""
+    from midas_calibrate_v2.pipelines.diagnostics import run_all_gates, worst_severity
+
+    seed = _FakeV1(Lsd=350_000.0, BC_y=737.0, BC_z=810.0)
+    unp = {"Lsd": torch.tensor(350_916.0),
+           "BC_y": torch.tensor(737.1),
+           "BC_z": torch.tensor(810.3)}
+    # High fractional strain, well within precision in absolute pixels.
+    history = [SimpleNamespace(mean_strain_uE=199.1, mean_abs_px=0.18)]
+
+    diags = run_all_gates(v1_init=seed, unpacked=unp, history=history, fits=None)
+    strain_gate = [d for d in diags if d.name == "strain_cap"][0]
+    assert strain_gate.severity == "ok"
+    assert "px" in strain_gate.message
+    assert worst_severity(diags) == "ok"
+
+
+def test_run_all_gates_dispatches_to_pointing_precision_even_at_exact_zero():
+    """mean_abs_px == 0.0 is a legitimate (if implausibly perfect) value, not
+    an absent field -- it must still route to pointing_precision_check, not
+    fall back to strain_cap_check just because 0.0 is falsy."""
+    from midas_calibrate_v2.pipelines.diagnostics import run_all_gates
+
+    seed = _FakeV1(Lsd=350_000.0, BC_y=737.0, BC_z=810.0)
+    unp = {"Lsd": torch.tensor(350_000.0),
+           "BC_y": torch.tensor(737.0),
+           "BC_z": torch.tensor(810.0)}
+    history = [SimpleNamespace(mean_strain_uE=0.0, mean_abs_px=0.0)]
+
+    diags = run_all_gates(v1_init=seed, unpacked=unp, history=history, fits=None)
+    strain_gate = [d for d in diags if d.name == "strain_cap"][0]
+    assert "px" in strain_gate.message  # pointing_precision_check's wording
+    assert strain_gate.severity == "ok"
+
+
+def test_run_all_gates_falls_back_to_fractional_gate_without_px_field():
+    """A history from a pipeline that hasn't been updated (no mean_abs_px)
+    must keep the old strain_cap_check behaviour exactly -- no silent
+    change for consumers that haven't opted in."""
+    from midas_calibrate_v2.pipelines.diagnostics import run_all_gates
+
+    seed = _FakeV1()
+    unp = {"Lsd": torch.tensor(1_000_000.0),
+           "BC_y": torch.tensor(1024.0),
+           "BC_z": torch.tensor(1024.0)}
+    history = [SimpleNamespace(mean_strain_uE=8.0)]  # no mean_abs_px attr
+
+    diags = run_all_gates(v1_init=seed, unpacked=unp, history=history, fits=None)
+    strain_gate = [d for d in diags if d.name == "strain_cap"][0]
+    assert strain_gate.severity == "ok"
+    assert "μϵ" in strain_gate.message or "within calibrant range" in strain_gate.message
 
 
 # -------------------------------------------------- ResidualConvNet init smoke

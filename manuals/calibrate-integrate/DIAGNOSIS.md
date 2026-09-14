@@ -232,8 +232,8 @@ coord: distortion
 **Test.** Two candidate causes, and they are told apart by *which* coefficients
 rail. Run both gates
 (`azimuth_coverage_gate`,
-`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/diagnostics.py:475`, and
-`rho_d_scaling_gate`, `:595`) and look at the per-parameter 1σ from the Laplace
+`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/diagnostics.py:586`, and
+`rho_d_scaling_gate`, `:706`) and look at the per-parameter 1σ from the Laplace
 covariance.
 
 **If the railed ones are `a_k`/`phi_k` and the azimuth gate reports a narrow

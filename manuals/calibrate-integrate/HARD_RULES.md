@@ -123,7 +123,7 @@
    (`packages/midas_calibrate_v2/midas_calibrate_v2/forward/distortion.py:49`).
    On that frame even `"radial"` was not enough and `"none"` was required: 181 µε
    diverging → 72 µε. **Check, do not assume:** run the azimuth gate
-   (`azimuth_coverage_gate`, `.../pipelines/diagnostics.py:475`), refine the largest
+   (`azimuth_coverage_gate`, `.../pipelines/diagnostics.py:586`), refine the largest
    block that passes,
    and confirm the loop settles.
 
@@ -139,7 +139,7 @@
    sane value; a *template* may not. It fails in the other direction too: `ρ_max`
    far above 1 means `RhoD` sits below the outer ring, which in practice means it
    was given in pixels (LAB_NOTEBOOK §17). Gate: `rho_d_scaling_gate`
-   (`.../pipelines/diagnostics.py:595`).
+   (`.../pipelines/diagnostics.py:706`).
 
 13. **A ring table is crystallography, not a measurement of this exposure.**
    Weak, vignetted or grainy rings still produce a centroid per η bin, and those

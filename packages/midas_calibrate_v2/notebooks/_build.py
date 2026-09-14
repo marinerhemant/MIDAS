@@ -257,14 +257,19 @@ for nm, s in zip(flat, sigma_arr):
 A converged calibration with low pseudo-strain is necessary but not
 sufficient.  Three gates catch the common failure modes:
 
-- **Strain-cap** — reject if mean ε > 100 µε (catches LM basin escape)
+- **Strain-cap** — reject if the converged pointing residual exceeds ~1 px
+  (catches LM basin escape). Reported in pixels, not the older fractional
+  "microstrain" (`1 - R_obs/R_pred`), because that fraction reads higher on
+  a short-Lsd/small-ring-radius setup for the same absolute accuracy — a
+  fixed µε cap unfairly failed closer detectors.
 - **Basin-check** — warn if MAP drifted too far from seed
 - **Cross-validation** — train on rings 0..N−1, test on rings ≥ N (catches misspecified distortion basis)
 """),
     ("py", """\
+abs_px = res.history[-1].mean_abs_px
 strain_uE = res.history[-1].mean_strain_uE
-print(f'mean pseudo-strain: {strain_uE:.2f} µε')
-if strain_uE > 100.0:
+print(f'mean pointing residual: {abs_px:.3f} px (≈{strain_uE:.2f} µε)')
+if abs_px > 1.0:
     print('  ✗ STRAIN-CAP FAILED — rejected as basin escape')
 else:
     print('  ✓ strain-cap passed')
