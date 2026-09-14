@@ -17,12 +17,15 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import math
 import numpy as np
 import pytest
+import torch
 
 from midas_defect.rod_profile import (
     rod_path, matched_control_path, profile_along, rod_significance,
     ring_L_marks, transverse_width, RodProfile,
+    rod_path_geometry, matched_control_path_geometry,
     DROP_MASKED, DROP_OFF_DETECTOR, DROP_NO_OMEGA,
 )
+from midas_defect.geometry import Geometry, qlab_to_pixel, qsample_to_qlab
 
 LAM, LSD, PX = 0.42459, 349_622.0, 172.0
 NR, NC, BR, BC = 1679, 1475, 810.3, 737.2
@@ -139,6 +142,124 @@ def test_an_UNREACHABLE_control_is_visible_not_silent():
                                L, **GEOKW)
     assert len(ctl) == 0
     assert ctl.dropped[DROP_NO_OMEGA] == len(L)
+
+
+# ----------------------- tilt/distortion-aware analogue (rod_path_geometry)
+
+ZERO_GEOM = Geometry(lsd_um=LSD, bcy_px=BC, bcz_px=BR, px_um=PX,
+                     wavelength_A=LAM, n_pix_y=NC, n_pix_z=NR,
+                     omega_first_deg=OM_LO, omega_step_deg=1.0, n_frames=37)
+TILTED_GEOM = Geometry(lsd_um=LSD, bcy_px=BC, bcz_px=BR, px_um=PX,
+                       wavelength_A=LAM, n_pix_y=NC, n_pix_z=NR,
+                       omega_first_deg=OM_LO, omega_step_deg=1.0, n_frames=37,
+                       tx_deg=0.05, ty_deg=-0.22, tz_deg=-0.31,
+                       p_coeffs=(0.0002, 0.0011, 0.0002, 30.0) + (0.0,) * 11,
+                       rho_d_um=196_000.0)
+
+
+def test_rod_path_geometry_matches_flat_rod_path_at_zero_tilt():
+    """No detector is ever really untilted or undistorted -- but at tx=ty=tz=0
+    and zero distortion coefficients, the tilt-aware walk must reduce EXACTLY
+    to rod_path's closed-form flat projection: both solve the identical Bragg
+    condition, and qlab_to_pixel's own seed at zero tilt/distortion IS that
+    flat projection (zero iterations needed to converge). If this ever drifts,
+    rod_path_geometry has silently diverged from the geometry every existing
+    rod_path caller already trusts, rather than being a strict superset of it.
+    """
+    L = np.arange(-16, 16, 0.05)
+    flat = rod_path(UROT, B_MAT, 0, 0, L, **GEOKW)
+    geo = rod_path_geometry(UROT, B_MAT * 2 * math.pi, 0, 0, L, ZERO_GEOM,
+                            omega_lo_deg=OM_LO, omega_hi_deg=OM_HI)
+    assert len(flat) > 50
+    assert len(flat) == len(geo)
+    np.testing.assert_allclose(flat.L, geo.L)
+    np.testing.assert_allclose(flat.row, geo.row, atol=1e-3)
+    np.testing.assert_allclose(flat.col, geo.col, atol=1e-3)
+    np.testing.assert_allclose(flat.omega_deg, geo.omega_deg, atol=1e-6)
+    assert flat.dropped == geo.dropped
+
+
+def test_rod_path_geometry_matches_an_independent_qlab_to_pixel_call():
+    """rod_path_geometry's own returned points, checked against a SEPARATE,
+    direct call to qsample_to_qlab + qlab_to_pixel on the same (L, omega) --
+    catches a batching/bookkeeping bug the zero-tilt regression above cannot
+    see (that one is exact by construction regardless of bookkeeping, since
+    qlab_to_pixel's seed already equals the flat answer there).
+    """
+    L = np.arange(-10, 10, 0.1)
+    geo = rod_path_geometry(UROT, B_MAT * 2 * math.pi, 0, 0, L, TILTED_GEOM,
+                            omega_lo_deg=OM_LO, omega_hi_deg=OM_HI)
+    assert len(geo) > 50
+    for i in range(0, len(geo), 11):
+        g_s = UROT @ (B_MAT * 2 * math.pi) @ np.array([0, 0, geo.L[i]])
+        w = math.radians(geo.omega_deg[i])
+        q_lab = qsample_to_qlab(torch.as_tensor(g_s, dtype=torch.float64), w)
+        r, c = qlab_to_pixel(q_lab.reshape(1, 3), TILTED_GEOM, device="cpu")
+        assert float(r[0]) == pytest.approx(geo.row[i], abs=1e-3)
+        assert float(c[0]) == pytest.approx(geo.col[i], abs=1e-3)
+
+
+def test_rod_path_geometry_counts_what_it_dropped():
+    L = np.arange(-16, 16, 0.05)
+    p = rod_path_geometry(UROT, B_MAT * 2 * math.pi, 0, 0, L, TILTED_GEOM,
+                          omega_lo_deg=OM_LO, omega_hi_deg=OM_HI)
+    assert len(p) > 50
+    assert set(p.dropped) >= {DROP_NO_OMEGA, DROP_OFF_DETECTOR}
+    assert sum(p.dropped.values()) + len(p) == len(L)
+
+
+def test_matched_control_path_geometry_offsets_hk():
+    L = np.arange(-16, 16, 0.05)
+    ctl = matched_control_path_geometry(UROT, B_MAT * 2 * math.pi, 0, 0, L,
+                                        TILTED_GEOM, omega_lo_deg=OM_LO,
+                                        omega_hi_deg=OM_HI)
+    assert ctl.hk == (0.5, 0.5)
+    assert len(ctl) > 50
+
+
+def test_rod_path_geometry_cost_does_not_scale_with_point_count():
+    """qlab_to_pixel is called ONCE, batched over every kept L -- not once per
+    point. If that ever regresses to a per-point call, cost would scale with
+    how many points are kept, not stay flat. Pinned qualitatively (8x the
+    points must not cost anywhere near 8x the time) rather than by an absolute
+    wall-clock bound, which would be flaky across machines; a generous
+    multiplier plus a fixed-ms allowance keeps this robust to run-to-run noise
+    while still catching an O(n_points) regression.
+    """
+    import time
+    L_small = np.arange(-2, 2, 0.02)     # ~200 points
+    L_big = np.arange(-16, 16, 0.02)     # ~1600 points, 8x more
+    # warm-up: the first qlab_to_pixel call in a process pays a one-time
+    # import/backend-init cost that has nothing to do with batch size.
+    rod_path_geometry(UROT, B_MAT * 2 * math.pi, 0, 0, L_small, TILTED_GEOM,
+                      omega_lo_deg=OM_LO, omega_hi_deg=OM_HI)
+    t0 = time.perf_counter()
+    rod_path_geometry(UROT, B_MAT * 2 * math.pi, 0, 0, L_small, TILTED_GEOM,
+                      omega_lo_deg=OM_LO, omega_hi_deg=OM_HI)
+    t_small = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    rod_path_geometry(UROT, B_MAT * 2 * math.pi, 0, 0, L_big, TILTED_GEOM,
+                      omega_lo_deg=OM_LO, omega_hi_deg=OM_HI)
+    t_big = time.perf_counter() - t0
+    assert t_big < 20 * t_small + 0.05, (
+        f"cost scaled with point count ({t_small*1e3:.2f} ms -> {t_big*1e3:.2f} ms "
+        "for 8x the points) -- qlab_to_pixel may no longer be batched")
+
+
+def test_rod_path_geometry_default_omega_window_matches_predict_reflections():
+    """The default (no explicit omega_lo/hi_deg) window must be the same
+    half-frame-padded convention midas_defect.raster.predict_reflections
+    already uses to turn a Geometry into an omega window -- not a new,
+    third convention invented for this function alone.
+    """
+    L = np.arange(-16, 16, 0.05)
+    explicit = rod_path_geometry(
+        UROT, B_MAT * 2 * math.pi, 0, 0, L, ZERO_GEOM,
+        omega_lo_deg=ZERO_GEOM.omega_first_deg - 0.5 * ZERO_GEOM.omega_step_deg,
+        omega_hi_deg=ZERO_GEOM.omega_first_deg + (ZERO_GEOM.n_frames - 0.5) * ZERO_GEOM.omega_step_deg)
+    default = rod_path_geometry(UROT, B_MAT * 2 * math.pi, 0, 0, L, ZERO_GEOM)
+    assert len(explicit) == len(default)
+    np.testing.assert_array_equal(explicit.L, default.L)
 
 
 # --------------------------------------------------------------- the profile

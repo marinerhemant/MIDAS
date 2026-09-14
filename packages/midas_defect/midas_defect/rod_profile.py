@@ -55,14 +55,18 @@ a real minimum in the rod, which is the quantity being measured.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, Optional, Sequence, TYPE_CHECKING, Tuple
 
 import math
 import numpy as np
 
+if TYPE_CHECKING:
+    from .geometry import Geometry
+
 __all__ = [
     "RodPath", "RodProfile", "WidthResult",
     "rod_path", "matched_control_path", "profile_along",
+    "rod_path_geometry", "matched_control_path_geometry",
     "rod_significance", "ring_L_marks", "transverse_width",
     "centred_L_nodes", "diffuse_to_bragg",
 ]
@@ -196,6 +200,153 @@ def matched_control_path(U, B, h: float, k: float, L_values, **kw) -> RodPath:
     is real.
     """
     return rod_path(U, B, h + 0.5, k + 0.5, L_values, **kw)
+
+
+def rod_path_geometry(U: np.ndarray, B: np.ndarray, h: float, k: float,
+                      L_values: Sequence[float], geom: "Geometry", *,
+                      omega_sign: int = 1,
+                      omega_lo_deg: Optional[float] = None,
+                      omega_hi_deg: Optional[float] = None) -> RodPath:
+    """Tilt- and distortion-aware analogue of :func:`rod_path`.
+
+    :func:`rod_path` projects onto a flat, untilted detector plane -- a real,
+    documented limitation (see its own docstring: off by ``~lsd*tan(tilt)/px``,
+    about 14 px at a 0.4° tilt and Lsd ≈ 350 mm). No detector is ever actually
+    untilted or undistorted, so this walks the identical ``(h, k, L)`` in
+    q-space and solves the identical Bragg condition, but projects through
+    :func:`midas_defect.geometry.qlab_to_pixel` -- the iterative inverse of
+    :func:`midas_defect.geometry.pixel_to_qlab`, which honours
+    ``geom.tx_deg/ty_deg/tz_deg`` and the 15-coefficient radial distortion
+    (``geom.p_coeffs``). These are the same primitives (plus
+    :func:`midas_defect.geometry.ewald_crossing_omegas` and
+    :func:`midas_defect.geometry.qsample_to_qlab`) that
+    :func:`midas_defect.raster.predict_reflections` already uses for tilted,
+    distorted detector prediction -- not a new geometric model, a second
+    consumer of the validated one.
+
+    ``B`` must be in the ``"2pi/d"`` convention -- the only one
+    :mod:`midas_defect.geometry`'s primitives use (see :func:`rod_path`'s own
+    convention note for what that means). There is no ``q_convention``
+    parameter here.
+
+    **Reduces exactly to** :func:`rod_path` **at zero tilt and zero
+    distortion.** Both solve the identical Bragg condition (same ``A, B, C, R,
+    phi`` algebra); at ``tx=ty=tz=0`` and ``p_coeffs`` all zero,
+    ``qlab_to_pixel``'s seed -- the exact flat-detector inverse -- already
+    satisfies its own convergence check in zero iterations, and is algebraically
+    the same projection :func:`rod_path` computes by hand. Pinned by
+    ``test_rod_path_geometry_matches_flat_rod_path_at_zero_tilt`` in
+    ``tests/test_rod_profile.py``: do not treat that test as redundant with
+    :func:`rod_path`'s own tests -- it is what makes this function a safe
+    addition rather than a second, silently-diverging implementation.
+
+    ``omega_lo_deg``/``omega_hi_deg`` default to
+    ``geom.omega_first_deg - 0.5*geom.omega_step_deg`` .. ``geom.omega_first_deg
+    + (geom.n_frames - 0.5)*geom.omega_step_deg`` -- half a frame beyond the
+    first/last nominal ω, the same convention :func:`midas_defect.raster.
+    predict_reflections` already uses to turn a ``Geometry`` into an ω window.
+    Unlike :func:`rod_path`, the search is not restricted to a single 360° turn
+    (real for a sweep spanning more than one revolution); pass explicit bounds
+    to restrict it.
+
+    One ``qlab_to_pixel`` call, batched over every kept ``L`` -- not one call
+    per point. Measured (``dev/bench_rod_path_geometry.py``, real 2604
+    geometry, 1601-point L grid): the very first ``qlab_to_pixel`` call in
+    a process pays a one-time ~0.5-0.6 s import/backend-init cost (lazy import
+    of ``midas_transforms.fit_setup.transform``); every call after that is
+    ~1-2 ms **independent of how many points are in the batch** (26 points and
+    1040 points both land near 1 ms warm), so this only costs roughly 2-3x
+    :func:`rod_path`'s own per-rod time once warmed up -- negligible next to
+    the per-``L`` Python Bragg-condition loop both functions share. Pinned
+    qualitatively (not by absolute wall-clock, which would be flaky across
+    machines) by
+    ``test_rod_path_geometry_cost_does_not_scale_with_point_count`` in
+    ``tests/test_rod_profile.py``. If a point in the batch fails to converge
+    (``RuntimeError`` from ``qlab_to_pixel``), that one batch falls back to a
+    per-point solve so one marginal point cannot drop the whole rod.
+    """
+    import torch
+    from .geometry import ewald_crossing_omegas, qlab_to_pixel, qsample_to_qlab
+
+    U = np.asarray(U, float)
+    B = np.asarray(B, float)
+    if omega_lo_deg is None:
+        omega_lo_deg = geom.omega_first_deg - 0.5 * geom.omega_step_deg
+    if omega_hi_deg is None:
+        omega_hi_deg = geom.omega_first_deg + (geom.n_frames - 0.5) * geom.omega_step_deg
+    if omega_lo_deg > omega_hi_deg:
+        omega_lo_deg, omega_hi_deg = omega_hi_deg, omega_lo_deg
+    omega_lo, omega_hi = math.radians(omega_lo_deg), math.radians(omega_hi_deg)
+
+    kept_L, kept_w, kept_qmag, qlab_batch = [], [], [], []
+    dropped = {DROP_NO_OMEGA: 0, DROP_OFF_DETECTOR: 0}
+
+    for Lc in np.asarray(L_values, float):
+        g_s = U @ (B @ np.array([h, k, Lc], float))
+        qmag = float(np.linalg.norm(g_s))
+        if qmag < 1e-12:
+            dropped[DROP_NO_OMEGA] += 1
+            continue
+        chosen = None
+        for w in ewald_crossing_omegas(g_s, geom.wavelength_A):
+            for n in (-1, 0, 1):
+                ww = w + 2.0 * math.pi * n
+                w_reported = omega_sign * ww
+                if omega_lo <= w_reported <= omega_hi:
+                    chosen = ww
+                    break
+            if chosen is not None:
+                break
+        if chosen is None:
+            dropped[DROP_NO_OMEGA] += 1
+            continue
+        q_lab = qsample_to_qlab(torch.as_tensor(g_s, dtype=torch.float64), chosen)
+        kept_L.append(Lc); kept_w.append(omega_sign * chosen)
+        kept_qmag.append(qmag); qlab_batch.append(q_lab)
+
+    if not qlab_batch:
+        return RodPath(L=np.empty(0), row=np.empty(0), col=np.empty(0),
+                       omega_deg=np.empty(0), q_mag=np.empty(0), hk=(h, k),
+                       dropped=dropped)
+
+    qlab_t = torch.stack(qlab_batch)
+    try:
+        rows_t, cols_t = qlab_to_pixel(qlab_t, geom, device="cpu")
+    except RuntimeError:
+        rows_t = torch.full((len(qlab_batch),), float("nan"), dtype=torch.float64)
+        cols_t = torch.full((len(qlab_batch),), float("nan"), dtype=torch.float64)
+        for i, qb in enumerate(qlab_batch):
+            try:
+                r, c = qlab_to_pixel(qb.reshape(1, 3), geom, device="cpu")
+                rows_t[i], cols_t[i] = r[0], c[0]
+            except RuntimeError:
+                pass
+    rows, cols = rows_t.numpy(), cols_t.numpy()
+
+    out_L, out_r, out_c, out_w, out_q = [], [], [], [], []
+    for Lc, w, qm, r, c in zip(kept_L, kept_w, kept_qmag, rows, cols):
+        if not (np.isfinite(r) and np.isfinite(c)
+                and 0 <= r < geom.n_pix_z and 0 <= c < geom.n_pix_y):
+            dropped[DROP_OFF_DETECTOR] += 1
+            continue
+        out_L.append(Lc); out_r.append(r); out_c.append(c)
+        out_w.append(math.degrees(w)); out_q.append(qm)
+
+    return RodPath(L=np.array(out_L), row=np.array(out_r), col=np.array(out_c),
+                   omega_deg=np.array(out_w), q_mag=np.array(out_q),
+                   hk=(h, k), dropped=dropped)
+
+
+def matched_control_path_geometry(U: np.ndarray, B: np.ndarray, h: float, k: float,
+                                  L_values: Sequence[float], geom: "Geometry",
+                                  **kw) -> RodPath:
+    """:func:`matched_control_path`'s tilt/distortion-aware analogue.
+
+    The identical walk at ``(h + ½, k + ½, L)`` through the full ``geom``. See
+    :func:`matched_control_path` for what "matched" means and why the control
+    must be able to fail.
+    """
+    return rod_path_geometry(U, B, h + 0.5, k + 0.5, L_values, geom, **kw)
 
 
 @dataclass
