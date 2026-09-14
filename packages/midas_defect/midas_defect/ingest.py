@@ -66,6 +66,8 @@ SPOT_COLUMNS = (
     "blob_id", "sub_id", "frame", "row", "col",
     "integrated", "volume_vox", "n_frames", "peak_counts",
     "length_px", "width_px", "pos_angle_deg", "aspect",
+    "skew_length", "skew_width", "kurt_length", "kurt_width",
+    "omega_width_frames", "skew_omega", "kurt_omega",
 )
 
 
@@ -368,13 +370,31 @@ def _split_blob(sub_img: np.ndarray, sub_mask: np.ndarray,
     return watershed(-sub_img, markers=seed_lab, mask=sub_mask)
 
 
+def _weighted_central_moments(d: np.ndarray, w: np.ndarray) -> Tuple[float, float, float]:
+    """Weighted variance, skewness, and excess (Fisher) kurtosis of a 1-D deviation.
+
+    Skewness/kurtosis are ``nan`` when the variance is exactly zero — an honest
+    value, not a divide-by-epsilon that reads like a measurement (matches how
+    :func:`find_blobs_3d` reports ``aspect`` as ``inf`` rather than a huge
+    finite number for the same reason).
+    """
+    W = float(w.sum())
+    var = float((w * d * d).sum() / W)
+    if var <= 0.0:
+        return var, float("nan"), float("nan")
+    skew = float((w * d ** 3).sum() / W) / var ** 1.5
+    kurt = float((w * d ** 4).sum() / W) / var ** 2 - 3.0
+    return var, skew, kurt
+
+
 def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
                   threshold: float = 200.0,
                   min_vol: int = 10,
                   split_ratio: float = 3.0,
                   gap_bridge: int = 21,
                   core_frac: float = 0.5,
-                  return_counts: bool = False):
+                  return_counts: bool = False,
+                  return_labels: bool = False):
     """Find reflections as 3-D objects in (ω, row, col).
 
     Steps: threshold → bridge detector gaps → label with 26-connectivity →
@@ -391,12 +411,38 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
     features are elongated streaks, so a Gaussian is a misspecified model that
     reports a meaningless width and drags the centroid.
 
+    Third and fourth in-plane moments (``skew_length``/``skew_width``,
+    ``kurt_length``/``kurt_width``) are reported on the same major/minor axes
+    as ``length_px``/``width_px``, using the same full-region weighting. A
+    single symmetric peak has both near zero; an asymmetric blend of two
+    unequal-weight overlapping features pulls skewness away from zero, while a
+    roughly equal-weight blend instead flattens/bimodalizes the profile and
+    pulls kurtosis negative with skewness staying near zero — the two are
+    complementary diagnostics for spot contamination, not redundant.
+
+    ``omega_width_frames``/``skew_omega``/``kurt_omega`` are the same
+    second/third/fourth moments along the ω/frame axis, kept as an
+    **independent 1-D axis** rather than folded into a 3-D covariance with
+    (row, col): ``frame`` is a fractional array index here, not a physical
+    angle, and this function has no ω-step to convert it with. Fusing an
+    index axis and a pixel axis into one Euclidean metric would need an
+    arbitrary, undocumented relative scale, so the ω axis is measured on its
+    own, the same way ``n_frames`` already stands in as a coarser existing
+    proxy for the same extent.
+
     Returns
     -------
     pandas.DataFrame with :data:`SPOT_COLUMNS`. ``row``/``col`` index the array
     exactly as supplied — this function applies no flip and knows of none.
-    With ``return_counts=True``, returns ``(df, counts)`` where ``counts``
-    records how many blobs each step rejected.
+    With ``return_counts=True``, also returns ``counts``, recording how many
+    blobs each step rejected. With ``return_labels=True``, also returns
+    ``labels``, a ``stack``-shaped int array where each voxel holds the
+    1-based row index (``i + 1``) of the sub-peak it belongs to in the
+    returned DataFrame, and 0 where nothing survived thresholding/rejection.
+    This is a QC hook for the watershed split in particular: overlay
+    ``labels`` on the raw frames to check it split a genuine two-domain
+    overlap and did not needlessly fragment one real peak, or the reverse.
+    The two flags combine: with both, the order is ``(df, counts, labels)``.
     """
     stack = np.asarray(stack, dtype=np.float32)
     mask = np.asarray(mask, bool)
@@ -422,6 +468,7 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
               "kept": int(keep.sum()),
               "blobs_split": 0}
 
+    labels = np.zeros(stack.shape, dtype=np.int32) if return_labels else None
     objects = ndimage.find_objects(lab)
     rows: List[tuple] = []
     for L in np.flatnonzero(keep):
@@ -441,6 +488,9 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
                 continue
             idx = np.array(np.nonzero(mm))
             wt = w[mm]
+
+            if labels is not None:
+                labels[sl][mm] = len(rows) + 1   # 1-based row index of THIS sub-peak
 
             core = mm & (w > core_frac * w.max())
             if not core.any():
@@ -467,13 +517,29 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
             # which reads like a measurement and silently survives a filter.
             aspect = float(length / width) if width > 0 else float("inf")
 
+            # 3rd/4th moments on the same major/minor axes as length/width.
+            proj_major = dy * evec[0, 1] + dx * evec[1, 1]
+            proj_minor = dy * evec[0, 0] + dx * evec[1, 0]
+            _, skew_length, kurt_length = _weighted_central_moments(proj_major, wt)
+            _, skew_width, kurt_width = _weighted_central_moments(proj_minor, wt)
+
+            # omega/frame axis: an independent 1-D moment, not fused into a
+            # 3-D covariance with (row, col) -- see the docstring.
+            domega = idx[0] - fcom[0]
+            omega_var, skew_omega, kurt_omega = _weighted_central_moments(domega, wt)
+            omega_width = float(np.sqrt(max(omega_var, 0.0)))
+
             rows.append((int(L), int(j),
                          float(com[0] + k0), float(com[1] + r0), float(com[2] + c0),
                          total, int(mm.sum()), int(np.unique(idx[0]).size),
-                         float(w.max()), length, width, pos_angle, aspect))
+                         float(w.max()), length, width, pos_angle, aspect,
+                         skew_length, skew_width, kurt_length, kurt_width,
+                         omega_width, skew_omega, kurt_omega))
 
     df = pd.DataFrame(rows, columns=list(SPOT_COLUMNS))
     counts["sub_peaks"] = len(df)
+    if return_labels:
+        return (df, counts, labels) if return_counts else (df, labels)
     return (df, counts) if return_counts else df
 
 
