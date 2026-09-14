@@ -72,6 +72,32 @@ all of them.
 Run each package separately — a single pytest across the monorepo collides on
 duplicate test basenames (`test_diagnostics.py` exists in two packages).
 
+**Run the sweep in parallel, not serially — `manuals/release/parallel_sweep.sh
+<concurrency> <pkg1> <pkg2> ...`.** This Mac's own hazard turned out narrower
+than assumed: the only CONFIRMED, reproducible concurrency crash is diplib's
+own parallel filter deadlocking under 2+ concurrent processes (fixed by
+`DIPLIB_NUM_THREADS=1`, which the script sets). The *original* documented
+SIGBUS incident could not be reproduced even deliberately re-running its exact
+package trio concurrently. `parallel_sweep.sh` applies that guard plus
+scaled-down `OMP_NUM_THREADS` and live crash-report monitoring that aborts to
+serial the moment anything looks wrong — see
+`reference_mac_parallel_pytest_sigbus` (project memory) for the full
+investigation. Measured: `midas_dfxm` + `midas_defect` concurrently, 611.85s
+wall vs. 830s serial, zero crashes.
+
+**Skip a package in this sweep if you are about to run its OWN `release.sh`
+right after anyway.** `release.sh`'s prepare mode re-runs that exact package's
+test suite as its own tag-gate (Phase 4), so testing it here too is pure
+duplication, not extra safety — sweep the affected set MINUS whichever
+packages are actually being version-bumped and tagged this batch, and let
+`release.sh` gate those.
+
+> Measured: a 2-package release (hkls → defect) took ~2 hours mostly from
+> serial redundancy — hkls's suite ran once in a 21-package pre-commit sweep,
+> then again inside its own `release.sh`, then a third time in GitHub's
+> release-triggered CI; defect's the same. Skipping the sweep-redundant run and
+> parallelizing what remained (below) is the fix, not testing less.
+
 Record the baseline. A failure that is **byte-identical to the previous sweep**
 is pre-existing, not yours — say so, with the evidence, rather than fixing or
 hiding it.
@@ -291,6 +317,31 @@ git fetch --tags --force origin        # --force is NOT optional: a plain fetch
 correct and tags `HEAD` — which is why Phase 3 works. Guard each one: refuse on
 untracked files in the package dir (setuptools builds from **disk**, so they land
 in the wheel), and assert the tag's tree carries the expected version.
+
+**For more than one package, use `manuals/release/parallel_release.sh
+<concurrency> <pkg1>:<ver1> <pkg2>:<ver2> ...` instead of running the above by
+hand per package.** Only ONE part of a release is actually a dependency-order
+constraint: publish must happen in order, because a dependent's floor has to
+resolve on PyPI. The *local* prepare step (test + build + tag) for two
+different packages does not depend on the other at all — it runs against
+whatever is already installed locally (editable, from the single commit both
+bumps landed in). The script runs Phase A (prepare, all given packages) with
+the same `parallel_sweep.sh` guards **concurrently**, then Phase B (push tag →
+`gh release create` → wait for publish → verify on PyPI) **strictly serially,
+in the order you pass** — never parallelize Phase B, that ordering is Phase 5
+below, not a wall-clock choice.
+
+> Measured, the run that prompted this: hkls (~150s test suite) and defect
+> (~600s) prepared one after another, defect's whole ~600s spent with hkls's
+> CPU core sitting idle. Running both prepares concurrently costs
+> `max(150, 600)` instead of `150 + 600` — the saving compounds with batch
+> size and with how close the packages' test-suite durations are to each
+> other; it does nothing to the Phase B wait, which is real GitHub-side
+> latency and stays serial regardless.
+
+Content-specific PyPI verification (does the actual new symbol exist in the
+wheel, not just does the version resolve) and environment refresh (Phase 6)
+are NOT automated by this script — do those after it succeeds, same as always.
 
 ## Phase 4b — a green PUBLISH workflow is not a green CI
 
