@@ -186,6 +186,120 @@ def test_iterate_frozen_point_until_stable_escapes_blind_seed():
     assert ty_err_deg < 0.5, f"ty error {ty_err_deg:.4f}deg too large"
 
 
+def test_autocalibrate_frozen_point_refine_distortion_none_preserves_spec():
+    """``refine_distortion=None`` (the default) must change nothing: the
+    resolved spec's distortion flags stay whatever v1_params.Refine (or an
+    explicit caller spec) already said -- existing callers see no change."""
+    from midas_calibrate_v2.forward.distortion import P_COEF_NAMES
+
+    v1_true = _build_v1_params(**TRUE)
+    image = _paint_synthetic_image(v1_true)
+    v1_seed = _build_v1_params(**SEED)  # Refine sets every p_i False
+
+    result = autocalibrate_frozen_point(
+        v1_seed, image, snr_min=5.0,
+        point_pick_kwargs=_point_pick_kwargs(image),
+        lm_verbose=False, verbose=False,
+    )
+    assert all(not result.spec.parameters[n].refined for n in P_COEF_NAMES)
+
+
+def test_autocalibrate_frozen_point_refine_distortion_overrides_spec():
+    """An explicit ``refine_distortion`` must override v1_params.Refine,
+    the same selector :func:`~midas_calibrate_v2.pipelines.auto.calibrate`
+    accepts (block name, bool, or explicit coefficient list)."""
+    from midas_calibrate_v2.forward.distortion import DISTORTION_BLOCKS, P_COEF_NAMES
+
+    v1_true = _build_v1_params(**TRUE)
+    image = _paint_synthetic_image(v1_true)
+    v1_seed = _build_v1_params(**SEED)  # Refine sets every p_i False
+
+    result = autocalibrate_frozen_point(
+        v1_seed, image, snr_min=5.0, refine_distortion="radial",
+        point_pick_kwargs=_point_pick_kwargs(image),
+        lm_verbose=False, verbose=False,
+    )
+    radial = set(DISTORTION_BLOCKS["radial"])
+    for name in P_COEF_NAMES:
+        assert result.spec.parameters[name].refined == (name in radial), name
+    # tx stays frozen regardless -- the distortion knob must not touch it.
+    assert result.spec.parameters["tx"].refined is False
+
+
+def test_iterate_frozen_point_until_stable_default_still_freezes_distortion():
+    """Regression guard: the default must reproduce the pipeline's only
+    validated mode (geometry-only) exactly, unchanged by adding the knob."""
+    from midas_calibrate_v2.forward.distortion import P_COEF_NAMES
+
+    v1_true = _build_v1_params(**TRUE)
+    image = _paint_synthetic_image(v1_true)
+    pp_kwargs = _point_pick_kwargs(image)
+
+    out = iterate_frozen_point_until_stable(
+        _build_v1_params(**BLIND_SEED), image, snr_min=5.0,
+        point_pick_kwargs=pp_kwargs,
+        max_iter=20, bounds_bc_px=50.0, bounds_lsd_um=10_000.0,
+        verbose=False,
+    )
+    assert out.converged
+    assert all(not out.res.spec.parameters[n].refined for n in P_COEF_NAMES)
+
+
+def test_iterate_frozen_point_until_stable_refine_distortion_thaws_coefficients():
+    """Passing ``refine_distortion`` through to the per-iteration spec is
+    the actual fix here -- previously every iteration hard-froze all 15
+    coefficients regardless of what the caller asked for."""
+    from midas_calibrate_v2.forward.distortion import DISTORTION_BLOCKS, P_COEF_NAMES
+
+    v1_true = _build_v1_params(**TRUE)
+    image = _paint_synthetic_image(v1_true)
+    pp_kwargs = _point_pick_kwargs(image)
+
+    out = iterate_frozen_point_until_stable(
+        _build_v1_params(**BLIND_SEED), image, snr_min=5.0,
+        point_pick_kwargs=pp_kwargs, refine_distortion="radial",
+        max_iter=20, bounds_bc_px=50.0, bounds_lsd_um=10_000.0,
+        verbose=False,
+    )
+    radial = set(DISTORTION_BLOCKS["radial"])
+    for name in P_COEF_NAMES:
+        assert out.res.spec.parameters[name].refined == (name in radial), name
+
+
+def test_iterate_frozen_point_until_stable_honors_v1_refine_like_sibling_pipelines():
+    """The actual bug this guards against: every sibling pipeline
+    (autocalibrate_pv, autocalibrate_four_stage, autocalibrate_bayesian,
+    autocalibrate_joint) -- and a GUI, via midas_gui.calib.build_v1_params --
+    controls distortion refinement purely through v1_params.Refine, with no
+    separate kwarg at all. Before this fix, every iteration here force-froze
+    all 15 coefficients regardless of v1_params.Refine, silently discarding
+    that selection. This calls with NO refine_distortion kwarg -- exactly
+    how a GUI-built v1_params would reach this function -- and checks
+    v1_params.Refine alone is enough."""
+    from midas_calibrate_v2.forward.distortion import (
+        DISTORTION_BLOCKS, P_COEF_NAMES, V2_TO_V1_DISTORTION,
+    )
+
+    v1_true = _build_v1_params(**TRUE)
+    image = _paint_synthetic_image(v1_true)
+    pp_kwargs = _point_pick_kwargs(image)
+
+    radial = set(DISTORTION_BLOCKS["radial"])
+    v1_seed = _build_v1_params(**BLIND_SEED)
+    v1_seed.Refine = dict(v1_seed.Refine)
+    for name in radial:
+        v1_seed.Refine[f"p{V2_TO_V1_DISTORTION[name]}"] = True
+
+    out = iterate_frozen_point_until_stable(
+        v1_seed, image, snr_min=5.0,
+        point_pick_kwargs=pp_kwargs,
+        max_iter=20, bounds_bc_px=50.0, bounds_lsd_um=10_000.0,
+        verbose=False,
+    )
+    for name in P_COEF_NAMES:
+        assert out.res.spec.parameters[name].refined == (name in radial), name
+
+
 def test_iterate_frozen_point_until_stable_reports_non_convergence_honestly():
     """A seed outside the capture range must come back converged=False, not
     a false-positive stable-but-wrong basin -- the entire point of the

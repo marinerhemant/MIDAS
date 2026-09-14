@@ -22,7 +22,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Sequence, Union
 
 import numpy as np
 import torch
@@ -31,7 +31,7 @@ from midas_calibrate.params import CalibrationParams as V1Params
 from midas_calibrate.rings import RingTable, build_ring_table
 
 from ..compat.from_v1 import spec_from_v1_params
-from ..forward.distortion import P_COEF_NAMES
+from ..forward.distortion import P_COEF_NAMES, resolve_distortion_block
 from ..forward.point_pick import PickedPoints, pick_points
 from ..inference.lm import GenericLMConfig, lm_minimise
 from ..io.transforms import apply_im_trans
@@ -65,6 +65,27 @@ def _dataset_from_picked(
     )
 
 
+def _apply_distortion_refine(
+    spec: CalibrationSpec,
+    refine_distortion: Union[bool, str, Sequence[str]],
+) -> None:
+    """Freeze/thaw the 15 distortion coefficients on ``spec``.
+
+    ``refine_distortion`` takes the same selector
+    :func:`~midas_calibrate_v2.pipelines.auto.calibrate` does -- ``True``/
+    ``False``, a :data:`~midas_calibrate_v2.forward.distortion.DISTORTION_BLOCKS`
+    name (``"radial"``, ``"radial+2fold"``, ...), or an explicit sequence of
+    v2 coefficient names -- resolved by the same
+    :func:`~midas_calibrate_v2.forward.distortion.resolve_distortion_block`.
+    One selector value therefore means the same thing regardless of which
+    pipeline in this package it is handed to (a GUI can reuse it verbatim).
+    """
+    spec.freeze(*P_COEF_NAMES)
+    thaw_names = resolve_distortion_block(refine_distortion)
+    if thaw_names:
+        spec.thaw(*thaw_names)
+
+
 def _clone_spec(spec: CalibrationSpec) -> CalibrationSpec:
     """Copy ``spec`` so ``autocalibrate_frozen_point`` can freely mutate it
     (``tx.refined``, per-parameter ``.init``) without touching the caller's
@@ -85,6 +106,7 @@ def autocalibrate_frozen_point(
     image: np.ndarray,
     *,
     spec: Optional[CalibrationSpec] = None,
+    refine_distortion: Optional[Union[bool, str, Sequence[str]]] = None,
     snr_min: float = 5.0,
     point_pick_kwargs: Optional[dict] = None,
     rings_to_exclude=(),
@@ -101,6 +123,21 @@ def autocalibrate_frozen_point(
     returns) whose ``history`` contains exactly one :class:`IterRecord` --
     kept for compatibility with existing reporting/plotting code, even
     though there is no outer loop here.
+
+    Distortion refinement is controlled by ``v1_params.Refine["p0".."p14"]``
+    when ``spec`` is not given (or by the caller's own ``spec`` otherwise) --
+    the same mechanism ``autocalibrate_pv``, ``autocalibrate_four_stage``,
+    ``autocalibrate_bayesian`` and ``autocalibrate_joint`` all use, and the
+    one a GUI already builds via ``build_v1_params(..., refine=...)`` for
+    every one of those. ``refine_distortion`` (default ``None``) is an
+    *additional*, optional override with the same selector
+    :func:`~midas_calibrate_v2.pipelines.auto.calibrate`'s own
+    ``refine_distortion`` accepts -- see :func:`_apply_distortion_refine`.
+    ``None`` leaves distortion refinement exactly as ``v1_params.Refine``/
+    the caller's ``spec`` already says -- no behaviour change for existing
+    callers. Passing anything else overrides whichever of those it would
+    otherwise have been, the same way the forced ``tx`` freeze below always
+    overrides the caller's spec.
     """
     v1_params.validate()
     # RhoD to canonical µm before anything reads it (the spec, the point-pick
@@ -117,6 +154,9 @@ def autocalibrate_frozen_point(
         spec = spec_from_v1_params(v1_params)
     else:
         spec = _clone_spec(spec)
+
+    if refine_distortion is not None:
+        _apply_distortion_refine(spec, refine_distortion)
 
     # The image transform is part of the calibration description and rides
     # on the spec (see io/transforms.apply_im_trans for the three ways doing
@@ -251,18 +291,29 @@ def autocalibrate_frozen_point(
     )
 
 
-def _bounded_geom_only_spec(
+def _bounded_spec_for_iteration(
     v1: V1Params, *, bounds_tz_deg: float, bounds_ty_deg: float,
     bounds_bc_px: float, bounds_lsd_um: float,
+    refine_distortion: Optional[Union[bool, str, Sequence[str]]],
 ) -> CalibrationSpec:
-    """A geometry-only ``CalibrationSpec`` (all 15 distortion coeffs frozen)
-    with bounds re-centered on ``v1``'s current Lsd/BC/ty/tz -- the "walk
-    from wherever you currently are" bounds strategy that lets
-    :func:`iterate_frozen_point_until_stable` cover far more ground per
-    iteration than a single fixed-window fit.
+    """A ``CalibrationSpec`` for one iteration of
+    :func:`iterate_frozen_point_until_stable`.
+
+    Lsd/BC/ty/tz bounds are re-centered on ``v1``'s current geometry -- the
+    "walk from wherever you currently are" bounds strategy that lets the
+    iteration cover far more ground per step than a single fixed-window fit.
+
+    Distortion refinement defers to ``v1.Refine["p0".."p14"]`` (``None``,
+    the default every caller of this helper passes) exactly like every
+    sibling pipeline (``autocalibrate_pv``, ``autocalibrate_four_stage``,
+    ``autocalibrate_bayesian``, ``autocalibrate_joint``) -- see
+    :func:`iterate_frozen_point_until_stable`'s docstring. ``refine_distortion``
+    only exists as an explicit override for callers who did not already set
+    ``v1.Refine`` themselves; see :func:`_apply_distortion_refine`.
     """
     spec = spec_from_v1_params(v1)
-    spec.freeze(*P_COEF_NAMES)
+    if refine_distortion is not None:
+        _apply_distortion_refine(spec, refine_distortion)
     spec.parameters["BC_y"].bounds = (v1.BC_y - bounds_bc_px, v1.BC_y + bounds_bc_px)
     spec.parameters["BC_z"].bounds = (v1.BC_z - bounds_bc_px, v1.BC_z + bounds_bc_px)
     spec.parameters["Lsd"].bounds = (v1.Lsd - bounds_lsd_um, v1.Lsd + bounds_lsd_um)
@@ -338,6 +389,7 @@ def iterate_frozen_point_until_stable(
     bounds_ty_deg: float = 10.0,
     bounds_bc_px: float = 100.0,
     bounds_lsd_um: float = 30_000.0,
+    refine_distortion: Optional[Union[bool, str, Sequence[str]]] = None,
     snr_min: float = 5.0,
     point_pick_kwargs: Optional[dict] = None,
     lm_max_iter: int = 150,
@@ -347,17 +399,52 @@ def iterate_frozen_point_until_stable(
     the geometry stops moving, to reach a good basin from even a genuinely
     blind starting guess (e.g. ``tz=0`` with no tilt information at all).
 
-    Each iteration builds a fresh geometry-only spec (all distortion
-    coefficients frozen) with Lsd/BC/ty/tz bounds **re-centered** on the
-    *previous* iteration's converged geometry (``bounds_tz_deg`` etc.) --
-    it is this re-centering, not a fixed window, that lets the estimate
-    walk many degrees from a bad start across several iterations. Point
-    picking is re-run from scratch each iteration (it depends on the
-    geometry used to place its annular ring masks -- see
+    Each iteration builds a fresh spec with Lsd/BC/ty/tz bounds
+    **re-centered** on the *previous* iteration's converged geometry
+    (``bounds_tz_deg`` etc.) -- it is this re-centering, not a fixed window,
+    that lets the estimate walk many degrees from a bad start across several
+    iterations. Point picking is re-run from scratch each iteration (it
+    depends on the geometry used to place its annular ring masks -- see
     ``forward.point_pick``), so this is not the same "one-shot, frozen
     point cloud" guarantee ``autocalibrate_frozen_point`` itself makes
     *within* one call; it is that one-shot mechanism used repeatedly as a
     well-behaved fixed-point iteration.
+
+    Distortion refinement is controlled by ``v1_params.Refine["p0".."p14"]``,
+    exactly like ``autocalibrate_pv``, ``autocalibrate_four_stage``,
+    ``autocalibrate_bayesian`` and ``autocalibrate_joint`` -- this function
+    used to hard-freeze all 15 coefficients every iteration regardless of
+    ``v1_params.Refine``, which silently discarded that selection whenever a
+    caller (e.g. a GUI that builds its ``V1Params`` once via
+    ``Refine=<per-coefficient dict>`` and hands it to whichever pipeline the
+    user picked) expected it to be honoured the same way it is for every
+    other pipeline in this package. ``refine_distortion`` (default ``None``)
+    is an *additional*, optional override with the same selector
+    :func:`_apply_distortion_refine` accepts, for callers who would rather
+    pass a bool / block name / explicit coefficient list than build a
+    ``Refine`` dict by hand; ``None`` leaves ``v1_params.Refine`` as the
+    sole source of truth, unchanged from every other pipeline's behaviour.
+
+    **Refining distortion here is less validated than the geometry-only
+    mode.** The stopping criterion below only checks geometry (Lsd/BC/ty/tz)
+    stability, never distortion's, and a fresh spec is built from
+    ``v1_params`` each iteration, so a refined distortion coefficient does
+    not carry over between iterations the way geometry does -- each
+    iteration's LM instead re-fits distortion from ``v1_params``'s original
+    value against that iteration's (still possibly wrong) geometry and its
+    freshly re-picked points. That is fine once the geometry has actually
+    converged (the final iteration's distortion fit is a real fit against
+    the final geometry and point cloud), but during the earlier, still-
+    wrong-geometry iterations a simultaneously-refit distortion has more
+    freedom to compound the same kind of extraction-geometry feedback bias
+    this whole pipeline exists to avoid on the geometry side. If
+    ``v1_params.Refine`` (or ``refine_distortion``) asks for distortion here,
+    check the final values against a separate refit at the converged
+    geometry (as the validating notebook's "Distortion basis" section does)
+    rather than trusting them as-is. The geometry-only mode (the default for
+    any ``v1_params`` whose ``Refine`` freezes ``p0``..``p14``, which is what
+    every caller in this codebase has done so far) remains the only mode
+    actually validated end-to-end.
 
     **The stopping criterion is strict parameter stability, deliberately,
     with no strain gate.** On the real dataset this was validated against,
@@ -399,9 +486,10 @@ def iterate_frozen_point_until_stable(
     history: List[IterRecord] = []
     res: Optional[PVCalibrationResult] = None
     for i in range(1, max_iter + 1):
-        spec = _bounded_geom_only_spec(
+        spec = _bounded_spec_for_iteration(
             seed, bounds_tz_deg=bounds_tz_deg, bounds_ty_deg=bounds_ty_deg,
             bounds_bc_px=bounds_bc_px, bounds_lsd_um=bounds_lsd_um,
+            refine_distortion=refine_distortion,
         )
         res = autocalibrate_frozen_point(
             seed, image, spec=spec, snr_min=snr_min,
