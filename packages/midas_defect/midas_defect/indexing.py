@@ -236,6 +236,17 @@ class IndexResult:
     #: ``(a, b, c)`` the forward model was actually built from, or None if the
     #: cell never converged and the nominal crystal was used.
     cell_converged: Optional[Tuple[float, float, float]] = None
+    #: ``(alpha, beta, gamma)`` degrees, the SAME converged fit's angles --
+    #: split from `cell_converged` for backward compatibility, but every
+    #: reflection assignment this result reports used these too, not 90/90/90.
+    #: `refine_to_convergence`'s "general" iterated fit does NOT constrain the
+    #: angles to the space group's nominal values (measured on real 2604 data:
+    #: converged to (90.22, 90.30, 89.81), not (90, 90, 90)) -- a caller that
+    #: rebuilds a crystal from `cell_converged` alone and assumes 90/90/90 gets
+    #: a forward model that silently disagrees with the one used here, which
+    #: is enough to change which reflections fall inside a match tolerance.
+    #: Found 2026-09-13 chasing a 50-vs-48 reflection-count mismatch on 2604.
+    cell_converged_angles: Optional[Tuple[float, float, float]] = None
     #: How many reflections the converged fit used.
     n_cell_reflections: int = 0
 
@@ -346,9 +357,10 @@ def index_from_cloud(q_sample: np.ndarray, intensity: np.ndarray,
                                      alpha=conv.lat.alpha, beta=conv.lat.beta,
                                      gamma=conv.lat.gamma))
         refined_cell = (conv.lat.a, conv.lat.b, conv.lat.c)
+        refined_angles = (conv.lat.alpha, conv.lat.beta, conv.lat.gamma)
         n_converged = int(conv.claim.sum())
     else:
-        refined_cell, n_converged = None, 0
+        refined_cell, refined_angles, n_converged = None, None, 0
 
     model, hkls_int, tilts_used = build_forward_model(
         crystal, geom, d_min=d_min, apply_tilts=apply_tilts, device=device)
@@ -392,7 +404,8 @@ def index_from_cloud(q_sample: np.ndarray, intensity: np.ndarray,
         U=U, a=float(refined_cell[0]) if refined_cell else float(res.a),
         c=float(refined_cell[2]) if refined_cell else float(res.c),
         b=float(refined_cell[1]) if refined_cell else None,
-        cell_converged=refined_cell, n_cell_reflections=n_converged,
+        cell_converged=refined_cell,
+        cell_converged_angles=refined_angles, n_cell_reflections=n_converged,
         n_assigned=n, assigned_hkl=assigned,
         audit=audit,
         convention=convention or ConventionScan(1, [{"omega_sign": 1,

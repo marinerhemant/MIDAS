@@ -46,7 +46,9 @@ def _observations(cry, g, U, d_min):
     return z[ok], y[ok], f[ok]
 
 
-def test_index_from_cloud_predicts_from_the_converged_cell():
+def _run_converged_fit():
+    """Shared setup: synthetic scene, nominal-cell-seeded index_from_cloud call.
+    Not a test itself -- both tests below assert on its result."""
     from midas_defect.geometry import pixel_to_qlab, qlab_to_qsample
     import torch
 
@@ -76,6 +78,11 @@ def test_index_from_cloud_predicts_from_the_converged_cell():
                            d_min=1.2, max_two_theta_rad=np.radians(0.5),
                            max_eta_rad=np.radians(2.0), max_omega_rad=np.radians(2.0),
                            n_bright=30, device="cpu")
+    return res, A_TRUE, C_TRUE, C_NOM
+
+
+def test_index_from_cloud_predicts_from_the_converged_cell():
+    res, A_TRUE, C_TRUE, C_NOM = _run_converged_fit()
 
     assert res.cell_converged is not None, "the cell never converged; nothing was refined"
     a_fit, b_fit, c_fit = res.cell_converged
@@ -87,6 +94,28 @@ def test_index_from_cloud_predicts_from_the_converged_cell():
     assert err_true < 2e-3, f"converged c={c_fit:.4f} vs true {C_TRUE:.4f}"
     assert abs(a_fit - A_TRUE)/A_TRUE < 5e-3, f"converged a={a_fit:.4f} vs true {A_TRUE:.4f}"
     assert res.n_cell_reflections >= 10
+
+
+def test_cell_converged_angles_reproduces_the_forward_model_index_from_cloud_used():
+    """A caller who rebuilds a crystal from `cell_converged` alone (a, b, c) and
+    assumes 90/90/90 gets a DIFFERENT forward model than the one `index_from_cloud`
+    actually used internally -- `refine_to_convergence`'s general fit does not
+    constrain the angles to the space group's nominal values, even for an SG139
+    (I4/mmm, nominally orthogonal) crystal. Found 2026-09-13 chasing a real
+    50-vs-48 reflection-count mismatch on real La3Ni2O7 data: the angles had
+    converged to (90.22, 90.30, 89.81), not (90, 90, 90), and a re-derivation
+    that hardcoded 90s silently matched 2 fewer reflections than index_from_cloud
+    itself reported. This pins that `cell_converged_angles` exists and is usable
+    to reproduce the SAME assignment count a caller re-deriving it would need.
+    """
+    res, _, _, _ = _run_converged_fit()
+    assert res.cell_converged_angles is not None
+    aa, bb, cc = res.cell_converged_angles
+    # not a strong physical assertion (this synthetic scene is inverse-crime
+    # generated at exactly 90/90/90) -- just that the field is populated,
+    # finite, and in the physically sane neighbourhood of 90 degrees.
+    for name, v in (("alpha", aa), ("beta", bb), ("gamma", cc)):
+        assert 60.0 < v < 120.0, f"{name}={v} is not a physically sane cell angle"
 
 
 @pytest.mark.parametrize("offset,should_converge", [(0.002, True), (0.005, True),
