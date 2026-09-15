@@ -345,7 +345,22 @@ are NOT automated by this script — do those after it succeeds, same as always.
 
 ## Phase 4b — a green PUBLISH workflow is not a green CI
 
-Before tagging, list every workflow the repo has and check them all:
+**Run `release.sh` prepare mode (Phase 4) WHILE this CI check runs, not after
+it — do not wait.** `release.sh` without `--publish` only tests, builds and
+tags *locally*; nothing is pushed or published, so it has no dependency on
+GitHub's CI result at all, and a local-only tag is cheap to delete and redo if
+CI turns out red. The thing that actually needs a confirmed-green CI first is
+the **push** of that tag and `gh release create` (Phase 5) — gate that, not
+the local prepare step.
+
+> Measured 2026-09-14: waited for a push's CI to go fully green (~15 min)
+> before even starting `release.sh`'s own ~850s local test run, serially —
+> both were testing the same already-pushed commit and had no dependency on
+> each other. Asked directly why, and there wasn't a real answer: the habit
+> came from this phase's own "before tagging" phrasing, read too literally.
+
+Before pushing the tag / publishing, list every workflow the repo has and
+check them all:
 
 ```bash
 gh workflow list --all

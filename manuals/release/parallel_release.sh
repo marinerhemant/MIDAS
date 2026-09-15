@@ -17,6 +17,15 @@
 # on PyPI before starting the next. Do not parallelize Phase B: that ordering is what
 # manuals/release/SKILL.md Phase 5 exists to protect, not a wall-clock choice.
 #
+# Phase A deliberately does NOT wait for the push's own GitHub CI to go green first, and
+# never should -- `release.sh` prepare mode only tests, builds and tags LOCALLY, so it has
+# no dependency on the remote CI result, and a local-only tag is cheap to delete and redo
+# if CI turns out red. Confirmed-green CI is a real gate on Phase B's tag PUSH and publish
+# (SKILL.md Phase 4b/5), not on local prepare -- if you're calling `release.sh` by hand
+# instead of through this script, run it WHILE CI runs, not after (measured 2026-09-14:
+# waiting for CI before even starting a single package's local prepare cost ~15 idle
+# minutes for no reason -- the two were testing the same commit independently).
+#
 # Usage:
 #   manuals/release/parallel_release.sh <concurrency> <pkg1>:<ver1> <pkg2>:<ver2> ...
 #   manuals/release/parallel_release.sh 2 midas_hkls:0.16.0 midas_defect:0.6.0
