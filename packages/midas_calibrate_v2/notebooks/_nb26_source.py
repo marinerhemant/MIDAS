@@ -33,6 +33,12 @@ correct answer even from a **completely blind** tilt guess).
 **How**: below — load the raw frames, fit from a rough tilt guess, verify
 with a ring overlay, then repeat from a blind guess and compare distortion
 models. Wall time ~2 min.
+
+**Data**: unlike most notebooks here, this one needs a real (not
+synthetic) ~332 MB raw HDF5 frame -- point `$LARGE_TILT_CALIB_DIR` at a
+checkout of the MIDAS repo's `scratch_calibrate/large_tilt_calib/` (the
+file lives at `<that dir>/data/CeO2_RT_pirex_1000mm_71p676keV_022104.vrx.h5`),
+or place the same file under the default path below.
 """),
     ("py", """\
 import os
@@ -45,7 +51,8 @@ os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
 
 DATA_DIR = Path(os.environ.get(
     'LARGE_TILT_CALIB_DIR',
-    '/home/beams0/DBENIWAL/MIDAS/scratch_calibrate/large_tilt_calib'))
+    os.path.join(os.environ.get('V2_TEST_BASE', '/tmp/midas_v2_test'),
+                 'large_tilt_calib')))
 H5_PATH = DATA_DIR / 'data' / 'CeO2_RT_pirex_1000mm_71p676keV_022104.vrx.h5'
 
 # Detector + beam metadata for this dataset (Varex varexD 2880x2880, CeO2

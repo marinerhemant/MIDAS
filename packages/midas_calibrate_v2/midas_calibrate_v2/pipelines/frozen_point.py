@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import warnings
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Union
 
@@ -36,8 +37,9 @@ from ..forward.point_pick import PickedPoints, pick_points
 from ..inference.lm import GenericLMConfig, lm_minimise
 from ..io.transforms import apply_im_trans
 from ..loss.pseudo_strain import pseudo_strain_residual
+from ..parameters.pack import pack_spec, unpack_spec
 from ..parameters.spec import CalibrationSpec
-from ._common import FittedDataset, _filter_by_snr
+from ._common import FittedDataset, _filter_by_snr, ring_table_for
 from .single_pv import IterRecord, PVCalibrationResult
 
 LOG = logging.getLogger(__name__)
@@ -101,6 +103,85 @@ def _clone_spec(spec: CalibrationSpec) -> CalibrationSpec:
     return dataclasses.replace(spec, parameters=cloned_params)
 
 
+@dataclass
+class PickCoverage:
+    """How well the frozen point cloud actually covers the calibrant.
+
+    ``converged`` (on :class:`IterateResult`) means the fitted PARAMETERS
+    stopped moving -- it says nothing about whether the points that
+    produced them were plentiful or evenly spread. This is that other
+    check: how many rings contributed points, and how they are spread
+    across 8 azimuthal (MIDAS-eta) octants -- exactly the kind of
+    imbalance that can bias ``ty``/``tz``/``BC``, worse at large tilt (see
+    ``forward.point_pick.pick_points``'s own docstring on azimuth-dependent
+    SNR acceptance).
+    """
+
+    n_points: int
+    n_rings_total: int
+    n_rings_hit: int
+    octant_by_ring: dict          # ring_idx -> length-8 list of counts
+    mean_strain_uE: float
+
+
+def _warn_if_thin_or_lopsided(
+    coverage: PickCoverage, *, min_rings_hit: int = 3,
+    min_octants_populated: int = 4,
+) -> None:
+    """Warn (not raise) when ``coverage`` looks too thin or too lopsided to
+    trust without a closer look -- the thresholds are a floor for "clearly
+    fine," not a validated pass/fail line; a caller with real trouble
+    should inspect ``coverage`` itself, not just watch for this warning."""
+    if coverage.n_rings_hit < min_rings_hit:
+        warnings.warn(
+            f"frozen-point fit used points from only {coverage.n_rings_hit} "
+            f"ring(s) (of {coverage.n_rings_total} in the calibrant table) "
+            "-- geometry fitted from this few rings is weakly constrained.",
+            RuntimeWarning, stacklevel=3)
+    octant_totals = np.zeros(8, dtype=np.int64)
+    for counts in coverage.octant_by_ring.values():
+        octant_totals += np.asarray(counts, dtype=np.int64)
+    n_populated = int(np.count_nonzero(octant_totals))
+    if n_populated < min_octants_populated:
+        warnings.warn(
+            f"frozen-point fit's accepted points cover only {n_populated}/8 "
+            f"azimuthal octants (counts={octant_totals.tolist()}) -- an "
+            "uneven azimuthal sample can bias ty/tz/BC; see "
+            "forward.point_pick.pick_points's verbose-mode docstring.",
+            RuntimeWarning, stacklevel=3)
+
+
+@dataclass
+class FrozenPointCalibrationResult(PVCalibrationResult):
+    """:class:`~.single_pv.PVCalibrationResult`, plus the point-pick
+    coverage diagnostics :func:`autocalibrate_frozen_point` computes along
+    the way -- every field ``PVCalibrationResult`` has, so existing code
+    written against that type still works unchanged."""
+
+    coverage: Optional[PickCoverage] = None
+
+
+def _huber_delta_auto(spec: CalibrationSpec, residual_fn, dtype, device,
+                       *, k: float = 5.0) -> float:
+    """Scale ``huber_delta`` to this fit's own residual units.
+
+    ``_huberise`` (``midas_peakfit.lm_generic``) compares ``|r|`` to
+    ``delta`` in whatever units the residual already is -- for
+    ``pseudo_strain_residual`` that is dimensionless strain, O(1e-4), so a
+    literal default like ``3.0`` never triggers and the fit is silently
+    plain least squares. Evaluating the residual once at the spec's own
+    initial (pre-optimisation) values gives a real per-dataset scale: a
+    mispicked local maximum enters this pipeline's point cloud at full
+    weight (there is no cake/profile step to average it down first), so
+    outlier protection matters more here than in the cake pipelines.
+    """
+    x0, info = pack_spec(spec, dtype=dtype, device=device)
+    unpacked0 = unpack_spec(x0, info, spec)
+    r0 = residual_fn(unpacked0).detach()
+    med = float(r0.abs().median())
+    return k * med if med > 0 else 1.0
+
+
 def autocalibrate_frozen_point(
     v1_params: V1Params,
     image: np.ndarray,
@@ -112,17 +193,19 @@ def autocalibrate_frozen_point(
     rings_to_exclude=(),
     max_ring_number: int = 0,
     lm_max_iter: int = 150,
-    huber_delta: float = 3.0,
+    huber_delta: Optional[float] = None,
     lm_verbose: bool = False,
     verbose: bool = True,
     dtype=torch.float64, device="cpu",
-) -> PVCalibrationResult:
+) -> FrozenPointCalibrationResult:
     """One-shot frozen-point calibration.
 
-    Returns a :class:`PVCalibrationResult` (same shape ``autocalibrate_pv``
-    returns) whose ``history`` contains exactly one :class:`IterRecord` --
-    kept for compatibility with existing reporting/plotting code, even
-    though there is no outer loop here.
+    Returns a :class:`FrozenPointCalibrationResult` -- a
+    :class:`PVCalibrationResult` (same shape ``autocalibrate_pv`` returns,
+    so existing reporting/plotting code keeps working unchanged) plus a
+    ``coverage`` field (see :class:`PickCoverage`). ``history`` contains
+    exactly one :class:`IterRecord`, kept for compatibility even though
+    there is no outer loop here.
 
     Distortion refinement is controlled by ``v1_params.Refine["p0".."p14"]``
     when ``spec`` is not given (or by the caller's own ``spec`` otherwise) --
@@ -138,6 +221,19 @@ def autocalibrate_frozen_point(
     callers. Passing anything else overrides whichever of those it would
     otherwise have been, the same way the forced ``tx`` freeze below always
     overrides the caller's spec.
+
+    ``huber_delta`` (default ``None``) auto-scales to this fit's own
+    residual units -- see :func:`_huber_delta_auto`; a fixed literal here
+    (e.g. the ``3.0`` this used to default to) silently does nothing,
+    since ``pseudo_strain_residual`` is O(1e-4) and never gets anywhere
+    near it. Pass an explicit float to override.
+
+    Tiled detectors (multi-panel Pilatus/Hydra) are fitted as a single
+    panel: ``residual_fn`` does not pass ``panel_layout``/``panel_idx``
+    through to :func:`~..loss.pseudo_strain.pseudo_strain_residual`. Fine
+    for the single-panel Varex this pipeline was validated on; a caller
+    with a genuinely tiled detector needs that plumbed through before this
+    pipeline's fit is meaningful for it.
     """
     v1_params.validate()
     # RhoD to canonical µm before anything reads it (the spec, the point-pick
@@ -188,12 +284,21 @@ def autocalibrate_frozen_point(
     # still exist in the image, and sizing a kept ring's window without
     # knowing about its real neighbour (because that neighbour was already
     # filtered out) lets the window balloon towards max_window_deg on that
-    # side and pick up the neighbour's spots. rings_to_exclude/
-    # max_ring_number are therefore applied AFTER picking, as a point
-    # filter, so ring labels stay indexed into ``rt_full`` throughout (no
-    # remapping needed).
+    # side and pick up the neighbour's spots. Exclusions are therefore
+    # applied AFTER picking, as a point filter, so ring labels stay indexed
+    # into ``rt_full`` throughout (no remapping needed).
+    #
+    # Two independent sources of exclusion feed that filter: this
+    # function's own explicit rings_to_exclude/max_ring_number kwargs, AND
+    # -- via ring_table_for, the same helper every other pipeline in this
+    # package routes through (see single_pv.py) -- spec.rings_to_exclude/
+    # spec.max_ring_number and v1_params.MinRingSeparation (blended-ring
+    # dropping). Building rt_full straight from build_ring_table() alone
+    # would silently ignore all three of those, which is exactly the bug
+    # every other pipeline in this package was already fixed for.
     rt_full = build_ring_table(v1_params)
-    keep_ring = np.ones(len(rt_full.ring_nr), dtype=bool)
+    rt_reduced = ring_table_for(v1_params, spec=spec, verbose=verbose)
+    keep_ring = np.isin(rt_full.ring_nr, rt_reduced.ring_nr)
     if rings_to_exclude:
         keep_ring &= ~np.isin(rt_full.ring_nr, list(rings_to_exclude))
     if max_ring_number > 0:
@@ -213,6 +318,8 @@ def autocalibrate_frozen_point(
             ring_idx=picked.ring_idx[row_keep], snr=picked.snr[row_keep],
             n_by_ring={i: (n if keep_ring[i] else 0)
                        for i, n in picked.n_by_ring.items()},
+            octant_by_ring={i: c for i, c in picked.octant_by_ring.items()
+                            if keep_ring[i]},
         )
 
     n_total = int(picked.Y_pix.shape[0])
@@ -248,10 +355,18 @@ def autocalibrate_frozen_point(
             ring_d_spacing_A=fits_ds.ring_d_spacing_A,
         )
 
+    huber_delta_eff = (
+        _huber_delta_auto(spec, residual_fn, dtype, device)
+        if huber_delta is None else huber_delta
+    )
+    if verbose:
+        print(f"  [autocalibrate_frozen_point] huber_delta={huber_delta_eff:.3g}",
+              flush=True)
+
     unpacked, cost, rc = lm_minimise(
         spec, residual_fn,
         config=GenericLMConfig(max_iter=lm_max_iter, ftol_rel=1e-9,
-                                xtol_rel=1e-9, huber_delta=huber_delta,
+                                xtol_rel=1e-9, huber_delta=huber_delta_eff,
                                 verbose=lm_verbose),
         dtype=dtype, device=device,
     )
@@ -286,8 +401,15 @@ def autocalibrate_frozen_point(
         BC_y=float(unpacked["BC_y"]), BC_z=float(unpacked["BC_z"]),
         ty=float(unpacked["ty"]), tz=float(unpacked["tz"]),
     )
-    return PVCalibrationResult(
+    coverage = PickCoverage(
+        n_points=n_total, n_rings_total=len(picked.n_by_ring),
+        n_rings_hit=n_rings_hit, octant_by_ring=picked.octant_by_ring,
+        mean_strain_uE=mean_uE,
+    )
+    _warn_if_thin_or_lopsided(coverage)
+    return FrozenPointCalibrationResult(
         spec=spec, unpacked=unpacked, history=[rec], fits_final=fits_ds,
+        coverage=coverage,
     )
 
 
@@ -303,17 +425,21 @@ def _bounded_spec_for_iteration(
     "walk from wherever you currently are" bounds strategy that lets the
     iteration cover far more ground per step than a single fixed-window fit.
 
-    Distortion refinement defers to ``v1.Refine["p0".."p14"]`` (``None``,
-    the default every caller of this helper passes) exactly like every
-    sibling pipeline (``autocalibrate_pv``, ``autocalibrate_four_stage``,
-    ``autocalibrate_bayesian``, ``autocalibrate_joint``) -- see
-    :func:`iterate_frozen_point_until_stable`'s docstring. ``refine_distortion``
-    only exists as an explicit override for callers who did not already set
-    ``v1.Refine`` themselves; see :func:`_apply_distortion_refine`.
+    Distortion refinement during THE LOOP is geometry-only, always, when
+    ``refine_distortion`` is ``None`` -- ``v1.Refine`` is deliberately
+    ignored here regardless of what it says (see
+    :func:`iterate_frozen_point_until_stable`'s docstring for why: a
+    default ``CalibrationParams()`` refines all 15 coefficients, and
+    honouring that during an unstable search would refit distortion every
+    iteration against a still-wrong geometry). ``v1.Refine`` IS honoured,
+    but only via a single final refit at the converged geometry -- see
+    that function. Passing ``refine_distortion`` explicitly is a
+    deliberate, documented opt-in to thaw it during the loop itself
+    instead; see :func:`_apply_distortion_refine`.
     """
     spec = spec_from_v1_params(v1)
-    if refine_distortion is not None:
-        _apply_distortion_refine(spec, refine_distortion)
+    _apply_distortion_refine(spec, refine_distortion
+                              if refine_distortion is not None else False)
     spec.parameters["BC_y"].bounds = (v1.BC_y - bounds_bc_px, v1.BC_y + bounds_bc_px)
     spec.parameters["BC_z"].bounds = (v1.BC_z - bounds_bc_px, v1.BC_z + bounds_bc_px)
     spec.parameters["Lsd"].bounds = (v1.Lsd - bounds_lsd_um, v1.Lsd + bounds_lsd_um)
@@ -366,6 +492,17 @@ class IterateResult:
     was (as far as this function can tell) outside this dataset's capture
     range, not a silently-wrong answer. Always check ``converged`` before
     trusting ``fit``.
+
+    ``converged=True`` means only that the fitted PARAMETERS stopped
+    moving -- it is not a fit-quality check and is not a substitute for
+    looking at ``coverage`` (see :class:`PickCoverage`): a fit using points
+    from very few rings, or from a lopsided azimuthal sample, can be
+    perfectly stable and still weakly constrained or biased. Both
+    :func:`autocalibrate_frozen_point` and this function already warn (via
+    :func:`_warn_if_thin_or_lopsided`) when ``coverage`` looks thin or
+    lopsided, but that warning uses a floor for "clearly fine," not a
+    validated pass/fail line -- inspect ``coverage`` yourself for anything
+    that matters.
     """
 
     converged: bool
@@ -373,6 +510,7 @@ class IterateResult:
     fit: IterRecord
     res: PVCalibrationResult
     history: List[IterRecord]
+    coverage: Optional[PickCoverage] = None
 
 
 def iterate_frozen_point_until_stable(
@@ -410,41 +548,52 @@ def iterate_frozen_point_until_stable(
     *within* one call; it is that one-shot mechanism used repeatedly as a
     well-behaved fixed-point iteration.
 
-    Distortion refinement is controlled by ``v1_params.Refine["p0".."p14"]``,
-    exactly like ``autocalibrate_pv``, ``autocalibrate_four_stage``,
-    ``autocalibrate_bayesian`` and ``autocalibrate_joint`` -- this function
-    used to hard-freeze all 15 coefficients every iteration regardless of
-    ``v1_params.Refine``, which silently discarded that selection whenever a
-    caller (e.g. a GUI that builds its ``V1Params`` once via
-    ``Refine=<per-coefficient dict>`` and hands it to whichever pipeline the
-    user picked) expected it to be honoured the same way it is for every
-    other pipeline in this package. ``refine_distortion`` (default ``None``)
-    is an *additional*, optional override with the same selector
-    :func:`_apply_distortion_refine` accepts, for callers who would rather
-    pass a bool / block name / explicit coefficient list than build a
-    ``Refine`` dict by hand; ``None`` leaves ``v1_params.Refine`` as the
-    sole source of truth, unchanged from every other pipeline's behaviour.
+    **The loop itself is geometry-only, always, unless ``refine_distortion``
+    is passed explicitly.** An earlier version of this function honoured
+    ``v1_params.Refine`` during the loop the same way every sibling
+    pipeline (``autocalibrate_pv``, ``autocalibrate_four_stage``,
+    ``autocalibrate_bayesian``, ``autocalibrate_joint``) honours it for a
+    single fit -- but ``CalibrationParams()``'s own default refines all 15
+    coefficients, so a caller who never touched ``Refine`` at all got a
+    silent, unrequested behaviour change: full 15-coefficient refits on
+    every iteration of an unstable search, against a still-possibly-wrong
+    geometry and freshly re-picked points each time -- exactly the kind of
+    extraction-geometry feedback compounding this whole pipeline exists to
+    avoid on the geometry side. Fixed by decoupling the two knobs:
 
-    **Refining distortion here is less validated than the geometry-only
-    mode.** The stopping criterion below only checks geometry (Lsd/BC/ty/tz)
-    stability, never distortion's, and a fresh spec is built from
-    ``v1_params`` each iteration, so a refined distortion coefficient does
-    not carry over between iterations the way geometry does -- each
-    iteration's LM instead re-fits distortion from ``v1_params``'s original
-    value against that iteration's (still possibly wrong) geometry and its
-    freshly re-picked points. That is fine once the geometry has actually
-    converged (the final iteration's distortion fit is a real fit against
-    the final geometry and point cloud), but during the earlier, still-
-    wrong-geometry iterations a simultaneously-refit distortion has more
-    freedom to compound the same kind of extraction-geometry feedback bias
-    this whole pipeline exists to avoid on the geometry side. If
-    ``v1_params.Refine`` (or ``refine_distortion``) asks for distortion here,
-    check the final values against a separate refit at the converged
-    geometry (as the validating notebook's "Distortion basis" section does)
-    rather than trusting them as-is. The geometry-only mode (the default for
-    any ``v1_params`` whose ``Refine`` freezes ``p0``..``p14``, which is what
-    every caller in this codebase has done so far) remains the only mode
-    actually validated end-to-end.
+    * ``refine_distortion=None`` (the default): the loop is geometry-only
+      on every iteration, full stop, regardless of ``v1_params.Refine``.
+      Once the geometry has converged, ``v1_params.Refine`` IS honoured --
+      but via exactly one additional refit at the converged geometry
+      (frozen point cloud, stable Lsd/BC/ty/tz), not during the search.
+      That refit only runs if ``v1_params.Refine`` actually asks for some
+      coefficient; if it does not (as with every caller in this codebase
+      so far), nothing extra happens and the result is unchanged from the
+      geometry-only-only behaviour this function has always had.
+    * ``refine_distortion=<bool/block name/coefficient list>`` (an
+      explicit, deliberate ask): thaws those coefficients during the loop
+      itself, every iteration -- unchanged from before. This is a power-
+      user opt-in into the less-validated combination described below; it
+      is on you to check the result the way the validating notebook's
+      "Distortion basis" section does.
+
+    Either way the selector accepted is the same one
+    :func:`_apply_distortion_refine` resolves (bool / block name / explicit
+    coefficient list).
+
+    **Refining distortion here (via ``refine_distortion``, during the
+    loop) is less validated than the geometry-only mode.** The stopping
+    criterion below only checks geometry (Lsd/BC/ty/tz) stability, never
+    distortion's, and a fresh spec is built from ``v1_params`` each
+    iteration, so a refined distortion coefficient does not carry over
+    between iterations the way geometry does -- each iteration's LM
+    instead re-fits distortion from ``v1_params``'s original value against
+    that iteration's (still possibly wrong) geometry and its freshly
+    re-picked points. If you pass ``refine_distortion`` here, check the
+    final values against a separate refit at the converged geometry (as
+    the validating notebook's "Distortion basis" section does) rather than
+    trusting them as-is. The geometry-only mode (the default) remains the
+    only mode actually validated end-to-end.
 
     **The stopping criterion is strict parameter stability, deliberately,
     with no strain gate.** On the real dataset this was validated against,
@@ -514,15 +663,40 @@ def iterate_frozen_point_until_stable(
             if (tz_spread < tol_tz_deg and ty_spread < tol_ty_deg
                     and bcy_spread < tol_bc_px and bcz_spread < tol_bc_px
                     and lsd_spread < tol_lsd_um):
+                if refine_distortion is None:
+                    # v1_params.Refine is honoured here, once, at the
+                    # converged geometry -- never during the unstable
+                    # search above (see this function's docstring). Gated
+                    # on there actually being something to thaw, so the
+                    # common case (Refine already all-False, as every
+                    # existing caller in this codebase does) costs nothing
+                    # extra and returns byte-identical output to before
+                    # this fix.
+                    final_v1 = _reseed(seed, fit)
+                    trial_spec = spec_from_v1_params(final_v1)
+                    wants_distortion = any(
+                        trial_spec.parameters[n].refined for n in P_COEF_NAMES
+                        if n in trial_spec.parameters
+                    )
+                    if wants_distortion:
+                        res = autocalibrate_frozen_point(
+                            final_v1, image, snr_min=snr_min,
+                            point_pick_kwargs=point_pick_kwargs,
+                            lm_max_iter=lm_max_iter, verbose=False,
+                        )
+                        fit = res.history[0]
+                        history.append(fit)
                 _write_back_geometry(v1_params, fit)
                 return IterateResult(converged=True, n_iter=i, fit=fit,
-                                      res=res, history=history)
+                                      res=res, history=history,
+                                      coverage=res.coverage)
         seed = _reseed(seed, fit)
 
     _write_back_geometry(v1_params, history[-1])
     return IterateResult(converged=False, n_iter=max_iter, fit=history[-1],
-                          res=res, history=history)
+                          res=res, history=history,
+                          coverage=res.coverage if res is not None else None)
 
 
-__all__ = ["autocalibrate_frozen_point",
-           "iterate_frozen_point_until_stable", "IterateResult"]
+__all__ = ["autocalibrate_frozen_point", "iterate_frozen_point_until_stable",
+           "IterateResult", "FrozenPointCalibrationResult", "PickCoverage"]

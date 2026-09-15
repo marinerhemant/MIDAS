@@ -66,12 +66,35 @@ def _build_v1_params(**geom) -> CalibrationParams:
     )
 
 
-def _paint_synthetic_image(v1_true: CalibrationParams) -> np.ndarray:
+def _build_v1_params_default_refine(**geom) -> CalibrationParams:
+    """Like :func:`_build_v1_params`, but with NO explicit ``Refine`` --
+    ``CalibrationParams()``'s own default applies (all 15 ``p0..p14``
+    default to ``refined=True``). Exercises the exact gap the round-2 PR
+    review flagged: a caller who never touches ``Refine`` at all."""
+    return CalibrationParams(
+        NrPixelsY=NY, NrPixelsZ=NZ, pxY=PX_UM, pxZ=PX_UM,
+        Wavelength=WAVELENGTH_A,
+        SpaceGroup=225, LatticeConstant=(5.4116, 5.4116, 5.4116, 90, 90, 90),
+        MaxRingRad=float(min(NY, NZ)) / 2.0 - 5.0,
+        RhoD=float(min(NY, NZ)) / 2.0 - 5.0,
+        **geom,
+    )
+
+
+def _paint_synthetic_image(v1_true: CalibrationParams, *, p_overrides=None) -> np.ndarray:
     from midas_integrate.geometry import build_tilt_matrix, invert_REta_to_pixel_batch
 
     rt = build_ring_table(v1_true)
     image = np.zeros((NZ, NY), dtype=np.float64)
-    zero15 = {f"p{i}": 0.0 for i in range(15)}
+    p_coeffs = {f"p{i}": 0.0 for i in range(15)}
+    p_coeffs.update(p_overrides or {})
+    # RhoD in the SAME units the fit resolves it to (see
+    # forward.sanity.resolve_v1_rho_d_um): v1_true.RhoD here is a bare
+    # pixel-scale number, so it must be scaled by px to micrometres for the
+    # painted distortion to use the same rho=R_um/RhoD normalisation the
+    # fit assumes. Immaterial when every p-coefficient is 0 (the default),
+    # since D(rho, eta) == 1 regardless of the rho scale used to get there.
+    rho_d_um = v1_true.RhoD * PX_UM
     TRs = build_tilt_matrix(TRUE["tx"], TRUE["ty"], TRUE["tz"])
     rng = np.random.default_rng(1)
     yy, zz = np.meshgrid(np.arange(NY), np.arange(NZ))
@@ -85,7 +108,7 @@ def _paint_synthetic_image(v1_true: CalibrationParams) -> np.ndarray:
         R_targets = np.full_like(eta, R0)
         Y, Z = invert_REta_to_pixel_batch(
             R_targets, eta, Ycen=TRUE["BC_y"], Zcen=TRUE["BC_z"], TRs=TRs,
-            Lsd=TRUE["Lsd"], RhoD=1.0, px=PX_UM, parallax=0.0, **zero15,
+            Lsd=TRUE["Lsd"], RhoD=rho_d_um, px=PX_UM, parallax=0.0, **p_coeffs,
         )
         on_det = (Y >= 3) & (Y <= NY - 4) & (Z >= 3) & (Z <= NZ - 4)
         for y0, z0 in zip(Y[on_det], Z[on_det]):
@@ -122,6 +145,16 @@ def test_autocalibrate_frozen_point_recovers_known_geometry():
     assert bc_err_px < 3.0, f"BC error {bc_err_px:.4f}px too large"
     assert tz_err_deg < 0.5, f"tz error {tz_err_deg:.4f}deg too large"
     assert ty_err_deg < 0.5, f"ty error {ty_err_deg:.4f}deg too large"
+
+    # Coverage diagnostics (PickCoverage) should describe the same fit.
+    cov = result.coverage
+    assert cov is not None
+    assert cov.n_points == fit.n_fitted
+    assert cov.n_rings_hit > 0
+    rings_used = {int(r) for r in result.fits_final.ring_idx.tolist()}
+    assert rings_used <= set(cov.octant_by_ring)
+    assert all(len(counts) == 8 for counts in cov.octant_by_ring.values())
+    assert abs(cov.mean_strain_uE - fit.mean_strain_uE) < 1e-6
 
 
 def test_autocalibrate_frozen_point_freezes_tx_regardless_of_caller_spec():
@@ -321,3 +354,84 @@ def test_iterate_frozen_point_until_stable_reports_non_convergence_honestly():
     assert len(out.history) == 15
     # Not converged AND not silently near the truth either.
     assert abs(out.fit.tz - TRUE["tz"]) > 1.0
+
+
+def test_iterate_frozen_point_until_stable_default_calibration_params_still_converges():
+    """The actual regression flagged in PR review round 2: a plain
+    ``CalibrationParams()`` (no explicit ``Refine`` at all) defaults every
+    ``p0..p14`` to ``refined=True``. Before the fix, the loop passed that
+    straight through to every iteration, silently turning a documented
+    geometry-only search into a full 15-coefficient refit against a
+    still-wrong geometry on every step. This must still converge to the
+    correct geometry, exactly as the explicit-all-False-Refine fixture
+    (:func:`_build_v1_params`, used by every other test here) does."""
+    v1_true = _build_v1_params_default_refine(**TRUE)
+    image = _paint_synthetic_image(v1_true)
+    pp_kwargs = _point_pick_kwargs(image)
+
+    out = iterate_frozen_point_until_stable(
+        _build_v1_params_default_refine(**BLIND_SEED), image, snr_min=5.0,
+        point_pick_kwargs=pp_kwargs,
+        max_iter=20, bounds_bc_px=50.0, bounds_lsd_um=10_000.0,
+        verbose=False,
+    )
+
+    assert out.converged
+    fit = out.fit
+    lsd_err_pct = 100.0 * abs(fit.Lsd - TRUE["Lsd"]) / TRUE["Lsd"]
+    bc_err_px = np.hypot(fit.BC_y - TRUE["BC_y"], fit.BC_z - TRUE["BC_z"])
+    tz_err_deg = abs(fit.tz - TRUE["tz"])
+    ty_err_deg = abs(fit.ty - TRUE["ty"])
+    assert lsd_err_pct < 1.0, f"Lsd error {lsd_err_pct:.4f}% too large"
+    assert bc_err_px < 3.0, f"BC error {bc_err_px:.4f}px too large"
+    assert tz_err_deg < 0.5, f"tz error {tz_err_deg:.4f}deg too large"
+    assert ty_err_deg < 0.5, f"ty error {ty_err_deg:.4f}deg too large"
+
+    # The final refit honours the default Refine -- every coefficient ends
+    # up thawed, unlike the geometry-only-default fixture used elsewhere.
+    from midas_calibrate_v2.forward.distortion import P_COEF_NAMES
+    assert all(out.res.spec.parameters[n].refined for n in P_COEF_NAMES)
+
+
+def test_autocalibrate_frozen_point_refine_distortion_moves_residual_and_keeps_geometry():
+    """An actual effect test, not just plumbing: paint the image with a
+    real (small) isotropic radial distortion, fit once with distortion
+    frozen and once with ``refine_distortion="radial"`` thawed, and check
+    refining it (a) measurably improves the fit (the coefficients are not
+    a no-op) and (b) geometry still lands within the same tolerances used
+    throughout this file. Seeded at the TRUE geometry (not the usual
+    offset SEED) so this isolates the distortion axis -- the offset-seed
+    capture-range behaviour is already covered by the other tests here,
+    and iso_R2 is only weakly identifiable on its own within a 3-term
+    isotropic radial block over this synthetic's narrow 2theta range (it
+    trades off against iso_R4/iso_R6), so recovering the exact injected
+    coefficient is not a fair ask here -- an improved residual is.
+    """
+    P2_TRUE = 0.001
+    v1_true = _build_v1_params(**TRUE)
+    image = _paint_synthetic_image(v1_true, p_overrides={"p2": P2_TRUE})
+    pp_kwargs = _point_pick_kwargs(image)
+
+    frozen = autocalibrate_frozen_point(
+        _build_v1_params(**TRUE), image, snr_min=5.0,
+        refine_distortion=None, point_pick_kwargs=pp_kwargs, verbose=False,
+    )
+    refined = autocalibrate_frozen_point(
+        _build_v1_params(**TRUE), image, snr_min=5.0,
+        refine_distortion="radial", point_pick_kwargs=pp_kwargs, verbose=False,
+    )
+
+    assert refined.history[0].mean_strain_uE < frozen.history[0].mean_strain_uE, (
+        "refining distortion against an image with real distortion should "
+        "reduce the residual, not leave it unchanged or worse"
+    )
+
+    fit = refined.history[0]
+    lsd_err_pct = 100.0 * abs(fit.Lsd - TRUE["Lsd"]) / TRUE["Lsd"]
+    bc_err_px = np.hypot(fit.BC_y - TRUE["BC_y"], fit.BC_z - TRUE["BC_z"])
+    tz_err_deg = abs(fit.tz - TRUE["tz"])
+    ty_err_deg = abs(fit.ty - TRUE["ty"])
+    assert lsd_err_pct < 1.0, f"Lsd error {lsd_err_pct:.4f}% too large"
+    assert bc_err_px < 3.0, f"BC error {bc_err_px:.4f}px too large"
+    assert tz_err_deg < 0.5, f"tz error {tz_err_deg:.4f}deg too large"
+    assert ty_err_deg < 0.5, f"ty error {ty_err_deg:.4f}deg too large"

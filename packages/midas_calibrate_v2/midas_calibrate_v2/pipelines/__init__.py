@@ -12,6 +12,7 @@ from .joint_cake import autocalibrate_joint
 from .four_stage import autocalibrate_four_stage
 from .frozen_point import (
     autocalibrate_frozen_point, iterate_frozen_point_until_stable, IterateResult,
+    FrozenPointCalibrationResult, PickCoverage,
 )
 from .downstream import sensitivity_diagnostic, joint_with_downstream
 from .robust import autocalibrate_robust, RobustCalibrationDiagnostics
@@ -27,6 +28,7 @@ __all__ = [
     "autocalibrate_four_stage",
     "autocalibrate_frozen_point",
     "iterate_frozen_point_until_stable", "IterateResult",
+    "FrozenPointCalibrationResult", "PickCoverage",
     "sensitivity_diagnostic", "joint_with_downstream",
     "autocalibrate_robust", "RobustCalibrationDiagnostics",
     "select_basis_bic", "BasisFit",

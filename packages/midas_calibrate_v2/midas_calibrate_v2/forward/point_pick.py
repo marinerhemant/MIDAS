@@ -43,6 +43,55 @@ class PickedPoints:
     ring_idx: np.ndarray     # int, row index into the RingTable arrays
     snr: np.ndarray
     n_by_ring: dict          # ring_idx -> count, for reporting
+    # ring_idx -> length-8 list of accepted-point counts per 45deg MIDAS-eta
+    # octant (bin 0 = [0,45), ... bin 7 = [315,360)). Only populated for
+    # rings that accepted at least one point; used for the coverage/balance
+    # diagnostics on IterateResult (see pipelines.frozen_point) as well as
+    # the verbose print below.
+    octant_by_ring: dict = None
+
+
+def _seed_unpacked_and_pcoeffs(v1_seed: V1Params, *, dtype, device):
+    """Unpack the seed geometry's parameters + build its distortion
+    coefficient tensor once, shared by :func:`_seed_two_theta_map` (a full
+    grid) and :func:`_point_eta_deg` (a handful of discrete points)."""
+    spec_seed = spec_from_v1_params(v1_seed)
+    x, info = pack_spec(spec_seed, dtype=dtype, device=device)
+    unpacked = unpack_spec(x, info, spec_seed)
+    p_coeffs = build_p_coeffs(unpacked, dtype=dtype, device=device)
+    return unpacked, p_coeffs
+
+
+def _point_eta_deg(
+    v1_seed: V1Params, Y_ref: np.ndarray, Z_ref: np.ndarray,
+    *, dtype=torch.float64, device="cpu",
+) -> np.ndarray:
+    """Genuine MIDAS eta (deg) at the seed geometry for a handful of
+    picked points -- i.e. ``pixel_to_REta``'s own ``eta_deg``, evaluated
+    AFTER the tilt matrix, not the cheap ``atan2(Z-BC_z, Y-BC_y)``
+    detector-frame angle. The two diverge substantially at large tilt
+    (exactly this pipeline's use case), so a diagnostic that claims to
+    report "eta" must use this, not the detector-frame approximation.
+    Cheap to compute exactly for the picked points (tens-hundreds), unlike
+    the coarse grid :func:`_seed_two_theta_map` builds for mask placement.
+    """
+    unpacked, p_coeffs = _seed_unpacked_and_pcoeffs(v1_seed, dtype=dtype, device=device)
+    Y_t = torch.as_tensor(Y_ref, dtype=dtype, device=device)
+    Z_t = torch.as_tensor(Z_ref, dtype=dtype, device=device)
+    px = 0.5 * (v1_seed.pxY + v1_seed.pxZ) if v1_seed.pxZ > 0 else v1_seed.pxY
+    rho_d_um = (v1_seed.RhoD if v1_seed.RhoD > 0
+                else v1_seed.MaxRingRad * px)
+    out = pixel_to_REta(
+        Y_t, Z_t,
+        Lsd=unpacked["Lsd"], BC_y=unpacked["BC_y"], BC_z=unpacked["BC_z"],
+        tx=unpacked.get("tx", torch.zeros((), dtype=dtype, device=device)),
+        ty=unpacked["ty"], tz=unpacked["tz"],
+        p_coeffs=p_coeffs,
+        parallax=unpacked.get("Parallax", torch.zeros((), dtype=dtype, device=device)),
+        pxY=unpacked["pxY"], pxZ=unpacked.get("pxZ", unpacked["pxY"]),
+        rho_d=torch.as_tensor(rho_d_um, dtype=dtype, device=device),
+    )
+    return out.eta_deg.detach().cpu().numpy()
 
 
 def _seed_two_theta_map(
@@ -57,10 +106,7 @@ def _seed_two_theta_map(
     boundary precision at the ``downsample`` scale is immaterial (the
     accepted peak pixels are always read back from the full-resolution
     image, never from this map)."""
-    spec_seed = spec_from_v1_params(v1_seed)
-    x, info = pack_spec(spec_seed, dtype=dtype, device=device)
-    unpacked = unpack_spec(x, info, spec_seed)
-    p_coeffs = build_p_coeffs(unpacked, dtype=dtype, device=device)
+    unpacked, p_coeffs = _seed_unpacked_and_pcoeffs(v1_seed, dtype=dtype, device=device)
 
     yc = np.arange(0, npy, downsample, dtype=np.float64)
     zc = np.arange(0, npz, downsample, dtype=np.float64)
@@ -202,6 +248,14 @@ def pick_points(
         octant histogram means this is a non-issue on your data; a lopsided
         one is a real problem to go fix (e.g. by making the SNR floor local
         to an azimuthal sector instead of ring-global).
+    panel_mask : ``True = valid``, ``False = gap/bad`` -- the convention
+        every ``seed.mask``/``seed.from_image`` helper in this package uses
+        (auto-detected via ``seed.mask.detect_panel_mask`` when omitted).
+        This is the OPPOSITE of ``pipelines._common.run_estep_v1``'s /
+        ``pipelines.auto.calibrate``'s ``mask=`` convention, where nonzero
+        means BAD. Passing the same array to both silently inverts it --
+        there is no shared polarity across this package's two masking
+        conventions, so check which one you have before passing it here.
 
     Returns
     -------
@@ -246,6 +300,7 @@ def pick_points(
 
     Y_all, Z_all, ring_all, snr_all = [], [], [], []
     n_by_ring = {}
+    octant_by_ring: dict = {}
     n_rings = len(rt.two_theta_deg)
     for i in range(n_rings):
         if neighbor_gap[i] < min_ring_gap_deg:
@@ -298,15 +353,17 @@ def pick_points(
         else:
             Z_ref = zz_k.astype(np.float64)
             Y_ref = yy_k.astype(np.float64)
+        # Genuine MIDAS eta (post-tilt-matrix), not the cheap detector-frame
+        # atan2(Z-BC_z, Y-BC_y) approximation -- the two diverge substantially
+        # at large tilt, exactly this pipeline's use case. See _point_eta_deg.
+        eta_deg = (_point_eta_deg(v1_seed, Y_ref, Z_ref, dtype=dtype, device=device)
+                   + 360.0) % 360.0
+        octant_counts = np.bincount((eta_deg // 45.0).astype(np.int64), minlength=8)
+        octant_by_ring[i] = octant_counts.tolist()
         if verbose:
-            eta_deg = (np.degrees(np.arctan2(Z_ref - v1_seed.BC_z,
-                                              Y_ref - v1_seed.BC_y))
-                       + 360.0) % 360.0
-            octant_counts = np.bincount((eta_deg // 45.0).astype(np.int64),
-                                         minlength=8)
             print(f"      ring {i} (2θ={tt_ring:.3f}deg): "
                   f"{int(np.count_nonzero(keep))} points by azimuth octant "
-                  f"(45deg bins from η=0): {octant_counts.tolist()}",
+                  f"(45deg bins of MIDAS eta from 0deg): {octant_counts.tolist()}",
                   flush=True)
         Y_all.append(Y_ref)
         Z_all.append(Z_ref)
@@ -317,14 +374,14 @@ def pick_points(
         return PickedPoints(
             Y_pix=np.zeros(0), Z_pix=np.zeros(0),
             ring_idx=np.zeros(0, dtype=np.int64), snr=np.zeros(0),
-            n_by_ring=n_by_ring,
+            n_by_ring=n_by_ring, octant_by_ring=octant_by_ring,
         )
     return PickedPoints(
         Y_pix=np.concatenate(Y_all),
         Z_pix=np.concatenate(Z_all),
         ring_idx=np.concatenate(ring_all),
         snr=np.concatenate(snr_all),
-        n_by_ring=n_by_ring,
+        n_by_ring=n_by_ring, octant_by_ring=octant_by_ring,
     )
 
 
