@@ -15,6 +15,7 @@ Common flags (parsed via ``argparse`` after the positional args):
 - ``--fp32``                    use float32 (default float64)
 - ``--screen-only``             stop after Phase 1, dump screen_cpu.csv
 - ``--verbose``                 chatty progress
+- ``--objective {hard,soft}``   (fit-multipoint only) default ``hard``
 """
 from __future__ import annotations
 
@@ -26,7 +27,7 @@ import torch
 
 from . import __version__
 from .fit_kernel import LBFGSConfig
-from .fit_multipoint import fit_multipoint_run
+from .fit_multipoint import fit_multipoint_hard_run, fit_multipoint_run
 from .fit_orientation import fit_orientation_run
 from .fit_parameters import fit_parameters_run
 
@@ -84,6 +85,18 @@ def _parse_common(args: List[str]) -> argparse.Namespace:
                     help="(fit-orientation, --refine nm-batched only) Max "
                          "(voxel × winner) problems run through one batched "
                          "NM call. Larger batches use more GPU memory.")
+    pp.add_argument("--objective", default="hard", choices=["hard", "soft"],
+                    help="(fit-multipoint only) 'hard' (default) optimises "
+                         "the same mean FracOverlap the C maximises "
+                         "(FitOrientationParametersMultiPoint), via "
+                         "derivative-free Nelder-Mead against a PACKED obs "
+                         "volume (~1 bit/pixel). 'soft' is the differentiable "
+                         "Gaussian-splat surrogate (L-BFGS) and needs a DENSE "
+                         "float32 obs volume -- at full detector resolution "
+                         "(e.g. 20-ID, 5320x4600) that is hundreds of GiB and "
+                         "reliably OOMs; only use it on a cropped/binned "
+                         "problem or when the differentiable objective itself "
+                         "is what you need.")
     pp.add_argument("-h", "--help", action="store_true")
     return pp.parse_known_args(args)
 
@@ -187,6 +200,13 @@ def fit_multipoint_main(argv: List[str] | None = None) -> int:
     Usage::
 
         midas-nf-fit-multipoint params.txt [nCPUs] [flags]
+
+    ``--objective hard`` (the default) is the actual C-equivalent and the
+    one that scales to full detector resolution; ``--objective soft`` was,
+    until this flag existed, what every invocation of this script silently
+    ran, and it OOMs on anything the size of a 20-ID detector (previously
+    a 393 GiB allocation on a 47 GiB GPU) -- see DIAGNOSIS.md in the
+    nf-hedm doc set for the incident this fixes.
     """
     argv = list(sys.argv[1:] if argv is None else argv)
     common, rest = _parse_common(argv)
@@ -199,18 +219,27 @@ def fit_multipoint_main(argv: List[str] | None = None) -> int:
         return 1
     paramfile = rest[0]
     n_cpus = int(rest[1]) if len(rest) >= 2 else 1
-    cfg = LBFGSConfig(
-        max_outer=common.lbfgs_max_outer,
-        max_iter=common.lbfgs_max_iter,
-    )
-    fit_multipoint_run(
-        paramfile,
-        n_cpus=n_cpus,
-        device=common.device,
-        dtype=torch.float32 if common.fp32 else torch.float64,
-        verbose=common.verbose,
-        lbfgs_config=cfg,
-    )
+    if common.objective == "hard":
+        fit_multipoint_hard_run(
+            paramfile,
+            n_cpus=n_cpus,
+            device=common.device,
+            dtype=torch.float32 if common.fp32 else torch.float64,
+            verbose=common.verbose,
+        )
+    else:
+        cfg = LBFGSConfig(
+            max_outer=common.lbfgs_max_outer,
+            max_iter=common.lbfgs_max_iter,
+        )
+        fit_multipoint_run(
+            paramfile,
+            n_cpus=n_cpus,
+            device=common.device,
+            dtype=torch.float32 if common.fp32 else torch.float64,
+            verbose=common.verbose,
+            lbfgs_config=cfg,
+        )
     return 0
 
 

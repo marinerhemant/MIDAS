@@ -5,9 +5,10 @@ was actually found, how it was measured, and what turned out to be wrong. They a
 apart on purpose: the handbook has to stay short enough to follow, and this has to stay
 honest enough to stop a refuted idea coming back.
 
-**§1-§6 are the 1-ID campaign. §7 is the 20-ID HT-HEDM campaign** (`nfdev_jul26`), a
-different beamline, detector, acquisition stack and file format — read §7 before assuming
-any 1-ID number or convention carries over.
+**§1-§6 are the 1-ID campaign. §7-§8, §13 are the 20-ID HT-HEDM campaigns**
+(`nfdev_jul26`/`NF_Au_cube_0802`, `bt_20id_jul26b`), a different beamline, detector,
+acquisition stack and file format — read §7 before assuming any 1-ID number or convention
+carries over.
 
 Datasets throughout: APS 1-ID, NF detector 2048², px 1.48 µm, 95.0000 keV.
 `Au5_cubes_nf_96keV` (gold calibrant, 4 distances, ω step 0.25°) and
@@ -21,7 +22,8 @@ there as retracted, each with the measurement that killed it.
 
 **Section order is not reading order.** §8 (`bt_20id_jul26b` / `nf_sampleD`, the second
 20-ID campaign) was written after §9–§11 and sits below them in the file. §12 is the
-determinations log. Navigate by the numbers, not by scrolling.
+determinations log. §13 (the two-cube multipoint calibration and the multipoint CLI fix)
+was written last and sits at the very end. Navigate by the numbers, not by scrolling.
 
 ---
 
@@ -1402,4 +1404,106 @@ sign, check whether it survives the mirror. If it does, it is not evidence.
 - **Which foil was selected**, on any 20-ID beamtime. The Bluesky log prints the static
   13-row wheel table and never records the selection, so the energy question returns
   intact on the next beamtime. Ask early — the wavelength sets every ring radius.
-- **20-ID tilts.** Two good SS316L refinements disagree on the sign of `ty`.
+- **20-ID `ty`.** Two good SS316L refinements disagreed on its sign, and §13 shows why:
+  the hard objective is ~25-50× less sensitive to `ty` than to `tx`/`tz` on this geometry,
+  even sampling both grains of the Au calibrant. `tx`/`tz` are no longer open — see §13.
+
+## 13. The two-cube multipoint calibration, finally run, and the CLI bug it exposed (2026-09-15)
+
+Every prior calibration attempt on either Au campaign (§7g single-voxel, §7h's 12-voxel
+multipoint, §8i's `NF_Au_cube_0802` step 3) drew voxels from the **on-axis cube only**.
+README Step 5 always said to draw from both; nobody had actually done it. Prompted by a
+report from Seunghee that his calibration came back `tx=ty=tz=0` on `NF_Au_cube_0802`.
+
+### 13a. `SpotsInfo.bin` for `NF_Au_cube_0802` was gone
+
+`/scratch/s1iduser/au0802_recon/step3/SpotsInfo.bin` is a symlink to
+`/home/beams/S1IDUSER/nfdev_recon/au0802/SpotsInfo.bin`; that target no longer exists
+(deleted sometime after 2026-08-28). The `.mic`/`grid.txt` outputs survive in `/scratch`
+and were used to pull real, already-fitted voxel rows (see 13b), but running any *new*
+fit needed the reduction rerun. Also: `s1iduser` lost read access to the `bt_20id_jul26b`
+beamtime group on 2026-08-19 (already noted in the checkpoint) — reran as `hsharma`
+instead, output to `~/nf20id_check/au0802_spots/SpotsInfo.bin`. 3 distances × 1440
+frames, 5320×4600, took 93.5 min on chutoro (64 cores).
+
+### 13b. Voxels for both grains, pulled from the existing verified reconstruction
+
+From `/scratch/s1iduser/au0802_recon/step4_annulus/Microstructure` (the geometry behind
+`RUNBOOK.md` §R2c, `Lsd`/`BC` already verified): 6 on-axis voxels and 4 off-axis voxels,
+all `Confidence 1.000000`, confirmed as genuinely different orientations (on-axis Euler
+≈ (−1.46, 0.66, 1.38) rad, off-axis ≈ (3.11, 0.60, 3.05) rad — not a duplicate grain).
+Rows taken verbatim as raw 12-column `.mic` data (hard rule re: the `GridPoints`
+off-by-one trap, §7c) — no synthesis, no point-mask guess.
+
+### 13c. `midas-nf-fit-multipoint` OOMs at 20-ID resolution — a real bug, not a data problem
+
+Building `params.txt` (verified `Lsd`/`BC`/`BoxSize` from `NF_Au_cube_0802`, `tx=ty=tz=0`
+seed, `TiltsTol 1`, `NumIterations 3`, the 10 `GridPoints` rows from 13b) and running the
+documented CLI (`midas-nf-fit-multipoint params.txt 8 --device cuda`) crashed:
+
+```
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 393.84 GiB.
+GPU 0 has a total capacity of 47.40 GiB ...
+```
+
+Traced to `fit_multipoint.py`: the CLI's only entry point, `fit_multipoint_run`, builds a
+**dense float32** `ObsVolume` (`packed=False`, "dense float for the soft path" — the
+differentiable Gaussian-splat surrogate). At `n_distances(3) × n_frames(1440) ×
+n_y(5320) × n_z(4600) × 4 bytes` that is exactly 393.79 GiB, matching the error. The
+actual C-equivalent, `fit_multipoint_hard_run` — packed `uint8`, ~1 bit/pixel, ~13 GB,
+matching `SpotsInfo.bin`'s own size — was already in the same module (added for the §7g/
+§7h investigation) but had **no CLI wrapper**. `midas-nf-pipeline refine-params
+--multi-point --objective hard` already dispatched to it correctly; the standalone
+`midas-nf-fitorientation` CLI, which advertises itself as a "drop-in replacement" for the
+C executable, did not.
+
+**Fix (this session, `midas-nf-fitorientation` 0.9.3):** `cli.py`'s `fit_multipoint_main`
+gained `--objective {hard,soft}`, default `hard`, mirroring `midas-nf-pipeline`'s flag
+exactly. `fit_multipoint_hard_run` is now also exported from the package `__init__.py`.
+Verified two ways: (1) called directly, and (2) through the fixed CLI via a `PYTHONPATH`
+overlay on chutoro's shared env (the site-packages copy is not writable by `hsharma`, so
+the shared env itself was not touched — the overlay was for verification only, a real
+fix needs a release). Both gave the identical result below.
+
+### 13d. The result: `FracOverlap` = 1.0 at the seed, and it never moved
+
+```
+Multipoint (HARD FracOverlap, C-equivalent): 10 voxels, 3 distances
+  Original val: 1.0000000000
+  round 1/3 .. round 3/3, local and global: 1.0000000000 (no change, any round)
+  Final value:  1.0000000000   (139905-140417 evals, ~193 s)
+  improvement:  +0.0000000000
+Tilts (shared): tx=0.0000, ty=0.0000, tz=0.0000
+```
+
+Lsd, BC, and every individual voxel's Euler angles also came back bit-identical to the
+seed. On its own this is indistinguishable from hard rule 14's plateau (a wrong geometry
+that still reads as confident) — except this time both grains were genuinely sampled, so
+the single-grain degeneracy of §7b(2) cannot be the explanation. Something else needed
+checking before trusting it.
+
+### 13e. The discriminating test: does the objective even see a wrong tilt?
+
+Evaluated `FracOverlap` (same 10 voxels, same everything else) at deliberately wrong
+tilts, one axis at a time:
+
+| tilt error | `tx` | `ty` | `tz` |
+|---|---|---|---|
+| 0.1° | 0.9866 | 0.9977 | 0.9955 |
+| 0.5° | 0.8880 / 0.6503 (±) | 0.9932 / 0.9932 | 0.9843 / 0.9977 |
+| 1.0° | 0.4547 | 0.9797 | 0.9708 |
+
+`tx` is sharply constrained — 1° wrong costs more than half the objective. `tz` shows
+real but weaker sensitivity (~3% at 1°). `ty` barely moves the needle even at a full 1°
+error (<2%), the same "objective ~26× less sensitive to `ty`" already seen on the SS316L
+campaign (`RUNBOOK.md` §R2c) — now reproduced on the Au calibrant itself, with the
+correct hard objective and both grains sampled.
+
+**Conclusion.** `tx=0.0000` and (more weakly) `tz=0.0000` are genuine, sensitivity-
+verified measurements — `tx` also independently reproduces the direct-beam stripe bound
+from §7c (−0.015°, consistent with zero). `ty=0.0000` is not a measurement at all; the
+objective cannot see `ty` well enough at this pixel/geometry scale to constrain it,
+regardless of grain count. Do not re-attempt "more voxels" or "more grains" for `ty` —
+that lever has now been tried and it does not move the needle. A different objective
+(soft/differentiable, which was never actually tested for `ty` sensitivity) or a
+different kind of measurement is the next thing to try, not more of the same.

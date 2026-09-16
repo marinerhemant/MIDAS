@@ -3,7 +3,7 @@
 **Instrument:** 1-ID near-field HEDM (TIFF-per-frame) · **and** 20-ID-D HT-HEDM
 (Bluesky/HDF5) — the spine's two scope-table configurations. Rows re-derived at 20-ID are
 marked **[20-ID]**; an unmarked bound is still 1-ID's.
-**Last checked:** 2026-08-28 · **Owner:** Hemant Sharma (hsharma@anl.gov)
+**Last checked:** 2026-09-15 · **Owner:** Hemant Sharma (hsharma@anl.gov)
 
 > Part of the **NF-HEDM doc set**. Spine: [`README.md`](README.md). Contract: `~/opt/beamreport/DOCS_SPEC.md` §6 (separate repo, not under `$MIDAS`).
 
@@ -61,6 +61,7 @@ No configuration helps.
 | **The handedness of ANY orientation map, from the data alone** | A global mirror maps a consistent solution to another consistent solution. Confidence, grain statistics, distances and positions are all invariant under it, so nothing downstream flags it. **No measurement inside a reconstruction can supply the ω sign** — at either beamline. | This is **not** low confidence and **not** a fit failure. It is also not a reason to stop: the sign comes from *outside* the data, and at both 1-ID (`.par` field 9) and 20-ID (**[20-ID]** instrument scientist, 2026-08-28) it has been supplied. On a third beamline, get it before you reconstruct. |
 | **Absolute `Lsd` on a motor scale** **[20-ID]** | Only ΔD between successive positions was supplied for `NF_Au_cube_0802`; the nominal `nfz` values are unknown. Triangulation recovers the *differences* and the sample-to-detector distances self-consistently, not their offset against the motor readback. | A δ quoted between two campaigns **is** meaningful (−837.9 vs −837.7 µm, 0.2 µm). A δ quoted against a motor scale is not anchored. Ask the beamline for the nominals; this is §5, not §3, the moment they arrive. |
 | **Beam energy, from the data alone** **[20-ID]** | The HDF5 carries no energy and there is no `fastsweep_Emon.txt` equivalent. The Bluesky log prints a *static* foil-wheel table and never records which foil was selected. | 63.314 keV is **confirmed** for `nfdev_jul26` and `bt_20id_jul26b` — by asking, not by measuring (§3h). For a new 20-ID beamtime the answer is again unobtainable from the files, so ask early: the wavelength sets every ring radius. |
+| **20-ID `ty` tilt, from hard FracOverlap** **[20-ID]** | Measured, not assumed: perturbing `ty` by a full 1° costs `FracOverlap` under 2%, against `tx`'s ~55% for the same 1° — the hard, single-pixel-match objective is roughly 25-50× less sensitive to `ty` than to `tx`/`tz` at this geometry's pixel scale. Reproduced on two independent campaigns (SS316L and, with the documented fix applied, the Au calibrant itself) and survives sampling both grains, so this is not an under-sampling problem. | Listed here rather than in §5 because the documented remedy (more grains) was tried and did not move it — see the retired `tx`/`tz` entry below for the contrast. **Not proven impossible by every method** — only that hard `FracOverlap` multipoint calibration, at this pixel/geometry scale, cannot see it. A differentiable/soft objective, a finer pixel size, or an entirely different measurement (e.g. from powder rings, where they exist) might differ; none has been tried. |
 
 ## 4. Derived limits
 
@@ -85,10 +86,13 @@ Skipped on a given run but perfectly possible.
   example of the distinction this file exists to draw: it was never physically
   unobtainable, only unobtainable *from the data*. The fix was a question, not a
   measurement. Ask before you assume a bound is intrinsic.
-- **20-ID tilts** **[20-ID]** — unconstrained on the campaigns run so far, not
-  unconstrainable. Two good SS316L refinements disagree on the sign of `ty`; Au_0802's
-  zeros mean "the refinement left them alone". A calibrant with more than one grain, or a
-  multi-point refinement drawn from distinct grains, addresses it (§7b(2)).
+- **20-ID `tx`/`tz`** **[20-ID]** — *was* listed here as unconstrained-but-fixable by a
+  multi-grain multi-point refinement. **Tried, 2026-09-15, and it worked**: `NF_Au_cube_0802`,
+  both cubes, hard objective, and both `tx` and `tz` converged to a
+  sensitivity-verified value (confirmed real by perturbing each to known-wrong values and
+  checking `FracOverlap` actually drops — see DIAGNOSIS.md). `tx` also independently
+  reproduces the direct-beam stripe bound. Moved out of this list because the "did not"
+  question is now closed for these two.
 
 ---
 

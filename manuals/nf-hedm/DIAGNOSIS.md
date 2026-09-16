@@ -8,9 +8,9 @@ exonerate the cause it names does not belong here — it turns the report into a
 confirming whatever its author already believed. Where an entry's alternative is another
 entry, it says which.
 
-Ten entries; the last five came out of the three 20-ID HT-HEDM campaigns and are marked
-**[20-ID]**. This grows the day someone works out what a strange plot meant, written the
-same day (`beamreport` SPEC §6).
+Twelve entries; entries 6–12 (seven of twelve) came out of the three 20-ID HT-HEDM
+campaigns and are marked **[20-ID]**. This grows the day someone works out what a strange
+plot meant, written the same day (`beamreport` SPEC §6).
 
 Provenance for every number below is `LAB_NOTEBOOK.md`, cited per entry.
 
@@ -239,3 +239,58 @@ GridSize`. Segment by neighbour **misorientation** instead —
 `midas_stress.misorientation`, which is the maintained implementation; do not write a new
 one. Note also that `GridSize` is the triangle **edge**, so voxel pitch is `GridSize/√3` —
 treating it as the pitch overstates grain diameters by 1.73×. §8a, §10e.
+
+## `midas-nf-fit-multipoint` crashes with a CUDA OOM allocating hundreds of GiB **[20-ID]**
+
+symptom: crash.out_of_memory
+
+**Test.** Read the traceback. `torch.OutOfMemoryError: ... Tried to allocate ### GiB`
+inside `ObsVolume.from_spotsinfo` means the dense/soft path was built; that size is
+`n_distances × n_frames × n_pixels_y × n_pixels_z × 4 bytes` (float32), which is ~394 GiB
+on a 3-distance, 1440-frame, 5320×4600 20-ID scan. If the traceback is somewhere else
+(the model, the optimiser), this entry does not apply.
+
+**Cause.** `midas-nf-fit-multipoint` (through `midas-nf-fitorientation` 0.9.2 and
+earlier) always called `fit_multipoint_run`, the differentiable Gaussian-splat surrogate,
+which needs a dense float obs volume. The actual C-equivalent, `fit_multipoint_hard_run`
+— packed `uint8`, ~1 bit/pixel, ~13 GB on this same scan — existed in the same module the
+whole time but had no CLI wrapper, so nothing surfaced it except reading the source.
+`midas-nf-pipeline refine-params --multi-point --objective hard` already called it
+correctly; the standalone `midas-nf-fitorientation` CLI did not.
+
+**Lever.** Fixed in `midas-nf-fitorientation` **0.9.3**: `midas-nf-fit-multipoint` now
+takes `--objective {hard,soft}`, default `hard`. On an older install, either upgrade or
+call `fit_multipoint_hard_run(paramfile, n_cpus=..., device=...)` directly (same module,
+`from midas_nf_fitorientation import fit_multipoint_hard_run`). `--objective soft` is
+still there for the differentiable path on a cropped/binned problem where dense memory is
+affordable. Verified against `NF_Au_cube_0802`: identical result (10 voxels, 2 grains,
+`FracOverlap` 1.0000000000, tilts 0.0000/0.0000/0.0000, ~140k evals, ~193 s) whether
+called through the fixed CLI or the function directly. Lab Notebook §13.
+
+## A tilt (or any calibration parameter) refines to exactly its seed value **[20-ID]**
+
+symptom: calibration.parameter_frozen
+
+**Test.** This looks identical to hard rule 15's plateau (confidence 1.0, nothing moved)
+but is a **different** cause — check it even when the seed is NOT `0`. Evaluate the
+objective yourself at several deliberately WRONG values of the frozen parameter, holding
+everything else fixed. If the objective drops meaningfully (a few % per 0.1° is a real
+signal), the fit found a genuine optimum and the frozen value is a real measurement. If it
+barely moves across a wide range, the objective cannot see that parameter here, and the
+frozen seed means nothing regardless of how it got there.
+
+**Cause.** A joint fit can converge exactly on its own optimum (not stuck, not
+degenerate) yet still leave one parameter meaningless, because that parameter's effect on
+the *hard*, single-pixel-match objective is simply too small relative to the others. This
+is not the single-grain degeneracy of hard rule 16 — it survives multi-grain sampling
+completely intact.
+
+**Lever.** Measured on `NF_Au_cube_0802`, 10 voxels across both cubes, hard objective:
+`tx` costs ~1.3 % of `FracOverlap` per 0.1° and 55 % at 1° — a real, sharp constraint, and
+its converged `tx=0.0000` is a genuine measurement (it also independently reproduces the
+direct-beam stripe bound, ≈0°). `tz` shows a real but weaker signal (~3 % per 1°). `ty`
+costs under 2 % even at a full 1° error — the same "objective 26× less sensitive to `ty`"
+already seen on the SS316L campaign, now reproduced on the Au calibrant with the correct
+objective and two grains. **Report `tx`/`tz` as calibrated; report `ty` as still open**,
+and do not expect more voxels or more grains to fix it — the insensitivity is in the
+objective/geometry, not the sampling. Lab Notebook §13.

@@ -126,7 +126,7 @@ method. Full derivation in Lab Notebook §8i.
 | encoding | **unscaled**, max 4092, gap 4 | `np.unique`. The July Au scan on the *same detector* is ×64 |
 | ω | `aero`, **negated** — `OmegaStart 180`, `OmegaStep -0.25`, 1440 frames | instrument scientist, 2026-08-28 (§2a) |
 | **nominal detector positions** | **not anchored** | only ΔD = 2000 µm was supplied; any δ quoted against a motor scale floats |
-| **tilts** | **unconstrained** | two good SS316L refinements disagree on the sign of `ty` (−0.343° vs +0.098°). Au_0802's zeros are "the refinement left them alone", not a measurement |
+| **tilts** | `tx=0.0000°` **measured**, `tz=0.0000°` weakly measured, `ty` **still unconstrained** | two-grain hard-objective multipoint (10 voxels, both cubes), verified by perturbing each tilt to known-wrong values: `tx` costs ~1.3%/0.1° (real, and matches the independent direct-beam stripe bound), `tz` ~3%/1° (weaker but real), `ty` <2% even at 1° off — same "26× less sensitive to `ty`" seen on SS316L, now reproduced on the Au calibrant itself. Do not expect more voxels/grains to fix `ty`; the insensitivity is in the objective at this pixel scale, not the sampling. Lab Notebook §13 |
 
 **Do not read the `Lsd` triple as a specification.** It is what this geometry was; the
 transferable results are the **1.0 µm** reproducibility and the **0.2 µm** δ agreement,
@@ -138,10 +138,9 @@ because those are the ones with a second measurement behind them.
 
 > **Every session updates this before it ends.** A stale pick-up point is worse than none.
 
-**Last updated: 2026-08-28.**
+**Last updated: 2026-09-15.**
 
-**State — 20-ID-D is fully in scope, end to end.** The last gate closed today. In order of
-when they fell:
+**State — 20-ID-D is fully in scope, end to end.** In order of when they fell:
 
 - **HDF5 reader + streaming median** (2026-08-19) — `extOrig h5` reads the 20-ID layout
   directly and a layer never has to fit in RAM (§3h, §10f).
@@ -154,9 +153,18 @@ when they fell:
   records the foil-wheel table but never which foil was selected.
 - **Shared env** (measured 2026-08-28) — current, no drift, capability verified (§R1a).
   The reinstall that the checkpoints list as open is done.
+- **`midas-nf-fit-multipoint` CLI OOM fixed** (2026-09-15) — `--objective {hard,soft}`
+  added, default `hard`; see DIAGNOSIS.md's entry on it. Verified against
+  `NF_Au_cube_0802` (both cubes, 10 voxels): same result through the fixed CLI as through
+  the underlying function called directly. **Committed, not yet published to PyPI** — see below.
+- **Two-cube tilt calibration finally run** (2026-09-15) — `tx`/`tz` are now real,
+  sensitivity-verified measurements (both ≈0° on this campaign); `ty` is confirmed
+  genuinely unconstrained even with both grains and the correct objective, not merely
+  untried. Lab Notebook §13, and the §R2c table above.
 
-Tree versions: `midas-nf-preprocess 0.7.2`, `midas-nf-fitorientation 0.9.2`,
-`midas-hkls 0.9.0`, `midas-nf-pipeline 0.6.6`, `midas-suite 0.10.3`.
+Tree versions: `midas-nf-preprocess 0.7.2`, `midas-nf-fitorientation 0.9.3` (**committed,
+not yet published to PyPI** — the multipoint CLI fix), `midas-hkls 0.9.0`,
+`midas-nf-pipeline 0.6.6`, `midas-suite 0.10.3`.
 
 > **This is a statement about the tree, not about any machine you will run on**, and that
 > distinction has burned two independent sessions who read it as "you are clear to run".

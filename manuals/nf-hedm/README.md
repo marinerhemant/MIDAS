@@ -224,6 +224,17 @@ distrusting your own run, and they are the ones a context-free session skips:
     new reader"* — and §8a for the pre-allocated outputs. Grain segmentation by
     misorientation → `midas_stress.misorientation` (§8a); structure factors →
     `midas_hkls` (§8l).
+24. **`midas-nf-fit-multipoint` needs `--objective hard` (the default from
+    `midas-nf-fitorientation` 0.9.3) at full detector resolution.** `--objective soft`, the
+    old always-on behaviour, builds a dense float obs volume — ~394 GiB on a 20-ID scan —
+    and reliably OOMs. On an older install, call `fit_multipoint_hard_run(...)` directly.
+    Diagnosis reference has the incident.
+25. **A parameter that refines to exactly its seed is not automatically real — check the
+    objective actually SEES it.** Evaluate the objective at a few deliberately wrong values
+    of that parameter before reporting the seed as a measurement. On `NF_Au_cube_0802`
+    this distinguished `tx`/`tz` (real, sharp constraint, genuine zero) from `ty` (the
+    objective is ~26× less sensitive to it — the seed value means nothing) even with both
+    grains sampled and the correct hard objective. Diagnosis reference, lab notebook §13.
 
 ### Traps that silently corrupt results
 
@@ -271,6 +282,8 @@ distrusting your own run, and they are the ones a context-free session skips:
 | a σ-denominated threshold set through `BlanketSubtraction` | it was an **int**: on NLM-denoised data (σ_MAD ~0.27 counts) the smallest legal value is already 3.7σ, so every sub-σ recommendation in §8f/§8k was unwritable. Use **`BlanketSigma`** | §8k |
 | a tomo mask built from `position_candidates_um` on unfamiliar geometry | the mapping was wrong **in form**, not sign — the true position is 90° away, so neither the returned point nor its antipode is near the particle. A candidate-point mask returned exactly **0.0000 at every off-axis voxel**, which reads identically to "the particle is absent". Two campaigns pin `θ = −φ − 90°` (`8a5f0184`); old form was out by 985 µm, corrected form predicts both to 3 µm. **Sweep the annulus — the radius is convention-free** | §6e |
 | version floors or key semantics taken from this document rather than the tree | in the six days after this file was written, `SumFrames` inverted its units and a new threshold key appeared | §1 |
+| `midas-nf-fit-multipoint` run with no `--objective` flag, pre-0.9.3 install | silently built the dense/soft obs volume; `torch.OutOfMemoryError` requesting ~394 GiB on a 20-ID-resolution scan | hard rule 24 |
+| a tilt (or any calibration parameter) reported as "measured" because it converged to its seed | confidence 1.0 / `FracOverlap` 1.0 at the seed can mean the objective is genuinely optimal OR that it cannot see that parameter at all — `ty` on `NF_Au_cube_0802` moves `FracOverlap` <2% even at 1° wrong, vs `tx`'s ~55%/1° | hard rule 25, lab notebook §13 |
 
 ---
 
@@ -304,8 +317,13 @@ reconstruction were launched before the geometry existed (lab notebook §7f, F0)
 **Step 5 needs more than one grain.** §7b(2) established that `-multiGridPoints` cannot
 break the degeneracy on a single-crystal calibrant, because N voxels of one grain give one
 orientation's worth of constraint. If the calibrant happens to contain **two** particles
-(as `nfdev_jul26` does — lab notebook §7d), deliberately draw voxels from **both**;
-otherwise step 5 reduces to the documented negative.
+(as `nfdev_jul26`/`NF_Au_cube_0802` does — lab notebook §7d), deliberately draw voxels
+from **both**; otherwise step 5 reduces to the documented negative. **Done, 2026-09-15**
+(`NF_Au_cube_0802`, 10 voxels across both cubes, `--objective hard`): it works for `tx`
+and (more weakly) `tz` — both converge to a sensitivity-verified value, not a stuck seed.
+It does **not** fix `ty` — the objective is too insensitive to `ty` to constrain it
+regardless of grain count (hard rule 25). Report `tx`/`tz` as calibrated on this
+campaign; `ty` is still open and needs a different kind of measurement, not more voxels.
 
 **Prefer an external check over a self-consistency one.** Where two particles exist, their
 separation measured from **absorption** is independent of any diffraction fit, so
