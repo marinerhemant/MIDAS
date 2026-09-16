@@ -235,6 +235,31 @@ def filter_fits_by_ring_quality(
     return out, report
 
 
+def _filter_by_snr(fits_ds: "FittedDataset", snr_min: float = 3.0) -> "FittedDataset":
+    """Drop points below ``snr_min`` (or non-finite pixel coords).
+
+    Promoted from ``pipelines.single_pv`` so ``pipelines.frozen_point`` does
+    not need to reach into another pipeline's private surface for a
+    generic ``FittedDataset`` filter that has nothing single-pV-specific
+    about it.
+    """
+    keep = fits_ds.snr >= snr_min
+    keep &= torch.isfinite(fits_ds.Y_pix) & torch.isfinite(fits_ds.Z_pix)
+    return FittedDataset(
+        Y_pix=fits_ds.Y_pix[keep],
+        Z_pix=fits_ds.Z_pix[keep],
+        ring_idx=fits_ds.ring_idx[keep],
+        snr=fits_ds.snr[keep],
+        ring_two_theta_deg=fits_ds.ring_two_theta_deg[keep],
+        rho_d=fits_ds.rho_d,
+        weights=(fits_ds.weights[keep] if fits_ds.weights is not None else None),
+        panel_idx=(fits_ds.panel_idx[keep] if fits_ds.panel_idx is not None else None),
+        rt=fits_ds.rt,
+        ring_d_spacing_A=(fits_ds.ring_d_spacing_A[keep]
+                           if fits_ds.ring_d_spacing_A is not None else None),
+    )
+
+
 @dataclass
 class FittedDataset:
     """Bundle of E-step outputs in torch form."""

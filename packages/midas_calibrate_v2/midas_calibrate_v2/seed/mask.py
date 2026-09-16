@@ -7,6 +7,9 @@ inter-module gaps:
 - ``-1``: gap (no detector here)
 - ``-2``: bad / dead pixel
 - ``0`` or NaN: depending on raw format
+- unsigned-integer dtype max (``2**16-1``, ``2**32-1``): Eiger's dead-pixel
+  marker on ``uint16``/``uint32`` frames — see ``pipelines.auto.calibrate``'s
+  entry-point sentinel handling, which this mirrors.
 
 The chord-bisector and circle-fit BC seeds get biased by panel-edge
 "arcs" — strong intensity gradients between gap and active pixels create
@@ -32,13 +35,22 @@ def detect_panel_mask(
 
     Recognises the standard MIDAS sentinel values plus an "intensity floor"
     cutoff — any pixel below ``intensity_floor`` is treated as invalid
-    (covers the case of zeroed-out gaps in some HDF5 / TIFF outputs).
+    (covers the case of zeroed-out gaps in some HDF5 / TIFF outputs) — and,
+    for ``uint16``/``uint32`` images, the dtype-max dead-pixel sentinel
+    (``pipelines.auto.calibrate`` masks this at its own entry point for the
+    same reason: on a raw Eiger/Pilatus frame these are the brightest local
+    maxima on the detector, and any that fall inside a ring mask would
+    otherwise be picked up as top-SNR peaks).
     """
     mask = np.ones_like(image, dtype=bool)
     for s in sentinel_values:
         mask &= np.abs(image - s) > sentinel_tolerance
     mask &= image >= intensity_floor
     mask &= np.isfinite(image)
+    if image.dtype == np.uint32:
+        mask &= image != np.iinfo(np.uint32).max
+    elif image.dtype == np.uint16:
+        mask &= image != np.iinfo(np.uint16).max
     return mask
 
 
