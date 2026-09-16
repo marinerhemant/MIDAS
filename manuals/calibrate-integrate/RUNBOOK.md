@@ -4,7 +4,7 @@
 > The spine is the procedure; this file is the state. If they disagree, this one
 > is the thing to re-check, because procedures age more slowly than facts.
 
-**Owner:** Hemant Sharma. **Last reviewed 2026-08-22.**
+**Owner:** Hemant Sharma. **Last reviewed 2026-09-15.**
 
 ## Current state — the pick-up point
 
@@ -23,6 +23,8 @@ a plan; it is what has actually been exercised.
 | Doc set handed to a context-free model | **RUN** (2026-08-19); what it got wrong is recorded in `ENVELOPE.md` and fixed in the spine |
 | Multi-panel / tiled beyond what `ENVELOPE.md` lists | **NOT exercised — stop and ask.** Do not improvise a panel layout |
 | Recovering λ from the fit residual | **REFUTED — do not retry.** Lab Notebook §15 |
+| Large tilt (~14°), off-panel beam centre, via `autocalibrate_pv` | **EXERCISED** (0.17.0 capture phase, 2026-09-10; clipped-window screen on the fine window and a travelling capture tilt box, 2026-09-15). A blind `tz = 0` seed at the **default** `tolTilts` now reaches a 14° detector — it could not before 2026-09-15. It spends **all 10** capture iterations doing so, so `n_capture_max` is the next thing that binds: a larger tilt runs out, and says so only via `CaptureRangeWarning` |
+| Large tilt via the DEFAULT `calibrate()` | **FAILS — open, and this is the path most people take.** On the same frame it returns `tz` ≈ −0.014° against a reference 14.04° and the ring checker FAILs. **Undiagnosed.** Ruled out: the tilt bound (both runs finish near 0°, nowhere near the ±3° box). **Do not "fix" it by raising `Width`** — a flat ±25 px window is worse, not better (tz −0.453° vs −0.014°, 3358 vs 596 µε), because at that width 21 of 30 rings overlap a neighbour's extraction window and the centroids merge. That test does **not** clear the window itself: a *gap-capped* wide window, the design that makes `autocalibrate_pv` work, has never been tried on the centroid path and is the next thing to try. Do not assume `calibrate()` will handle a strongly tilted detector |
 
 ## Conditions on "healthy"
 

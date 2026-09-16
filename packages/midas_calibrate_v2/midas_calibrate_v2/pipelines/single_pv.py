@@ -65,6 +65,12 @@ class CaptureRangeWarning(UserWarning):
     are further from the returned geometry than the window reaches."""
 
 
+class ClippedWindowWarning(UserWarning):
+    """Every fine-window fit sits in a radial window cut by a panel edge, gap
+    or mask, so none could be dropped without leaving nothing to fit. The fits
+    are truncated peaks and the geometry that follows is not trustworthy."""
+
+
 def _bake_fits_to_dataset(fits: BatchedFits, v1: V1Params, rt: RingTable,
                            dtype, device,
                            panel_layout: Optional[PanelLayout] = None,
@@ -302,6 +308,44 @@ def _predicted_ring_shift_px(fits: FittedDataset, u_before: dict, u_after: dict,
     return float(torch.quantile(d.detach().cpu(), q))
 
 
+def _recentre_tilt_bounds(spec, unpacked) -> Optional[dict]:
+    """Slide the ty/tz box onto the current fit, keeping its width.
+
+    v1 hands the bounds over as ``init ± tolTilts`` -- centred on the SEED
+    (``compat.from_v1.spec_from_v1_params``). That caps how far capture can travel
+    however wide its window is: measured on a 14 deg Varex frame, a tz 0 seed with
+    the default ``tolTilts`` of 3 rails at 3.0 and ends 11 deg away, while the same
+    run with ``tolTilts`` widened by hand to 16 reaches the rings. Capture is the
+    phase that is allowed to travel, so its box travels with it; the fine phase
+    keeps whatever box it inherits.
+
+    ``Parameter.__post_init__`` builds the logit transform only when it is None, so
+    the transform is rebuilt here whenever the bounds move. Leaving it would keep
+    mapping into the OLD box -- the same refresh ``four_stage`` does when it
+    tightens its Stage-1 bounds.
+
+    Returns the new centres when anything moved, else None.
+    """
+    from ..parameters.transforms import Logit
+    moved = False
+    centres: dict = {}
+    for n in ("ty", "tz"):
+        p = spec.parameters.get(n)
+        if p is None or not p.refined or p.bounds is None or n not in unpacked:
+            continue
+        lo, hi = float(p.bounds[0]), float(p.bounds[1])
+        half = 0.5 * (hi - lo)
+        if not half > 0.0:
+            continue
+        cur = float(unpacked[n].detach().reshape(-1)[0])
+        centres[n] = cur
+        if (cur - half, cur + half) != (lo, hi):
+            p.bounds = (cur - half, cur + half)
+            p.transform = Logit(*p.bounds)
+            moved = True
+    return centres if moved else None
+
+
 def autocalibrate_pv(
     v1_params: V1Params,
     image: np.ndarray,
@@ -320,6 +364,18 @@ def autocalibrate_pv(
                                             # (p95 over the fitted points)
     n_capture_max: int = 10,              # capture iterations at most, run before
                                             # the n_iter fine ones
+    recentre_capture_bounds: bool = True,  # during capture, slide the ty/tz box
+                                            # onto each new fit (same width), so a
+                                            # tilt-blind seed is not capped by its
+                                            # own tolTilts. Fine phase unaffected
+    guard_clipped_windows: bool = True,   # drop FINE-window fits whose radial
+                                            # window is cut by a panel edge, gap
+                                            # or mask. The capture phase screens
+                                            # unconditionally (shipped in 0.17.0)
+                                            # -- this knob cannot switch that off
+    min_cell_coverage: float = 0.5,       # a cell in the window must reach this
+                                            # fraction of the best-covered cell
+                                            # in the same window to count as whole
     pv_max_iter: int = 50,
     snip_window: int = 0,           # 0 = none, recommend ~2× peak FWHM in bins
     doublet_separation_px: float = 0.0,  # 0 = none; v1 default 25 px
@@ -366,12 +422,30 @@ def autocalibrate_pv(
     and a 25 px window alone reached them. ``capture_window_px=0`` restores the
     fine-window-only loop.
 
-    Limits, measured on the same frame. Capture moves the geometry only inside
-    the seed-centred bounds: from tz 0 it reached tz 14 deg with ``tolTilts`` 16,
-    needing 10 capture iterations (the default ``n_capture_max``), and with the
-    default 3 deg it cannot. Capture fits whose window is clipped by a detector
-    edge, module gap or mask are dropped; the fine-window fits are not screened
-    that way.
+    Limits, measured on the same frame. v1 hands over bounds as ``init ±
+    tolTilts``, centred on the SEED, so capture used to be capped by the seed it
+    started from: from tz 0 with the default ``tolTilts`` of 3 the tilt railed at
+    3.0 for half the capture phase and the run ended 11.2 deg out at 2030 µε.
+    ``recentre_capture_bounds`` (default on) slides that box onto each new fit, and
+    the same blind tz 0 start then walks 0.19 → 3.13 → 8.32 → 14.01 and lands
+    0.051 deg from the reference at 28.4 µε. It needed **all 10** capture
+    iterations to do it, so ``n_capture_max`` is the next thing that binds: a
+    larger tilt, or a seed further out, runs out of iterations and says so only
+    through ``CaptureRangeWarning``.
+
+    Fits whose radial window is clipped by a detector edge, module gap or mask
+    are dropped in **both** phases. Capture has screened since 0.17.0 and does so
+    unconditionally; ``guard_clipped_windows`` governs the fine window only, so
+    turning it off leaves the shipped capture behaviour intact. A clipped window
+    holds a truncated peak, and the fit
+    slides onto its tail: measured on an off-panel Eiger frame, a ring 14 px
+    past the panel edge produced fits at +23 px that passed the SNR cut and
+    pulled ``BC_y`` onto its bound. The wide capture window meets an edge far
+    more often, which is why it was screened first, but the fine window inherits
+    the same failure wherever a ring sits within ``half_window_px`` of one. If
+    every fine fit is clipped the whole set is kept and a
+    ``ClippedWindowWarning`` is raised, since returning nothing would be worse
+    than returning something the caller has been told to distrust.
     """
     v1_params.validate()
     # RhoD to µm before anything reads it: the spec, the E-step and the bake
@@ -480,7 +554,8 @@ def autocalibrate_pv(
                     cake_t, R_centers, eta_centers, rt_R_ideal,
                     capture_window_px=capture_window_px,
                     fine_window_px=half_window_px,
-                    coverage=getattr(cake, "coverage", None), max_iter=pv_max_iter,
+                    coverage=getattr(cake, "coverage", None),
+                    min_cell_coverage=min_cell_coverage, max_iter=pv_max_iter,
                     snr_min=snr_min, snip_window=snip_window,
                     dtype=dtype, device=device, verbose=verbose,
                 )
@@ -491,6 +566,35 @@ def autocalibrate_pv(
                     snr_min=snr_min, snip_window=snip_window,
                     dtype=dtype, device=device, verbose=verbose,
                 )
+                # Same clipped-window screen the capture phase applies, on the
+                # one fixed window. The fine window is narrower, so it meets an
+                # edge less often -- but when it does, the returned geometry is
+                # the answer, not an intermediate one.
+                cov_fine = getattr(cake, "coverage", None)
+                if guard_clipped_windows and cov_fine is not None and bf.R_fit.numel() > 0:
+                    wins_fine = np.full(int(rt_R_ideal.numel()), float(half_window_px))
+                    keep = _capture_window_complete(
+                        bf, cake_t, R_centers, eta_centers, rt_R_ideal,
+                        wins_fine, cov_fine, min_cell_coverage)
+                    n_drop = int((~keep).sum())
+                    if n_drop:
+                        if bool(keep.any()):
+                            bf = BatchedFits(**{f: getattr(bf, f)[keep]
+                                                for f in _BF_FIELDS})
+                            if verbose:
+                                print(f"  [pv iter {it}] dropped {n_drop} of "
+                                      f"{keep.numel()} fine-window fits whose "
+                                      f"window is clipped", flush=True)
+                        else:
+                            warnings.warn(ClippedWindowWarning(
+                                f"every fine-window fit ({keep.numel()}) sits in a "
+                                f"radial window clipped by a panel edge, gap or "
+                                f"mask at ±{half_window_px:g} px. Keeping them, "
+                                f"because dropping them leaves nothing to fit — "
+                                f"but they are cut peaks and the geometry that "
+                                f"follows is not trustworthy. Check the mask and "
+                                f"whether these rings reach the panel at all."),
+                                stacklevel=2)
             # Optional doublet co-fitting: detect ring pairs within
             # ``doublet_separation_px`` and refit them with a 2-peak shared-bg
             # model.  Doublet results REPLACE the corresponding singleton
@@ -966,6 +1070,15 @@ def autocalibrate_pv(
                     print(f"  [pv capture] done after {len(capture_history)} "
                           f"iteration(s), {why}; fine window ±{half_window_px:g} px",
                           flush=True)
+            # Only while capture continues: once it ends the fine phase keeps the
+            # box it inherits, so the returned geometry is bounded by something the
+            # caller set rather than by wherever capture happened to stop.
+            if in_capture and recentre_capture_bounds:
+                centres = _recentre_tilt_bounds(spec, unpacked)
+                if centres is not None and verbose:
+                    print(f"  [pv capture] tilt box re-centred on "
+                          f"ty={centres.get('ty', float('nan')):.4f} "
+                          f"tz={centres.get('tz', float('nan')):.4f}", flush=True)
             continue
         history.append(rec)
         fits_final = fits_ds
@@ -1050,4 +1163,5 @@ def autocalibrate_pv(
                                 capture_history=capture_history)
 
 
-__all__ = ["autocalibrate_pv", "PVCalibrationResult", "IterRecord", "CaptureRangeWarning"]
+__all__ = ["autocalibrate_pv", "PVCalibrationResult", "IterRecord",
+           "CaptureRangeWarning", "ClippedWindowWarning"]

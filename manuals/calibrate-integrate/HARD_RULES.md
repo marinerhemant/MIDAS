@@ -175,7 +175,33 @@
    the multi-stage LM sequence inside `first_time_calibrate` was. **The
    validated, from-scratch entry point for a single monolithic-or-tiled image is
    `calibrate()` (or `autocalibrate_four_stage`, phase-4-calibrate.md) — not
-   `first_time_calibrate`.** A "from scratch, zero seed" calibration is not
+   `first_time_calibrate`.**
+
+   **Bounded exception, measured 2026-09-10 and still open: this does not extend
+   to a strongly tilted detector.** On a CeO₂ frame whose detector sits at
+   `tz` ≈ 14°, the default `calibrate()` returns `tz` ≈ −0.014° — essentially
+   the untilted seed — and the ring checker FAILs, with the fitted rings still a
+   median 2.6 px off. It reports no error. `autocalibrate_pv` reaches that
+   geometry (28 µε, agreeing with the reference in `tz` to inside the ring
+   checker's own ~0.2° resolution) because it runs a wide capture
+   window first; `calibrate()` has no such phase. **Why `calibrate()` fails here
+   is not known.** Its centroid E-step extracts in `0.5 × Width / px` — only
+   **±2.67 px** at the default `Width` of 800 µm on a 150 µm detector — and
+   roughly half the rings sit outside that at the seed. **Do not raise `Width`
+   to work around it.** Swept at ±2.67, 6, 10, 15 and 25 px, strain rises
+   monotonically (596 → 1420 → 2111 → 2479 → 3358 µε) and `tz` never leaves
+   ~0.45° of zero, so no width in that range escapes — and the widest is worst
+   (`tz` −0.453° against the default's −0.014°), because at 25 px 21 of 30 rings
+   overlap a neighbour's window and their centroids merge, and `calibrate()`
+   leaves `MinRingSeparation` at 0 so nothing drops the blends. That result does
+   **not** exonerate the window: the *gap-capped* wide window that makes
+   `autocalibrate_pv` work has never been tried here. It is not the tilt bound
+   either — both runs finish near 0°, far from the ±3° box. So for a detector
+   you know to be strongly tilted, use `autocalibrate_pv` and **verify with a
+   ring overlay**,
+   and treat a `calibrate()` result near zero tilt on such a frame as suspect
+   rather than as a measurement. This is a live defect, not a property of the
+   detector. A "from scratch, zero seed" calibration is not
    verified by that property alone; it still needs the ring-overlay and gate
    checks above run against whichever pipeline actually produced it.
 

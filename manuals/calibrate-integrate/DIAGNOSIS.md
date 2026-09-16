@@ -32,6 +32,7 @@ as coverage, which is exactly what the generic vocabulary existed to prevent.
 | `io.filter_plugin_missing` | the dataset's HDF5 filter pipeline read with `h5py` rather than its data |
 | `pixel.sentinel_unmasked` | whether the extreme value is exactly the dtype maximum, and what fraction of the frame it covers |
 | `geometry.rings_unreachable` | pure-geometry reachability of the calibrant's rings on this panel, before looking at the fit at all |
+| `tilt.collapsed_to_seed` | the fitted `ty`/`tz` compared with the seed's, and the fraction of rings lying outside the extraction half-window at that seed — a tilt that never left its starting value is the signature, and no gate keyed on strain will show it |
 
 ---
 
@@ -282,6 +283,51 @@ frame does not really carry (rule 13).
 **If the in-loop number looks fine but re-extraction disagrees with it** → you are
 reading the M-step objective, not fit quality. On a real two-calibrant frame that
 gap was 41 µε in-loop against 418 µε re-extracted.
+
+---
+
+## The fit returns a near-zero tilt on a detector you know is tilted
+
+symptom: tilt.collapsed_to_seed
+
+**Test.** Compare the returned `ty`/`tz` with the **seed's** tilt, not with zero. Then
+measure how far the rings actually sit from where that seed predicts them, and compare
+that with the extraction half-window: `half_px = 0.5 * Width / px`
+(`packages/midas_calibrate/midas_calibrate/estep.py:315`), where `Width` defaults to
+800 µm (`packages/midas_calibrate/midas_calibrate/params.py:80`) — **±2.67 px on a
+150 µm detector**. Overlay the rings; do not judge this one on strain.
+
+**If the returned tilt is essentially the seed's, and most rings lie outside that
+half-window at the seed** → the E-step is being fed points that are not the rings, and
+the loop then agrees with itself. Note this is a *necessary* condition, not the whole
+cause: on the frame below, removing it by widening the window does not fix the fit (see
+the lever paragraph). Measured
+on a CeO₂ frame at `tz` ≈ 14°: the default `calibrate()` returned `tz` ≈ −0.014°,
+checker FAIL, with 51 % of ring×sector rows outside ±2.67 px at the seed and **0 %**
+outside ±25 px. The geometry it converged to still had 48 % outside — it never got
+close. Lever: use `autocalibrate_pv`, whose capture phase fits a wide, gap-capped
+window first; from a blind `tz = 0` seed it reaches 14.01° at 28 µε, matching the
+reference in `tz` to inside the ring checker's own ~0.2° resolution (the arithmetic
+difference is 0.051°, which is below what that checker can resolve — do not quote it
+as sub-0.1° accuracy). **Do not raise `Width` on the centroid path:** swept on this frame
+at ±2.67, 6, 10, 15 and 25 px, strain climbs monotonically (596, 1420, 2111, 2479,
+3358 µε) while tz never leaves ~0.45° of zero — no flat width in that range escapes, and
+every widened run stops after 1–2 of its 4 iterations on the strain-plateau rule, so it is
+a stable wrong answer rather than an unfinished one. Why the widest is the worst is
+measurable rather than mysterious: at ±25 px, 21 of 30 rings overlap a neighbour's
+extraction window, ~25 % of a ring's bins belong to its neighbour, and `calibrate()`
+leaves `MinRingSeparation` at 0 so no blend is dropped; the merged centroid sits between
+two rings. Note this does **not** clear the window as the
+cause: the pv path succeeds with a *gap-capped* window (0.45 × the ring gap,
+`_capture_windows_px`), and that variant has never been tried on the centroid path. Use
+`autocalibrate_pv` today; the gap-capped centroid window is the next experiment.
+
+**If the tilt moved but stopped at a round number** → you are on a bound, not at a
+minimum. v1 bounds arrive as `init ± tolTilts` centred on the seed, so a tilt-blind
+seed caps the travel: a `tz = 0` seed at the default `tolTilts` of 3 rails at exactly
+3.0 and stays there. `autocalibrate_pv` slides that box during capture
+(`recentre_capture_bounds`); on the centroid path raise `tolTilts`, or seed the tilt.
+Identical repeated values across iterations are a rail, never a convergence.
 
 ---
 

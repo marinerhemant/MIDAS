@@ -46,7 +46,7 @@ Energy or λ:  <keV or Å — or "find it", see §1>
 
 Everything else is worked out from the files.
 
-## Four things to know before you start
+## Five things to know before you start
 
 1. **A silent wrong answer is the normal failure here.** Discarded panel shifts,
    a truncated map, the wrong calibration block, a dark frame used as signal, a
@@ -67,7 +67,17 @@ Everything else is worked out from the files.
    pixel; measured 24.3× on in-band bins. `0` is bit-identical to `1`. Hard
    rule 1.
 
-4. **λ comes from the beamline and never from the fit.** Wavelength and `Lsd`
+4. **A strongly tilted detector breaks the default entry point.** On a CeO₂ frame
+   whose detector sits at `tz` ≈ 14°, the default `calibrate()` returns `tz` ≈ −0.014°
+   — essentially the untilted seed — and reports no error; the ring checker FAILs and
+   the rings are still a median 2.6 px off. `autocalibrate_pv` reaches that geometry
+   (28 µε, matching the reference in `tz` to inside the checker's ~0.2° resolution)
+   because it runs a wide capture window first. So on
+   a detector you know to be tilted, use `autocalibrate_pv`, verify with a ring
+   overlay, and treat a near-zero tilt from `calibrate()` as suspect rather than as a
+   measurement. Hard rule 15's bounded exception; open defect, not a detector property.
+
+5. **λ comes from the beamline and never from the fit.** Wavelength and `Lsd`
    are degenerate, and with the default `refine_distortion=True` the degeneracy
    is not weakly broken but **not broken at all** — a 5.9 % energy error leaves
    8.8e−06 µε of residual. The strain gate passes, and the distance is wrong by
