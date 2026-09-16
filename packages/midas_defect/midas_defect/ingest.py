@@ -61,13 +61,25 @@ __all__ = [
 #: 26-connectivity in (ω, row, col).
 _CONN3 = np.ones((3, 3, 3), bool)
 
-#: Columns of the spot table returned by :func:`find_blobs_3d`.
+#: Columns of the spot table returned by :func:`find_blobs_3d`. Everything up to and including
+#: ``kurt_omega`` describes ONE row's own sub-peak (post-watershed-split, if it split at all);
+#: everything from ``extent_frame`` on describes the SAME shape statistics computed on the whole,
+#: unsplit connected-component blob that row's sub-peak came from -- see ``find_blobs_3d``'s own
+#: docstring for why both are reported, and why they are IDENTICAL for a row whose blob never
+#: split (``full_n_sub_peaks == 1``), by construction rather than by coincidence.
 SPOT_COLUMNS = (
     "blob_id", "sub_id", "frame", "row", "col",
     "integrated", "volume_vox", "n_frames", "peak_counts",
     "length_px", "width_px", "pos_angle_deg", "aspect",
     "skew_length", "skew_width", "kurt_length", "kurt_width",
     "omega_width_frames", "skew_omega", "kurt_omega",
+    "extent_frame", "extent_row", "extent_col",
+    "full_volume_vox", "full_n_frames", "full_peak_counts",
+    "full_length_px", "full_width_px", "full_pos_angle_deg", "full_aspect",
+    "full_skew_length", "full_skew_width", "full_kurt_length", "full_kurt_width",
+    "full_omega_width_frames", "full_skew_omega", "full_kurt_omega",
+    "full_extent_frame", "full_extent_row", "full_extent_col",
+    "full_n_sub_peaks",
 )
 
 
@@ -387,6 +399,67 @@ def _weighted_central_moments(d: np.ndarray, w: np.ndarray) -> Tuple[float, floa
     return var, skew, kurt
 
 
+def _region_shape_stats(idx: np.ndarray, wt: np.ndarray) -> dict:
+    """Extent, in-plane second/third/fourth moments, and the ω-axis moments for one set of
+    weighted voxels -- the exact computation :func:`find_blobs_3d` needs twice per blob: once on
+    a single watershed sub-peak's own voxels, and once more on the WHOLE unsplit connected
+    -component blob's voxels, so "segmented" and "full" shape numbers come from one
+    implementation rather than two that can quietly drift apart.
+
+    ``idx`` is ``(3, N)`` local ``(frame, row, col)`` integer indices, ``wt`` the intensity
+    weight at each -- both already restricted to the region being described (a sub-peak's ``mm``
+    or a blob's ``m``); this function has no opinion on how that region was chosen, only on what
+    to report about it.
+
+    ``extent_*`` is the plain axis-aligned bounding-box size (``max - min + 1`` voxels along each
+    raw axis) -- deliberately NOT the same thing as ``length_px``/``width_px`` below: extent
+    answers "how many voxels does this span, in the array's own axes", the covariance-ellipse
+    length/width answer "how wide is it along ITS OWN major/minor axis, intensity-weighted". A
+    long thin streak lying at 45 degrees can have `extent_row` and `extent_col` both much larger
+    than `width_px`, and that gap is itself informative (an axis-aligned bounding box inflated by
+    an oblique streak, not a genuinely wide feature) -- report both, do not derive one from the
+    other.
+    """
+    W = float(wt.sum())
+    extent_frame = int(idx[0].max() - idx[0].min() + 1)
+    extent_row = int(idx[1].max() - idx[1].min() + 1)
+    extent_col = int(idx[2].max() - idx[2].min() + 1)
+
+    fcom = (idx * wt).sum(1) / W
+    dy = idx[1] - fcom[1]
+    dx = idx[2] - fcom[2]
+    cyy = float((wt * dy * dy).sum() / W)
+    cxx = float((wt * dx * dx).sum() / W)
+    cyx = float((wt * dy * dx).sum() / W)
+    ev, evec = np.linalg.eigh(np.array([[cyy, cyx], [cyx, cxx]]))
+    length = float(np.sqrt(max(ev[1], 0.0)))
+    width = float(np.sqrt(max(ev[0], 0.0)))
+    vy, vx = evec[0, 1], evec[1, 1]
+    pos_angle = float(np.degrees(np.arctan2(-vy, vx)) % 180.0)
+    # A single-voxel-wide region has width 0. Report the aspect ratio as infinite rather than
+    # dividing by an epsilon and emitting 3e5, which reads like a measurement and silently
+    # survives a filter.
+    aspect = float(length / width) if width > 0 else float("inf")
+
+    # 3rd/4th moments on the same major/minor axes as length/width.
+    proj_major = dy * evec[0, 1] + dx * evec[1, 1]
+    proj_minor = dy * evec[0, 0] + dx * evec[1, 0]
+    _, skew_length, kurt_length = _weighted_central_moments(proj_major, wt)
+    _, skew_width, kurt_width = _weighted_central_moments(proj_minor, wt)
+
+    # omega/frame axis: an independent 1-D moment, not fused into a 3-D covariance with
+    # (row, col) -- see find_blobs_3d's own docstring.
+    domega = idx[0] - fcom[0]
+    omega_var, skew_omega, kurt_omega = _weighted_central_moments(domega, wt)
+    omega_width = float(np.sqrt(max(omega_var, 0.0)))
+
+    return dict(extent_frame=extent_frame, extent_row=extent_row, extent_col=extent_col,
+               length_px=length, width_px=width, pos_angle_deg=pos_angle, aspect=aspect,
+               skew_length=skew_length, skew_width=skew_width,
+               kurt_length=kurt_length, kurt_width=kurt_width,
+               omega_width_frames=omega_width, skew_omega=skew_omega, kurt_omega=kurt_omega)
+
+
 def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
                   threshold: float = 200.0,
                   min_vol: int = 10,
@@ -430,6 +503,22 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
     own, the same way ``n_frames`` already stands in as a coarser existing
     proxy for the same extent.
 
+    **Every shape statistic above is reported TWICE per row** (2026-09-16): once for that row's
+    own watershed sub-peak (unprefixed, as always), and once more, prefixed ``full_``, for the
+    WHOLE unsplit connected-component blob that sub-peak came from -- plus ``extent_frame``/
+    ``extent_row``/``extent_col`` (the plain axis-aligned bounding-box size in voxels, a
+    different question from the covariance-ellipse ``length_px``/``width_px`` -- see
+    :func:`_region_shape_stats`'s own docstring) and ``full_n_sub_peaks`` (how many sub-peaks
+    ``blob_id`` split into in total). This exists so a caller who does not trust the watershed
+    split (see ``multiplicity.py``'s whole reason for existing: that split is a deterministic,
+    scale-free heuristic, not a calibrated model, and is known to over/under-fragment) always has
+    the FULL peak's own numbers on hand too, without a second call or a second pass over the raw
+    frames -- compare ``length_px`` against ``full_length_px`` directly to see whether splitting
+    this blob actually changed its apparent shape, or barely moved it. For a blob that never
+    split (``full_n_sub_peaks == 1``), every ``full_*`` column equals its unprefixed counterpart
+    exactly, by construction (both come from :func:`_region_shape_stats` on the identical set of
+    voxels) -- a useful sanity check in its own right.
+
     Returns
     -------
     pandas.DataFrame with :data:`SPOT_COLUMNS`. ``row``/``col`` index the array
@@ -470,7 +559,7 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
 
     labels = np.zeros(stack.shape, dtype=np.int32) if return_labels else None
     objects = ndimage.find_objects(lab)
-    rows: List[tuple] = []
+    rows: List[dict] = []
     for L in np.flatnonzero(keep):
         sl = objects[L - 1]
         m = (lab[sl] == L)
@@ -480,6 +569,21 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
         ids = ids[ids > 0]
         if ids.size > 1:
             counts["blobs_split"] += 1
+
+        # The FULL, unsplit blob's own shape stats -- computed once per blob (not per
+        # sub-peak) and stamped onto every sub-peak row below with a `full_` prefix, so a
+        # caller can compare "this watershed sub-peak" against "the whole connected component
+        # it came from" without a second pass over the data. For an unsplit blob (ids.size==1)
+        # `m` and the sole sub-peak's own mask are the SAME set of voxels, so the `full_*`
+        # columns equal the unprefixed ones exactly -- by construction, not coincidence.
+        full_idx = np.array(np.nonzero(m))
+        full_wt = img[m]
+        full_stats = _region_shape_stats(full_idx, full_wt)
+        full_stats["volume_vox"] = int(m.sum())
+        full_stats["n_frames"] = int(np.unique(full_idx[0]).size)
+        full_stats["peak_counts"] = float(img.max())
+        full_stats["n_sub_peaks"] = int(ids.size)
+
         for j in ids:
             mm = (sub == j)
             w = img * mm
@@ -492,6 +596,8 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
             if labels is not None:
                 labels[sl][mm] = len(rows) + 1   # 1-based row index of THIS sub-peak
 
+            # Position comes from the high-intensity CORE only (see docstring) -- this stays
+            # separate from _region_shape_stats, which always uses the full sub-peak region.
             core = mm & (w > core_frac * w.max())
             if not core.any():
                 core = mm
@@ -500,41 +606,17 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
             com = (cidx * cwt).sum(1) / cwt.sum()
             k0, r0, c0 = sl[0].start, sl[1].start, sl[2].start
 
-            fcom = (idx * wt).sum(1) / wt.sum()
-            dy = idx[1] - fcom[1]
-            dx = idx[2] - fcom[2]
-            W = wt.sum()
-            cyy = float((wt * dy * dy).sum() / W)
-            cxx = float((wt * dx * dx).sum() / W)
-            cyx = float((wt * dy * dx).sum() / W)
-            ev, evec = np.linalg.eigh(np.array([[cyy, cyx], [cyx, cxx]]))
-            length = float(np.sqrt(max(ev[1], 0.0)))
-            width = float(np.sqrt(max(ev[0], 0.0)))
-            vy, vx = evec[0, 1], evec[1, 1]
-            pos_angle = float(np.degrees(np.arctan2(-vy, vx)) % 180.0)
-            # A single-voxel-wide blob has width 0. Report the aspect ratio as
-            # infinite rather than dividing by an epsilon and emitting 3e5,
-            # which reads like a measurement and silently survives a filter.
-            aspect = float(length / width) if width > 0 else float("inf")
+            stats = _region_shape_stats(idx, wt)
 
-            # 3rd/4th moments on the same major/minor axes as length/width.
-            proj_major = dy * evec[0, 1] + dx * evec[1, 1]
-            proj_minor = dy * evec[0, 0] + dx * evec[1, 0]
-            _, skew_length, kurt_length = _weighted_central_moments(proj_major, wt)
-            _, skew_width, kurt_width = _weighted_central_moments(proj_minor, wt)
-
-            # omega/frame axis: an independent 1-D moment, not fused into a
-            # 3-D covariance with (row, col) -- see the docstring.
-            domega = idx[0] - fcom[0]
-            omega_var, skew_omega, kurt_omega = _weighted_central_moments(domega, wt)
-            omega_width = float(np.sqrt(max(omega_var, 0.0)))
-
-            rows.append((int(L), int(j),
-                         float(com[0] + k0), float(com[1] + r0), float(com[2] + c0),
-                         total, int(mm.sum()), int(np.unique(idx[0]).size),
-                         float(w.max()), length, width, pos_angle, aspect,
-                         skew_length, skew_width, kurt_length, kurt_width,
-                         omega_width, skew_omega, kurt_omega))
+            row = dict(blob_id=int(L), sub_id=int(j),
+                      frame=float(com[0] + k0), row=float(com[1] + r0), col=float(com[2] + c0),
+                      integrated=total, volume_vox=int(mm.sum()),
+                      n_frames=int(np.unique(idx[0]).size), peak_counts=float(w.max()))
+            row.update(stats)
+            row.update({f"full_{k}": v for k, v in full_stats.items()})
+            missing = set(SPOT_COLUMNS) - set(row)
+            assert not missing, f"find_blobs_3d row missing column(s): {sorted(missing)}"
+            rows.append(row)
 
     df = pd.DataFrame(rows, columns=list(SPOT_COLUMNS))
     counts["sub_peaks"] = len(df)

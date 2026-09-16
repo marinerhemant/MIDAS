@@ -37,6 +37,54 @@ raster: `|k| > |h|` in 5004 reflections against `|h| > |k|` in 1009 — a **5× 
 one way, and the fitted splitting emerges **with a consistent sign**. Run `index_asymmetry`
 and report it beside any splitting.
 
+**Not just splittings — it inflates cross-position recovery counts too.** Measured 2026-09-15 on
+2604_25K: `midas_defect.spatial_coherence.recover_domains_across_raster`'s random-orientation null
+answers "is this the right orientation at all", not "is the matched-reflection subset
+systematically biased" — a horizontal-vs-vertical raster line comparison that looked like real
+spatial-coherence evidence (33 vs 20 recoveries) was REFUTED once index_asymmetry was checked at
+the same positions: the extreme-skew signature (ratio 0.0/inf) was present in 56–80 % of domains,
+**both directions**, with every null_threshold near 0 — the null gate passed trivially because it
+was never testing for this. `RecoveredDomain.ab_gate` / `.index_asymmetry_is_suspect` now run the
+identical three-stage gate on every recovery, not just native domains — check it before quoting a
+cross-position recovery as evidence of anything spatial.
+
+**This gate is a discriminator, not a universal killer — it also let a real S5 signal through
+once applied correctly, for a while.** Measured 2026-09-16 on a real 900-position S5 raster:
+90.7 % of 15104 recovery attempts across the whole raster were index_asymmetry-suspect (the SAME
+failure mode as 2604_25K above, at similar severity), and including them inflated the observed
+Moran's I from 0.185 to 0.235 — but after filtering to the clean 526/900 (BOTH native and
+recovered domains gated on the identical check — an earlier version of the S5 driver gated only
+recovered ones, itself a real bug caught by `/verify`), the observed spatial-clustering result
+did NOT immediately collapse the way the 2604 sign-agreement claim did: clean Moran's I (0.185)
+cleared its own per-cell permutation null (p95 0.055), survived direct experimental refutation
+of an instrumental-drift explanation (independent before/after CeO2 calibration showed no
+detector drift) and of a thermal-relaxation explanation (~24h equilibration hold vastly exceeds
+any credible DAC relaxation timescale at 30K). The lesson from THAT part is "run this gate
+before either believing OR dismissing a recovery-based claim, and do not accept a single
+mundane-mechanism objection as either fatal or resolved without checking it against the real
+experiment" — `midas_defect.spatial_coherence.best_domain_per_position` (filters suspect
+domains, native AND recovered, by default) and `spatial_coherence_report` (runs the matched
+control across several independent draws, never just one) package this discipline as reusable
+functions rather than bespoke per-analysis logic.
+
+**But it still did not survive the test that mattered most: effective sample size.** The 526
+"clean" positions were backed by only 75 INDEPENDENT domains — a handful of large, contiguous
+recovery footprints each propagating one fitted value across every position it touched. Judged
+by `spatial_coherence.cluster_permutation_null_morans_i` (holds each domain's own footprint
+shape fixed, asks whether the OBSERVED pairing of values to footprints is more coherent than a
+random relabelling of which value lands on which footprint) rather than the naive per-cell
+null: **I = +0.185 against a cluster-null p95 of +0.249 — not clustered.** Same number as the
+"survived" verdict above, opposite conclusion, once the null is built from the actual count of
+independent measurements rather than the raster's raw cell count. Separately, even the naive
+"exceeds all 11 control draws" claim was only ever marginal stated honestly: the exact,
+distribution-free rank p-value (`exact_rank_p_value`) is 0.083 — suggestive, not significant at
+conventional thresholds; a parametric "N sigma above the control mean" framing on 11 small,
+bounded, right-skewed draws is false precision, not a stronger form of the same evidence.
+**Net for this specific S5 result: no established spatial coherence beyond what the identical-
+cell control and the effective sample size can explain.** The METHOD (gate both domain types,
+run a multi-draw control, then run the cluster-aware null before trusting any of it) is what
+should generalize forward, not this particular raster's number.
+
 ## 4. Which member of a structural series, when the reflections carry no c — INTRINSIC
 
 c is often the ONLY parameter separating members of a series (Ruddlesden-Popper n = 2 vs

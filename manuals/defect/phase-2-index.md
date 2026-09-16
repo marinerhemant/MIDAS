@@ -196,6 +196,12 @@ cell stays the seed for every pair domain there, the cell gate still references 
 domain's `seed_source` says so. It is off by default because the 2604 raster never did it. Each rule is a
 measured fix:
 
+**Confirmed again at full-raster scale (2026-09-16), not just the single held-out position above.**
+A 900-position S5 run with `seed_from_nominal` left at its default found a domain at only 10/900
+positions; setting it `True` raised that to 339/900 on the identical data (confirmed first on a
+13-position sample: 2/13 → 6/13, before trusting the full run). This is not a sign the sample lacks a
+crystal at most positions — it is this one flag, every time, on this class of raster.
+
 | rule | what it prevents | measured on 2604 |
 |---|---|---|
 | consume `frag`, count and fit `claim` | discarded fragments of one streak re-claimed as a NEW domain | claims vs distinct hkl 47/40, 29/26, 21/17 at p = 66/329/114 before `unique_by_hkl` |

@@ -58,7 +58,7 @@ and that fails whenever the predicted node cloud is finer than the diffuse featu
 reference sample 0.0688 Å⁻¹ node spacing against a 0.05–0.15 Å⁻¹ halo, so neither distance nor
 direction can attribute a voxel. Check that before promising a fraction (`ENVELOPE.md` §1a).
 
-## Sixteen things to know before you start
+## Nineteen things to know before you start
 
 1. **Closure is arithmetic; attribution is the claim.** An auto-classifier on the reference
    sample reported **99.8 % intensity-budget closure** and was **~18 % wrong**. At high `|q|`
@@ -191,6 +191,57 @@ direction can attribute a voxel. Check that before promising a fraction (`ENVELO
     no control at positions with no reflection fired on 44 of 45 reflections. Which (h,k) rods
     carry diffuse intensity is a fault-vector test only after dividing by the same rod's Bragg
     nodes (`rod_profile.diffuse_to_bragg`, `phase-4-rods.md`).
+
+17. **`find_domains`'s row/pair-seeded free search needs a free lattice row to seed from — and a
+    weak, sparse, multi-grain raster may not offer one at ANY position.** On a real 900-position
+    DAC raster (S5, 2026-09-16) the default (`seed_from_nominal=False`) found a domain at only
+    10/900 positions — not because the crystal wasn't there, but because the search had nothing
+    to seed on. Setting `seed_from_nominal=True` (seed the pair branch from the DECLARED cell
+    instead of a free row) raised that to 339/900 on the same data, confirmed directly on a
+    13-position sample (2/13 → 6/13) before trusting it at scale. This is a documented,
+    easy-to-forget requirement (`PACKAGE_NOTES.md` already flagged it 2026-09-13) — check it
+    before concluding a sparse raster has no crystal at most positions.
+
+18. **A cross-position domain recovery needs the SAME `index_asymmetry` gate a native domain
+    gets, not just its own random-orientation null — and neither one control draw nor one
+    coverage level is enough to trust the result.** `spatial_coherence.recover_domains_across
+    _raster`'s null answers "is this the right orientation at all," not "is the matched-
+    reflection subset itself geometrically biased" — a raw cross-position recovery-count
+    comparison on 2604_25K looked like real spatial-coherence evidence and was `/verify`-REFUTED
+    once `index_asymmetry` was checked (56-80 % of recovered domains suspect, both directions,
+    `ENVELOPE.md` §3). On S5 the same check found 90.7 % of 15104 recovery attempts suspect,
+    inflating the reported Moran's I from 0.147 (filtered) to 0.239 (unfiltered) — use
+    `best_domain_per_position`'s default filter, never the raw recovery list, for this kind of
+    claim. Separately, ONE planted-identical-cell control draw is not decisive either: across 11
+    independent draws on the same raster, 2 (18 %) crossed their own permutation null against
+    the ~5 % a well-behaved negative control's own construction predicts — `spatial_coherence
+    _report(..., n_control_draws=...)` reports the whole spread for exactly this reason. On S5
+    this survived several further attacks (no instrumental drift on independent before/after
+    calibration; no scan-order confound once the raster's own single-pass row-major geometry is
+    accounted for; no thermal-relaxation confound given a ~24h equilibration hold) — but see
+    point 19: the number itself still did not survive the one test that mattered most.
+
+19. **"526 raster positions" is not "526 measurements" when most of them got their value from a
+    cross-position recovery — count the underlying domains, not the grid cells, before running
+    Moran's I on anything.** The S5 investigation in point 18 found a "clean," properly-gated
+    526/900-position map clustering at Moran's I = +0.185, exceeding its own per-cell
+    permutation null (p95 = +0.055) and (barely: exact rank p = 0.083, not significant at
+    conventional thresholds) all 11 control draws. But those 526 positions were backed by only
+    **75 independent domains** — a handful of large, spatially-contiguous recovery footprints,
+    each propagating ONE fitted value to every position it touched. The per-cell permutation
+    null does not know this: it treats 526 individually-shuffleable values as 526 independent
+    draws, so a few big same-valued contiguous blocks trivially inflate Moran's I regardless of
+    whether the 75 UNDERLYING values themselves have any real spatial structure.
+    `spatial_coherence.cluster_permutation_null_morans_i` is the correct null: it holds every
+    domain's own footprint SHAPE fixed and asks whether the OBSERVED pairing of fitted values to
+    particular footprints is more coherent than a random relabelling of which value lands on
+    which footprint. On the exact same S5 grid: I = +0.185 against a cluster-null p95 of
+    +0.249 — **clustered = FALSE**. Same number, opposite verdict, once the null matches the
+    actual number of independent measurements. `best_domain_per_position` now returns an
+    `origin` field for exactly this (the position itself for a native domain, the recovery's
+    source position otherwise) and `spatial_coherence_report` runs this null automatically
+    whenever it is present — never trust the per-cell null alone on a recovery-heavy map; ALWAYS
+    check `n_effective_clusters` and the cluster-null verdict beside it.
 
 ## The half most people do not know is here
 

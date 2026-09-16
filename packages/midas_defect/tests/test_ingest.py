@@ -425,6 +425,74 @@ def test_bimodal_omega_profile_is_caught_even_when_in_plane_looks_normal():
     assert abs(df.iloc[0]["skew_omega"]) > 0.3
 
 
+# ------------------------------------------------- full-blob vs segmented shape
+
+def test_full_columns_equal_segmented_ones_when_a_blob_never_splits():
+    """A blob that the watershed never divides has `sub_id`'s own voxels == `blob_id`'s own
+    voxels -- so every `full_*` column must equal its unprefixed counterpart EXACTLY (same
+    `_region_shape_stats` call, same input), not just approximately."""
+    tth, azi, _ = _geom()
+    frames = _blank()
+    frames = _add_spot(frames, 4.0, 64.0, 70.0, 6000.0, span=1.5)
+    mask = np.zeros((NR, NC), bool)
+    sub = subtract_background(frames, tth, azi, mask, n_sectors=8, tth_bin=0.05)
+    df = find_blobs_3d(sub, mask, threshold=200.0, min_vol=10,
+                       split_ratio=1e9, gap_bridge=0)
+    assert len(df) == 1
+    r = df.iloc[0]
+    assert r["full_n_sub_peaks"] == 1
+    for col in ("volume_vox", "n_frames", "peak_counts", "length_px", "width_px",
+               "pos_angle_deg", "aspect", "skew_length", "skew_width",
+               "kurt_length", "kurt_width", "omega_width_frames", "skew_omega",
+               "kurt_omega", "extent_frame", "extent_row", "extent_col"):
+        assert r[f"full_{col}"] == pytest.approx(r[col], nan_ok=True), col
+
+
+def test_full_columns_describe_the_whole_blob_when_it_splits():
+    """Two overlapping (wide enough to touch -- unlike the separated-peaks test above, which
+    gives two independent `blob_id`s) lobes merge into ONE connected-component blob but watershed
+    -split into several `sub_id`s -- `full_*` must describe the WHOLE blob (every lobe together),
+    not any one sub-peak alone: bigger volume/extent than any sub-peak's own, and the SAME
+    full_* numbers on every row (they share one blob_id)."""
+    tth, azi, _ = _geom()
+    frames = _blank()
+    frames = _add_spot(frames, 4.0, 60.0, 60.0, 6000.0, sigma=2.2)
+    frames = _add_spot(frames, 4.0, 60.0, 68.0, 6000.0, sigma=2.2)
+    mask = np.zeros((NR, NC), bool)
+    sub = subtract_background(frames, tth, azi, mask, n_sectors=8, tth_bin=0.05)
+    df = find_blobs_3d(sub, mask, threshold=200.0, min_vol=10,
+                       split_ratio=1.5, gap_bridge=0)
+    assert len(df) >= 2, "the blob must actually have split for this test to mean anything"
+    assert (df["blob_id"] == df["blob_id"].iloc[0]).all(), "every sub-peak shares one blob_id"
+    assert (df["full_n_sub_peaks"] == len(df)).all()
+    # full_* is identical across every row of the same blob -- one shared computation
+    for col in ("full_volume_vox", "full_extent_row", "full_extent_col", "full_length_px"):
+        assert df[col].nunique() == 1, f"{col} must be the same for every row of one blob_id"
+    # the whole blob spans (and outweighs) any one sub-peak alone
+    assert df["full_volume_vox"].iloc[0] > df["volume_vox"].max()
+    assert df["full_extent_col"].iloc[0] >= df["extent_col"].max()
+    assert df["full_volume_vox"].iloc[0] == pytest.approx(df["volume_vox"].sum())
+
+
+def test_extent_is_the_plain_bounding_box_not_the_covariance_width():
+    """`extent_row`/`extent_col` are `max - min + 1` in raw array indices -- a different
+    number from the intensity-weighted, rotated `width_px`, by construction on a diagonal bar
+    (its axis-aligned bounding box is much larger than its own true, rotated width)."""
+    stack = np.zeros((3, NR, NC), np.float32)
+    for i in range(10):
+        stack[1, 40 + i, 30 + i] = 5000.0        # a 10-voxel diagonal line, 1 voxel thick
+    df = find_blobs_3d(stack, np.zeros((NR, NC), bool), threshold=200.0,
+                       min_vol=5, split_ratio=0.0, gap_bridge=0)
+    assert len(df) == 1
+    r = df.iloc[0]
+    assert r["extent_row"] == 10 and r["extent_col"] == 10
+    assert r["extent_frame"] == 1
+    # the bar's true width along its own minor axis is ~0 (one voxel thick) -- nothing like
+    # its 10-voxel axis-aligned bounding box.
+    assert r["width_px"] < 1.0
+    assert r["full_extent_row"] == 10 and r["full_extent_col"] == 10
+
+
 # --------------------------------------------------------- powder separation
 
 def test_rings_are_found_from_the_data_with_no_table():
