@@ -121,6 +121,16 @@ the estimator, **not** the physics.
 >
 > A crash with no traceback in a cross-check is easy to misread as bad data. It is not.
 
+**Alternative to `darling` for a mu/chi (or theta) rocking scan specifically:**
+`midas_dfxm.io_id03.load_id03_scan` / `midas_dfxm.io_6idc.load_6idc_scan` build a
+`RockingScan` directly from the beamline's own file layout (no `darling` (a,b,m,n) reshape
+needed), reduced per plane by `reduce_rocking` or, across several planes, by
+`midas_dfxm.multiplane` — the same per-pixel joint-moment method as this section, packaged and
+tested (`tests/test_multiplane.py`). **If deriving a grain mask from the moment-reduced total
+intensity rather than following `make_real_multibragg.py`'s idiom above, see rule 33**: a
+background percentile right for a full detector frame is wrong for an ROI already cropped to
+mostly grain, and silently produces a moth-eaten mask instead of an error.
+
 ## 2c. Mosaicity: fit, do not just moment
 
 The moment (and a phenomenological Gaussian) report the *measured* spread = intrinsic

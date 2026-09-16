@@ -10,8 +10,9 @@ lattice curvature), a uniform elastic strain, and an isotropic screw dislocation
 dislocation forward lands in Phase 4 (``dislocation.py``); the isotropic screw
 here is only a Phase-0/1 test fixture.
 
-``load_external_field`` is a documented stub: its parser is finalised once the
-delivery format is known.
+``load_external_field`` parses a real LAMMPS atomic dump (MD output) via
+:mod:`midas_dfxm.md_ingest`; see that module for the per-atom-to-voxel-field
+ingestion pattern.
 
 Units: positions in micrometers; lattice in Angstrom; Burgers vector in Angstrom.
 """
@@ -67,6 +68,85 @@ def make_uniform_field(
         positions=positions,
         F=F,
         reference_orientation=orientation,
+        lattice_params=latc,
+        shape=tuple(shape),
+    )
+
+
+def ellipsoid_mask(
+    positions: torch.Tensor,
+    center_um,
+    radius_um,
+) -> torch.Tensor:
+    """Boolean mask for voxels inside a sphere/ellipsoid region.
+
+    ``center_um`` and ``radius_um`` are length-3 (or ``radius_um`` a scalar,
+    broadcasting to a sphere). ``(N,)`` bool, ``True`` where
+    ``sum(((r - center) / radius)**2) <= 1``. Shared by
+    :func:`make_grain_in_matrix_field` and by callers that need the same region
+    to place a defect (e.g. a DDD network) inside the planted grain.
+    """
+    center = torch.as_tensor(center_um, device=positions.device, dtype=positions.dtype)
+    r = radius_um if isinstance(radius_um, (tuple, list)) else (radius_um,) * 3
+    radius = torch.as_tensor(r, device=positions.device, dtype=positions.dtype)
+    d = (positions - center) / radius
+    return d.pow(2).sum(dim=-1) <= 1.0
+
+
+def make_grain_in_matrix_field(
+    shape=(48, 48, 24),
+    *,
+    spacing_um: float = 0.25,
+    grain_shape: str = "ellipsoid",
+    grain_center_um=(0.0, 0.0, 0.0),
+    grain_radius_um=(6.0, 6.0, 6.0),
+    grain_orientation=None,
+    matrix_orientation=None,
+    lattice_params=(3.6356, 3.6356, 3.6356, 90.0, 90.0, 90.0),
+    device=None,
+    dtype=torch.float64,
+) -> DeformationField:
+    """A discrete grain (sphere/ellipsoid) embedded in a matrix, each with its
+    own crystal orientation, on a regular grid.
+
+    ``reference_orientation`` of the returned field is ``matrix_orientation``
+    (identity if not given): matrix voxels get ``F = I`` and grain voxels get
+    the constant rotation ``matrix_orientation^T @ grain_orientation`` (so the
+    grain's *physical* orientation is exactly ``grain_orientation``, and if
+    ``grain_orientation`` is not given the field is uniform, i.e. no grain is
+    visible). One ``F(r)``, one field -- the same contract every generator in
+    this module uses; callers that need the region mask separately (e.g. to
+    insert a DDD network only inside the grain) should call
+    :func:`ellipsoid_mask` with the same ``grain_center_um``/``grain_radius_um``.
+
+    ``grain_shape`` is currently the only allowed value ``"ellipsoid"`` (a
+    sphere is an ellipsoid with equal radii); kept as an explicit parameter so
+    a future non-ellipsoidal shape does not change the call signature.
+    """
+    if grain_shape != "ellipsoid":
+        raise ValueError(f"grain_shape must be 'ellipsoid' (sphere = equal radii), got {grain_shape!r}")
+    positions = _grid_positions(shape, spacing_um, device=device, dtype=dtype)
+    n = positions.shape[0]
+    if matrix_orientation is None:
+        matrix_orientation = torch.eye(3, device=device, dtype=dtype)
+    else:
+        matrix_orientation = torch.as_tensor(matrix_orientation, device=device, dtype=dtype)
+    if grain_orientation is None:
+        grain_orientation = matrix_orientation
+    else:
+        grain_orientation = torch.as_tensor(grain_orientation, device=device, dtype=dtype)
+
+    inside = ellipsoid_mask(positions, grain_center_um, grain_radius_um)
+
+    eye = torch.eye(3, device=device, dtype=dtype)
+    F = eye.expand(n, 3, 3).clone()
+    R_grain = matrix_orientation.transpose(-1, -2) @ grain_orientation
+    F[inside] = R_grain
+    latc = torch.as_tensor(lattice_params, device=device, dtype=dtype)
+    return DeformationField(
+        positions=positions,
+        F=F,
+        reference_orientation=matrix_orientation,
         lattice_params=latc,
         shape=tuple(shape),
     )
@@ -163,15 +243,15 @@ def with_screw_dislocation(
     )
 
 
-def load_external_field(path: str) -> DeformationField:  # pragma: no cover - stub
-    """Loader stub for an external collaborator's realistic field.
+def load_external_field(path: str, **kwargs) -> DeformationField:
+    """Load an external collaborator's realistic field.
 
-    The delivery format (orientation map + deformation-gradient field) is not yet
-    known; this parser is finalised on receipt. It must return a
-    :class:`DeformationField` with ``positions`` (microns), per-voxel ``F``, a
-    reference orientation, and reference lattice parameters.
+    Delegates to :func:`midas_dfxm.md_ingest.load_external_field`: the
+    delivery format this was finalised against is a real LAMMPS atomic dump
+    (MD output), which is also the format a collaborator's own MD run
+    produces. See that module for the ingestion pattern (per-atom local
+    deformation gradient -> voxel-binned :class:`DeformationField`) and its
+    required ``crop_angstrom`` argument.
     """
-    raise NotImplementedError(
-        "External field format not yet defined; finalise parser on data receipt "
-        "(implementation_plan.md Phase 0 / Section 6.6)."
-    )
+    from .md_ingest import load_external_field as _load_md_field
+    return _load_md_field(path, **kwargs)

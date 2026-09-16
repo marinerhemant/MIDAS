@@ -24,9 +24,15 @@ TUTORIALS = {
     "reduce_6idc_scan.ipynb":
         "Part B on its own, for a measured theta or theta-2theta scan, with a cell to pick the "
         "ROI from the frames",
+    "reduce_id03_scan.ipynb":
+        "Part B for an ESRF ID03 mu x chi mesh scan (one master HDF5 file), same checks as "
+        "reduce_6idc_scan.ipynb on a different file format",
     "tutorial_school_dfxm.py":
         "the differentiable forward model and full-F inverse on synthetic data (Run Cell in "
         "VS Code, or run it as a script)",
+    "forward_sim_synthetic_to_MD.ipynb":
+        "forward-simulate DFXM from a synthetic grain, a real DDD network, a real CP-FEM "
+        "field, and real MD data, in that order -- the reverse direction of reduce_id03_scan",
 }
 
 

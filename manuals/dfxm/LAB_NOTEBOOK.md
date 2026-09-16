@@ -1230,3 +1230,44 @@ different dataset (§11f); item 9 concerns their corrected one. Full records: `$
     other) and is reported as a diagnostic, not an interval; a gated lineshape extrapolation is
     reliable when it fires and degrades predictably with the missing fraction. §11k, `VERDICT_edge_centres_final.md`.
 
+### 11m. The campaign's reduction becomes real package code, and one new trap on the way
+
+Built 2026-09-15, preparing a hands-on workshop on this same grain (Mg-4Al g9, ID03): the first
+real ID03 HDF5 reader (`midas_dfxm.io_id03.load_id03_scan`, one master-file Bliss layout, tested
+against a planted tilt gradient) and a promotion of this campaign's `reduce.py`/`maps.py`
+joint-moment method from one-off analysis scripts into tested library code
+(`midas_dfxm.multiplane`: `accumulate_marginals`, `angular_moments`, `derive_grain_mask`,
+`strain_and_tilt`, `predicted_fov_row_gradient`). Running the promoted code against the real raw
+frames end to end reproduced this campaign's own numbers closely (theta_B 8.09928° both times;
+strain std 411-412 µε raw here against 400.7 originally, 267-277 µε after de-planing against
+269.7) — an independent-enough recomputation (different crop boundary, one moment
+implementation here against four independent reductions originally) that the small differences
+are themselves consistent with rule 33/§11l item 2's mask-and-crop sensitivity, not a
+discrepancy to chase.
+
+**One new trap, not previously recorded: a grain mask's background percentile does not
+transfer across crops.** Re-deriving this campaign's own grain mask from the moment-reduced
+total intensity, using this doc set's percentile-threshold recipe (right for a full,
+mostly-empty 2048×2048 frame) unchanged on an ROI already cut to ~the grain's own bounding box
+(now ~87 % grain, background a minority) gave a moth-eaten, disconnected mask at ~56 % coverage
+— visibly wrong against `maps_sample_coords.png`. Lowering `background_percentile` from 50 to 5
+(matched to the crop's actual background fraction) fixed it: IoU against the campaign's true
+mask went from < 0.15 to 0.985, coverage 88.1 % against a true 86.7 %. A **second draft that
+shipped the campaign's own precomputed mask instead of fixing the derivation** was tried and
+rightly rejected (student-facing code should derive the mask, not look up the answer) before
+landing on the percentile fix. Full rule: README.md rule 33; discriminating test: `DIAGNOSIS.md`
+"A grain mask is moth-eaten...".
+
+**A second, quieter finding confirming rule 1 in a new code path.** The live multi-plane
+accumulation loop first summed raw frames directly into the mu/chi/obpitch marginals, skipping
+the per-frame pedestal subtraction `reduce.py` always did first. The downstream tilt/strain
+maps barely moved (a uniform per-frame offset does not shift a centroid much) — but the angular
+baseline-removal step's own diagnostic (`frac_base`, the fraction of intensity attributed to
+baseline) jumped from the expected ~30-33 % to ~91 %, silently. `accumulate_marginals` now
+always subtracts it; the lesson generalises rule 1 beyond "subtract before *any* moment" to
+"subtract before every moment stage, including a second, angular one" — a correct-looking
+downstream map is not evidence the upstream diagnostic is trustworthy.
+
+Both findings and their exact numbers: `tests/test_multiplane.py` (regression-tests both bugs'
+exact failure modes), workshop notes `$ANALYSIS/dfxm_datasetG/umich_workshop/README.md`.
+

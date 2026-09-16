@@ -40,8 +40,8 @@ Question:        <orientation map | strain map | full-F tensor | dislocation typ
 
 DFXM's silent failures are different from HEDM's. These are the ones a context-free session
 gets wrong, each earned on real data or verified against the dynamical forward (Lab Notebook
-cites the measurement for each). The spine carries **thirty-one** numbered hard rules; these are
-the ones worth loading before you read anything else.
+cites the measurement for each). The spine carries **thirty-three** numbered hard rules; these
+are the ones worth loading before you read anything else.
 
 1. **Subtract the detector pedestal before you take the first moment.** On raw ID03 frames
    the naive centre-of-mass is **~67× too small** — the pedestal carries 98.5 % of the
@@ -147,6 +147,11 @@ model, dynamical Takagi–Taupin) are, as of this writing, **simulation-grounded
 README marks which steps are real-data-proven and which are demonstrated in simulation.
 **APS 6-ID-C DFXM is gated** — it is a different instrument and a bilateral collaboration
 (credit rules); confirm before touching that data.
+
+`midas_dfxm` now also ships its own native, tested rocking-scan reader for ID03
+(`io_id03.load_id03_scan`) and 6-ID-C (`io_6idc.load_6idc_scan`, still gated), plus a
+promoted joint-moment reducer (`multiplane`) implementing this same doc set's
+`reduce.py`/`maps.py` method as real code, not one-off scripts — README §0 and rule 33.
 
 ## Sibling doc sets
 

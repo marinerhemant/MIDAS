@@ -363,6 +363,19 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
     plus a two-parameter cosine fit, the one method a related earlier campaign found robust when
     six other estimators failed) as a second read before quoting a period or angle.
 
+33. **A grain mask's background percentile must match the crop's own background fraction — a
+    value tuned on a full frame breaks on an already-cropped one (`midas_dfxm.multiplane`,
+    Notebook §11m).** A percentile-threshold mask (`background_percentile=50`, right for a full
+    2048x2048 frame where background is the majority) applied to an ROI already cut to
+    roughly the grain's own bounding box — background now a 10-15 % minority — picks a
+    threshold near the grain's own median intensity and carves a moth-eaten, disconnected mask
+    out of real sub-grain contrast. Measured on the real Mg-4Al g9 crop:
+    `background_percentile=50` scored IoU < 0.15 against the true mask; `=5` (matched to the
+    crop's small true-background fraction) scored 0.985. Use
+    `midas_dfxm.multiplane.derive_grain_mask`, which documents this in its own docstring, and
+    match its `background_percentile` to what the crop actually is rather than copying a value
+    from a different crop.
+
 ### Traps that silently corrupt results
 
 | Trap | Symptom if missed | Where |
@@ -408,6 +421,7 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
 | rocking-width / Darwin-width used as a dynamical-relevance criterion | the criterion is t_coherent/Λ; a wide rocking curve does not bound dynamical effects | §1, §4 |
 | rank-1 peak of an azimuthally-whitened periodicity spectrum trusted without a visual overlay | picks a real but wrong-direction feature; the true one can be several ranks down and lower-power | rule 32 |
 | a detrend/high-pass cutoff chosen before inspecting a raw profile of the region | can remove the very periodicity being searched for if the cutoff sits below the real period | rule 32 |
+| a grain-mask background percentile copied from a full-frame recipe onto an already-cropped ROI | moth-eaten/disconnected mask, or ~50% coverage on a crop that should be ~85-90% grain | rule 33, DIAGNOSIS |
 
 ---
 
@@ -436,6 +450,18 @@ from midas_dfxm.takagi_taupin import susceptibility_fourier, extinction_length, 
 print("reduction + full-F + dynamical: import OK")
 PY
 ```
+
+**`midas_dfxm` also ships its own native rocking-scan reader and reducer** — an alternative to
+`darling` for a mu/chi (or theta) rocking scan specifically, tested against planted answers
+(`tests/test_io_id03.py`, `tests/test_io_6idc.py`, `tests/test_multiplane.py`):
+`midas_dfxm.io_id03.load_id03_scan` (ESRF ID03 master-HDF5 Bliss layout) and
+`midas_dfxm.io_6idc.load_6idc_scan` (APS 6-ID-C, gated — confirm before touching that data)
+both build a `midas_dfxm.rocking.RockingScan`, reduced by `reduce_rocking` /
+`check_frame_order` / `baseline_sensitivity` for one plane, or by `midas_dfxm.multiplane`
+(`accumulate_marginals`, `angular_moments`, `derive_grain_mask`, `strain_and_tilt`,
+`predicted_fov_row_gradient`) across several planes into a strain axis — the same joint-moment
+method as this doc set's `reduce.py`/`maps.py`, now real package code rather than
+one-off analysis scripts. Worked example: `midas_dfxm/examples/reduce_id03_scan.ipynb`.
 
 On an APS beamline host use the shared env by full path
 (`/home/beams12/S1IDUSER/opt/envs/midas/bin/python`); GPU prefix

@@ -595,3 +595,38 @@ manufactures any ordering you like.
 **Cause.** Terms derived from one split, or one difference field, by different summary
 statistics. **Lever.** Rebuild as *one measurement decomposed*, state the decomposition, and
 prefer a model-free split-half over any analytic propagation (Notebook §11b, §11c).
+
+---
+
+## A grain mask is moth-eaten, disconnected, or covers roughly half a crop that should be almost all grain
+
+**Discriminating test.** Print the mask's area fraction and look at it next to the crop. A
+mask threshold set by an intensity **percentile** (`background = percentile(image, p)`) is only
+a background/foreground split when `p` matches the true background *fraction* of that image.
+Check what the crop actually is: an ROI already cut to (approximately) the grain's own bounding
+box is already mostly foreground — background is the **minority**, sometimes 10–15 %, not the
+50 % a generic threshold silently assumes. A mask around 50 % coverage on a crop that should be
+~85–90 % grain is the tell.
+
+**Confirming test.** Re-run the same threshold logic with a low background percentile (5–10,
+matched to the crop's small true-background fraction) instead of 50. If the mask jumps from
+fragmented/half-coverage to a clean, mostly-filled, singly-connected region matching the
+visible bright area, the percentile was the cause, not the smoothing, the connectivity step, or
+the data. Real numbers from this campaign's real-frame data
+(`midas_dfxm.multiplane.derive_grain_mask`, `tests/test_multiplane.py`): `background_percentile
+= 50` on a crop already ~87 % grain gave IoU < 0.15 against the true mask; `background_percentile
+= 5` on the identical image gave IoU 0.985 (and 88.1 % coverage vs. the true 86.7 %, on the real
+Mg-4Al g9 grain).
+
+**Cause.** The threshold was tuned for (or copied from) a recipe built on the *full,
+mostly-empty* detector frame, then applied unchanged to an already-cropped, mostly-foreground
+region — the crop inverted which population is the majority, and the percentile-based
+background estimate silently followed. This is not a smoothing-kernel or connectivity-step
+problem: `uniform_filter` size and `binary_fill_holes` behave the same either way; only the
+percentile's meaning changed.
+
+**Lever.** Match `background_percentile` (and the offset above it) to the crop's actual
+background fraction, not to a value that worked on a different crop. If unknown, measure it —
+by eye, or against a coarser survey mask before cropping — rather than assuming 50. Do not
+"fix" a fragmented mask by adjusting the smoothing radius or the connected-component selection;
+both are correct once the percentile is (Notebook §11m).

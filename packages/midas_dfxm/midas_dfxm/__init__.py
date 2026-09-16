@@ -41,8 +41,10 @@ from .field import (
     small_strain_from_F,
 )
 from .io import (
+    ellipsoid_mask,
     fcc_reference_crystal,
     load_external_field,
+    make_grain_in_matrix_field,
     make_uniform_field,
     with_orientation_gradient,
     with_screw_dislocation,
@@ -147,6 +149,15 @@ from .rocking import (
     reduce_rocking,
 )
 from .io_6idc import find_motor_tables, load_6idc_scan, read_motor_table
+from .io_id03 import list_id03_planes, load_id03_scan
+from .multiplane import (
+    StrainTiltMaps,
+    accumulate_marginals,
+    angular_moments,
+    derive_grain_mask,
+    predicted_fov_row_gradient,
+    strain_and_tilt,
+)
 from .joint_inverse import fit_dislocation_field, fit_dislocation_ensemble, signal_peaks
 from .finite_beam import beam_integrated_observable
 from .beamline import (Illumination, beamline_resolution, crl_abcd, crl_focal_length, crl_image, crl_na, delta_beryllium, chromatic_defocus_coeffs)
@@ -265,6 +276,8 @@ __all__ = [
     "small_strain_from_F",
     "fcc_reference_crystal",
     "make_uniform_field",
+    "make_grain_in_matrix_field",
+    "ellipsoid_mask",
     "with_orientation_gradient",
     "with_uniform_strain",
     "with_screw_dislocation",
@@ -427,6 +440,14 @@ __all__ = [
     "load_6idc_scan",
     "find_motor_tables",
     "read_motor_table",
+    "load_id03_scan",
+    "list_id03_planes",
+    "accumulate_marginals",
+    "angular_moments",
+    "derive_grain_mask",
+    "StrainTiltMaps",
+    "strain_and_tilt",
+    "predicted_fov_row_gradient",
 ]
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
