@@ -12,7 +12,7 @@ Activate the `midas_env` conda environment and confirm the test
 data is mounted:
 
 ```bash
-source /Users/hsharma/miniconda3/bin/activate midas_env
+conda activate midas_env        # or: source <your-conda>/bin/activate midas_env
 ls $V2_TEST_BASE/refined_MIDAS_params_Ceria_63keV_900mm_*.txt
 ```
 
@@ -90,7 +90,7 @@ only notebooks here that need **no** mounted test data.
 Open in Jupyter or VS Code:
 
 ```bash
-cd /Users/hsharma/opt/MIDAS/packages/midas_calibrate_v2/notebooks
+cd $MIDAS/packages/midas_calibrate_v2/notebooks
 jupyter lab 01_getting_started.ipynb
 ```
 
