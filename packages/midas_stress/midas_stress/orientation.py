@@ -370,6 +370,29 @@ def misorientation(euler1, euler2, space_group: int):
 def misorientation_om(om1, om2, space_group: int):
     """Misorientation between two orientation matrices.
 
+    Computes ``om1^-1 @ om2``, minimized over the crystal symmetry group
+    (each of ``om1``, ``om2`` is independently reduced to its own
+    fundamental-zone representative first). This is the standard
+    grain-A-vs-grain-B disorientation used across the FF/NF-HEDM pipeline,
+    and its algorithm is verified against a brute-force search over the
+    full symmetry group (see ``dev/verify_e6d26e254fd2/`` for the cubic
+    case).
+
+    This is NOT the same question as "are ``om1`` and ``om2`` two
+    equivalent descriptions of the same misorientation" (e.g. is 60 deg
+    about <111> the same Sigma3 twin as 70.53 deg about <110>). That
+    class-identity check requires symmetrizing the DIFFERENCE from both
+    sides independently (``Si^-1 @ (om1^-1 om2) @ Sj``), a different and
+    more permissive search than the one this function runs. Concretely: a
+    literal 3x3 matrix built as "70.53 deg about <110>" is only zero
+    misorientation away from "60 deg about <111>" for 3 of the 12 signed
+    <110> family members and a real ~38.94 deg (Sigma9) away for the other
+    9 — both are the correct output of THIS function for their exact
+    input matrix. Don't build a test/reference orientation from a
+    symmetry-family label (e.g. "<110>") without pinning the exact signed
+    axis vector, and don't treat a nonzero result here as evidence this
+    function mishandles crystal symmetry.
+
     Parameters
     ----------
     om1, om2 : array-like or torch.Tensor — length 9 or shape (3, 3).
@@ -769,14 +792,29 @@ def _quaternion_product_py(q, r):
     return _normalize_quat(np.array(Q))
 
 
+# Near-degenerate fundamental-zone maxima (e.g. Sigma3) can tie in w to within
+# ~1e-16 — see known-limits.md "Cubic disorientation AXIS is tie-degenerate"
+# (2026-09-03). 1e-9 is ~6 orders of magnitude above that float noise floor
+# (and above the ~1e-15 cos-shift a 1e-13 deg input jitter produces) while
+# staying far below any angular difference this package would ever need to
+# resolve, so it safely groups true ties without merging distinct maxima.
+_FZ_TIE_TOL = 1e-9
+
+
 def _fundamental_zone_py(quat_in, n_sym, sym):
-    max_cos = -10000.0
-    quat_out = np.asarray(quat_in, dtype=np.float64)
-    for i in range(n_sym):
-        qt = _quaternion_product_py(quat_in, sym[i])
-        if max_cos < qt[0]:
-            max_cos = qt[0]
-            quat_out = qt
+    candidates = [_quaternion_product_py(quat_in, sym[i]) for i in range(n_sym)]
+    max_cos = max(qt[0] for qt in candidates)
+    tied = [qt for qt in candidates if max_cos - qt[0] < _FZ_TIE_TOL]
+    # Several symmetry operators can tie (or near-tie) at the same max w,
+    # each giving a different but equally valid symmetry-equivalent axis.
+    # Break the tie deterministically (lexicographic max of the vector part)
+    # so the SAME axis representative comes out regardless of which operator's
+    # floating-point rounding happened to land marginally on top for this
+    # particular input — otherwise two computations of the same physical
+    # misorientation (a re-run, a different code path, a tiny input jitter)
+    # can silently report different <111>-type axis variants for an
+    # identical angle.
+    quat_out = max(tied, key=lambda qt: (qt[1], qt[2], qt[3]))
     return _normalize_quat(quat_out)
 
 

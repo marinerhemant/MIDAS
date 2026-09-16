@@ -114,6 +114,45 @@ class TestMisorientation:
         ang2, _ = misorientation(euler2, euler1, 225)
         np.testing.assert_allclose(ang1, ang2, atol=1e-10)
 
+    def test_sigma3_axis_family_is_not_all_equivalent(self):
+        """misorientation_om(g1, g2) is the disorientation between two literal
+        orientation MATRICES, not a check that g1 and g2 are alternate
+        descriptions of the same misorientation class. A test/reference
+        orientation built from a symmetry-family label like "<110>" without
+        pinning the exact signed axis can land on either side of that
+        distinction.
+
+        Verified (verify claim f83856019621, REFUTED by the statistics lens
+        2026-09-15): with om1 fixed at 60 deg about [1,1,1], building om2 as
+        70.53 deg about each of the 12 signed <110> members gives exactly
+        0 deg for 3 of them and ~38.94 deg (Sigma9) for the other 9 — both
+        are the correct output of THIS function for their exact input, per
+        an independent 576-combination brute force. This test pins that
+        3-vs-9 split so it isn't rediscovered as a "new" bug.
+        """
+        om1 = axis_angle_to_orient_mat([1, 1, 1], 60.0)
+        family_110 = {
+            (a, b, 0) for a in (1, -1) for b in (1, -1)
+        } | {
+            (a, 0, c) for a in (1, -1) for c in (1, -1)
+        } | {
+            (0, b, c) for b in (1, -1) for c in (1, -1)
+        }
+        assert len(family_110) == 12
+        zero_members = {(-1, 0, 1), (0, 1, -1), (1, -1, 0)}
+        nonzero_members = family_110 - zero_members
+        theta = math.degrees(math.acos(1.0 / 3.0))  # exact Sigma3 partner angle
+
+        for member in zero_members:
+            om2 = axis_angle_to_orient_mat(member, theta)
+            ang, _ = misorientation_om(om1, om2, 225)
+            assert math.degrees(ang) == pytest.approx(0.0, abs=1e-6), member
+
+        for member in nonzero_members:
+            om2 = axis_angle_to_orient_mat(member, theta)
+            ang, _ = misorientation_om(om1, om2, 225)
+            assert math.degrees(ang) == pytest.approx(38.9424, abs=1e-3), member
+
 
 class TestFundamentalZone:
     def test_idempotent(self):
