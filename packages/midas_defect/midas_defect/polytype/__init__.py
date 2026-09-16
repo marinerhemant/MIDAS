@@ -5,10 +5,17 @@ discrete-vs-relrod verdict); ``find_satellite_axis`` / ``aggregate_lamella_thick
 (one aggregate L along the measured satellite direction — NOT per-grain/per-variant).
 Deprecated (raise by default): ``polytype_satellite_enhancement`` (voxel-count
 inflation), ``per_grain_lamella_thickness`` (projection artifact). See AUDIT_2026-06-23.md.
+
+``gap_fraction``/``block_structure_factor`` are VALIDATED ESTIMATORS (real synthetic recovery
+tests, real failure-mode tests) for an integrated-gap-fraction fault probability — they are not
+themselves evidence that this route succeeds on any particular real rod. A worked real-data
+attempt, including where and why it stopped short of a trustworthy number, is in
+``notebooks/08_stacking_faults.ipynb``.
 """
 
 from .activated_axis import detect_activated_111_axis
 from .aggregate_thickness import aggregate_lamella_thickness, find_satellite_axis
+from .block_structure_factor import block_f2, cell_f2_00L, slab_atoms
 from .cell_index import (
     NINE_R_SEQUENCE,
     PolytypeCell,
@@ -26,6 +33,20 @@ from .finite_stack import (
     g_111,
     on_axis_ladder,
     slab_intensity,
+)
+from .gap_fraction import (
+    Window,
+    empty_site_sum,
+    f_from_gap_fraction,
+    find_empty_site,
+    g_from_bins,
+    gap_fraction_from_f,
+    gap_fraction_numeric,
+    gap_fraction_window,
+    gaussian_unit_total,
+    ht_density_fn,
+    inject_gaussian,
+    plant_rod,
 )
 from .ladder import SatelliteLadder, build_satellite_ladder, decontaminate_ladder
 from .lamella_thickness import per_grain_lamella_thickness
@@ -69,4 +90,21 @@ __all__ = [
     # modulation-type classifier
     "ModulationFit",
     "classify_modulation",
+    # integrated gap-fraction fault probability
+    "Window",
+    "empty_site_sum",
+    "f_from_gap_fraction",
+    "find_empty_site",
+    "g_from_bins",
+    "gap_fraction_from_f",
+    "gap_fraction_numeric",
+    "gap_fraction_window",
+    "gaussian_unit_total",
+    "ht_density_fn",
+    "inject_gaussian",
+    "plant_rod",
+    # block structure factor (feeds gap_fraction)
+    "block_f2",
+    "cell_f2_00L",
+    "slab_atoms",
 ]

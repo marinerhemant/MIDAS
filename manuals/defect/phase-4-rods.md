@@ -140,9 +140,9 @@ A **finite-stack / Hendricks–Teller fit is prone to local minima** — an α =
 reference sample was self-retracted as exactly that. Sweep the starting point and report the
 landscape, not the converged value alone.
 
-## Turning a node width into a fault probability — four ways it goes wrong
+## Turning a node width into a fault probability — five ways it goes wrong
 
-Every one of these was paid for on La3Ni2O7 (Ruddlesden-Popper n = 2), and three of them
+Every one of these was paid for on La3Ni2O7 (Ruddlesden-Popper n = 2), and four of them
 killed a headline number that had already been written down.
 
 **1. Never deconvolve against a floor measured by a DIFFERENT estimator than the signal.**
@@ -177,11 +177,80 @@ tails alone predicted **136 % of the observed midpoint**, and in 2 of 7 gaps the
 tail exceeded the observation outright. Fit the node lineshapes, extrapolate them to the
 midpoint, subtract, and report a bound.
 
+**5. A background pedestal correlated with domain crowding manufactures width from zero
+faults.** A raster position with more domains sharing the same powder rings degrades
+background subtraction one-sidedly, and a single-component width estimator books that as
+node broadening. On an OLDER La3Ni2O7 pipeline a fault-free SYNTHETIC crystal, pushed
+through this exact kind of estimator, manufactured **63 % of a claimed excess width from
+zero real faults** (`AUDIT_BOTH_SAMPLES.md` sec 26f). Modelling the pedestal fixes the
+number, not the risk: a *local* pedestal window (checked here, five attempts, same
+material) still leaves the fitted pedestal LEVEL correlated with the residual width
+(rho = 0.80) -- the signature of an incomplete correction, not a clean one. Before quoting
+any width-derived number: (a) run the identical pipeline on a fault-free synthetic and
+confirm it returns ~zero, not a small positive number that looks like a modest fault
+probability; (b) if a pedestal is fitted, correlate its level against the residual width
+across nodes -- a real correlation means the pedestal correction is still absorbing
+crowding, not removing it.
+
 **Prior-art gate, specific to this family.** The existence of stacking disorder in
 La3Ni2O7 is published (Chen et al., JACS 146, 3640 (2024), TEM/LAADF, 1313 vs 2222
 polymorphs) and **the odd-L discriminator is published verbatim in that paper**. Run the
 prior-art gate before claiming either as a contribution; what is potentially new is seeing it
 in a bulk diffraction measurement and mapping it per position, not the discriminator.
+
+## Three more routes, each with its own real trap
+
+All three below are validated ESTIMATORS -- real synthetic-recovery tests, real
+failure-mode tests -- not evidence that any particular fault-probability number is
+obtainable on any particular rod. On La3Ni2O7 none of the three has yet produced a
+number that survived `/verify`; what each has produced is documented below as the
+trap it is, not the result it looked like at first.
+
+```python
+from midas_defect.transverse_profile import collect, fit_transverse   # width TRANSVERSE to the rod
+from midas_defect.polytype.gap_fraction import gap_fraction_window    # integrated gap fraction
+from midas_defect.polytype.block_structure_factor import block_f2     # structure factor from a CIF
+```
+
+**Transverse width feeds `transverse_width` above, it does not replace it.**
+`transverse_profile.fit_transverse` is the tool that actually measures the pixel-level
+sigma that `rod_profile.transverse_width` (§ above) then deconvolves against a Bragg-node
+resolution reference -- the two are a pair, not alternatives. On La3Ni2O7 the trend
+(sigma^2 grows with |q|, Spearman rho = 0.845, p = 0.001 across 11 points) is real and
+unrefuted; TWO attempts to convert it into a coherence-length NUMBER were both refuted
+— one was exactly the instrumental resolution restated, the other put 62.5 % of its fit's
+weight on a single point. The trend surviving and the number not surviving are two
+different facts; report them separately.
+
+**The integrated gap fraction needs no floor deconvolution, and has its own background
+trap.** A Hendricks-Teller-faulted rod conserves intensity across one period, so the
+fraction of a period's intensity sitting outside the node window is a function of fault
+probability alone -- `gap_fraction_window`'s whole point. Its `bg_mode` matters: `"temporal"`
+reads the background from OTHER frames at the same pixel, which on real, crowded data left
+a residual that summed over a growing tube radius **never converged** with radius; `"local_t"`
+reads the background from the SAME frames the signal sits in, at a larger transverse offset,
+and fixed that specific mechanism (validated: median recovery 0.995-1.003 of a planted
+amplitude at genuinely empty, rotated-detector-site controls, `find_empty_site`). Fixing the
+background did not, by itself, make a number obtainable -- a genuinely empty test site got
+LESS empty toward the beam (crowding, not a code artefact), and the intensity-to-fault-
+probability conversion needs the actual crystal structure factor at each L bin
+(`block_structure_factor.block_f2`, since `|F_block(L)|^2` can vary by orders of magnitude
+within one period), not the flat approximation a raw sum implies.
+
+**A coherent minority polytype is a different question from random faulting, and needs its
+own detection limit, not a fault probability.** If the alternative to random per-block
+faulting is a discrete second polytype (see the prior-art paragraph above), the test is
+whether a coherent domain's own extra reflections are visible, not how wide a node is.
+Stack the profile around the forbidden positions, inject a synthetic bump at a chosen
+domain thickness, and find the smallest one the same test would have caught -- this gives a
+volume-fraction DETECTION LIMIT, not a measurement, and it has two traps of its own, found
+turning this into a live notebook step on La3Ni2O7: (1) the conversion from intensity to
+volume fraction needs the two polytypes' ACTUAL structure factors -- do not assume they
+scatter equally per unit cell without checking, a published reflection-DENSITY discriminator
+(twice as many allowed L) does not imply equal reflection BRIGHTNESS; (2) bootstrap the
+detection statistic itself before comparing across positions or samples -- on La3Ni2O7 a
+95 % CI of **[0.10, 0.89]** at 15 contributing gaps swallowed a claimed 2x difference between
+two raster positions whole.
 
 ## The Friedel/crossing quartet — four spots per reflection, and how to pair them
 
