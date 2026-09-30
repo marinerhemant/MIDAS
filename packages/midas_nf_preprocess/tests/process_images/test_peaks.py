@@ -413,3 +413,15 @@ def test_find_peaks_auto_temperature_does_not_saturate(gaussian_blob_image):
     sat_fixed = (out_fixed.spot_prob > 0.99).float().mean()
     sat_auto = (out_auto.spot_prob > 0.99).float().mean()
     assert sat_auto < sat_fixed
+
+
+def test_auto_temperature_handles_full_detector_frames():
+    """Regression (2026-09-29): torch.quantile raised 'input tensor is too large' on a dense
+    4600 x 5320 score map (24.5 M nonzero), crashing SpotDetect matched / poisson on 20-ID frames."""
+    import torch
+    from midas_nf_preprocess.process_images.peaks import auto_temperature
+    g = torch.Generator().manual_seed(0)
+    big = torch.rand(4600, 5320, generator=g) + 0.1                 # all nonzero, > 2**24 elements
+    small = big[:1000, :1000]
+    t_big = float(auto_temperature(big)); t_small = float(auto_temperature(small))
+    assert t_big > 0 and abs(t_big - t_small) / t_small < 0.02      # same scale as an exact quantile of a sample

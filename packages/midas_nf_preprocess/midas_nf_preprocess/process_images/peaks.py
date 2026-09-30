@@ -284,6 +284,14 @@ def auto_temperature(
         nonzero = absx[absx > 0]
         if nonzero.numel() == 0:
             return torch.tensor(1.0, device=x.device, dtype=x.dtype)
+        # torch.quantile refuses inputs above 2**24 elements, and a 20-ID frame
+        # (4600 x 5320 = 24.5 M) with a dense score map exceeds that. A
+        # deterministic stride subsample keeps a percentile estimate of the
+        # same scale; the temperature only shapes the soft probability map.
+        max_n = 2 ** 24
+        if nonzero.numel() > max_n:
+            step = -(-nonzero.numel() // max_n)
+            nonzero = nonzero[::step]
         q_val = torch.quantile(nonzero, quantile)
         return torch.clamp(q_val / saturation_factor, min=floor)
 
