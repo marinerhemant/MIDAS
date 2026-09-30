@@ -228,7 +228,15 @@ def correct_wedge_full(
     omega2 = torch.where(diff2_360, -omega2, omega2)
 
     omega_out = torch.where(diff1 < diff2, omega1, omega2)
-    eta_solved = calc_eta_angle_local(k2, k3)
+    # Eta of the wedge-free G, R_z(omega_out) g. The C CorrectWedge
+    # (FitSetupParamsAllZarr.c) computes k2N/k3N for exactly this and then
+    # uses the OBSERVED (k2, k3) instead, leaving an eta error
+    # ~ W tan(theta) / sin(eta) per spot; the refiner's CorrectForOme had the
+    # same slip (grain positions ~440 um off at Wedge = 2 deg). Only reached
+    # for |wedge| >= 1e-10 (the no-op branch below returns first otherwise).
+    s_oo = torch.sin(omega_out * _DEG2RAD)
+    c_oo = torch.cos(omega_out * _DEG2RAD)
+    eta_solved = calc_eta_angle_local(g1 * s_oo + g2 * c_oo, g3)
     sin_eta_s = torch.sin(eta_solved * _DEG2RAD)
     cos_eta_s = torch.cos(eta_solved * _DEG2RAD)
     y_out = -ring_radius_new * sin_eta_s

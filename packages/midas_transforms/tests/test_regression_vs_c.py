@@ -321,16 +321,15 @@ def px_goldens_dir():
 
 @pytest.mark.slow
 def test_merge_pixel_overlap_byte_exact_to_c(tmp_path: Path, px_goldens_dir: Path):
-    """Run pixel-overlap merge against the C goldens generated with
-    UsePixelOverlap=1.
+    """Run the UsePixelOverlap=1 merge (read from the golden zarr) against
+    the C goldens generated with UsePixelOverlap=1.
 
-    On the FF_HEDM/Example dataset the C centroid and C pixel-overlap
-    outputs are byte-identical (peaks are sparse enough that both
-    matchers find the same 20 cluster pairs). Our corrected
-    pixel-overlap algorithm tracks Eta-sort permutations across both
-    arrays — a fix of an indexing bug in the C reference — so on this
-    dataset we should match C output. Synthetic-divergence tests live
-    in `test_merge_pixel_overlap_synthetic` (non-slow).
+    The C output is identical to centroid matching on this dataset, token for
+    token over all 29049 rows, so UsePixelOverlap 1 runs the centroid
+    matcher. Issue #13: this test used to pass only because
+    read_zarr_params dropped UsePixelOverlap; once the flag was read, the
+    overlap-first matcher (now opt-in as UsePixelOverlap 2) gave 28751 rows.
+    See test_merge_pixel_overlap_first_is_opt_in for mode 2.
     """
     from midas_transforms.merge import merge_overlapping_peaks
     from midas_transforms.io import csv as csv_io
@@ -368,6 +367,54 @@ def test_merge_pixel_overlap_byte_exact_to_c(tmp_path: Path, px_goldens_dir: Pat
             "CSV round-trip precision (~1e-4 µm on positions, ~1e-6 on intensities)."
         ),
     )
+
+
+@pytest.mark.slow
+def test_merge_pixel_overlap_merge_groups_match_c(tmp_path: Path, px_goldens_dir: Path):
+    """Same spots merged as in C's MergeMap.csv (as sets of (frame, peak)).
+
+    Only the order of constituents inside a multi-frame spot differs: C
+    lists the newest frame first in all 20 such spots here; Python lists
+    oldest first. Consumers group by MergedSpotID."""
+    from midas_transforms.merge import merge_overlapping_peaks
+
+    zarr_path = px_goldens_dir / "Au_FF_000001_pf.analysis.MIDAS.zip"
+    res = merge_overlapping_peaks(
+        zarr_path=zarr_path,
+        allpeaks_ps_bin=px_goldens_dir / "AllPeaks_PS.bin",
+        allpeaks_px_bin=px_goldens_dir / "AllPeaks_PX.bin",
+        result_folder=tmp_path, out_dir=tmp_path,
+        start_nr=1, end_nr=1440, write=False,
+        device="cpu", dtype="float64",
+    )
+    ref = np.loadtxt(px_goldens_dir / "MergeMap.csv", comments="%", dtype=np.int64)
+
+    def groups(rows):
+        g = {}
+        for sid, fn, pid in rows:
+            g.setdefault(int(sid), set()).add((int(fn), int(pid)))
+        return g
+
+    assert groups(res.merge_map) == groups(ref.tolist())
+
+
+@pytest.mark.slow
+def test_merge_pixel_overlap_first_is_opt_in(tmp_path: Path, px_goldens_dir: Path):
+    """UsePixelOverlap 2 (pixel-overlap-first) is NOT C-compatible: on this
+    dataset it merges 297 extra consecutive-frame pairs (28751 vs 29049 rows).
+    Pinned so a silent change of either mode shows up."""
+    from midas_transforms.merge import merge_overlapping_peaks
+
+    kw = dict(
+        allpeaks_ps_bin=px_goldens_dir / "AllPeaks_PS.bin",
+        allpeaks_px_bin=px_goldens_dir / "AllPeaks_PX.bin",
+        result_folder=tmp_path, out_dir=tmp_path, overlap_length=2.0,
+        nr_pixels=2048, start_nr=1, end_nr=1440, write=False,
+        device="cpu", dtype="float64",
+    )
+    rows = {m: merge_overlapping_peaks(use_pixel_overlap=m, **kw).peaks.shape[0]
+            for m in (0, 1, 2)}
+    assert rows == {0: 29049, 1: 29049, 2: 28751}
 
 
 @pytest.mark.slow

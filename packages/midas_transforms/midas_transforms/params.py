@@ -486,6 +486,7 @@ OPTIONAL_FITSETUP_KEYS_INT = (
     "NPanelsY", "NPanelsZ", "PanelSizeY", "PanelSizeZ",
     "SpaceGroup",
     "DiscModel",
+    "IncludeSaturatedSpots",
 )
 OPTIONAL_FITSETUP_KEYS_STR = (
     "PanelShiftsFile", "ResidualCorrectionMap", "ResultFolder",
@@ -493,6 +494,10 @@ OPTIONAL_FITSETUP_KEYS_STR = (
 OPTIONAL_FITSETUP_KEYS_ARRAY = (
     "BoxSizes", "OmegaRanges", "PanelGapsY", "PanelGapsZ",
 )
+# Keys the cross-frame merge reads from the archive (not fit-setup keys, so
+# kept apart from the lists above; paramstest.txt does not carry them).
+MERGE_KEYS_FLOAT = ("OverlapLength",)
+MERGE_KEYS_INT = ("UsePixelOverlap", "UseMaximaPositions")
 
 
 @dataclass
@@ -623,6 +628,10 @@ class ZarrParams:
     OverlapLength: float = 2.0
     UsePixelOverlap: int = 0
     UseMaximaPositions: int = 0
+    # 0 (default): saturated regions (AllPeaks_PS_sat.bin) stay OUT of
+    # Result_*.csv, so indexing/refinement are unchanged; spots touching them
+    # are flagged ReturnCode -2. 1: they are merged in (flagged) and indexed.
+    IncludeSaturatedSpots: int = 0
 
     # raw passthrough for any keys we didn't enumerate
     raw: Dict[str, Any] = field(default_factory=dict)
@@ -784,6 +793,18 @@ def read_zarr_params(zarr_path: Union[str, Path]) -> ZarrParams:
 
     # Optional scalar ints
     for key in OPTIONAL_FITSETUP_KEYS_INT:
+        v = _read(key, int)
+        if v is not None and len(v) > 0:
+            setattr(p, key, int(v[0]))
+
+    # Frame-merge keys (MergeOverlappingPeaksAllZarr.c reads these from the
+    # same group). Absent -> the dataclass defaults (2.0, 0, 0), so archives
+    # that never carried them merge exactly as before.
+    for key in MERGE_KEYS_FLOAT:
+        v = _read(key, float)
+        if v is not None and len(v) > 0:
+            setattr(p, key, float(v[0]))
+    for key in MERGE_KEYS_INT:
         v = _read(key, int)
         if v is not None and len(v) > 0:
             setattr(p, key, int(v[0]))

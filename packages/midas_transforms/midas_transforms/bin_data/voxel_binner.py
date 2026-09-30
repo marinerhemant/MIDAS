@@ -152,8 +152,12 @@ def _bin_to_data_ndata_scanning(
     n_ring_bins: int,
     n_eta_bins: int,
     n_ome_bins: int,
+    ring_slot_lut: Optional[torch.Tensor] = None,
 ):
     """PF variant of ``_bin_to_data_ndata``: outputs (rowno, scanno) pairs.
+
+    ``ring_slot_lut``: ring number -> compact slot (see
+    ``core._bin_to_data_ndata``); ``None`` keeps the legacy ``ring - 1``.
 
     ``arrays`` is a mutable list ``[out_spot_idx, out_ring, out_ieta,
     out_iome, out_scan_nr]`` that is CLEARED on entry: at multi-1e9 pairs
@@ -181,8 +185,8 @@ def _bin_to_data_ndata_scanning(
     iome_mod = (out_iome % n_ome_bins + n_ome_bins) % n_ome_bins
     del out_iome
 
-    # iRing in C is ``ringnr - 1``; ring-bin axis is [0, HighestRingNo).
-    iring = out_ring - 1
+    # Ring -> slot on the bin table's ring axis (legacy: ``ringnr - 1``).
+    iring = bin_core._ring_to_slot(out_ring, ring_slot_lut)
     del out_ring
 
     # Drop entries whose ring index is out of range. (Defensive; ring_nr is
@@ -435,7 +439,9 @@ def bin_data_scanning(
 
     # Now bin spots into (ring, iEta, iOme) bins for the Data.bin index.
     ring_radii_t = _build_ring_radii(paramstest).to(device=dev, dtype=dt)
-    n_ring_bins = paramstest.highest_ring_no
+    # Compact ring axis: one slot per configured ring (RingSlots.csv).
+    ring_slots, slot_lut = bin_core.compact_ring_slots(paramstest)
+    n_ring_bins = len(ring_slots)
     n_eta_bins = math.ceil(360.0 / paramstest.EtaBinSize)
     n_ome_bins = math.ceil(360.0 / paramstest.OmeBinSize)
 
@@ -476,6 +482,7 @@ def bin_data_scanning(
         _data_r, _ndata_r = _bin_to_data_ndata_scanning(
             _pair_arrays,
             n_ring_bins=n_ring_bins, n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+            ring_slot_lut=slot_lut,
         )
         counts_total += _ndata_r[:, 0]
         del _ndata_r
@@ -496,6 +503,7 @@ def bin_data_scanning(
             data_pairs.detach().cpu().numpy().astype(np.uint64),
             ndata.detach().cpu().numpy().astype(np.uint64),
         )
+        bio.write_ring_slots_csv(out_dir / bio.RING_SLOTS_FILENAME, ring_slots)
 
     return VoxelBinDataResult(
         spots=spots_full_t, extra_info=extra_t,
@@ -503,7 +511,7 @@ def bin_data_scanning(
         n_ring_bins=n_ring_bins, n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
         scan_nr=scan_nrs_t, scan_positions=scan_positions,
         id_map=id_map, n_scans=n_scans,
-        paramstest=paramstest,
+        paramstest=paramstest, ring_slots=ring_slots,
     )
 
 

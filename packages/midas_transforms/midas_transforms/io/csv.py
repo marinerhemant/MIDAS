@@ -181,7 +181,10 @@ INPUTALL_EXTRA_HEADER = (
 #     silently pairs random spots without this bridge.
 #   col 19 ReturnCode — peakfit per-peak returnCode (sticky-first-nonzero
 #     over merged constituents; 0 = all constituents fit OK, -1 = unknown/
-#     legacy input).
+#     legacy input, -2 = SATURATED: the spot contains or touches a region
+#     with a pixel over UpperBoundThreshold, so its IntegratedIntensity is
+#     unreliable -- exclude it from any intensity analysis; see
+#     :func:`saturated_mask`).
 # The multi-detector pipeline may append one more trailing DetID column
 # (cross_det_merge). Binary strides (Spots.bin / ExtraInfo.bin) are
 # UNTOUCHED — the appended cols never reach the binaries.
@@ -206,6 +209,17 @@ def _load_inputall_extra_any(path: Union[str, Path]) -> np.ndarray:
             "(legacy [+DetID]) or 20/21 (appended [+DetID])"
         )
     return arr
+
+
+SATURATED_RETURN_CODE = -2
+
+
+def saturated_mask(return_code: np.ndarray) -> np.ndarray:
+    """True where a spot's ReturnCode marks saturation (intensity unreliable).
+
+    Works on the ReturnCode column of Result_* (col 17), Radius_* (col 25)
+    and InputAllExtraInfoFittingAll (col 19)."""
+    return np.asarray(return_code) == SATURATED_RETURN_CODE
 
 
 def read_inputall_extra_csv(path: Union[str, Path]) -> np.ndarray:
@@ -277,3 +291,160 @@ def read_hkls_csv(path: Union[str, Path]) -> np.ndarray:
     We return the raw float matrix; consumers index by column.
     """
     return np.loadtxt(path, skiprows=1, dtype=np.float64)
+
+
+# --- Relative peak-fit misfit (RelFitRMSE) -----------------------------------
+
+
+def _read_ws_columns(path) -> dict:
+    """A whitespace-separated table with a one-line header, as ``{name: float64 array}``.
+
+    numpy only: pandas is not a dependency of this package.
+    """
+    with open(path) as f:
+        names = f.readline().split()
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)      # an empty table is legitimate
+        arr = np.loadtxt(path, skiprows=1, dtype=np.float64, ndmin=2)
+    if arr.size == 0:
+        return {n: np.empty(0) for n in names}
+    return {n: arr[:, i] for i, n in enumerate(names) if i < arr.shape[1]}
+
+
+def load_rel_fit_rmse(run_dir):
+    """Relative peak-fit misfit per SpotID: the merged spot's ``FitRMSE / IMax``.
+
+    ``InputAllExtraInfoFittingAll.csv`` carries each spot's ``OrigSpotID``
+    (appended col 18) and ``Radius_StartNr_*.csv`` the merged spot's ``FitRMSE``
+    and ``IMax`` under the same ``OrigSpotID``. That link reproduces
+    ``IntegratedIntensity`` exactly across the two files; their ``SpotID``
+    columns are NOT the same numbering.
+
+    Returns ``(spot_ids, rel)`` sorted by SpotID, or ``None`` when the run lacks
+    the ``OrigSpotID`` column or a ``Radius_*.csv`` file (older runs), so callers
+    write NaN rather than an invented value. ``IMax <= 0`` gives NaN.
+
+    Why relative: the absolute ``FitRMSE`` grows with brightness. On 20-ID-E
+    Fe9Cr the relative value carried the whole ~2x excess of the post-fit radial
+    residual over a steel control.
+    """
+    import glob as _glob
+    rd = Path(run_dir)
+    ia_p = rd / "InputAllExtraInfoFittingAll.csv"
+    rad_ps = sorted(_glob.glob(str(rd / "Radius_StartNr_*.csv")))
+    if not ia_p.exists() or not rad_ps:
+        return None
+    ia = _read_ws_columns(ia_p)
+    if "OrigSpotID" not in ia or "SpotID" not in ia:
+        return None
+    rads = [_read_ws_columns(q) for q in rad_ps]
+    need = ("OrigSpotID", "FitRMSE", "IMax")
+    if not all(all(k in r for k in need) for r in rads):
+        return None
+    orig = np.concatenate([r["OrigSpotID"] for r in rads]).astype(np.int64)
+    fit_all = np.concatenate([r["FitRMSE"] for r in rads])
+    imax_all = np.concatenate([r["IMax"] for r in rads])
+    # First occurrence of each OrigSpotID wins, then a LEFT join from InputAll's rows.
+    orig_u, first = np.unique(orig, return_index=True)
+    fit_u, imax_u = fit_all[first], imax_all[first]
+    key = ia["OrigSpotID"].astype(np.int64)
+    if orig_u.size:
+        pos = np.minimum(np.searchsorted(orig_u, key), orig_u.size - 1)
+        hit = orig_u[pos] == key
+        imax = np.where(hit, imax_u[pos], np.nan)
+        fit = np.where(hit, fit_u[pos], np.nan)
+    else:
+        imax = fit = np.full(key.shape, np.nan)
+    rel = np.where(imax > 0, fit / np.where(imax > 0, imax, 1.0), np.nan)
+    sid = ia["SpotID"].astype(np.int64)
+    o = np.argsort(sid, kind="stable")
+    return sid[o], rel[o]
+
+
+def rel_fit_rmse_for(spot_ids, table) -> np.ndarray:
+    """Look up :func:`load_rel_fit_rmse` values for ``spot_ids`` (NaN when absent)."""
+    q = np.asarray(spot_ids, dtype=np.int64)
+    out = np.full(q.shape, np.nan)
+    if table is None or len(table[0]) == 0:
+        return out
+    sid, rel = table
+    k = np.clip(np.searchsorted(sid, q), 0, len(sid) - 1)
+    hit = sid[k] == q
+    out[hit] = rel[k[hit]]
+    return out
+
+
+def write_rel_fit_rmse_bin(layer_dir, out_name: str = "RelFitRMSE.bin"):
+    """Write ``<layer_dir>/RelFitRMSE.bin``: one float64 per ``ExtraInfo.bin`` row.
+
+    Row ``r`` holds the relative misfit of the spot whose SpotID is in
+    ``ExtraInfo.bin`` row ``r`` (col 4); NaN where unknown. Read by the c-omp
+    refiner (``midas_fit_grain`` ``FitUnified.c``) when ``RelFitRMSEWeightR0`` is
+    set, which weights each spot ``1 / (1 + rel / r0)`` in its stage objectives.
+    Raises when the run has no ``OrigSpotID`` / ``Radius_*.csv`` link: a weight
+    file of all-NaN would silently switch the weighting off.
+    Returns ``(path, n_rows, n_known)``.
+    """
+    rd = Path(layer_dir)
+    ei = np.fromfile(rd / "ExtraInfo.bin", dtype=np.float64)
+    if ei.size % 16:
+        raise ValueError(f"{rd / 'ExtraInfo.bin'}: size is not a multiple of 16 doubles")
+    ei = ei.reshape(-1, 16)
+    table = load_rel_fit_rmse(rd)
+    if table is None:
+        raise FileNotFoundError(
+            f"{rd}: no OrigSpotID column in InputAllExtraInfoFittingAll.csv or no "
+            f"Radius_StartNr_*.csv -- cannot compute RelFitRMSE")
+    rel = rel_fit_rmse_for(ei[:, 4].astype(np.int64), table)
+    out = rd / out_name
+    rel.astype("<f8").tofile(out)
+    return out, int(len(rel)), int(np.isfinite(rel).sum())
+
+
+def spot_weights_from_noise_model(rel, rel_knots, sigma_rad, sigma_tan, sigma_ome) -> np.ndarray:
+    """Per-spot direction-dependent weights ``(n, 3)`` = (w_rad, w_tan, w_ome) from a noise model.
+
+    The model is a table of measured post-fit residual scatter against the relative
+    peak-fit misfit (knots ``rel_knots``, one sigma column per direction). Each curve
+    is made non-decreasing (cumulative max) so a noisy dip cannot give a weight above
+    1, then ``w_dir = sigma_dir(first knot) / sigma_dir(rel)``, linearly interpolated
+    and held flat outside the knots. A spot with unknown ``rel`` gets weight 1.
+    Weights are relative: a well-fitted spot keeps 1 in every direction, so only the
+    growth of each direction's noise with misfit changes the refiner's objective.
+    """
+    rel = np.asarray(rel, dtype=np.float64)
+    k = np.asarray(rel_knots, dtype=np.float64)
+    o = np.argsort(k)
+    out = np.ones((rel.size, 3))
+    ok = np.isfinite(rel)
+    for c, s in enumerate((sigma_rad, sigma_tan, sigma_ome)):
+        s = np.maximum.accumulate(np.asarray(s, dtype=np.float64)[o])
+        out[ok, c] = s[0] / np.interp(rel[ok], k[o], s)
+    return out
+
+
+def write_spot_weights_bin(layer_dir, rel_knots, sigma_rad, sigma_tan, sigma_ome,
+                          out_name: str = "SpotWeights.bin"):
+    """Write ``<layer_dir>/SpotWeights.bin``: 3 float64 (w_rad, w_tan, w_ome) per
+    ``ExtraInfo.bin`` row, mapped by the row's SpotID (col 4), for the c-omp
+    refiner's ``SpotWeightsDirectional`` option. Weights from
+    :func:`spot_weights_from_noise_model` applied to each spot's RelFitRMSE.
+    Raises when the run has no OrigSpotID / Radius link (as write_rel_fit_rmse_bin).
+    Returns ``(path, n_rows, n_with_rel)``.
+    """
+    rd = Path(layer_dir)
+    ei = np.fromfile(rd / "ExtraInfo.bin", dtype=np.float64)
+    if ei.size % 16:
+        raise ValueError(f"{rd / 'ExtraInfo.bin'}: size is not a multiple of 16 doubles")
+    ei = ei.reshape(-1, 16)
+    table = load_rel_fit_rmse(rd)
+    if table is None:
+        raise FileNotFoundError(
+            f"{rd}: no OrigSpotID column in InputAllExtraInfoFittingAll.csv or no "
+            f"Radius_StartNr_*.csv -- cannot compute spot weights")
+    rel = rel_fit_rmse_for(ei[:, 4].astype(np.int64), table)
+    w = spot_weights_from_noise_model(rel, rel_knots, sigma_rad, sigma_tan, sigma_ome)
+    out = rd / out_name
+    w.astype("<f8").tofile(out)
+    return out, int(len(rel)), int(np.isfinite(rel).sum())

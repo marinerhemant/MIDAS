@@ -30,6 +30,13 @@ the C output. Layouts (from ``SaveBinData.c:170-330`` and
 - ``positions.csv`` (PF sidecar, C-compat): one Y value per line (one per
   scan). Kept alongside ``voxel_scan_pos.bin`` because the legacy C
   indexer reads it directly.
+- ``RingSlots.csv`` (sidecar of ``nData.bin``, always written with it):
+  header ``RingNr Slot`` then one ``<ring> <slot>`` pair per line. The
+  ``n_ring`` axis of ``nData.bin`` is a SLOT axis, one slab per ring in the
+  configured ring set (paramstest ``RingNumbers``), sorted by ring number;
+  ``pos = slot * n_eta * n_ome + iEta * n_ome + iOme``. Readers that find no
+  sidecar use the legacy ``slot = RingNr - 1`` layout. For a ring set that
+  is exactly 1..N the two layouts are the same bytes.
 """
 
 from __future__ import annotations
@@ -117,6 +124,68 @@ def read_data_bin_scanning(path: Union[str, Path]) -> np.ndarray:
 def read_ndata_bin_scanning(path: Union[str, Path]) -> np.ndarray:
     """Read PF-mode ``nData.bin`` as a (M, 2) uint64 ``(count, offset)`` array."""
     return np.fromfile(path, dtype=np.uint64).reshape(-1, 2)
+
+
+# --- RingSlots.csv: ring -> slot map of the nData.bin ring axis -----------
+
+RING_SLOTS_FILENAME = "RingSlots.csv"
+RING_SLOTS_MAX_RING = 500   # MAX_N_RINGS in the C indexer / refiner
+
+
+def ring_slots_for(ring_numbers) -> list:
+    """The compact slot order: sorted unique configured ring numbers.
+
+    The authoritative ring set is paramstest ``RingNumbers`` (the rings the
+    binner is configured to bin). Slot ``s`` holds ring ``ring_slots[s]``.
+    Ring numbers outside ``[1, 500)`` cannot be addressed by the C readers
+    and are dropped (the binner never bins them either).
+    """
+    return sorted({int(r) for r in ring_numbers
+                   if 1 <= int(r) < RING_SLOTS_MAX_RING})
+
+
+def ring_slot_lut(ring_slots, size: int = RING_SLOTS_MAX_RING) -> np.ndarray:
+    """int64 array indexed by ring number: slot, or -1 for no slot."""
+    lut = np.full(size, -1, dtype=np.int64)
+    for s, r in enumerate(ring_slots):
+        lut[int(r)] = s
+    return lut
+
+
+def write_ring_slots_csv(path: Union[str, Path], ring_slots) -> None:
+    """Write the ``RingSlots.csv`` sidecar (header + ``RingNr Slot`` rows)."""
+    lines = ["RingNr Slot"] + [f"{int(r)} {s}" for s, r in enumerate(ring_slots)]
+    Path(path).write_text("\n".join(lines) + "\n")
+
+
+def read_ring_slots_csv(path: Union[str, Path]) -> list:
+    """Read ``RingSlots.csv``; returns ring numbers in slot order.
+
+    Raises ``ValueError`` on a malformed file (bad header, duplicate ring or
+    slot, slots not exactly ``0..N-1``) — a guessed layout mis-addresses
+    every bin.
+    """
+    text = Path(path).read_text().splitlines()
+    if not text or not text[0].startswith("RingNr"):
+        raise ValueError(f"{path}: first line must be the header 'RingNr Slot'")
+    by_slot = {}
+    seen_rings = set()
+    for i, ln in enumerate(text[1:], start=2):
+        if not ln.strip():
+            continue
+        parts = ln.split()
+        if len(parts) < 2:
+            raise ValueError(f"{path} line {i}: expected 'RingNr Slot'")
+        r, s = int(parts[0]), int(parts[1])
+        if not (1 <= r < RING_SLOTS_MAX_RING):
+            raise ValueError(f"{path} line {i}: ring {r} out of range")
+        if r in seen_rings or s in by_slot:
+            raise ValueError(f"{path} line {i}: duplicate ring {r} or slot {s}")
+        seen_rings.add(r)
+        by_slot[s] = r
+    if not by_slot or sorted(by_slot) != list(range(len(by_slot))):
+        raise ValueError(f"{path}: slots must be exactly 0..N-1, got {sorted(by_slot)}")
+    return [by_slot[s] for s in range(len(by_slot))]
 
 
 # --- Voxel scan-position sidecar (PF mode only) ---------------------------

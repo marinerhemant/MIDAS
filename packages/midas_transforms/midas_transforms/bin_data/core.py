@@ -64,10 +64,12 @@ class BinDataResult:
     extra_info: torch.Tensor                   # (N, 16) float64
     data: Optional[torch.Tensor] = None        # (T,) int32 spot rows (in-mem)
     ndata: Optional[torch.Tensor] = None       # (M, 2) int32 (count, offset) (in-mem)
-    n_ring_bins: int = 0
+    n_ring_bins: int = 0                       # number of ring SLOTS in ndata
     n_eta_bins: int = 0
     n_ome_bins: int = 0
     paramstest: Optional[ParamsTest] = field(default=None)
+    # Ring number held by each slot of the ndata ring axis (RingSlots.csv).
+    ring_slots: Optional[list] = None
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +284,27 @@ def _bin_assignment(
     return out_spot_idx, out_ring, out_ieta, out_iome
 
 
+def _ring_to_slot(out_ring: torch.Tensor,
+                  ring_slot_lut: Optional[torch.Tensor]) -> torch.Tensor:
+    """Ring number -> slot on the bin table's ring axis (-1 = no slot).
+
+    Legacy (``ring_slot_lut is None``): C's ``iRing = ringnr - 1`` on a
+    ``[0, HighestRingNo)`` axis. Compact: the ``RingSlots.csv`` map.
+    """
+    if ring_slot_lut is None:
+        return out_ring - 1
+    lut = ring_slot_lut.to(device=out_ring.device, dtype=torch.int64)
+    in_range = (out_ring >= 0) & (out_ring < lut.shape[0])
+    return torch.where(in_range, lut[out_ring.clamp(0, lut.shape[0] - 1)],
+                       torch.full_like(out_ring, -1))
+
+
+def compact_ring_slots(paramstest: ParamsTest):
+    """(ring_slots, lut) for the compact layout of this paramstest's rings."""
+    slots = bio.ring_slots_for(paramstest.RingNumbers)
+    return slots, torch.from_numpy(bio.ring_slot_lut(slots))
+
+
 def _bin_to_data_ndata(
     out_spot_idx: torch.Tensor,
     out_ring: torch.Tensor,
@@ -290,11 +313,16 @@ def _bin_to_data_ndata(
     n_ring_bins: int,
     n_eta_bins: int,
     n_ome_bins: int,
+    ring_slot_lut: Optional[torch.Tensor] = None,
 ):
     """Convert per-(spot, eta, ome) triples to ``(Data, nData)`` arrays.
 
     Layout matches ``SaveBinData.c:308-322`` — ring-major, eta-major, ome-major.
     Bins wrap modulo n_eta / n_ome.
+
+    ``ring_slot_lut`` (int64, indexed by ring number, -1 = no slot) maps a
+    ring to its slot on the compact ring axis (``n_ring_bins`` = number of
+    slots). ``None`` keeps the legacy ``slot = ring - 1``.
     """
     device = out_spot_idx.device
 
@@ -308,8 +336,7 @@ def _bin_to_data_ndata(
     iome_mod = (out_iome % n_ome_bins + n_ome_bins) % n_ome_bins
     del out_iome
 
-    # iRing in C is `ringnr - 1`; ring-bin axis is [0, HighestRingNo).
-    iring = out_ring - 1
+    iring = _ring_to_slot(out_ring, ring_slot_lut)
     del out_ring
 
     # Drop entries whose ring index is out of range. (Defensive; ring_nr is
@@ -506,8 +533,11 @@ def bin_data(
             paramstest=paramstest,
         )
 
-    # Determine bin counts.
-    n_ring_bins = paramstest.highest_ring_no
+    # Determine bin counts. The ring axis is compact: one slot per configured
+    # ring (RingSlots.csv), not one per ring number up to the highest. For
+    # rings exactly 1..N this is the legacy layout byte for byte.
+    ring_slots, slot_lut = compact_ring_slots(paramstest)
+    n_ring_bins = len(ring_slots)
     n_eta_bins = math.ceil(360.0 / paramstest.EtaBinSize)
     n_ome_bins = math.ceil(360.0 / paramstest.OmeBinSize)
 
@@ -523,6 +553,7 @@ def bin_data(
     data, ndata = _bin_to_data_ndata(
         out_spot_idx, out_ring, out_ieta, out_iome,
         n_ring_bins=n_ring_bins, n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
+        ring_slot_lut=slot_lut,
     )
 
     if write:
@@ -537,6 +568,9 @@ def bin_data(
             out_dir / "Data.bin", out_dir / "nData.bin",
             data_pairs, ndata_np,
         )
+        # The ring axis map; always written with nData.bin so readers can
+        # tell the compact layout from a legacy (RingNr - 1) table.
+        bio.write_ring_slots_csv(out_dir / bio.RING_SLOTS_FILENAME, ring_slots)
         # Always emit positions.csv (single line "0.0" for FF). The unified
         # midas_indexer auto-detects mode from this file's row count.
         positions_path = out_dir / "positions.csv"
@@ -547,5 +581,5 @@ def bin_data(
         spots=spots_out, extra_info=extra_out,
         data=data, ndata=ndata,
         n_ring_bins=n_ring_bins, n_eta_bins=n_eta_bins, n_ome_bins=n_ome_bins,
-        paramstest=paramstest,
+        paramstest=paramstest, ring_slots=ring_slots,
     )

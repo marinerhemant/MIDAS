@@ -62,6 +62,11 @@ class MergeResult:
     peaks: torch.Tensor                            # (N, 18) — Result_*.csv layout (17 legacy + ReturnCode)
     merge_map: List[Tuple[int, int, int]] = field(default_factory=list)
     # Each tuple: (merged_spot_id, frame_nr, original_peak_id)
+    # Saturated reflections merged among themselves ((M, 18), ReturnCode -2),
+    # or None when peakfit recorded no saturation / predates recording it.
+    saturated: Optional[np.ndarray] = None
+    # Rows of ``peaks`` with ReturnCode -2 (contain / touch saturation).
+    n_saturated_flagged: int = 0
 
 
 # AllPeaks_PS.bin column layout (from PeaksFittingConsolidatedIO.h:31-44).
@@ -435,7 +440,7 @@ def _finalise_row(
     return out
 
 
-def _merge_frames(
+def _merge_core(
     frames: List[np.ndarray],
     *,
     overlap_length: float,
@@ -443,8 +448,10 @@ def _merge_frames(
     skip_frame: int = 0,
     pixel_frames: Optional[List[List[np.ndarray]]] = None,
     nr_pixels: int = 0,
-) -> Tuple[np.ndarray, List[Tuple[int, int, int]]]:
-    """Frame-by-frame merge. Returns (Result_csv_array, merge_map).
+) -> Tuple[np.ndarray, List[Tuple[int, int, int]], List[List[Tuple[int, int]]], List[np.ndarray]]:
+    """Frame-by-frame merge. Returns ``(Result_csv_array, merge_map,
+    constituents_per_row, processed_frames)``; the last two let the
+    saturation pass look up every merged spot's per-frame members.
 
     If ``pixel_frames`` is provided (and ``nr_pixels > 0``), pixel-overlap
     matching is used per frame; otherwise centroid-distance.
@@ -455,7 +462,7 @@ def _merge_frames(
     ``proc[fi][j]`` and ``pix[fi][j]`` correspond.
     """
     if not frames:
-        return np.empty((0, 18), dtype=np.float64), []
+        return np.empty((0, 18), dtype=np.float64), [], [], []
 
     # The C code does `EndNr -= skipFrame` then iterates [StartNr, EndNr];
     # we mirror by truncating the frame list.
@@ -464,7 +471,7 @@ def _merge_frames(
         if pixel_frames is not None:
             pixel_frames = pixel_frames[: max(len(pixel_frames) - skip_frame, 0)]
     if not frames:
-        return np.empty((0, 18), dtype=np.float64), []
+        return np.empty((0, 18), dtype=np.float64), [], [], []
 
     use_pixel_overlap = pixel_frames is not None and nr_pixels > 0
 
@@ -485,11 +492,12 @@ def _merge_frames(
     while first < len(proc) and proc[first].shape[0] == 0:
         first += 1
     if first >= len(proc):
-        return np.empty((0, 18), dtype=np.float64), []
+        return np.empty((0, 18), dtype=np.float64), [], [], proc
 
     cur, constituents = _seed_current_from_frame(proc[first], frame_nr=first + 1)
     cur_pixels: List[np.ndarray] = list(pix[first]) if use_pixel_overlap else []
     finalised: List[np.ndarray] = []
+    final_cons: List[List[Tuple[int, int]]] = []
     merge_map: List[Tuple[int, int, int]] = []
     spot_id_nr = 1
 
@@ -503,6 +511,7 @@ def _merge_frames(
             # No new peaks this frame: every current row finalises.
             for i in range(cur.shape[0]):
                 finalised.append(_finalise_row(cur[i], spot_id_nr))
+                final_cons.append(constituents[i])
                 for (fn, pid) in constituents[i]:
                     merge_map.append((spot_id_nr, fn, pid))
                 spot_id_nr += 1
@@ -511,9 +520,9 @@ def _merge_frames(
             cur_pixels = []
             continue
 
-        # Choose matcher: pixel-overlap when both sides have pixel data,
-        # else centroid distance (mirrors C's ``if (UsePixelOverlap &&
-        # nCurPx > 0 && nNewPx > 0)`` branch).
+        # Choose matcher: pixel-overlap-first when pixel data was supplied
+        # (only for UsePixelOverlap 2 via merge_overlapping_peaks) and both
+        # sides have pixels, else centroid distance.
         if use_pixel_overlap and len(cur_pixels) > 0 and new_pix is not None and len(new_pix) > 0:
             best_for_cur, matched = _pixel_overlap_match(
                 cur_pixels, new_pix, nr_pixels,
@@ -535,6 +544,7 @@ def _merge_frames(
         if unmatched_cur.any():
             for i in np.flatnonzero(unmatched_cur):
                 finalised.append(_finalise_row(cur[i], spot_id_nr))
+                final_cons.append(constituents[i])
                 for (fn, pid) in constituents[i]:
                     merge_map.append((spot_id_nr, fn, pid))
                 spot_id_nr += 1
@@ -572,13 +582,254 @@ def _merge_frames(
     # Final flush: every remaining cur row gets a SpotIDNr and is written.
     for i in range(cur.shape[0]):
         finalised.append(_finalise_row(cur[i], spot_id_nr))
+        final_cons.append(constituents[i])
         for (fn, pid) in constituents[i]:
             merge_map.append((spot_id_nr, fn, pid))
         spot_id_nr += 1
 
     if not finalised:
-        return np.empty((0, 18), dtype=np.float64), []
-    return np.stack(finalised, axis=0), merge_map
+        return np.empty((0, 18), dtype=np.float64), [], [], proc
+    return np.stack(finalised, axis=0), merge_map, final_cons, proc
+
+
+# ---------------------------------------------------------------------------
+# Saturated regions
+# ---------------------------------------------------------------------------
+#
+# midas-peakfit does not fit a region with a pixel over IntSat. It used to drop
+# it silently; it now writes it (one intensity-weighted-centroid row, returnCode
+# -2) to the sibling ``AllPeaks_PS_sat.bin``, leaving ``AllPeaks_PS.bin``
+# byte-identical. What went wrong before: the faint edges of a saturated
+# multi-frame reflection, in the unsaturated frames around its core, survived
+# as tiny UNFLAGGED spots and grain matching accepted them as the reflection
+# (AlON 1-ID 2026-09-22: 4.5 % of large-grain spots, ~30x too faint, and alone
+# a -0.4 slope of log(I/LP) vs log L).
+#
+# "Touches": a spot constituent in frame f lies within ``r_sat + OverlapLength``
+# px of a saturated region's centroid in frame f-1, f or f+1, with
+# ``r_sat = sqrt(NrPx / pi)`` the region's equivalent-disc radius.
+
+SATURATED_RETURN_CODE = -2.0      # == midas_peakfit.seeds.SATURATED_RETURN_CODE
+
+
+def _unique_sat_ids(frames: List[np.ndarray], sat_frames: List[np.ndarray]) -> List[np.ndarray]:
+    """Copy of ``sat_frames`` with returnCode forced to -2 and SpotIDs that do
+    not collide with the same frame's fitted peaks (peakfit already writes them
+    that way; this keeps hand-built / in-memory inputs honest)."""
+    out = []
+    for fi, s in enumerate(sat_frames):
+        s = np.array(s, dtype=np.float64, copy=True).reshape(-1, N_PEAK_COLS)
+        if s.shape[0]:
+            s[:, COL_RETCODE] = SATURATED_RETURN_CODE
+            f = frames[fi] if fi < len(frames) else np.zeros((0, N_PEAK_COLS))
+            if f.shape[0] and np.isin(s[:, COL_SPOTID], f[:, COL_SPOTID]).any():
+                s[:, COL_SPOTID] = f[:, COL_SPOTID].max() + 1 + np.arange(s.shape[0])
+        out.append(s)
+    return out
+
+
+def _sat_by_frame(sat_proc: List[np.ndarray]):
+    """Per-frame (Y, Z, r_sat) arrays of saturated centroids (0-based index)."""
+    return [
+        (s[:, COL_YCEN], s[:, COL_ZCEN], np.sqrt(np.maximum(s[:, COL_NRPX], 1.0) / math.pi))
+        for s in sat_proc
+    ]
+
+
+def _row_lookup(proc: List[np.ndarray]):
+    """``lookup[fi][spot_id] -> row`` over the processed frames."""
+    return [{int(r[COL_SPOTID]): r for r in f} for f in proc]
+
+
+def _touching_sat(cons, lookup, sat_idx, margin: float) -> List[Tuple[int, int]]:
+    """Saturated regions ``(frame_index, k)`` touched by any constituent."""
+    hits = []
+    n = len(sat_idx)
+    for (frame_nr, pid) in cons:
+        fi = frame_nr - 1
+        row = lookup[fi].get(int(pid))
+        if row is None:
+            continue
+        y, z = row[COL_YCEN], row[COL_ZCEN]
+        for fj in (fi - 1, fi, fi + 1):
+            if fj < 0 or fj >= n:
+                continue
+            sy, sz, sr = sat_idx[fj]
+            if sy.size == 0:
+                continue
+            d = np.hypot(sy - y, sz - z)
+            for k in np.flatnonzero(d <= sr + margin):
+                hits.append((fj, int(k)))
+    return hits
+
+
+def _flag_touching(out, cons_rows, proc, sat_proc, margin) -> np.ndarray:
+    """Flag mode: set ReturnCode = -2 on every merged spot touching saturation."""
+    out = out.copy()
+    lookup = _row_lookup(proc)
+    sat_idx = _sat_by_frame(sat_proc)
+    for i, cons in enumerate(cons_rows):
+        if _touching_sat(cons, lookup, sat_idx, margin):
+            out[i, 17] = SATURATED_RETURN_CODE
+    return out
+
+
+def _collapse_saturated(out, merge_map, cons_rows, proc, margin):
+    """Include mode: fold every merged spot that contains or touches a
+    saturated region into ONE flagged spot per connected saturated blob.
+
+    ``proc`` holds fitted and saturated rows together (saturated ones carry
+    returnCode -2). Members are re-accumulated from their per-frame rows in
+    frame order (same arithmetic as the merge itself), then SpotIDs and the
+    merge map are renumbered 1..N in first-member order.
+    """
+    n = out.shape[0]
+    if n == 0:
+        return out, merge_map
+    lookup = _row_lookup(proc)
+    sat_proc = [f[f[:, COL_RETCODE] == SATURATED_RETURN_CODE] if f.shape[0] else f for f in proc]
+    sat_idx = _sat_by_frame(sat_proc)
+    # (frame_index, k) of each saturated region -> the merged spot holding it
+    owner = {}
+    for i, cons in enumerate(cons_rows):
+        for (frame_nr, pid) in cons:
+            fi = frame_nr - 1
+            row = lookup[fi].get(int(pid))
+            if row is not None and row[COL_RETCODE] == SATURATED_RETURN_CODE:
+                k = int(np.flatnonzero(sat_proc[fi][:, COL_SPOTID] == pid)[0])
+                owner[(fi, k)] = i
+    if not owner:
+        return out, merge_map
+
+    parent = list(range(n))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for i, cons in enumerate(cons_rows):
+        for hit in _touching_sat(cons, lookup, sat_idx, margin):
+            j = owner.get(hit)
+            if j is not None:
+                ra, rb = find(i), find(j)
+                if ra != rb:
+                    parent[max(ra, rb)] = min(ra, rb)
+    groups = {}
+    for i in range(n):
+        groups.setdefault(find(i), []).append(i)
+    sat_members = set(owner.values())
+
+    rows, new_map = [], []
+    for root in sorted(groups):
+        members = groups[root]
+        if not any(m in sat_members for m in members):
+            assert len(members) == 1
+            cons = cons_rows[members[0]]
+            r = out[members[0]].copy()
+        else:
+            cons = sorted((c for m in members for c in cons_rows[m]), key=lambda c: (c[0], c[1]))
+            first = lookup[cons[0][0] - 1][int(cons[0][1])]
+            cur, _ = _seed_current_from_frame(first[None, :], frame_nr=cons[0][0])
+            for (frame_nr, pid) in cons[1:]:
+                _accumulate_match(cur[0], lookup[frame_nr - 1][int(pid)])
+            r = _finalise_row(cur[0], 0)
+            r[17] = SATURATED_RETURN_CODE
+        sid = len(rows) + 1
+        r[0] = sid
+        rows.append(r)
+        new_map.extend((sid, fn, pid) for (fn, pid) in cons)
+    return np.stack(rows, axis=0), new_map
+
+
+def _merge_frames(
+    frames: List[np.ndarray],
+    *,
+    overlap_length: float,
+    use_maxima_positions: bool = False,
+    skip_frame: int = 0,
+    pixel_frames: Optional[List[List[np.ndarray]]] = None,
+    nr_pixels: int = 0,
+    sat_frames: Optional[List[np.ndarray]] = None,
+    sat_pixel_frames: Optional[List[List[np.ndarray]]] = None,
+    include_saturated: bool = False,
+) -> Tuple[np.ndarray, List[Tuple[int, int, int]]]:
+    """Frame-by-frame merge. Returns (Result_csv_array, merge_map).
+
+    Without ``sat_frames`` (or with no saturated rows in them) this is exactly
+    the legacy C-parity merge.
+
+    With saturated rows (``AllPeaks_PS_sat.bin``):
+
+    * ``include_saturated=False`` (default, ``IncludeSaturatedSpots 0``): the
+      merge runs on the fitted peaks ONLY, so every row, position and SpotID is
+      identical to before -- indexing and refinement see exactly the same
+      spots. Every merged spot that touches a saturated region gets
+      ``ReturnCode = -2`` so intensity consumers can drop it. The saturated
+      regions themselves stay out (see :func:`merge_saturated_only`).
+    * ``include_saturated=True`` (``IncludeSaturatedSpots 1``): saturated
+      regions join the merge and everything touching them is folded into one
+      flagged spot per saturated reflection, positioned at the II-weighted
+      mean. Spot list, IDs and hence grains change.
+    """
+    has_sat = sat_frames is not None and any(np.size(s) for s in sat_frames)
+    if not has_sat:
+        out, mm, _, _ = _merge_core(
+            frames, overlap_length=overlap_length,
+            use_maxima_positions=use_maxima_positions, skip_frame=skip_frame,
+            pixel_frames=pixel_frames, nr_pixels=nr_pixels)
+        return out, mm
+
+    n = max(len(frames), len(sat_frames))
+    frames = list(frames) + [np.zeros((0, N_PEAK_COLS))] * (n - len(frames))
+    sat_frames = _unique_sat_ids(frames, list(sat_frames) + [np.zeros((0, N_PEAK_COLS))] * (n - len(sat_frames)))
+
+    if not include_saturated:
+        out, mm, cons, proc = _merge_core(
+            frames, overlap_length=overlap_length,
+            use_maxima_positions=use_maxima_positions, skip_frame=skip_frame,
+            pixel_frames=pixel_frames, nr_pixels=nr_pixels)
+        if out.shape[0] == 0:
+            return out, mm
+        sat_kept = sat_frames[: max(len(sat_frames) - skip_frame, 0)] if skip_frame > 0 else sat_frames
+        sat_proc = [_read_sort_filter_frame(s, use_maxima_positions) for s in sat_kept]
+        return _flag_touching(out, cons, proc, sat_proc, overlap_length), mm
+
+    combined = [np.concatenate([f.reshape(-1, N_PEAK_COLS), s], axis=0)
+                for f, s in zip(frames, sat_frames)]
+    comb_pix = None
+    if pixel_frames is not None:
+        sp = sat_pixel_frames if sat_pixel_frames is not None else [[] for _ in sat_frames]
+        comb_pix = []
+        for fi in range(n):
+            base = list(pixel_frames[fi]) if fi < len(pixel_frames) else []
+            extra = list(sp[fi]) if fi < len(sp) else []
+            extra += [np.zeros((0, 2), dtype=np.int16)] * (sat_frames[fi].shape[0] - len(extra))
+            comb_pix.append(base + extra)
+    out, mm, cons, proc = _merge_core(
+        combined, overlap_length=overlap_length,
+        use_maxima_positions=use_maxima_positions, skip_frame=skip_frame,
+        pixel_frames=comb_pix, nr_pixels=nr_pixels)
+    return _collapse_saturated(out, mm, cons, proc, overlap_length)
+
+
+def merge_saturated_only(
+    sat_frames: List[np.ndarray],
+    *,
+    overlap_length: float,
+    use_maxima_positions: bool = False,
+    skip_frame: int = 0,
+) -> np.ndarray:
+    """Merge the saturated regions among themselves (one row per saturated
+    reflection, ReturnCode -2). Diagnostic output, ``SaturatedSpots.csv``;
+    never enters indexing unless ``IncludeSaturatedSpots 1``."""
+    empty = [np.zeros((0, N_PEAK_COLS))] * len(sat_frames)
+    out, _ = _merge_frames(
+        empty, overlap_length=overlap_length,
+        use_maxima_positions=use_maxima_positions, skip_frame=skip_frame,
+        sat_frames=sat_frames, include_saturated=True)
+    return out
 
 
 def _write_result_csv_c_format(path: Path, data: np.ndarray) -> None:
@@ -615,7 +866,7 @@ def merge_overlapping_peaks(
     result_folder: Union[str, Path] = ".",
     overlap_length: Optional[float] = None,
     skip_frame: int = 0,
-    use_pixel_overlap: Optional[bool] = None,
+    use_pixel_overlap: Optional[Union[bool, int]] = None,
     use_maxima_positions: bool = False,
     nr_pixels: Optional[int] = None,
     start_nr: int = 1,
@@ -626,8 +877,19 @@ def merge_overlapping_peaks(
     device: Optional[Union[str, torch.device]] = None,
     dtype: Optional[Union[str, torch.dtype]] = None,
     write: bool = True,
+    include_saturated: Optional[bool] = None,
+    sat_frames: Optional[List[np.ndarray]] = None,
+    sat_pixel_frames: Optional[List[List[np.ndarray]]] = None,
 ) -> MergeResult:
     """Drop-in replacement for ``MergeOverlappingPeaksAllZarr``.
+
+    Saturated regions: if ``AllPeaks_PS_sat.bin`` sits next to
+    ``AllPeaks_PS.bin`` (or ``sat_frames=`` is given), merged spots that
+    contain or touch a saturated region get ``ReturnCode = -2``; the
+    saturated reflections themselves are written to ``SaturatedSpots.csv``.
+    ``include_saturated`` (``IncludeSaturatedSpots``, default 0) decides
+    whether they also enter ``Result_*.csv`` and hence indexing; see
+    :func:`_merge_frames`.
 
     Inputs are typically read from ``<result_folder>/Temp/AllPeaks_PS.bin``
     and (in pixel-overlap mode) ``<result_folder>/Temp/AllPeaks_PX.bin``,
@@ -636,18 +898,29 @@ def merge_overlapping_peaks(
     via ``allpeaks_ps_bin=`` / ``allpeaks_px_bin=`` / ``frames=`` /
     ``pixel_frames=`` for in-memory or relocated inputs.
 
-    Pixel-overlap mode (gated by ``UsePixelOverlap=1`` in the Zarr or by
-    ``use_pixel_overlap=True``) builds a per-frame label map from cur
-    peaks' pixel lists and matches new peaks by shared-pixel count. The
-    correct algorithm tracks Eta-sort and II>=1 permutations across both
-    arrays so that ``new_pixels[j]`` corresponds to ``new_peaks[j]`` —
-    a **fix** of an indexing bug in the C reference where the sort+filter
-    was applied only to the peak-summary array (file-order pixel data
-    paired with sorted-filter peak indices). On sparse-peak datasets the
-    C bug is benign (pixel-overlap and centroid output coincide); on
-    dense datasets the corrected algorithm produces semantically right
-    matches.
-    """
+    ``use_pixel_overlap`` / ``UsePixelOverlap`` selects the frame-to-frame
+    matcher:
+
+    * ``0`` -- centroid mutual-nearest within ``OverlapLength`` (the C
+      default).
+    * ``1`` -- the C ``UsePixelOverlap 1`` output. On the only C golden we
+      have (``tests/data/c_goldens_px``, generated with UsePixelOverlap=1)
+      the C Result.csv and merge groups are identical to centroid matching:
+      every one of the 29049 rows, token for token. So ``1`` runs the
+      centroid matcher and does not need ``AllPeaks_PX.bin``. (Issue #13:
+      before ``UsePixelOverlap`` was read from the archive this mode was
+      never reached; once it was, overlap-first matching produced 28751
+      rows against C's 29049.)
+    * ``2`` -- opt-in pixel-overlap-FIRST matching (:func:`_pixel_overlap_match`):
+      each new peak goes to the current spot it shares most pixels with,
+      with no centroid-distance or ring gate. Pixel lists are kept aligned
+      with the Eta-sorted, II>=1-filtered peaks. Not C-compatible: on the
+      golden dataset it merges 297 extra consecutive-frame pairs whose
+      centroids are 2.0-12.8 px apart, 56 % of them with ``|dR| > 2 SigmaR``,
+      and in 82 % of them BOTH constituents carry a full single-spot
+      intensity, i.e. they are two reflections rather than one split across
+      frames. Use it only where overlap-first matching has been validated.
+        """
     rf = Path(result_folder)
     out_dir = Path(out_dir) if out_dir is not None else rf
 
@@ -665,13 +938,22 @@ def merge_overlapping_peaks(
         if nr_pixels is None:
             nr_pixels = zp.NrPixels
         if use_pixel_overlap is None:
-            use_pixel_overlap = bool(zp.UsePixelOverlap)
+            use_pixel_overlap = int(zp.UsePixelOverlap)
     if overlap_length is None:
         # C default: ``MarginOmegaOverlap = sqrt(4) = 2.0``
         # (MergeOverlappingPeaksAllZarr.c:524).
         overlap_length = 2.0
     if use_pixel_overlap is None:
-        use_pixel_overlap = False
+        use_pixel_overlap = 0
+    px_mode = int(use_pixel_overlap)
+    if px_mode not in (0, 1, 2):
+        raise ValueError(
+            f"UsePixelOverlap must be 0 (centroid), 1 (C-compatible) or "
+            f"2 (pixel-overlap-first), got {use_pixel_overlap!r}."
+        )
+    # Only mode 2 consults pixel lists; mode 1 reproduces the C output,
+    # which matches by centroid (see docstring).
+    overlap_first = px_mode == 2
 
     # Load frames.
     if frames is None:
@@ -687,8 +969,8 @@ def merge_overlapping_peaks(
             )
         frames = zarr_io.read_allpeaks_ps_frames(allpeaks_ps_bin)
 
-    # Load pixel data when pixel-overlap mode is requested.
-    if use_pixel_overlap and pixel_frames is None:
+    # Load pixel data when pixel-overlap-first matching is requested.
+    if overlap_first and pixel_frames is None:
         if allpeaks_px_bin is None:
             allpeaks_px_bin = rf / "Temp" / "AllPeaks_PX.bin"
             if not Path(allpeaks_px_bin).exists():
@@ -698,7 +980,7 @@ def merge_overlapping_peaks(
             raise FileNotFoundError(
                 f"AllPeaks_PX.bin not found at {allpeaks_px_bin}. "
                 f"This file is written by midas-peakfit and is required when "
-                f"UsePixelOverlap=1."
+                f"UsePixelOverlap=2."
             )
         nr_pixels_from_file, pixel_frames = zarr_io.read_allpeaks_px_frames(
             allpeaks_px_bin,
@@ -709,23 +991,52 @@ def merge_overlapping_peaks(
     if end_nr is None:
         end_nr = max(start_nr + len(frames) - 1, start_nr)
 
+    # Saturated regions (midas-peakfit's AllPeaks_PS_sat.bin sibling). Absent
+    # file == legacy peakfit == legacy merge.
+    if include_saturated is None:
+        include_saturated = bool(zp.IncludeSaturatedSpots) if zarr_path is not None else False
+    if sat_frames is None and allpeaks_ps_bin is not None:
+        sat_ps = Path(allpeaks_ps_bin).with_name("AllPeaks_PS_sat.bin")
+        if sat_ps.exists():
+            sat_frames = zarr_io.read_allpeaks_ps_frames(sat_ps)
+            sat_px = Path(allpeaks_ps_bin).with_name("AllPeaks_PX_sat.bin")
+            if overlap_first and include_saturated and sat_px.exists():
+                _, sat_pixel_frames = zarr_io.read_allpeaks_px_frames(sat_px)
+
     out, merge_map = _merge_frames(
         frames,
         overlap_length=float(overlap_length),
         use_maxima_positions=use_maxima_positions,
         skip_frame=skip_frame,
-        pixel_frames=pixel_frames if use_pixel_overlap else None,
+        pixel_frames=pixel_frames if overlap_first else None,
         nr_pixels=int(nr_pixels) if nr_pixels else 0,
+        sat_frames=sat_frames,
+        sat_pixel_frames=sat_pixel_frames,
+        include_saturated=bool(include_saturated),
     )
+    sat_out = None
+    if sat_frames is not None and any(np.size(s) for s in sat_frames):
+        sat_out = merge_saturated_only(
+            sat_frames, overlap_length=float(overlap_length),
+            use_maxima_positions=use_maxima_positions, skip_frame=skip_frame)
+    n_flagged = int((out[:, 17] == SATURATED_RETURN_CODE).sum()) if out.size else 0
+    if sat_out is not None:
+        print(f"[merge] saturated reflections: {sat_out.shape[0]}; "
+              f"{'included (IncludeSaturatedSpots 1)' if include_saturated else 'kept out of indexing (IncludeSaturatedSpots 0)'}; "
+              f"{n_flagged} merged spots flagged ReturnCode -2 (intensity unreliable).")
 
     if write:
         out_path = out_dir / f"Result_StartNr_{start_nr}_EndNr_{end_nr}.csv"
         _write_result_csv_c_format(out_path, out)
         _write_merge_map_csv(out_dir / "MergeMap.csv", merge_map)
+        if sat_out is not None:
+            _write_result_csv_c_format(out_dir / "SaturatedSpots.csv", sat_out)
 
     dev = resolve_device(device)
     dt = resolve_dtype(dev, dtype)
     return MergeResult(
         peaks=torch.from_numpy(out).to(device=dev, dtype=dt),
         merge_map=merge_map,
+        saturated=sat_out,
+        n_saturated_flagged=n_flagged,
     )

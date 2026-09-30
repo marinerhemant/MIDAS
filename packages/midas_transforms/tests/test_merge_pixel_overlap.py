@@ -189,3 +189,65 @@ def test_allpeaks_px_reader_round_trip(tmp_path):
         assert len(frames_read[f]) == len(frames_pix[f])
         for k in range(len(frames_pix[f])):
             np.testing.assert_array_equal(frames_read[f][k], frames_pix[f][k])
+
+
+def _mode_fixture():
+    """Frame 0: one peak. Frame 1: peak 2 is centroid-nearest (0.7 px),
+    peak 3 shares more pixels. Centroid pairs 1-2; overlap-first pairs 1-3."""
+    f0 = np.stack([_peak(1, 1000.0, 0.0, 50.0, 50.0, 100.0, 30.0)], axis=0)
+    f1 = np.stack([
+        _peak(2, 800.0, 1.0, 50.5, 50.5, 100.5, 30.5),
+        _peak(3, 1200.0, 1.0, 51.0, 51.0, 101.0, 31.0),
+    ], axis=0)
+    pix = [
+        [np.array([[50, 50], [50, 51], [51, 50], [51, 51]], dtype=np.int16)],
+        [np.array([[50, 51], [50, 52], [51, 52]], dtype=np.int16),
+         np.array([[50, 51], [51, 50], [51, 51]], dtype=np.int16)],
+    ]
+    return [f0, f1], pix
+
+
+def _merged_ids(res):
+    g = {}
+    for sid, fn, pid in res.merge_map:
+        g.setdefault(sid, set()).add(pid)
+    return [s for s in g.values() if len(s) > 1]
+
+
+@pytest.mark.parametrize("mode, expect", [(0, {1, 2}), (1, {1, 2}), (False, {1, 2}),
+                                          (True, {1, 2}), (2, {1, 3})])
+def test_use_pixel_overlap_modes(tmp_path, mode, expect):
+    """Issue #13: UsePixelOverlap 1 is the C output (centroid matching);
+    pixel-overlap-first matching is opt-in as UsePixelOverlap 2."""
+    from midas_transforms.merge import merge_overlapping_peaks
+
+    frames, pix = _mode_fixture()
+    res = merge_overlapping_peaks(
+        frames=frames, pixel_frames=pix, nr_pixels=128, overlap_length=2.0,
+        use_pixel_overlap=mode, result_folder=tmp_path, write=False,
+        device="cpu", dtype="float64",
+    )
+    assert _merged_ids(res) == [expect]
+
+
+def test_use_pixel_overlap_1_needs_no_px_file(tmp_path):
+    """Mode 1 matches by centroid, so a missing AllPeaks_PX.bin is not an error;
+    mode 2 still requires it."""
+    from midas_transforms.merge import merge_overlapping_peaks
+
+    frames, _ = _mode_fixture()
+    kw = dict(frames=frames, overlap_length=2.0, result_folder=tmp_path,
+              write=False, device="cpu", dtype="float64")
+    merge_overlapping_peaks(use_pixel_overlap=1, **kw)
+    with pytest.raises(FileNotFoundError):
+        merge_overlapping_peaks(use_pixel_overlap=2, **kw)
+
+
+def test_use_pixel_overlap_rejects_unknown_mode(tmp_path):
+    from midas_transforms.merge import merge_overlapping_peaks
+
+    frames, _ = _mode_fixture()
+    with pytest.raises(ValueError, match="UsePixelOverlap"):
+        merge_overlapping_peaks(frames=frames, overlap_length=2.0,
+                                use_pixel_overlap=3, result_folder=tmp_path,
+                                write=False, device="cpu", dtype="float64")

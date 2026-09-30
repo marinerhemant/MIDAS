@@ -76,7 +76,7 @@ class Pipeline:
             if not cand.exists():
                 cand = rf / "AllPeaks_PS.bin"
             allpeaks_ps_bin = cand if cand.exists() else None
-        if allpeaks_px_bin is None and zp.UsePixelOverlap:
+        if allpeaks_px_bin is None and int(zp.UsePixelOverlap) == 2:
             cand = rf / "Temp" / "AllPeaks_PX.bin"
             if not cand.exists():
                 cand = rf / "AllPeaks_PX.bin"
@@ -109,13 +109,18 @@ class Pipeline:
             allpeaks_ps_bin=self.allpeaks_ps_bin,
             allpeaks_px_bin=self.allpeaks_px_bin,
             result_folder=self.result_folder,
-            overlap_length=self.overlap_length,
+            # Explicit override wins; else the archive's OverlapLength
+            # (ZarrParams default 2.0 when the archive lacks the key).
+            overlap_length=(self.overlap_length
+                            if self.overlap_length is not None
+                            else self.zarr_params.OverlapLength),
             skip_frame=self.zarr_params.SkipFrame,
             use_maxima_positions=bool(self.zarr_params.UseMaximaPositions),
-            use_pixel_overlap=bool(self.zarr_params.UsePixelOverlap),
+            use_pixel_overlap=int(self.zarr_params.UsePixelOverlap),
             nr_pixels=self.zarr_params.NrPixels,
             device=self.device, dtype=self.dtype,
             write=False,
+            include_saturated=bool(self.zarr_params.IncludeSaturatedSpots),
         )
         merge_arr = pr.merge.peaks.detach().cpu().numpy().astype(np.float64)
 
@@ -179,6 +184,9 @@ class Pipeline:
                 f.write("MergedSpotID FrameNr PeakID\n")
                 for (sid, fn, pid) in pr.merge.merge_map:
                     f.write(f"{sid} {fn} {pid}\n")
+            if pr.merge.saturated is not None:
+                csv_io.write_result_csv(out_dir / "SaturatedSpots.csv",
+                                        pr.merge.saturated)
         if pr.radius is not None:
             csv_io.write_radius_csv(
                 out_dir / f"Radius_StartNr_1_EndNr_{self.zarr_params.EndNr}.csv",
@@ -222,6 +230,9 @@ class Pipeline:
                     out_dir / "Data.bin", out_dir / "nData.bin",
                     data_pairs, ndata_np,
                 )
+                if pr.bins.ring_slots is not None:
+                    bio.write_ring_slots_csv(
+                        out_dir / bio.RING_SLOTS_FILENAME, pr.bins.ring_slots)
                 positions_path = out_dir / "positions.csv"
                 if not positions_path.exists():
                     positions_path.write_text("0.000000\n")
