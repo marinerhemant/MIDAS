@@ -62,14 +62,16 @@ def _v1(*, tx=0.0, Wedge=None, Lsd=1_000_000.0, ty=0.0, tz=0.0, **extra):
     return p
 
 
-def _emit(v1, refine_params, fitted, *, observed_from_raw=False, src=None):
+def _emit(v1, refine_params, fitted, *, observed_from_raw=False, src=None,
+          wedge_absolute=False):
     """Run the real writer and return the resulting key -> float mapping."""
     if src is None:
         src = "".join(f"{k} {getattr(v1, k)}\n" for k in ("tx", "ty", "tz", "Lsd"))
         if "Wedge" in v1.extra:
             src += f"Wedge {v1.extra['Wedge']}\n"
     txt = gr.corrected_paramstest_text(
-        src, refine_params, fitted, v1, observed_from_raw=observed_from_raw)
+        src, refine_params, fitted, v1, observed_from_raw=observed_from_raw,
+        wedge_absolute=wedge_absolute)
     out = {}
     for ln in txt.splitlines():
         parts = ln.split()
@@ -93,6 +95,14 @@ def test_tx_composes_on_the_default_path():
 def test_wedge_composes():
     got = _emit(_v1(Wedge=-0.012584), ("Wedge",), {"Wedge": 0.015325})
     assert got["Wedge"] == pytest.approx(0.002741, abs=1e-6)
+
+
+def test_absolute_wedge_is_written_not_composed():
+    """The absolute-Wedge (raw-frame) path fits the Wedge itself, seeded at the
+    file's value; composing it with the prior would double it."""
+    got = _emit(_v1(Wedge=-0.46181), ("Wedge",), {"Wedge": -0.48887},
+                observed_from_raw=True, wedge_absolute=True)
+    assert got["Wedge"] == pytest.approx(-0.48887, abs=1e-9)
 
 
 def test_wedge_prior_is_read_from_extra_not_getattr():
@@ -138,16 +148,20 @@ def test_relative_set_matches_the_model_construction():
     assert "tx" not in gr._NEEDS_RAW and "Wedge" not in gr._NEEDS_RAW
 
 
-def test_wedge_seeds_at_zero_not_at_the_prior():
-    """Guard the OTHER half of the Wedge rule. The fit seeds Wedge at 0 on
-    purpose, because the observed omega already carries the prior; seeding the
-    prior there would apply it twice. Only the WRITE-BACK composes."""
+def test_wedge_seed_matches_its_frame():
+    """Guard the OTHER half of the Wedge rule. On the RELATIVE path (the
+    observations already carry the prior) the Wedge seeds at 0 and only the
+    write-back composes; seeding the prior there would apply it twice. On the
+    ABSOLUTE path it seeds at the prior, and that path must use the RAW
+    (pre-wedge) observations -- a prior seed on corrected observations is the
+    double application again."""
     import inspect
     src = inspect.getsource(gr.refine_geometry_from_grains)
     i = src.index('Parameter("Wedge"')
-    assert "torch.zeros" in src[i:i + 200], (
-        "Wedge must seed at 0.0 — it is a correction on top of the "
-        "observations, not an absolute value")
+    assert "prior_wedge if wedge_absolute else 0.0" in src[i:i + 200], (
+        "Wedge must seed at 0.0 unless the fit runs on raw observations")
+    assert "or wedge_absolute" in src, (
+        "the absolute-Wedge path must force the raw-pixel observations")
 
 
 # ─────────────────────────────────────────────────── distortion phase rotation

@@ -106,6 +106,7 @@ def stage_refit_dir(phase2_layer_dir: Path, refit_root: Path) -> Path:
     (layer_target / "Results").mkdir(parents=True, exist_ok=True)
     # Symlink shared inputs
     for name in ("Spots.bin", "Spots_det.bin", "Data.bin", "nData.bin",
+                  "RingSlots.csv",
                   "ExtraInfo.bin", "IDsHash.csv", "IDRings.csv",
                   "SpotsToIndex.csv", "hkls.csv", "InputAll.csv",
                   "InputAllExtraInfoFittingAll.csv", "MergeMap.csv",

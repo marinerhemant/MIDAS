@@ -290,7 +290,9 @@ def load_phase2_grains_and_spots(layer_dir: Path, *,
             continue
         bag = spots_per_grain[i]
         for col in ("spot_id", "y_lab", "z_lab", "omega", "eta", "ring_nr",
-                    "theta", "det_hor", "det_vert"):
+                    "theta", "det_hor", "det_vert", "ome_raw"):
+            if s.get(col) is None:      # OmeRaw is absent on 12-column files
+                continue
             bag.setdefault(col, []).append(s[col][k])
     for i in range(g["n_grains"]):
         for col, vals in spots_per_grain[i].items():

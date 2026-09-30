@@ -12,7 +12,18 @@ is a ~1:1 rotation of the azimuth η with negligible effect on the radius R. So:
     ``tx``, differentiably. (SpotMatrix DetectorHor/DetectorVert are raw;
     YLab/ZLab are DetCor'd with the pipeline's ``tx=0``.)
   * ``Wedge`` (rotation-axis tilt) lives on the **forward** side — it changes
-    predicted ω/η in the diffraction model.
+    predicted ω/η in the diffraction model, with the Parameters-file sign
+    (``midas_diffract.forward`` "Wedge convention", the FF C refiner's).
+    Whenever the Wedge is refined or the input file already carries one, the
+    fit runs in the RAW (pre-wedge) frame with an ABSOLUTE Wedge: observed
+    (Y,Z) re-derived from the raw pixels, ``OmeRaw`` for ω, and predicted
+    (Y,Z) that include each grain's rotated position (the pose comes from the
+    C refiner, stage frame). The older relative form -- a wedge-free forward
+    fitted against the pipeline's wedge-CORRECTED YLab/ZLab, predictions at
+    the grain origin -- had a biased fixed point: on a synthetic at Wedge -0.5
+    its iteration settled at -0.41, and with the pre-2026-09 midas_diffract
+    (opposite sign) pass 1 from Wedge 0 on a Wedge -0.3 synthetic returned
+    +0.012.
   * The forward model runs in *ideal* (tilt-removed) space (``apply_tilts=
     False``), matching the DetCor'd observations.
 
@@ -259,8 +270,54 @@ def _read_hedm_keys(paramstest: Path) -> dict:
     return keys
 
 
+def _raw_frame_converter(v1: V1Params, paramstest, hedm: dict, *, dtype, device):
+    """Return ``bag -> bag`` mapping a SpotMatrix spot bag to the RAW
+    (pre-wedge) frame: (Y,Z) re-derived from DetectorHor/Vert with the
+    pipeline's own detector correction at the file's geometry (tx included),
+    omega = ``OmeRaw`` (the pre-wedge omega), eta from the raw (Y,Z).
+
+    The same correction :func:`make_residual` applies on its raw-pixel path,
+    so at the seed geometry the two agree exactly.
+    """
+    from midas_distortion import v2_coeffs_from_named, v2_to_v1_coeffs, P_COEF_NAMES
+    from midas_transforms.fit_setup.transform import apply_tilt_distortion
+    named = {nm: float(v1.extra[nm]) for nm in P_COEF_NAMES
+             if nm in getattr(v1, "extra", {})}
+    named.update({f"p{i}": float(getattr(v1, f"p{i}")) for i in range(15)})
+    p_arr = torch.tensor(v2_to_v1_coeffs(v2_coeffs_from_named(named)), dtype=dtype)
+    t = lambda v: torch.tensor(float(v), dtype=dtype)
+    geo = dict(
+        Lsd=t(v1.Lsd), BC_y=t(v1.BC_y), BC_z=t(v1.BC_z), tx=t(v1.tx),
+        ty=t(v1.ty), tz=t(v1.tz), p_coeffs=p_arr, px=t(v1.pxY),
+        rho_d=t(v1.RhoD if v1.RhoD > 0 else v1.MaxRingRad),
+        residual_corr_map=_load_residual_map(
+            v1, paramstest, int(hedm["NrPixelsY"]), int(hedm["NrPixelsZ"]),
+            device=device, dtype=dtype),
+    )
+
+    def convert(bag: dict) -> dict:
+        if "spot_id" not in bag or len(bag["spot_id"]) == 0:
+            return bag
+        if "ome_raw" not in bag:
+            raise ValueError(
+                "SpotMatrix.csv has no OmeRaw column, which the absolute-Wedge "
+                "(raw-frame) fit needs. Regenerate it with midas-process-grains.")
+        Y, Z = apply_tilt_distortion(
+            torch.tensor(bag["det_hor"], dtype=dtype),
+            torch.tensor(bag["det_vert"], dtype=dtype), **geo)
+        out = dict(bag)
+        out["y_lab"] = Y.detach().cpu().numpy().astype(np.float64)
+        out["z_lab"] = Z.detach().cpu().numpy().astype(np.float64)
+        out["omega"] = np.asarray(bag["ome_raw"], dtype=np.float64)
+        out["eta"] = np.rad2deg(np.arctan2(-out["y_lab"], out["z_lab"]))
+        return out
+
+    return convert
+
+
 def _build_forward_model(v1: V1Params, hedm: dict, grains: dict,
-                         *, two_theta_max_deg: float, device, dtype):
+                         *, two_theta_max_deg: float, device, dtype,
+                         wedge: float = 0.0):
     """Ideal-space (apply_tilts=False) HEDM forward model for the sample phase."""
     sg = SpaceGroup.from_number(grains["sg"] or v1.SpaceGroup)
     lat_vals = grains["lattice"] or tuple(v1.LatticeConstant)
@@ -275,7 +332,7 @@ def _build_forward_model(v1: V1Params, hedm: dict, grains: dict,
         omega_step=float(hedm["OmegaStep"]), n_frames=int(hedm["NrFilesPerSweep"]),
         n_pixels_y=int(hedm["NrPixelsY"]), n_pixels_z=int(hedm["NrPixelsZ"]),
         min_eta=float(hedm["MinEta"]), wavelength=float(v1.Wavelength),
-        tx=0.0, ty=float(v1.ty), tz=float(v1.tz), wedge=0.0,
+        tx=0.0, ty=float(v1.ty), tz=float(v1.tz), wedge=float(wedge),
         flip_y=True, apply_tilts=False, multi_mode="layered",
     )
     model = HEDMForwardModel(hkls_cart, thetas, geom, hkls_int=hkls_int.float(),
@@ -462,6 +519,7 @@ def make_residual(
     kind: str = "angular",
     observed_from_raw: bool = False,
     fixed_v2: Optional[dict] = None,
+    wedge_absolute: bool = False,
 ):
     """Build the LM residual closure — the FitMultipleGrains objective.
 
@@ -474,9 +532,16 @@ def make_residual(
     The spot association (``matches``) only pairs spots; the loss is the (Y,Z)
     distance. ``Wedge`` is injected into the forward model via ``functional_call``.
 
-    NB: ``raw_yz`` / ``kind`` are accepted for signature stability but unused —
-    re-deriving observed (R,η) from raw pixels gave a flipped-η / broken-2θ
-    convention mismatch, so we use the pipeline's own YLab/ZLab instead.
+    NB: ``kind`` is accepted for signature stability but unused.
+
+    ``wedge_absolute=True`` (requires ``observed_from_raw=True``): the model
+    carries the ABSOLUTE Wedge (the refined ``Wedge``, else ``model.wedge``),
+    and the predicted (Y,Z) is the ray from the grain's rotated position,
+    ``pos_lab = R_y(-W) R_z(omega) pos`` (midas_diffract "Wedge convention"),
+    to the detector -- the geometry ``project_to_detector`` and the C
+    refiner's ``DisplacementInTheSpot`` use -- compared with the raw
+    pre-wedge observation. Without it the prediction is the grain-at-origin
+    ``(-R sin eta, R cos eta)``.
     """
     from midas_calibrate.geometry_torch import build_tilt_matrix_torch
 
@@ -532,6 +597,8 @@ def make_residual(
         overrides = {}
         if "Wedge" in unpacked:
             overrides["wedge"] = unpacked["Wedge"].reshape(()).to(model.wedge.dtype)
+        W_rad = (overrides.get("wedge", model.wedge.detach())
+                 * (math.pi / 180.0))
         eulers = unpacked["grain_euler"]
         positions = unpacked["grain_pos"]
         lattices = unpacked["grain_lattice"]
@@ -565,9 +632,23 @@ def make_residual(
             # ⇒ Y = -R·sin η, Z = R·cos η (matches the YLab/ZLab convention).
             pick_2th = _flat(spots.two_theta).gather(0, flat_idx)
             pick_eta = _flat(spots.eta).gather(0, flat_idx)
-            R_pred = Lsd * torch.tan(pick_2th)
-            Y_pred = -R_pred * torch.sin(pick_eta)
-            Z_pred = R_pred * torch.cos(pick_eta)
+            if wedge_absolute:
+                # Ray from the grain's lab position at this omega.
+                pick_om = _flat(spots.omega).gather(0, flat_idx)
+                pg = positions[g].reshape(3)
+                cw, sw = torch.cos(pick_om), torch.sin(pick_om)
+                mx = pg[0] * cw - pg[1] * sw
+                my = pg[0] * sw + pg[1] * cw
+                cW, sW = torch.cos(W_rad), torch.sin(W_rad)
+                xl = cW * mx - sW * pg[2]
+                zl = sW * mx + cW * pg[2]
+                t2 = (Lsd - xl) * torch.tan(pick_2th)
+                Y_pred = my - t2 * torch.sin(pick_eta)
+                Z_pred = zl + t2 * torch.cos(pick_eta)
+            else:
+                R_pred = Lsd * torch.tan(pick_2th)
+                Y_pred = -R_pred * torch.sin(pick_eta)
+                Z_pred = R_pred * torch.cos(pick_eta)
             if observed_from_raw:
                 # tx is applied inside the detector correction here, so do NOT
                 # also rotate — that would double-count it.
@@ -596,6 +677,7 @@ def corrected_paramstest_text(
     v1,
     *,
     observed_from_raw: bool = False,
+    wedge_absolute: bool = False,
 ) -> str:
     """Return ``txt`` with the refined geometry written back into it.
 
@@ -623,9 +705,11 @@ def corrected_paramstest_text(
     # CORRECTION applied on top of whatever the observations already carry.
     #
     #   Lsd, ty, tz, BC, distortion : seeded from v1        -> ABSOLUTE
-    #   Wedge                       : geom built wedge=0.0  -> RELATIVE
-    #                                 (observed omega already carries the
-    #                                 pipeline's wedge correction)
+    #   Wedge                       : DEPENDS ON THE PATH
+    #       wedge_absolute=False -> geom built wedge=0.0, observed omega
+    #           already carries the pipeline's wedge correction -> RELATIVE
+    #       wedge_absolute=True  -> geom built at the file's Wedge, raw
+    #           (pre-wedge) observations -> ABSOLUTE
     #   tx                          : DEPENDS ON THE PATH
     #       observed_from_raw=False -> geom built tx=0.0 and the trial tx
     #           ROTATES the stored YLab/ZLab, which already carry the
@@ -642,7 +726,8 @@ def corrected_paramstest_text(
     # against -0.2455 from an independent ring/eta systematics fit. Writing
     # -0.087265 back would apply a THIRD of the true roll — a second pass
     # strictly worse than the first, with no error and no log line.
-    _relative = {"Wedge"} | (set() if observed_from_raw else {"tx"})
+    _relative = ((set() if wedge_absolute else {"Wedge"})
+                 | (set() if observed_from_raw else {"tx"}))
 
     def _emit(name: str, value: float) -> None:
         """Replace ``name``'s line in the param text, or append it."""
@@ -850,8 +935,17 @@ def refine_geometry_from_grains(
         load_phase2_grains_and_spots(layer_dir, lattice_source=lattice_source)
     ring_tt = load_ring_two_theta(layer_dir / "hkls.csv")
 
+    # Wedge path (module doc): an absolute Wedge in the raw frame whenever the
+    # Wedge is refined or the file already carries one. Wedge 0 with tx-only
+    # refinement keeps the original (relative, corrected-frame) path exactly.
+    prior_wedge = _v1_scalar(v1, "Wedge", 0.0)
+    wedge_absolute = ("Wedge" in refine_params) or prior_wedge != 0.0
     model = _build_forward_model(v1, hedm, grains, two_theta_max_deg=two_theta_max_deg,
-                                 device=dev, dtype=dtype)
+                                 device=dev, dtype=dtype,
+                                 wedge=prior_wedge if wedge_absolute else 0.0)
+    if wedge_absolute:
+        _to_raw = _raw_frame_converter(v1, paramstest, hedm, dtype=dtype, device=dev)
+        spots_per_grain = [_to_raw(bag) for bag in spots_per_grain]
 
     # Grain selection. ``internal_angle`` keeps the best-FITTING grains (smallest
     # mean observed-vs-predicted g-vector angle at the init pose) — far more
@@ -903,13 +997,16 @@ def refine_geometry_from_grains(
     p_arr = torch.tensor(v2_to_v1_coeffs(_v2vec), dtype=dtype)
     spec.add(Parameter("tx", init=torch.tensor(float(v1.tx), dtype=dtype),
                        refined=False, bounds=(-5.0, 5.0)))
-    # Wedge seeds at 0.0 ON PURPOSE — do NOT "fix" this to read v1.Wedge.
-    # The geometry below is built with wedge=0.0 and the observed omega already
-    # carries the input reconstruction's wedge, so what is fitted here is a
-    # CORRECTION on top of it (see the _relative set in the write-back). Seeding
-    # the prior would apply it twice. The prior is picked up at write-back time,
-    # where it is composed rather than overwritten.
-    spec.add(Parameter("Wedge", init=torch.zeros((), dtype=dtype),
+    # Relative path (Wedge 0 in the file, Wedge not refined): Wedge seeds at
+    # 0.0 on purpose -- the geometry is built with wedge=0.0 and the observed
+    # omega already carries the input reconstruction's wedge, so anything
+    # fitted is a CORRECTION composed at write-back (the _relative set).
+    # Absolute path (wedge_absolute): the model is built at the file's Wedge,
+    # the observations are raw, and the Wedge seeds at -- and is written back
+    # as -- the absolute value.
+    spec.add(Parameter("Wedge",
+                       init=torch.tensor(prior_wedge if wedge_absolute else 0.0,
+                                         dtype=dtype),
                        refined=False, bounds=(-5.0, 5.0)))
     # Lsd scales the predicted radius (R = Lsd·tan 2θ), so it is a genuine
     # lever on this residual and may be thawed. Frozen by default: the powder
@@ -1007,7 +1104,7 @@ def refine_geometry_from_grains(
         LOG.warning("%s", msg)
 
     observed_from_raw = bool(
-        (set(refine_params) & (_NEEDS_RAW | _DISTORTION)))
+        (set(refine_params) & (_NEEDS_RAW | _DISTORTION))) or wedge_absolute
     if observed_from_raw:
         LOG.info("recomputing observations from raw pixels (thawed: %s)",
                  ", ".join(sorted(set(refine_params) & (_NEEDS_RAW | _DISTORTION))))
@@ -1039,7 +1136,8 @@ def refine_geometry_from_grains(
                              fixed_geo=fixed_geo, kind=kind,
                              observed_from_raw=observed_from_raw,
                              fixed_v2={nm: torch.tensor(_v2_init[nm], dtype=dtype)
-                                       for nm in _DISTORTION})
+                                       for nm in _DISTORTION},
+                             wedge_absolute=wedge_absolute)
 
     unpacked0 = {n: spec.parameters[n].init_tensor() for n in spec.parameters}
     cost_init = float((residual(unpacked0) ** 2).sum().item())
@@ -1089,6 +1187,7 @@ def refine_geometry_from_grains(
             {nm: float(unpacked[nm]) for nm in refine_params},
             v1,
             observed_from_raw=observed_from_raw,
+            wedge_absolute=wedge_absolute,
         ))
 
     return GrainGeomRefineResult(
