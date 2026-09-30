@@ -14,7 +14,7 @@ from midas_stress.equilibrium import (
 )
 from midas_stress.materials import (
     d0_sensitivity, d0_sensitivity_table,
-    get_stiffness, cubic_stiffness, hexagonal_stiffness,
+    get_stiffness, cubic_stiffness, hexagonal_stiffness, STIFFNESS_LIBRARY,
 )
 
 
@@ -232,7 +232,7 @@ class TestD0Sensitivity:
 
     def test_all_materials(self):
         table = d0_sensitivity_table()
-        assert len(table) == 9
+        assert len(table) == len(STIFFNESS_LIBRARY)
         for mat, s in table.items():
             assert s['sensitivity_MPa_per_ppm'] > 0
             assert s['bulk_modulus_GPa'] > 0

@@ -108,6 +108,16 @@ STIFFNESS_LIBRARY = {
     "CeO2": {"C11": 403.0, "C12": 105.0, "C44": 60.0,  "symmetry": "cubic"},
     "Ti":   {"C11": 162.4, "C12": 92.0,  "C13": 69.0,
              "C33": 180.7, "C44": 46.7, "symmetry": "hexagonal"},
+    # alpha-Zr (hcp, c along crystal z). Values as tabulated in Marashi et al.,
+    # Nat Commun 2026 (doi 10.1038/s41467-026-77243-3), Supplementary Table 1,
+    # which cites Abdolvand et al., Int J Plast 27 (2011) 1721.
+    "Zr":   {"C11": 143.5, "C12": 72.5,  "C13": 65.4,
+             "C33": 164.9, "C44": 32.1, "symmetry": "hexagonal"},
+    # delta-zirconium hydride (fcc, ZrH~1.6). Values as tabulated in Marashi
+    # et al., Nat Commun 2026, Supplementary Table 1, which cites Olsson et al.,
+    # Comput Mater Sci 86 (2014) 211.
+    "ZrH_delta": {"C11": 162.0, "C12": 103.0, "C44": 69.3,
+                  "symmetry": "cubic"},
 }
 
 

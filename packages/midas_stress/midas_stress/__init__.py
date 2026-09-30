@@ -30,7 +30,7 @@ except ImportError:  # HDF5 files with no plugin filter still read fine
 
 import importlib
 
-__version__ = "0.14.1"
+__version__ = "0.15.0"
 
 # public name -> submodule it lives in. Loaded lazily on first access, so
 # importing the package pulls in nothing heavy (and no torch).
@@ -69,6 +69,9 @@ _EXPORTS = {
     "fundamental_zone": "orientation", "make_symmetries": "orientation",
     "axis_angle_to_orient_mat": "orientation", "rodrigues_to_orient_mat": "orientation",
     "matrix_mult_f33": "orientation",
+    # frame registration: one unknown sample-frame rotation between two grain sets
+    "find_frame_rotation": "frame_registration", "frame_match_fraction": "frame_registration",
+    "FrameRotationResult": "frame_registration", "distinct_orientations": "frame_registration",
     # map-level orientation statistics (numpy only, RADIANS)
     "mean_axis": "orientation_maps", "axis_spread": "orientation_maps",
     "medoid_orientation": "orientation_maps", "grod": "orientation_maps",
@@ -87,6 +90,8 @@ _EXPORTS = {
     "midas_to_tomo_grid": "frames", "tomo_slice_for_z": "frames",
     # pipeline
     "compute_stress": "pipeline",
+    # pf-HEDM per-voxel stress
+    "voxel_stress": "pf", "read_microstr_full": "pf",
     # io
     "read_grains": "io", "read_grains_csv": "io", "read_grains_h5": "io",
     "example_data_path": "io",

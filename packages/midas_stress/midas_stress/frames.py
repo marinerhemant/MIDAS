@@ -73,10 +73,42 @@ def _r_aps_to_midas(dtype: torch.dtype, device: torch.device) -> torch.Tensor:
     return torch.tensor(R_APS_TO_MIDAS, dtype=dtype, device=device)
 
 
-def lab_to_sample_rotation(omega_deg, frame: str = "midas"):
+def lab_to_sample_rotation(omega_deg, frame: str = "midas", wedge_deg: float = 0.0):
     """Build the lab-to-sample rotation matrix for a given omega angle.
 
-    When omega = 0, the lab and sample frames coincide.
+    When omega = 0 and wedge = 0, the lab and sample frames coincide.
+
+    ``wedge_deg`` is the SAME physical rotation-stage tilt as the
+    Parameters-file ``Wedge`` used by ``midas_diffract.forward`` (and by the
+    FF/NF/pf C code): the omega rotation axis is tilted away from the
+    nominal "up" direction, in the plane containing the beam. In the MIDAS
+    frame (X = beam, Y = outboard, Z = up) that tilted axis is
+    ``(-sin(wedge), 0, cos(wedge))`` and the stage-to-lab map is::
+
+        v_lab = R_y(-wedge) @ R_z(omega) @ v_sample
+
+    (``midas_diffract`` module doc, "Wedge convention"; the same map is
+    applied to G-vectors and grain positions there, and the identical
+    tilted-axis rotation the FF C refiner applies to grain positions). This
+    function returns the inverse (lab -> sample) map,
+    ``R_z(-omega) @ R_y(wedge)``, expanded into closed form below.
+
+    In the APS frame (X = outboard, Y = up, Z = beam), the SAME physical
+    stage tilt appears as a rotation of the (nominally Y-up) omega axis
+    tilted into the beam direction Z, i.e. a tilt about the APS X axis: the
+    stage-to-lab map there is ``v_lab = R_x(-wedge) @ R_y(omega) @ v_sample``
+    (this is the MIDAS relation conjugated by the fixed MIDAS->APS axis
+    permutation, which is itself a proper rotation, so it carries the wedge
+    tilt straight through: axis Z_midas -> Y_aps, axis Y_midas -> X_aps).
+    Its inverse is ``R_y(-omega) @ R_x(wedge)``, expanded below. Wedge is
+    always defined relative to the same physical rotation stage; only the
+    axis IT tilts about (and the axis the wedge rotation itself is applied
+    about) changes name between the two conventions.
+
+    Both forms were cross-checked to ~1e-9 (see
+    ``packages/midas_stress/tests``) directly against
+    ``midas_diffract.forward.HEDMForwardModel._rotate_positions`` /
+    ``calc_bragg_geometry``, which implement the stage-to-lab direction.
 
     Parameters
     ----------
@@ -84,57 +116,72 @@ def lab_to_sample_rotation(omega_deg, frame: str = "midas"):
         Omega angle in degrees.
     frame : str
         ``"midas"`` or ``"aps"`` — which lab frame convention to use.
-        In MIDAS, the rotation axis is Z (up).
-        In APS, the rotation axis is Y (up).
+        In MIDAS, the nominal rotation axis is Z (up).
+        In APS, the nominal rotation axis is Y (up).
+    wedge_deg : float or torch.Tensor (0-d)
+        Rotation-stage tilt in degrees (the Parameters-file ``Wedge``).
+        Default 0.0 is backward compatible: output is bit-identical to the
+        pre-wedge behaviour.
 
     Returns
     -------
     (3, 3) ndarray (NumPy backend) or torch.Tensor (torch backend).
     """
-    if _is_torch(omega_deg):
-        return _lab_to_sample_rotation_torch(omega_deg, frame)
+    if _is_torch(omega_deg, wedge_deg):
+        return _lab_to_sample_rotation_torch(omega_deg, frame, wedge_deg)
     c = math.cos(math.radians(omega_deg))
     s = math.sin(math.radians(omega_deg))
+    cW = math.cos(math.radians(wedge_deg))
+    sW = math.sin(math.radians(wedge_deg))
 
     if frame.lower() == "aps":
-        # Rotation about Y (up in APS)
+        # Rotation about Y (up in APS), tilted about X by wedge:
+        # R_total = R_y(-omega) @ R_x(wedge)
         return np.array([
-            [ c, 0.0, -s],
-            [0.0, 1.0, 0.0],
-            [ s, 0.0,  c],
+            [ c,     -s * sW, -s * cW],
+            [0.0,     cW,     -sW],
+            [ s,      c * sW,  c * cW],
         ], dtype=np.float64)
     elif frame.lower() in ("midas", "esrf"):
-        # Rotation about Z (up in MIDAS)
+        # Rotation about Z (up in MIDAS), tilted about Y by wedge:
+        # R_total = R_z(-omega) @ R_y(wedge)
         return np.array([
-            [ c,  s, 0.0],
-            [-s,  c, 0.0],
-            [0.0, 0.0, 1.0],
+            [ c * cW,  s,   c * sW],
+            [-s * cW,  c,  -s * sW],
+            [-sW,     0.0,  cW],
         ], dtype=np.float64)
     else:
         raise ValueError(f"Unknown frame '{frame}'. Use 'midas' or 'aps'.")
 
 
-def _lab_to_sample_rotation_torch(omega_deg, frame: str) -> torch.Tensor:
+def _lab_to_sample_rotation_torch(omega_deg, frame: str, wedge_deg=0.0) -> torch.Tensor:
     """Torch path for lab_to_sample_rotation."""
     omega = omega_deg if isinstance(omega_deg, torch.Tensor) else torch.tensor(omega_deg)
+    wedge = wedge_deg if isinstance(wedge_deg, torch.Tensor) else torch.tensor(
+        wedge_deg, dtype=omega.dtype if torch.is_floating_point(omega) else torch.float64
+    )
     omega_rad = omega * (math.pi / 180.0)
+    wedge_rad = wedge * (math.pi / 180.0)
     c = torch.cos(omega_rad)
     s = torch.sin(omega_rad)
+    # cW/sW may come from a 0-d default (wedge_deg=0.0) while omega is
+    # batched; broadcast explicitly so every stacked entry shares one shape.
+    cW = torch.broadcast_to(torch.cos(wedge_rad), c.shape)
+    sW = torch.broadcast_to(torch.sin(wedge_rad), c.shape)
     zero = torch.zeros_like(c)
-    one = torch.ones_like(c)
     if frame.lower() == "aps":
-        # Rotation about Y (up in APS)
+        # R_total = R_y(-omega) @ R_x(wedge)
         return torch.stack([
-            torch.stack([c, zero, -s], dim=-1),
-            torch.stack([zero, one, zero], dim=-1),
-            torch.stack([s, zero, c], dim=-1),
+            torch.stack([c, -s * sW, -s * cW], dim=-1),
+            torch.stack([zero, cW, -sW], dim=-1),
+            torch.stack([s, c * sW, c * cW], dim=-1),
         ], dim=-2)
     if frame.lower() in ("midas", "esrf"):
-        # Rotation about Z (up in MIDAS)
+        # R_total = R_z(-omega) @ R_y(wedge)
         return torch.stack([
-            torch.stack([c, s, zero], dim=-1),
-            torch.stack([-s, c, zero], dim=-1),
-            torch.stack([zero, zero, one], dim=-1),
+            torch.stack([c * cW, s, c * sW], dim=-1),
+            torch.stack([-s * cW, c, -s * sW], dim=-1),
+            torch.stack([-sW, zero, cW], dim=-1),
         ], dim=-2)
     raise ValueError(f"Unknown frame '{frame}'. Use 'midas' or 'aps'.")
 
@@ -240,7 +287,7 @@ def tensor_aps_to_midas(T):
     return R_APS_TO_MIDAS @ T @ R_APS_TO_MIDAS.T
 
 
-def tensor_lab_to_sample(T, omega_deg, frame: str = "midas"):
+def tensor_lab_to_sample(T, omega_deg, frame: str = "midas", wedge_deg: float = 0.0):
     """Convert symmetric tensor(s) from lab to sample frame.
 
     Parameters
@@ -248,8 +295,11 @@ def tensor_lab_to_sample(T, omega_deg, frame: str = "midas"):
     T : ndarray or torch.Tensor (..., 3, 3)
     omega_deg : float or torch.Tensor (0-d)
     frame : str — ``"midas"`` or ``"aps"``.
+    wedge_deg : float or torch.Tensor (0-d)
+        Rotation-stage tilt in degrees (default 0.0, backward compatible).
+        See :func:`lab_to_sample_rotation`.
     """
-    R = lab_to_sample_rotation(omega_deg, frame)
+    R = lab_to_sample_rotation(omega_deg, frame, wedge_deg)
     if _is_torch(T, omega_deg):
         if not isinstance(R, torch.Tensor):
             R = torch.as_tensor(R, dtype=T.dtype, device=T.device)
@@ -267,12 +317,18 @@ def grains_midas_to_sample(
     strains,
     omega_deg: float = 0.0,
     target_frame: str = "aps",
+    wedge_deg: float = 0.0,
 ) -> dict:
     """Convert MIDAS Grains.csv data to the APS sample frame.
 
     This replicates the pipeline in Park's ``parseGrainData_OneLayer_ff.m``:
     first apply the MIDAS->APS cyclic permutation, then the lab->sample
-    rotation at the given omega.
+    rotation at the given omega (and, if ``wedge_deg`` is nonzero, about the
+    wedge-tilted rotation axis -- see :func:`lab_to_sample_rotation`).
+    Orientation and position are given the SAME ``R_total`` (that is the
+    invariant this module preserves: a grain's own frame and its
+    center-of-mass both move with the identical rigid rotation from lab to
+    sample), so this is unchanged by adding the wedge term.
 
     Parameters
     ----------
@@ -286,6 +342,10 @@ def grains_midas_to_sample(
         Omega angle at which lab and sample coincide (default 0).
     target_frame : str
         ``"aps"`` (default) or ``"midas"``.
+    wedge_deg : float or torch.Tensor (0-d)
+        Rotation-stage tilt in degrees (the Parameters-file ``Wedge``).
+        Default 0.0 is backward compatible: output is bit-identical to the
+        pre-wedge behaviour. See :func:`lab_to_sample_rotation`.
 
     Returns
     -------
@@ -294,7 +354,7 @@ def grains_midas_to_sample(
         'positions': ndarray (N, 3) in sample frame
         'strains': ndarray (N, 3, 3) in sample frame
     """
-    is_torch = _is_torch(orientations, positions, strains, omega_deg)
+    is_torch = _is_torch(orientations, positions, strains, omega_deg, wedge_deg)
     if is_torch:
         ref = orientations if isinstance(orientations, torch.Tensor) else (
             positions if isinstance(positions, torch.Tensor) else strains
@@ -305,7 +365,7 @@ def grains_midas_to_sample(
             R_frame = torch.eye(3, dtype=ref.dtype, device=ref.device)
         else:
             raise ValueError(f"Unknown target_frame '{target_frame}'.")
-        R_lab2sam = lab_to_sample_rotation(omega_deg, target_frame)
+        R_lab2sam = lab_to_sample_rotation(omega_deg, target_frame, wedge_deg)
         if not isinstance(R_lab2sam, torch.Tensor):
             R_lab2sam = torch.as_tensor(R_lab2sam, dtype=ref.dtype, device=ref.device)
         R_total = R_lab2sam @ R_frame
@@ -320,7 +380,7 @@ def grains_midas_to_sample(
             R_frame = np.eye(3)
         else:
             raise ValueError(f"Unknown target_frame '{target_frame}'.")
-        R_lab2sam = lab_to_sample_rotation(omega_deg, target_frame)
+        R_lab2sam = lab_to_sample_rotation(omega_deg, target_frame, wedge_deg)
         R_total = R_lab2sam @ R_frame
         orient_out = R_total @ orientations
         pos_out = (R_total @ positions[..., None]).squeeze(-1)
