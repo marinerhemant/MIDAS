@@ -195,9 +195,29 @@ def rho_d_for(BC_y: float, BC_z: float, n_y: int, n_z: int, px: float) -> float:
 _PHASE_COLORS = ("red", "cyan", "yellow", "lime", "magenta")
 
 
+def overlay_frame(image, result) -> np.ndarray:
+    """The frame the overlay must be drawn on: ``image`` in the fit's frame.
+
+    ``result``'s geometry (``BC_y`` = column, ``BC_z`` = row) is expressed
+    AFTER ``result.im_trans`` has been applied, but callers hold the raw frame
+    (``calibrate()`` applies the transform internally). Plotting the raw frame
+    under the fitted rings mirrors them against the data on any detector with
+    an ``ImTransOpt`` -- with ``ImTransOpt 2`` the measured rings sat at
+    ``N-1-BC_z`` while the predicted ones sat at ``BC_z``, on a fit that was
+    correct. Pass the RAW image here, exactly once.
+    """
+    from ..io.transforms import apply_im_trans
+    img, _, _, _, _ = apply_im_trans(np.asarray(image), None, None,
+                                     getattr(result, "im_trans", ()) or ())
+    return img
+
+
 def write_ring_overlay(image, result, wavelength_A, calibrant, out_png, *,
                        max_frac_of_frame: float = 0.75) -> int:
     """Predicted rings at the refined geometry, over the measured frame.
+
+    ``image`` is the RAW frame as read; it is put into the fit's frame with
+    ``result.im_trans`` (see :func:`overlay_frame`) before plotting.
 
     ``calibrant`` may be one name/dict or a list of them; each phase is drawn
     in its own colour so a mixed-calibrant exposure can be checked by eye.
@@ -214,6 +234,8 @@ def write_ring_overlay(image, result, wavelength_A, calibrant, out_png, *,
     from midas_hkls import Lattice, SpaceGroup, generate_hkls
     from ..seed.calibrant import resolve_calibrants
 
+    # ``image`` is the RAW frame; the geometry lives in the im_trans frame.
+    image = overlay_frame(image, result)
     r_max = max_frac_of_frame * image.shape[0]
     two_theta_max = math.degrees(math.atan(r_max * result.pxY / result.Lsd))
 
