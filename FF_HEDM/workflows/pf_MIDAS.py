@@ -2506,7 +2506,7 @@ def main():
             if valid_data.size > 0:
                 ph5.write_dataset('voxels/position', valid_data[:, 11:14])
                 ph5.write_dataset('voxels/orientation_matrix', valid_data[:, 1:10].reshape(-1, 3, 3))
-                ph5.write_dataset('voxels/euler_angles', valid_data[:, 35:38])
+                ph5.write_dataset('voxels/euler_angles', valid_data[:, 36:39])  # Eul1-3 (cols 36-38); 35:38 wrote [E33, Eul1, Eul2]
                 ph5.write_dataset('voxels/quaternion', valid_data[:, 39:43])
                 ph5.write_dataset('voxels/lattice_params', valid_data[:, 15:21])
                 ph5.write_dataset('voxels/strain', valid_data[:, 27:36].reshape(-1, 3, 3))
@@ -2592,7 +2592,7 @@ def main():
             if valid_data.size > 0:
                 ph5.write_dataset('voxels/position', valid_data[:, 11:14])
                 ph5.write_dataset('voxels/orientation_matrix', valid_data[:, 1:10].reshape(-1, 3, 3))
-                ph5.write_dataset('voxels/euler_angles', valid_data[:, 35:38])
+                ph5.write_dataset('voxels/euler_angles', valid_data[:, 36:39])  # Eul1-3 (cols 36-38); 35:38 wrote [E33, Eul1, Eul2]
                 ph5.write_dataset('voxels/quaternion', valid_data[:, 39:43])
                 ph5.write_dataset('voxels/lattice_params', valid_data[:, 15:21])
                 ph5.write_dataset('voxels/strain', valid_data[:, 27:36].reshape(-1, 3, 3))
