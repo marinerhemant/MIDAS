@@ -123,6 +123,22 @@ def parse_parameter_file(filename):
 
     return params
 
+_DATATYPE_NAMES = {np.uint8: 'uint8', np.int8: 'int8', np.uint16: 'uint16', np.int16: 'int16',
+                   np.uint32: 'uint32', np.int32: 'int32',
+                   np.float32: 'float32', np.float64: 'float64'}
+
+
+def datatype_string(dtype):
+    """Name written to scan_parameters/datatype, which peakfit uses to override
+    the pixel type. Must cover every dtype a reader can return: CBF frames are
+    int32, and a missing entry wrote 'unknown', on which midas_peakfit's
+    `_bytes_per_px` raised KeyError (every CBF sweep)."""
+    t = np.dtype(dtype).type
+    if t not in _DATATYPE_NAMES:
+        raise ValueError(f"no scan_parameters/datatype name for dtype {np.dtype(dtype)}")
+    return _DATATYPE_NAMES[t]
+
+
 @jit(nopython=True)
 def apply_correction(img, dark_mean, pre_proc_thresh_val):
     """Applies dark correction. This function is now type-agnostic."""
@@ -505,7 +521,10 @@ def process_multifile_scan(file_type, config, z_groups):
         from midas_zipper._read_cbf import (
             read_cbf as _read_cbf, read_cbf_metadata, DATA_TYPES as CBF_DATA_TYPES,
         )
-    elif file_type != 'ge':
+    if file_type != 'ge':
+        # TIFF data AND every non-GE dark (a CBF sweep's `Dark` is read with
+        # tifffile below). Importing it only for TIFF data made any CBF scan
+        # with a Dark die with UnboundLocalError.
         import tifffile
 
     # --- Correction Logic ---
@@ -894,8 +913,7 @@ def main():
 
     if output_dtype is None: print("Error: Could not determine data type."); sys.exit(1)
 
-    dtype_map = {np.uint16: 'uint16', np.uint32: 'uint32', np.float32: 'float32', np.float64: 'float64'}
-    dtype_str = dtype_map.get(np.dtype(output_dtype).type, 'unknown')
+    dtype_str = datatype_string(output_dtype)
     z_groups['sp_pro_meas'].create_dataset('datatype', data=np.bytes_(dtype_str.encode('UTF-8')))
     print(f"\nWritten datatype for C-code: '{dtype_str}'")
 
