@@ -45,6 +45,8 @@ __all__ = [
     "StrainTiltMaps",
     "strain_and_tilt",
     "predicted_fov_row_gradient",
+    "HeldOutPlaneResult",
+    "held_out_plane_check",
 ]
 
 
@@ -124,7 +126,9 @@ def angular_moments(M: np.ndarray, grid: np.ndarray, *, base_frac: float = 0.30)
     dict with ``S0``/``com_raw`` (raw first moment and its intensity) and ``S0c``/``com``/``sig``
     (baseline-removed), plus ``frac_base``, the fraction of intensity the baseline carried
     (report and read before trusting ``com``: 90 %+ means the baseline swallowed real signal,
-    e.g. because a pedestal was left in before this function ever saw the data).
+    e.g. because a pedestal was left in before this function ever saw the data), and ``base``,
+    the per-pixel baseline level itself (same units as ``M``; used by
+    :func:`held_out_plane_check` to rebuild a predicted total from ``com``/``sig`` alone).
     """
     n = len(grid); g = np.asarray(grid, dtype=np.float32)
     S0 = M.sum(0)
@@ -137,7 +141,7 @@ def angular_moments(M: np.ndarray, grid: np.ndarray, *, base_frac: float = 0.30)
     comc = (Mc * g[:, None, None]).sum(0) / np.maximum(S0c, 1e-9)
     varc = (Mc * (g[:, None, None] - comc) ** 2).sum(0) / np.maximum(S0c, 1e-9)
     return dict(S0=S0, com_raw=com0, S0c=S0c, com=comc, sig=np.sqrt(np.maximum(varc, 0)),
-               frac_base=1 - S0c / np.maximum(S0, 1e-9))
+               frac_base=1 - S0c / np.maximum(S0, 1e-9), base=base)
 
 
 def derive_grain_mask(total_intensity: np.ndarray, *, background_percentile: float = 5.0,
@@ -251,3 +255,95 @@ def predicted_fov_row_gradient(*, ffz: np.ndarray, ob_g: np.ndarray, obx: float,
     eff_pixel_um = pixel_um / magnification
     s_rad_per_px = (eff_pixel_um * 1e-6) / (L_obj_to_det * 1e-3)
     return float(1e6 * (s_rad_per_px / 2.0) / np.tan(np.deg2rad(theta_B_deg)))
+
+
+@dataclass
+class HeldOutPlaneResult:
+    """Output of :func:`held_out_plane_check`."""
+
+    held_out: int              # index into the original scans/ob_g/Mob ordering
+    obpitch_deg: float
+    actual: np.ndarray         # (H, W) the held-out plane's own measured total intensity
+    predicted: np.ndarray      # (H, W) predicted from the OTHER planes' fit alone
+    r: float                   # Pearson correlation, over the grain mask
+    resid_rms_frac: float      # RMS(actual - predicted) / RMS(actual - baseline), over the grain
+
+
+def held_out_plane_check(Mob: np.ndarray, ob_g: np.ndarray, grain: np.ndarray, *,
+                         held_out: Optional[int] = None, base_frac: float = 0.25) -> HeldOutPlaneResult:
+    """Leave-one-plane-out accuracy check: fit the per-pixel single-Gaussian-in-obpitch model
+    on every plane EXCEPT one, predict that held-out plane's own total-intensity map from the
+    fit alone, and compare to what was actually measured there.
+
+    This is a different kind of check than :func:`~midas_dfxm.rocking.forward_predict_check`:
+    that one fits and evaluates a pixel's model against the SAME data it was fit from (a
+    within-plane spot check of curve shape); this one fits on 7 of the campaign's 8 planes and
+    predicts the 8th, whose own counts never enter the *obpitch-Gaussian fit* at all. It is not
+    the round-trip ``manuals/dfxm/README.md`` rule 5 warns against (a forward-then-inverse of
+    one's own generator returns ~1e-16 because it inverts itself): an adversarial ``/verify``
+    pass on the real Mg-4Al g9 grain (claim ``2f8370bd5108``, PROVISIONAL) confirmed a trivial
+    shared-illumination/grain-silhouette baseline caps out at r~0.19-0.46 here, far below this
+    function's r~0.887 -- the fit is recovering real per-pixel structure, not just "this pixel
+    is generally bright."
+
+    **Two honest caveats from that same verification pass, kept here so they are not lost:**
+    (1) ``grain`` is normally derived (by the caller) from a marginal accumulated over ALL
+    planes including the held-out one, so it is not a strictly clean holdout -- measured on the
+    real data, re-deriving the mask from only the 7 retained planes changes r by 0.007 (0.75 %
+    relative), i.e. real but not material here; a genuinely leakage-free mask still needs a
+    caller-supplied ``grain`` built without the held-out plane if that matters for your use.
+    (2) an exact permutation null (shuffling which retained plane's obpitch label attaches to
+    which plane's pixel data, refitting each time) found ``resid_rms_frac`` alone is NOT
+    significant on the real grain (p=0.157) -- report ``r`` as the primary evidence of fit
+    quality, not ``resid_rms_frac``, until a better residual normalisation is found.
+
+    Parameters
+    ----------
+    Mob : (n_planes, H, W) one plane's pedestal-subtracted total intensity per entry (see
+        :func:`accumulate_marginals`).
+    ob_g : (n_planes,) the obpitch value of each plane, same order as ``Mob``.
+    grain : (H, W) boolean mask restricting the reported correlation/residual to real signal --
+        predicting outside the grain is meaningless (no peak there to hold out). See caveat (1)
+        above on how this mask is usually derived.
+    held_out : which plane index to leave out. Default: the plane whose obpitch is closest to
+        the grain's own median obpitch centre (fit on all 8 planes) -- the plane nearest the
+        peak. **Not necessarily the hardest test**: a leave-one-out sweep over all 8 planes on
+        the real data found this default plane was the BEST of the 8 by ``resid_rms_frac``, not
+        the hardest, most likely because it also has the best per-pixel signal-to-noise -- an
+        earlier version of this docstring claimed the opposite without checking.
+    base_frac : passed through to :func:`angular_moments`; match whatever value the notebook's
+        own strain/tilt reduction used, for a fair comparison.
+
+    Returns
+    -------
+    HeldOutPlaneResult
+    """
+    Mob = np.asarray(Mob, dtype=float)
+    ob_g = np.asarray(ob_g, dtype=float)
+    n = Mob.shape[0]
+    if n < 3:
+        raise ValueError("held_out_plane_check needs at least 3 planes (2 to fit a peak, 1 to "
+                         "hold out)")
+    if grain.sum() == 0:
+        raise ValueError("grain mask is empty -- nothing to check")
+    if held_out is None:
+        full = angular_moments(Mob, ob_g, base_frac=base_frac)
+        ob_ref = float(np.median(full["com"][grain]))
+        held_out = int(np.argmin(np.abs(ob_g - ob_ref)))
+    keep = np.array([i for i in range(n) if i != held_out])
+    fit = angular_moments(Mob[keep], ob_g[keep], base_frac=base_frac)
+    amp = np.max(Mob[keep] - fit["base"], axis=0)      # peak height, from the RETAINED planes only
+    z = (ob_g[held_out] - fit["com"]) / np.maximum(fit["sig"], 1e-9)
+    predicted = fit["base"] + amp * np.exp(-0.5 * z ** 2)
+    actual = Mob[held_out]
+
+    a = actual[grain]; p = predicted[grain]
+    ac = a - a.mean(); pc = p - p.mean()
+    denom = np.sqrt((ac ** 2).sum() * (pc ** 2).sum())
+    r = float((ac * pc).sum() / denom) if denom > 0 else float("nan")
+    signal = np.clip(a - fit["base"][grain], 0.0, None)
+    sig_rms = float(np.sqrt(np.mean(signal ** 2)))
+    resid = a - p
+    resid_rms_frac = float(np.sqrt(np.mean(resid ** 2)) / sig_rms) if sig_rms > 0 else float("nan")
+    return HeldOutPlaneResult(held_out=held_out, obpitch_deg=float(ob_g[held_out]), actual=actual,
+                              predicted=predicted, r=r, resid_rms_frac=resid_rms_frac)

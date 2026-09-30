@@ -67,10 +67,12 @@ __all__ = [
     "RockingScan",
     "RockingMaps",
     "FrameOrderCheck",
+    "ForwardPredictResult",
     "classify_motors",
     "check_frame_order",
     "reduce_rocking",
     "baseline_sensitivity",
+    "forward_predict_check",
     "example_rocking_scan",
 ]
 
@@ -1215,16 +1217,16 @@ def reduce_rocking(scan: RockingScan, *, roi=None, baseline: str = "outside_peak
             sel = lit_mask & np.isfinite(ptc)
             if sel.sum() >= 50:
                 v_ = np.sort(ptc[sel])
-                ref = float(v_[int(0.05 * v_.size):max(int(0.95 * v_.size), 1)].mean())  # trimmed mean
-                if ref > 0:
-                    rel = ptc / ref
+                ptc_ref = float(v_[int(0.05 * v_.size):max(int(0.95 * v_.size), 1)].mean())  # trimmed mean
+                if ptc_ref > 0:
+                    rel = ptc / ptc_ref
                     extra["repeat_excess"] = np.where(lit_mask, rel, np.nan)
                     lo_, hi_ = np.percentile(rel[sel], [10, 90])
                     absx = None
                     if gain is not None and scan.n_repeats >= 2:
                         nA = (scan.n_repeats + 1) // 2
                         nB = scan.n_repeats - nA
-                        absx = float(ref * gain / (1.0 / nA + 1.0 / max(nB, 1)))
+                        absx = float(ptc_ref * gain / (1.0 / nA + 1.0 / max(nB, 1)))
                     extra["repeat_excess_spread"] = (float(lo_), float(hi_), absx)
                     if hi_ / max(lo_, 1e-9) > 3.0:
                         notes.append(
@@ -1350,6 +1352,282 @@ def baseline_sensitivity(scan: RockingScan, *, roi=None, variants=None, block: i
                                block_slope=float(num / den) if den > 0 else float("nan"))
         rows.append(row)
     return rows
+
+
+# --------------------------------------------------------------------------- forward predict
+def _components_1d(mask):
+    """Contiguous runs of ``True`` in a 1-D boolean array. Returns a list of (lo, hi) index
+    pairs (inclusive)."""
+    runs = []
+    i = 0
+    n = len(mask)
+    while i < n:
+        if mask[i]:
+            j = i
+            while j + 1 < n and mask[j + 1]:
+                j += 1
+            runs.append((i, j))
+            i = j + 1
+        else:
+            i += 1
+    return runs
+
+
+def _components_2d(mask):
+    """4-connected components of a 2-D boolean array, hand-rolled (this module stays
+    scipy-free). Returns a list of boolean masks, one per component, largest first."""
+    H, W = mask.shape
+    seen = np.zeros_like(mask, dtype=bool)
+    comps = []
+    for i0 in range(H):
+        for j0 in range(W):
+            if not mask[i0, j0] or seen[i0, j0]:
+                continue
+            stack = [(i0, j0)]
+            seen[i0, j0] = True
+            cells = []
+            while stack:
+                i, j = stack.pop()
+                cells.append((i, j))
+                for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    ni, nj = i + di, j + dj
+                    if 0 <= ni < H and 0 <= nj < W and mask[ni, nj] and not seen[ni, nj]:
+                        seen[ni, nj] = True
+                        stack.append((ni, nj))
+            comp = np.zeros_like(mask, dtype=bool)
+            for i, j in cells:
+                comp[i, j] = True
+            comps.append(comp)
+    comps.sort(key=lambda c: c.sum(), reverse=True)
+    return comps
+
+
+@dataclass
+class ForwardPredictResult:
+    """One pixel's raw counts, single-peak-model prediction, and goodness of fit.
+
+    ``coordinate`` is the scan's rocking coordinate for each frame, in acquisition order
+    (1-D: ``(M,)``; mesh: ``(M, 2)``). ``raw`` and ``predicted`` are full recorded counts
+    (baseline included), same order, so they are directly comparable to what the detector
+    actually recorded -- not to a smoothed or already-baseline-subtracted curve.
+    """
+
+    row: int
+    col: int
+    coordinate: np.ndarray
+    raw: np.ndarray
+    predicted: np.ndarray
+    baseline: float
+    centre_deg: np.ndarray          # (1,) for a 1-D scan, (2,) for a mesh
+    sigma_deg: np.ndarray            # same shape as centre_deg
+    r: float                         # Pearson correlation, predicted vs raw
+    resid_rms_frac: float            # RMS(raw - predicted) / RMS(raw - baseline)
+    single_peaked: Optional[bool]    # None if too little signal to test
+    share: float                     # the 1-D/2-D generalised _shape_stats ratio
+    n_features: int
+
+
+def forward_predict_check(scan: RockingScan, maps: RockingMaps, *, pixels=None,
+                          n_auto: int = 4, half_max_frac: float = 0.45,
+                          seed: int = 0) -> list:
+    """Forward-predict a handful of pixels' rocking curves from a single-peak model, and
+    compare the prediction to the RAW measured counts -- not a smoothed or re-derived curve,
+    the actual photon counts recorded at that pixel.
+
+    This is the check the module docstring's "curve shape" section describes but never
+    executes on real numbers: ``single_peaked`` reports what fraction of pixels look like
+    one peak, without ever showing what "looks like" means on the raw counts, and it does
+    not exist at all for a ``tilt2d`` mesh -- :func:`_reduce_mesh_chunk` never computes a
+    width, only a centre. This builds and checks the single-peak model directly, for both
+    scan shapes, on a handful of representative pixels (not the whole map: a per-pixel
+    amplitude fit plus a connected-component pass on 10^5-10^6 pixels is unnecessary here --
+    ``single_peaked``/the grain mask already say how widespread a problem is; this shows what
+    it looks like on real data).
+
+    The model is deliberately simple and self-contained: a Gaussian centred at
+    ``maps.centre_deg`` (already fitted by :func:`reduce_rocking`), with a width and
+    amplitude estimated HERE from the pixel's own baseline-subtracted counts -- not copied
+    from ``maps.fwhm_mdeg`` -- so this is an independent forward prediction, not a replay of
+    numbers already fitted. The width comes from the second moment restricted to the
+    tenth-max peak window found while computing ``share`` below: using every recorded frame
+    (most of which are pure baseline noise, for a narrow peak on a long scan) inflates the
+    second moment by the noise, not the peak, and was measured to do so on a real synthetic
+    check before this restriction was added. For a mesh, the two axes are assumed
+    independent (a diagonal covariance); that assumption is stated, not verified, here.
+
+    Parameters
+    ----------
+    pixels : explicit ``[(row, col), ...]`` to check. If ``None``, auto-picks the brightest
+        lit pixel plus ``n_auto - 1`` more lit pixels spread across the map (reproducible
+        via ``seed``).
+    half_max_frac : the 1-D ``share`` threshold for "single-peaked" (default matches
+        :func:`reduce_rocking`'s own 0.45, see its docstring for what ``share`` means). For
+        a mesh, a *different*, lower threshold is used automatically (see below) -- passing
+        this argument does not change the mesh threshold.
+
+    Notes
+    -----
+    ``share`` for a mesh pixel is an area ratio, not a length ratio, so it has a lower
+    ceiling than the 1-D case even for a perfectly clean single Gaussian: integrating an
+    isotropic 2-D Gaussian over a disc out to its half-max radius gives 0.5 of the peak
+    volume, out to its tenth-max radius gives 0.9, for a clean-limit ratio of 0.5/0.9 =
+    0.556 (vs. 1-D's ~0.78 quoted in :func:`_shape_stats`). Reusing ``half_max_frac=0.45``
+    for the mesh case leaves almost no margin below that lower ceiling once real photon
+    noise is added -- measured on this module's own clean synthetic ``"mesh"`` scan to
+    misclassify most genuinely single-peaked pixels as not single-peaked. The mesh
+    threshold used here, 0.32, keeps the same *relative* margin below the clean-limit ratio
+    that 0.45 keeps below 1-D's 0.78 (0.45/0.78 = 0.577, and 0.556*0.577 = 0.32).
+
+    Returns
+    -------
+    list of :class:`ForwardPredictResult`, one per checked pixel.
+    """
+    mesh_share_frac = 0.32     # see Notes above; not the same threshold as `half_max_frac`
+    mesh = scan.scan_type == "tilt2d"
+    show = maps.lit & ~maps.truncated
+    if pixels is None:
+        rng = np.random.default_rng(seed)
+        rows, cols = np.where(show)
+        if len(rows) == 0:
+            return []
+        bright = int(np.argmax(np.where(show, maps.intensity, -np.inf)))
+        br, bc = np.unravel_index(bright, maps.intensity.shape)
+        pixels = [(int(br), int(bc))]
+        others = [i for i in range(len(rows)) if not (rows[i] == br and cols[i] == bc)]
+        pick = rng.choice(others, size=min(n_auto - 1, len(others)), replace=False)
+        pixels += [(int(rows[i]), int(cols[i])) for i in pick]
+
+    x = np.asarray(scan.coordinate, dtype=float)
+    if not mesh:
+        x = x.reshape(-1)
+    out = []
+    for r, c in pixels:
+        raw = scan.frames[:, r, c].astype(float)
+        b = float(maps.baseline[r, c])
+        raw_signed = raw - b          # unclipped: what _shape_stats itself smooths/thresholds
+        signal = np.clip(raw_signed, 0.0, None)   # clipped: physical (non-negative) counts
+        tot = signal.sum()
+        if not np.isfinite(b) or tot <= 0:
+            out.append(ForwardPredictResult(r, c, x, raw, np.full_like(raw, np.nan), b,
+                                            np.array([np.nan]), np.array([np.nan]),
+                                            float("nan"), float("nan"), None,
+                                            float("nan"), 0))
+            continue
+        if mesh:
+            centre = np.asarray(maps.centre_deg[r, c], dtype=float)     # (2,)
+            share, n_feat, win = _shape_2d(raw_signed, x, half_max_frac)
+            wtot = signal[win].sum()
+            if wtot <= 0:
+                win = np.ones_like(win); wtot = tot     # fall back to the whole curve
+            var = np.array([np.sum(signal[win] * (x[win, k] - centre[k]) ** 2) / wtot
+                            for k in range(2)])
+            sigma = np.sqrt(np.maximum(var, 0.0))
+            amp = float(signal[win].max())
+            z2 = sum(((x[:, k] - centre[k]) / max(sigma[k], 1e-9)) ** 2 for k in range(2))
+            predicted = b + amp * np.exp(-0.5 * z2)
+        else:
+            centre = np.array([float(maps.centre_deg[r, c])])
+            share, n_feat, win = _shape_1d(raw_signed, np.argsort(x), half_max_frac)
+            wtot = signal[win].sum()
+            if wtot <= 0:
+                win = np.ones_like(win); wtot = tot     # fall back to the whole curve
+            var = np.sum(signal[win] * (x[win] - centre[0]) ** 2) / wtot
+            sigma = np.array([np.sqrt(max(var, 0.0))])
+            amp = float(signal[win].max())
+            z = (x - centre[0]) / max(sigma[0], 1e-9)
+            predicted = b + amp * np.exp(-0.5 * z ** 2)
+        resid = raw - predicted
+        rawc = raw - raw.mean(); predc = predicted - predicted.mean()
+        denom = np.sqrt((rawc ** 2).sum() * (predc ** 2).sum())
+        r_corr = float((rawc * predc).sum() / denom) if denom > 0 else float("nan")
+        sig_rms = float(np.sqrt((signal ** 2).mean()))
+        resid_frac = float(np.sqrt((resid ** 2).mean()) / sig_rms) if sig_rms > 0 else float("nan")
+        thr = mesh_share_frac if mesh else half_max_frac
+        single = (share >= thr and n_feat == 1) if np.isfinite(share) else None
+        out.append(ForwardPredictResult(r, c, x, raw, predicted, b, centre, sigma, r_corr,
+                                        resid_frac, single, share, n_feat))
+    return out
+
+
+def _shape_1d(signal, order, frac):
+    """Single-pixel version of :func:`_shape_stats`'s ``share``/``n_features``, on one
+    already baseline-subtracted but UNCLIPPED curve (clipping happens only inside, at the
+    numerator/denominator sum, matching ``_shape_stats``'s own ``c = np.clip(s, 0.0,
+    None)`` -- smoothing and run-finding on already-clipped data rectifies zero-mean noise
+    into a uniform positive floor, which was measured to swamp the 10%-max threshold).
+    ``order`` sorts ``signal`` into scan-coordinate order first (required before
+    :func:`_smooth3`, which assumes adjacent array entries are adjacent in the scan,
+    matching what ``_shape_stats`` receives from its caller inside :func:`reduce_rocking`).
+    Also returns a per-frame boolean mask (in the ORIGINAL, unsorted order) of the
+    tenth-max window around the peak, for the caller to restrict a width/amplitude fit to
+    (see :func:`forward_predict_check`)."""
+    s = signal[order]
+    sm = _smooth3(s)
+    mx = sm.max()
+    win = np.zeros(len(signal), dtype=bool)
+    if mx <= 0:
+        return float("nan"), 0, win
+    half = _components_1d(sm >= 0.5 * mx)
+    tenth = _components_1d(sm >= 0.1 * mx)
+    k = int(np.argmax(sm))
+    peak10 = next(((lo, hi) for lo, hi in tenth if lo <= k <= hi), None)
+    if peak10:
+        win[order[peak10[0]:peak10[1] + 1]] = True
+    denom = s[peak10[0]:peak10[1] + 1].clip(0, None).sum() if peak10 else 0.0
+    peak5 = next(((lo, hi) for lo, hi in half if lo <= k <= hi), None)
+    numer = s[peak5[0]:peak5[1] + 1].clip(0, None).sum() if peak5 else 0.0
+    share = numer / denom if denom > 0 else float("nan")
+    return share, len(half), win
+
+
+def _box_smooth_2d(img):
+    """3x3 box average, edges clipped not wrapped -- the 2-D analogue of :func:`_smooth3`.
+
+    A mesh scan has exactly one frame per (axis0, axis1) grid point (no repeats to average),
+    so the raw per-cell signal is single-shot Poisson noise. Skipping this before
+    thresholding was measured to fragment one real peak into 15-30+ spurious one-cell
+    "features" from noise alone, on a scan whose true single-Gaussian answer is known --
+    this smoothing is required, not cosmetic, the same way `_smooth3` is for a 1-D curve.
+    """
+    H, W = img.shape
+    pad = np.pad(img, 1, mode="edge")
+    out = np.zeros_like(img)
+    for di in (0, 1, 2):
+        for dj in (0, 1, 2):
+            out += pad[di:di + H, dj:dj + W]
+    return out / 9.0
+
+
+def _shape_2d(signal, xy, frac):
+    """Mesh version of :func:`_shape_1d`: bins frames onto their (axis0, axis1) grid (signed,
+    unclipped -- see :func:`_shape_1d`'s docstring for why), then applies the same
+    half-max/tenth-max connected-region ratio in 2-D on a box-smoothed copy of the grid
+    (see :func:`_box_smooth_2d`), clipping only at the numerator/denominator sum, matching
+    ``_shape_stats``. Also returns a per-frame boolean mask of the (unsmoothed-signal)
+    tenth-max window, for the caller's width/amplitude fit."""
+    g0 = np.sort(np.unique(np.round(xy[:, 0], 6)))
+    g1 = np.sort(np.unique(np.round(xy[:, 1], 6)))
+    img = np.full((len(g0), len(g1)), 0.0)
+    i0 = np.searchsorted(g0, np.round(xy[:, 0], 6))
+    i1 = np.searchsorted(g1, np.round(xy[:, 1], 6))
+    for a, b, s in zip(i0, i1, signal):
+        img[a, b] += s
+    sm = _box_smooth_2d(img)
+    win = np.zeros(len(signal), dtype=bool)
+    mx = sm.max()
+    if mx <= 0:
+        return float("nan"), 0, win
+    half_comps = _components_2d(sm >= 0.5 * mx)
+    tenth_comps = _components_2d(sm >= 0.1 * mx)
+    peak = np.unravel_index(np.argmax(sm), sm.shape)
+    ten = next((comp for comp in tenth_comps if comp[peak]), None)
+    denom = np.clip(img[ten], 0.0, None).sum() if ten is not None else 0.0
+    if ten is not None:
+        win = ten[i0, i1]
+    fiv = next((comp for comp in half_comps if comp[peak]), None)
+    numer = np.clip(img[fiv], 0.0, None).sum() if fiv is not None else 0.0
+    share = numer / denom if denom > 0 else float("nan")
+    return share, len(half_comps), win
 
 
 # --------------------------------------------------------------------------- synthetic scan

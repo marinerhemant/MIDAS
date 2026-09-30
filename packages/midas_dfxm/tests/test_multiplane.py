@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 from midas_dfxm.multiplane import (
-    accumulate_marginals, angular_moments, derive_grain_mask, predicted_fov_row_gradient,
-    strain_and_tilt,
+    HeldOutPlaneResult, accumulate_marginals, angular_moments, derive_grain_mask,
+    held_out_plane_check, predicted_fov_row_gradient, strain_and_tilt,
 )
 from midas_dfxm.rocking import RockingScan, example_rocking_scan
 
@@ -157,3 +157,57 @@ def test_predicted_fov_row_gradient_refuses_a_negative_distance():
     with pytest.raises(ValueError, match="objective->detector distance"):
         predicted_fov_row_gradient(ffz=ffz, ob_g=ob_g, obx=264.0, pixel_um=6.5,
                                    magnification=2.0, theta_B_deg=8.0)
+
+
+def _synthetic_Mob(n_planes=8, shape=(12, 12), com=16.15, sig=0.05, amp=200.0, base=30.0,
+                   seed=0):
+    """A per-pixel single Gaussian in obpitch, with `com` varying smoothly across the field
+    (a planted tilt, like the real grain's own obpitch-centre map) so there is real spatial
+    structure for `held_out_plane_check`'s correlation to recover -- a uniform-everywhere
+    `com` would make actual/predicted both ~constant across pixels and their correlation
+    would just measure noise, not the model. Independent Poisson-like noise per plane means
+    the held-out plane is never a noiseless copy of the fit."""
+    rng = np.random.default_rng(seed)
+    H, W = shape
+    rr, cc = np.mgrid[0:H, 0:W]
+    u = (cc - (W - 1) / 2) / (W / 2); v = (rr - (H - 1) / 2) / (H / 2)
+    com_map = com + 0.06 * u + 0.04 * v                       # deg, smooth planted tilt
+    ob_g = com + sig * np.linspace(-2.5, 2.5, n_planes)
+    clean = base + amp * np.exp(-0.5 * ((ob_g[:, None, None] - com_map[None]) / sig) ** 2)
+    Mob = rng.poisson(np.clip(clean, 0, None) * 4).astype(float) / 4.0   # 4 "repeats" worth
+    grain = np.ones(shape, dtype=bool)
+    return Mob, ob_g, grain, dict(com_map=com_map, sig=sig, amp=amp, base=base)
+
+
+def test_held_out_plane_check_recovers_a_clean_single_gaussian():
+    Mob, ob_g, grain, truth = _synthetic_Mob()
+    res = held_out_plane_check(Mob, ob_g, grain)
+    assert isinstance(res, HeldOutPlaneResult)
+    assert res.actual.shape == Mob.shape[1:]
+    assert res.predicted.shape == Mob.shape[1:]
+    # a real prediction from data the held-out plane never contributed to, not a tautology:
+    # correlates strongly but is not a perfect (noiseless-round-trip) match
+    assert res.r > 0.9
+    assert res.r < 0.999999
+    assert res.resid_rms_frac < 0.5
+
+
+def test_held_out_plane_check_default_holds_out_the_plane_nearest_the_grain_centre():
+    Mob, ob_g, grain, truth = _synthetic_Mob()
+    res = held_out_plane_check(Mob, ob_g, grain)
+    assert ob_g[res.held_out] == pytest.approx(np.median(truth["com_map"]), abs=0.03)
+    # explicit held_out is honoured, and need not be the near-centre plane
+    res_edge = held_out_plane_check(Mob, ob_g, grain, held_out=0)
+    assert res_edge.held_out == 0
+
+
+def test_held_out_plane_check_refuses_too_few_planes():
+    Mob, ob_g, grain, truth = _synthetic_Mob(n_planes=2)
+    with pytest.raises(ValueError, match="at least 3 planes"):
+        held_out_plane_check(Mob, ob_g, grain)
+
+
+def test_held_out_plane_check_refuses_an_empty_grain():
+    Mob, ob_g, grain, truth = _synthetic_Mob()
+    with pytest.raises(ValueError, match="grain mask is empty"):
+        held_out_plane_check(Mob, ob_g, np.zeros_like(grain))

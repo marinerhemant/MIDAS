@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dfxm"
-version = "0.12.0"
+version = "0.13.0"
 description = "Differentiable forward + inverse for Dark-Field X-ray Microscopy (DFXM): deformation-gradient field imaging through a magnifying objective, and per-dislocation defect-type discrimination, on top of midas-stress / midas-hkls / midas-defect."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -38,6 +38,7 @@ dependencies = [
     "tifffile>=2021.1",      # 6-ID-C frame reader (midas_dfxm.io_6idc)
     "h5py>=3.0",              # ID03 frame reader (midas_dfxm.io_id03)
     "hdf5plugin>=3.0",        # registers the ID03 image dataset's compression filter
+    "numba>=0.57",            # per-pixel population decomposition (midas_dfxm.populations)
 ]
 
 [project.optional-dependencies]

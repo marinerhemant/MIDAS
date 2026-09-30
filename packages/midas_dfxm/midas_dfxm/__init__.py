@@ -98,6 +98,7 @@ from .reflection_geometry import (
     surface_depth,
 )
 from .inverse import (
+    StrainRecovery,
     normal_strain,
     recover_strain_direct,
     recover_strain_regularised,
@@ -139,6 +140,7 @@ from .mosaicity_fit import (
     rocking_nll,
 )
 from .rocking import (
+    ForwardPredictResult,
     FrameOrderCheck,
     RockingMaps,
     RockingScan,
@@ -146,15 +148,18 @@ from .rocking import (
     check_frame_order,
     classify_motors,
     example_rocking_scan,
+    forward_predict_check,
     reduce_rocking,
 )
 from .io_6idc import find_motor_tables, load_6idc_scan, read_motor_table
 from .io_id03 import list_id03_planes, load_id03_scan
 from .multiplane import (
+    HeldOutPlaneResult,
     StrainTiltMaps,
     accumulate_marginals,
     angular_moments,
     derive_grain_mask,
+    held_out_plane_check,
     predicted_fov_row_gradient,
     strain_and_tilt,
 )
@@ -202,6 +207,7 @@ from .wave_imaging import (
     dfxm_image_wave, dfxm_image_dynamical, dfxm_image_dynamical_pink, dfxm_image_dynamical_chromatic_pink,
 )
 from .field_inverse import (
+    DeformationRecovery,
     angular_condition_number,
     angular_sensitivity_matrix,
     decompose_deformation,
@@ -330,6 +336,7 @@ __all__ = [
     "strain_design_matrix",
     "strain_identifiability",
     "recover_strain_direct",
+    "StrainRecovery",
     "recover_strain_regularised",
     "strain_covariance",
     "identify_dislocation",
@@ -369,6 +376,7 @@ __all__ = [
     "deformation_identifiability",
     "deformation_observable",
     "recover_deformation_direct",
+    "DeformationRecovery",
     "recover_deformation_regularised",
     "deformation_covariance",
     "fisher_information",
@@ -432,10 +440,12 @@ __all__ = [
     "RockingScan",
     "RockingMaps",
     "FrameOrderCheck",
+    "ForwardPredictResult",
     "classify_motors",
     "check_frame_order",
     "reduce_rocking",
     "baseline_sensitivity",
+    "forward_predict_check",
     "example_rocking_scan",
     "load_6idc_scan",
     "find_motor_tables",
@@ -448,6 +458,8 @@ __all__ = [
     "StrainTiltMaps",
     "strain_and_tilt",
     "predicted_fov_row_gradient",
+    "HeldOutPlaneResult",
+    "held_out_plane_check",
 ]
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
