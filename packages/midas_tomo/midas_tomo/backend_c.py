@@ -39,6 +39,7 @@ __all__ = [
     "binary_path",
     "run_binary",
     "supports_deterministic",
+    "supports_odd_shifts",
     "why_unavailable",
 ]
 
@@ -144,6 +145,16 @@ def supports_deterministic(*, gpu: bool = False) -> bool:
     to avoid.
     """
     return "--deterministic" in _usage_text(gpu=gpu)
+
+
+def supports_odd_shifts(*, gpu: bool = False) -> bool:
+    """``True`` if this binary accepts an odd number of rotation-axis shifts.
+
+    Older builds paired shifts across the flat (slice, shift) index and
+    refused any odd count other than 1 ("Number of shifts must be even").
+    The fixed engine says so in its usage text.
+    """
+    return "Any number of shifts works" in _usage_text(gpu=gpu)
 
 
 def run_binary(

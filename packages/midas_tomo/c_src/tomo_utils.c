@@ -245,10 +245,16 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record) {
    * or remove line [float] default 1.0 doLog - If 1, will take Log of
    * intensities to calculate transmission, otherwise will use intensities
    * directly. [int] default 1 slicesToProcess - -1 for all or FileName ExtraPad
-   * - 0 if half padding, 1 if one-half padding AutoCentering - 0 if don't want
-   * reconstruction shifted in one direction (rotation axis in center of recon)
-   * 				- 1 if want shift (rotation axis is offset)
-   * [default]
+   * - 0 if half padding, 1 if one-half padding
+   * AutoCentering - where the rotation axis lands in the N x N output slice
+   *   (N = reconstruction_xdim). The axis is detector column det_xdim/2 - shift,
+   *   and the engine's rotation centre is pixel (iy, ix) = (N/2 - 1, N/2 - 1),
+   *   i.e. one pixel below N/2 on both axes.
+   *   0: axis always at (N/2 - 1, N/2 - 1), whatever the shift.
+   *   1 [default]: getRecons then translates the slice by round(shift) columns,
+   *      so the axis sits at (N/2 - 1, N/2 - 1 - round(shift)) and the sample
+   *      keeps its detector-column position (integer part of the shift only).
+   *   Measured with a point on the axis: tests/test_axis_position.py.
    */
   int arbThetas = 0;
   FILE *fileParam;
@@ -509,10 +515,23 @@ int setGlobalOpts(char *inputFN, GLOBAL_CONFIG_OPTS *recon_info_record) {
     fclose(fileTheta);
   }
   printf("Total number of thetas: %d\n", recon_info_record->theta_list_size);
-  recon_info_record->n_shifts = (round)(abs((recon_info_record->end_shift -
-                                             recon_info_record->start_shift)) /
-                                        recon_info_record->shift_interval) +
-                                1;
+  /* n_shifts = round-half-up(|end - start| / |step|) + 1, with a 1e-4 nudge
+   * so a ratio that is x.5 in decimal but x.4999999 in float still rounds up.
+   * midas_tomo.config.parse_shift_arg uses the same rule; keep them in step.
+   * This replaces round() in float32 (half away from zero, and float32 could land
+   * either side of .5) against Python's half-to-even in float64, which disagreed
+   * at exact halves; a negative step also made the count negative (segfault).
+   * See FORK.txt, deliberate divergence #13. */
+  {
+    double span = fabs((double)recon_info_record->end_shift -
+                       (double)recon_info_record->start_shift);
+    double step = fabs((double)recon_info_record->shift_interval);
+    if (span == 0.0 || step == 0.0) {
+      recon_info_record->n_shifts = 1;
+    } else {
+      recon_info_record->n_shifts = (int)floor(span / step + 0.5 + 1e-4) + 1;
+    }
+  }
   recon_info_record->shift_values =
       (float *)malloc(sizeof(float) * (recon_info_record->n_shifts));
   int i;

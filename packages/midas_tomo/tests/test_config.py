@@ -118,11 +118,31 @@ def test_n_shifts(tmp_path):
     assert _minimal(tmp_path, shift_values=(-2.0, 2.0, 0.5)).n_shifts == 9
 
 
-def test_rejects_odd_shift_count(tmp_path):
-    # The engine reconstructs shifts in pairs; an odd count makes it exit
-    # non-zero with no useful message, so catch it here instead.
-    problems = _minimal(tmp_path, shift_values=(-2.0, 2.0, 1.0)).validate()  # 5
-    assert any("reconstructs shifts in pairs" in p for p in problems)
+@pytest.mark.parametrize("shifts, n", [
+    ((-2, 2.25, 0.25), 18),
+    ((-10, 10, 1), 21),
+    ((-1, 1, 0.1), 21),          # 2 / 0.1 is 20.000000000000004 in float64
+    ((0.1, 0.7, 0.2), 4),        # 0.6 / 0.2 is 2.9999999999999996
+    ((0, 2.5, 1), 4),            # exact half: UP, as C round() does
+    ((0, 0.25, 0.1), 4),         # half in decimal, 2.4999999999999996 in float
+    ((-10, -9.85, 0.1), 3),      # half in decimal; float32 in the C lands below
+    ((2, -2, -0.5), 9),          # negative step: the old C count was negative
+])
+def test_shift_count_rule(shifts, n):
+    # Issue #14. The count is round-half-UP(|end - start| / |step|) + 1 with a
+    # 1e-4 nudge, the same expression tomo_utils.c now evaluates. Python's
+    # round() rounds half to even and disagreed with the engine at every
+    # exact half; tests/test_engine.py checks the engine against this rule.
+    assert parse_shift_arg(list(shifts))[3] == n
+
+
+def test_accepts_odd_shift_count(tmp_path):
+    # Issue #7: the engine used to require an even count; it now pairs shifts
+    # within a slice and reconstructs the odd one out alone.
+    assert _minimal(tmp_path, shift_values=(-2.0, 2.0, 1.0)).validate() == []    # 5
+    cfg = _minimal(tmp_path, shift_values=(-10.0, 10.0, 1.0))                     # 21
+    assert cfg.n_shifts == 21
+    assert cfg.validate() == []
 
 
 def test_accepts_even_and_single_shift_counts(tmp_path):

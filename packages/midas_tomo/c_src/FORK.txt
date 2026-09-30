@@ -280,3 +280,54 @@ Documentation-only divergence #11 -- the --fftw-bridge claim, corrected (2026-08
   The flag remains useful as a diagnostic that isolates the FFT. It is no
   longer described as a parity switch, and scripts/verify_gpu.py asserts the
   regime rather than a bit-parity that was never real.
+
+
+Deliberate divergence #12 -- odd shift counts (2026-09-22)  [BUG FIX, issue #7]
+  Files: tomo_init.c (multi-shift loop, n_shifts gate, usage text)
+  The multi-shift path enumerated jobs over the flat index
+  slice*n_shifts + shift in steps of 2 and paired shift k with k+1. With an
+  odd n_shifts a pair straddled two slices, so planes went to the wrong
+  (slice, shift) or were never computed; the engine therefore refused any odd
+  count > 1 ("Number of shifts must be even").
+
+  Jobs are now enumerated as (slice, pair-within-slice), pairsPerSlice =
+  (n_shifts + 1) / 2. With an odd count the last shift of each slice fills
+  both gridrec slots and only the first is written. The even-count gate is
+  gone; the usage text says "Any number of shifts works", which
+  backend_c.supports_odd_shifts() probes.
+
+  For an even n_shifts the enumeration and the per-thread split are exactly
+  the old ones. Verified bitwise identical to the pre-fix build on six even
+  cases (2/4/6 shifts x 1-4 slices x 1-8 threads, --deterministic). Odd
+  sweeps: planes sharing a pair with the even neighbour are bitwise equal;
+  the lone plane agrees to ~2e-7 relative (two-slot rounding).
+
+  The stripeConfigFile sweep's n_shifts >= 2 gate was relaxed separately,
+  see #14.
+
+
+Deliberate divergence #13 -- shift-count rule (2026-09-22)  [BUG FIX, issue #14]
+  Files: tomo_utils.c (setGlobalOpts, n_shifts); Python: config.parse_shift_arg
+  n_shifts was round(abs(end - start) / shift_interval) + 1 in float32. The
+  abs() there is the tomo_heads.h float MACRO, not stdlib int abs, so the span
+  was NOT truncated as issue #14 supposed: (-2, 2.25, 0.25) gave 18 in both
+  old and new engines. The real disagreements with Python (which used round(),
+  half to EVEN, in float64) were:
+    - exact halves: C round() is half-away and float32 can land either side
+      of .5, e.g. (0, 2.5, 1) C 4 / Python 3; (-10, -9.85, 0.1) C 2 / Python 3.
+      7857 of 127600 decimal ranges disagreed in an emulation of both rules.
+    - a negative step: the count went negative and the engine segfaulted.
+  Both sides now use floor(|end - start| / |step| + 0.5 + 1e-4) + 1 (C in
+  double), and start == end is 1 shift. Counts off exact halves are
+  unchanged; at exact halves the engine now always rounds up.
+
+Deliberate divergence #14 -- cleanup sweep with one shift (2026-09-22)  [issue #15]
+  Files: tomo_init.c (sweep gate, slices-even gate)
+  The stripeConfigFile sweep refused n_shifts < 2 because the old paired
+  loop reconstructed only every other slice at one shift. Since #12 the loop
+  pairs shifts within a slice, so one shift is one job per slice and every
+  slice is written; the gate is gone. The "Number of slices must be even"
+  gate now applies only to the single-shift NO-sweep path, the one path that
+  pairs slices; the sweep takes any slice count. A 1-shift sweep agrees with
+  the first shift of a 2-shift sweep and with the plain single-config run to
+  float32 two-slot rounding (tests/test_engine.py).

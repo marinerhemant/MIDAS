@@ -49,6 +49,7 @@ from typing import Any, Dict, Optional, Sequence, Tuple, Union
 import numpy as np
 
 from .center import find_center_consensus, slices_with_signal
+from .config import parse_shift_arg
 from .ingest import IngestResult, stage_scan_to_binary
 from .scanrecord import TomoScan, read_scan_record
 
@@ -116,8 +117,13 @@ class ReconstructionResult:
 
 
 def _even(lo: float, hi: float, step: float) -> Tuple[float, float, float]:
-    """The engine reconstructs shifts in pairs and rejects an odd count."""
-    n = int(round(abs(hi - lo) / step)) + 1
+    """Round a sweep up to an even shift count.
+
+    No longer required -- the engine accepts any count -- but kept so the
+    coarse and fine sweeps, and hence the chosen shift, are unchanged. The
+    count comes from :func:`parse_shift_arg`, the same rule the engine uses.
+    """
+    n = parse_shift_arg((lo, hi, step))[3]
     if n % 2:
         hi = hi + step
     return (lo, hi, step)

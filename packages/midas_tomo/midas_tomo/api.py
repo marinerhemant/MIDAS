@@ -221,7 +221,11 @@ def run_tomo(
     thetas : 1-D array
         Rotation angles in degrees.
     shifts : float or (start, end, step)
-        Rotation-axis shift, or a range to sweep.
+        Rotation-axis shift, or a range to sweep. Any count >= 1, odd or
+        even, e.g. ``(-10, 10, 1)`` for 21 shifts. Sign: the axis is at
+        detector column ``xdim/2 - shift``. In the output the axis sits at
+        ``(iy, ix) = (X/2 - 1, X/2 - 1 - round(shift))`` with *auto_centering*
+        (the default), ``(X/2 - 1, X/2 - 1)`` without it -- not at ``X/2``.
     filter_nr : int
         0 none, 1 Shepp-Logan, 2 Hann (default), 3 Hamming, 4 ramp.
     do_log : bool
@@ -335,6 +339,8 @@ def run_tomo_from_sinos(
         ``(n_slices, n_thetas, xdim)`` for a stack.
     thetas : 1-D array
         Rotation angles in degrees, length ``n_thetas``.
+    shifts : float or (start, end, step)
+        As for :func:`run_tomo`; any count >= 1, odd or even.
 
     Returns
     -------

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from math import ceil, log2
+from math import ceil, floor, log2
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -45,8 +45,13 @@ def parse_shift_arg(shifts) -> tuple[float, float, float, int]:
     """Normalise a shift specification to ``(start, end, step, n_shifts)``.
 
     Accepts a scalar (single shift) or a ``[start, end, step]`` sequence. The
-    count matches the C engine's own arithmetic in ``tomo_init.c``:
-    ``round(|end - start| / step) + 1``.
+    count matches the C engine's own arithmetic in ``tomo_utils.c``
+    (``setGlobalOpts``): ``floor(|end - start| / |step| + 0.5 + 1e-4) + 1``,
+    i.e. round half UP with a small nudge. Not Python's ``round``, which rounds
+    half to even and so disagreed with the C at every exact half (e.g.
+    ``(0, 2.5, 1)``); the nudge makes an exact decimal half round up in both
+    even though the C sees float32 values and Python sees float64.
+    ``start == end`` is one shift whatever the (non-zero) step.
     """
     if isinstance(shifts, (int, float)):
         return float(shifts), float(shifts), 1.0, 1
@@ -58,7 +63,9 @@ def parse_shift_arg(shifts) -> tuple[float, float, float, int]:
     start, end, step = (float(v) for v in seq)
     if step == 0:
         raise ValueError("shift step must be non-zero")
-    n = round(abs(end - start) / abs(step)) + 1
+    if start == end:
+        return start, end, step, 1
+    n = floor(abs(end - start) / abs(step) + 0.5 + 1e-4) + 1
     return start, end, step, int(n)
 
 
@@ -88,7 +95,10 @@ class TomoConfig:
     shift_values: tuple[float, float, float] = (0.0, 0.0, 1.0)
     do_log: bool = True                # C: doLogProj = 1
     extra_pad: bool = False            # C: powerIncrement = 0
-    auto_centering: bool = True        # C: auto_centering = 1
+    # C: auto_centering = 1. Axis (detector column det_xdim/2 - shift) lands at output pixel
+    # (iy, ix) = (N/2-1, N/2-1-round(shift)) when True, (N/2-1, N/2-1) when False; NOT at N/2.
+    # Pinned by tests/test_axis_position.py.
+    auto_centering: bool = True
     slices_to_process: str | os.PathLike | int = -1   # -1 = all, or a file path
     save_recon_separate: bool = False  # C default is 1; the Python API wants one cube
 
@@ -146,22 +156,11 @@ class TomoConfig:
                 f"got {self.filter_nr}"
             )
 
+        # Any shift count >= 1 is valid, odd or even: the engine pairs shifts
+        # within a slice and reconstructs an odd one out on its own.
         start, end, step = self.shift_values
         if start != end and step == 0:
             problems.append("shift step must be non-zero when start != end")
-        else:
-            # The engine's usage text says "ENSURE TO GIVE A RANGE WITH EVEN
-            # NUMBER OF SHIFTS" and its inner loop reconstructs shift pairs;
-            # an odd count makes it exit non-zero with no useful message.
-            # One shift is the exception -- that path is special-cased in the C.
-            n = self.n_shifts
-            if n > 1 and n % 2:
-                problems.append(
-                    f"shift_values {self.shift_values} gives {n} shifts; the "
-                    f"engine reconstructs shifts in pairs and requires an even "
-                    f"count (or exactly 1). Adjust the range or step - e.g. "
-                    f"end={end + step:g} would give {n + 1}."
-                )
 
         # The Vo median filters index a window of the stated size; even sizes
         # give an off-centre window, which the C does not guard against.

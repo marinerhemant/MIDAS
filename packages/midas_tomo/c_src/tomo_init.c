@@ -164,8 +164,8 @@ void usage() {
       "							* 4: Ramp\n"
       "	* shiftValues: start_shift end_shift shift_interval [floats] In case "
       "of 1 shift, give start_shift=end_shift, shift_interval doesn't matter.\n"
-      "	*					ENSURE TO GIVE A RANGE WITH "
-      "EVEN NUMBER OF SHIFTS\n"
+      "	*					Any number of shifts works, odd "
+      "or even.\n"
       "	* ringRemovalCoefficient - If given, will do ringRemoval, otherwise "
       "comment or remove line [float] default 1.0\n"
       "   * doLog - If 1, will take Log of intensities to calculate "
@@ -174,10 +174,11 @@ void usage() {
       "	* slicesToProcess - -1 for all or FileName. ENSURE TO GIVE EVEN NUMBER "
       "OF SLICES\n"
       "	* ExtraPad - 0 if half padding, 1 if one-half padding\n"
-      "	* AutoCentering - 0 if don't want reconstruction shifted in one "
-      "direction (rotation axis in center of recon)\n"
-      "	* 				- 1 if want shift (rotation axis is "
-      "offset) [default]\n"
+      "	* AutoCentering - where the rotation axis (detector column "
+      "det_xdim/2 - shift) lands in the NxN output:\n"
+      "	* 		0: at pixel (iy, ix) = (N/2-1, N/2-1) for any shift\n"
+      "	* 		1: at (N/2-1, N/2-1-round(shift)); the slice is translated "
+      "by round(shift) columns [default]\n"
       "Output file: float with reconstruction_xdim*reconstruction_xdim size\n"
       "OutputFileName: "
       "{recon_info_record.ReconFileName}_sliceNr_reconstruction_xdim_"
@@ -392,26 +393,24 @@ int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
       maxNProcs - 2,
       (long long int)numProcs * recon_info_record.sizeMatrices / (1000 * 1000));
   // Check if sizes are okay.
-  if (recon_info_record.n_shifts > 1 && recon_info_record.n_shifts % 2 != 0) {
-    printf("Number of shifts must be even. Exiting\n");
-    return 1;
-  }
-  /* Cleanup sweep requires the multi-shift inner loop (it pairs shifts in
-   * the dual-slice gridrec call). Pass at least 2 shifts so it can pair. */
-  if (recon_info_record.n_cleanup_configs > 1 &&
-      recon_info_record.n_shifts < 2) {
-    fprintf(stderr,
-            "Error: stripeConfigFile sweep requires n_shifts >= 2.\n"
-            "Use shiftValues like 'X X+0.1 0.1' to produce 2 shifts and\n"
-            "ignore the second result, or call run_tomo_cleanup_sweep() in\n"
-            "Python which handles this automatically.\n");
-    return 1;
-  }
+  /* An odd n_shifts used to be rejected here: the multi-shift loop below
+   * paired jobs across the flat (slice, shift) index, so with an odd count a
+   * pair straddled two slices. It now pairs shifts within one slice and
+   * reconstructs the odd one out alone, so any count >= 1 is valid. */
+  /* A stripeConfigFile sweep used to require n_shifts >= 2: the old paired
+   * loop walked the flat (slice, shift) index in steps of 2, so at
+   * n_shifts == 1 it reconstructed only every other slice. The loop now pairs
+   * shifts within one slice, so a single shift reconstructs every slice (one
+   * job per slice, second gridrec slot unused) and the gate is gone. */
   {
     printf("Total number of shifts: %d, total number of  slices: %d.\n",
            recon_info_record.n_shifts, recon_info_record.n_slices);
   }
-  if (recon_info_record.n_shifts == 1 && recon_info_record.n_slices % 2 != 0) {
+  /* Only the single-shift, no-sweep path below pairs SLICES in its gridrec
+   * call; the sweep path pairs shifts within a slice and takes any count. */
+  if (recon_info_record.n_shifts == 1 &&
+      recon_info_record.n_cleanup_configs == 1 &&
+      recon_info_record.n_slices % 2 != 0) {
     printf("Number of slices must be even. Exiting\n");
     return 1;
   }
@@ -1108,10 +1107,17 @@ int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
                cleanupNr + 1, recon_info_record.n_cleanup_configs);
       }
 
-      nJobs = recon_info_record.n_slices * recon_info_record.n_shifts;
-      int innerProcs = (nJobs / 2 < numProcs) ? nJobs / 2 : numProcs;
+      /* One job = one dual-slot gridrec call = a PAIR of shifts of the SAME
+       * slice. Shifts are paired within a slice, never across two: with an
+       * odd n_shifts the last shift of each slice is reconstructed alone
+       * (both slots carry it, only the first is written). For an even
+       * n_shifts this is exactly the old flat (slice*n_shifts + shift)/2
+       * enumeration and its per-thread split, so the output is unchanged. */
+      int pairsPerSlice = (recon_info_record.n_shifts + 1) / 2;
+      nJobs = recon_info_record.n_slices * pairsPerSlice;
+      int innerProcs = (nJobs < numProcs) ? nJobs : numProcs;
       if (innerProcs < 1) innerProcs = 1;
-      int nrSlicesThread = (int)ceil((double)nJobs / (2.0 * (double)innerProcs));
+      int nrSlicesThread = (int)ceil((double)nJobs / (double)innerProcs);
       if (cleanupNr == 0) {
         printf("Number of FFT jobs per thread %d, Number of threads: %d.\n"
                "Starting processing.\n",
@@ -1121,9 +1127,9 @@ int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
       {
         int procNr = omp_get_thread_num();
         int startJobNr, endJobNr;
-        startJobNr = procNr * nrSlicesThread * 2;
-        endJobNr = (startJobNr + nrSlicesThread * 2 < nJobs)
-                       ? startJobNr + nrSlicesThread * 2
+        startJobNr = procNr * nrSlicesThread;
+        endJobNr = (startJobNr + nrSlicesThread < nJobs)
+                       ? startJobNr + nrSlicesThread
                        : nJobs;
         LOCAL_CONFIG_OPTS information;
         information.shift = recon_info_record.shift_values[0];
@@ -1145,12 +1151,12 @@ int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
         initFFTMemoryStructures(&param);
         initGridRec(&param);
         int jobNr, sliceNr, shiftNr, localSliceNr;
-        for (jobNr = 0; jobNr < (endJobNr - startJobNr) / 2; jobNr++) {
+        for (jobNr = startJobNr; jobNr < endJobNr; jobNr++) {
           memsets(&information, &recon_info_record);
-          sliceNr = (startJobNr + jobNr * 2) / recon_info_record.n_shifts;
-          shiftNr = (startJobNr + jobNr * 2) % recon_info_record.n_shifts;
-          /* When n_shifts is odd (only legal at n_shifts==1 with sweep)
-           * the +1 below would walk off shift_values; guard. */
+          sliceNr = jobNr / pairsPerSlice;
+          shiftNr = (jobNr % pairsPerSlice) * 2;
+          /* Odd n_shifts: the last pair of a slice has no partner, so the
+           * second slot repeats the first and is not written. */
           int shiftNr2 = (shiftNr + 1 < recon_info_record.n_shifts)
                              ? shiftNr + 1
                              : shiftNr;

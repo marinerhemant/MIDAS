@@ -189,9 +189,10 @@ def run_tomo_cleanup_sweep(
     slices_fn = workingdir / "cleanup_tuning_slices.txt"
     slices_fn.write_text("".join(f"{s}\n" for s in tuning_slices))
 
-    # The engine's inner loop reconstructs shifts in pairs, so asking for a
-    # single shift would still cost a pair. We request two 0.1 apart and keep
-    # the first, rather than adding a single-shift path to the C.
+    # Two shifts 0.1 apart, keeping the first. The engine has taken a single
+    # shift here since issue #15 (a gridrec call carries two slots either
+    # way, so it costs the same); kept at two so existing sweeps reproduce
+    # their numbers, which differ from a one-shift run by slot rounding.
     cfg = TomoConfig(
         data_file=infn,
         recon_file=workingdir / "cleanup_tuning_output",
