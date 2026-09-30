@@ -214,6 +214,24 @@ struct TParams {
   RealType SoftAttrFwhm;
   RealType SoftAttrFalloff;
   RealType SoftAttrTruncate;
+  /* PF half-scan support. VoxelGridFile ("0" = off, the default) names a
+   * text file of "x y" voxel centres (um) that REPLACES the historical
+   * positions x positions grid. A half scan -- 360 deg rotation with the dty
+   * range spanning only one side of the rotation axis, the ESRF nanoscope
+   * layout -- needs a grid over the whole [-R, R] disc, which no product of
+   * the measured positions can give.
+   *
+   * PFCoverageAwareCompleteness (0 = off, the default): a predicted spot
+   * counts toward the completeness denominator only if some measured scan
+   * position lies inside the same window the matcher uses around its beam
+   * coordinate yRot = x sin w + y cos w. A spot outside every window can
+   * never match, so without this a voxel lit over only part of omega (every
+   * off-axis voxel of a half scan, and the corners of a full-scan square
+   * grid) is scored against reflections the measurement could not record.
+   * Matches are unchanged; only the denominators and the stored nTspots
+   * shrink. Off => bit-identical to the historical path. */
+  char VoxelGridFN[4096];
+  int PFCoverageAwareCompleteness;
   /* Multi-detector / pinwheel scaffolding (Phase 9). For single-detector
    * runs nDetParams stays 0 and the indexer falls back to global geometry
    * (RingRadii[], Distance) — preserves PF / FF parity bit-identically.
@@ -331,6 +349,20 @@ double *ypos = NULL;
 int n_ring_bins;
 int n_eta_bins;
 int n_ome_bins;
+
+/* Compact ring slots. The bin table's ring axis is a SLOT axis:
+ *   Pos = slot * n_eta_bins * n_ome_bins + iEta * n_ome_bins + iOme
+ * gRingSlot[RingNr] is the slot of a ring, -1 when the ring has no slab.
+ * If RingSlots.csv sits next to nData.bin (written by midas_transforms
+ * bin_data / bin_data_scanning), the map comes from it and n_ring_bins is
+ * the number of slots. Without it the legacy layout applies: slot =
+ * RingNr - 1 for RingNr in 1..HighestRingNo. For a ring set that is exactly
+ * 1..N the two are the same bytes. */
+static int gRingSlot[MAX_N_RINGS];
+static size_t gNDataBytes = 0; /* nData.bin size, validated in main */
+static inline int RingSlotOf(int ringnr) {
+  return (ringnr >= 0 && ringnr < MAX_N_RINGS) ? gRingSlot[ringnr] : -1;
+}
 
 RealType EtaBinSize = 0;
 RealType OmeBinSize = 0;
@@ -571,57 +603,172 @@ static void AxisAngle2RotMatrix(RealType axis[3], RealType angle,
   R[2][2] = rcos + w * w * (1 - rcos);
 }
 
-/* CalcRotationAngle — identical FF (597) / PF (556). */
-static double CalcRotationAngle(int RingNr) {
-  int habs = 0, kabs = 0, labs = 0;
-  int i;
-  for (i = 0; i < MAX_N_HKLS; i++) {
-    if (HKLints[i][3] == RingNr) {
-      habs = abs(HKLints[i][0]);
-      kabs = abs(HKLints[i][1]);
-      labs = abs(HKLints[i][2]);
-      break;
+/* CalcRotationAngle — sweep range about the seed plane normal.
+ *
+ * The candidate grid rotates the crystal about the seed reciprocal vector G
+ * over [0, MaxAngle). Two orientations related by a rotation about G that is a
+ * symmetry of the crystal predict identical spots, so the sweep has to cover
+ * exactly 360/n, where n is the ORDER OF THE STABILIZER of G in the proper half
+ * of the Laue group (Friedel's law makes the diffraction symmetry the Laue
+ * group). Too small a MaxAngle silently skips orientations; too large only
+ * costs time.
+ *
+ * This replaces a hand-written branch table keyed on the zero-count of
+ * |h|,|k|,|l|, which was wrong in five ways:
+ *   - cubic (h,k,0) with h != k, e.g. (420), fell through to `return 0`: the
+ *     seed got ZERO candidate orientations and the run indexed 0 seeds while
+ *     exiting 0 (garnet, 20-ID nfdev_jul26 HPcat_P2, 2026-09-24);
+ *   - m-3 (SG 195-206) was treated as m-3m: <100> got 90 (true 180), <110>
+ *     got 180 (true 360);
+ *   - 4/m (SG 75-88) was treated as 4/mmm: [100], [110] got 180 (true 360);
+ *   - monoclinic: a b-unique cell gave [100] 180 (true 360);
+ *   - the 2-folds perpendicular to c in 32 / 622 were never recognised (only
+ *     conservative, but inconsistent with the rest).
+ * It also took (h,k,l) from the FIRST hkls.csv row of the ring while the
+ * vector actually aligned, RingHKL, is the LAST one; on a ring holding two
+ * families at the same d ((611)+(532), (333)+(511)) those differ.
+ *
+ * Now the Laue proper rotation group is built from generators as INTEGER
+ * matrices acting on direct-lattice coordinates (x' = M x), closed, and
+ * n = #{M : h M = h} is counted exactly on the Miller indices of the aligned
+ * row (RingHKLint). No tolerance and no Cartesian embedding, so the answer is
+ * independent of the B-matrix convention. Settings follow the lattice angles,
+ * matching ConfigureMonoclinicSym and midas_hkls' default settings: monoclinic
+ * unique axis = the one non-90 angle (default b); trigonal on hexagonal axes
+ * unless a = b = c and alpha = beta = gamma != 90 (rhombohedral axes).
+ * tests/test_rotation_angle_laue.py checks this against midas_hkls' Seitz
+ * operators for all 230 space groups and against the rotational invariance
+ * of simulated (G, |F|^2) sets. */
+int RingHKLint[MAX_N_RINGS][3];
+
+#define ROT_ANGLE_TOL 1e-3
+#define MAX_LAUE_ROT 24
+
+static void irot_mul(const int A[3][3], const int B[3][3], int C[3][3]) {
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++)
+      C[i][j] = A[i][0] * B[0][j] + A[i][1] * B[1][j] + A[i][2] * B[2][j];
+}
+
+static int irot_find(int (*G)[3][3], int n, int M[3][3]) {
+  for (int k = 0; k < n; k++)
+    if (memcmp(G[k], M, sizeof(int) * 9) == 0) return k;
+  return -1;
+}
+
+/* Close the group generated by gens[0..ngen); G[0] = E. Returns the order,
+ * or -1 if it would exceed MAX_LAUE_ROT (a generator error). */
+static int irot_close(int (*gens)[3][3], int ngen, int (*G)[3][3]) {
+  int n = 1;
+  memset(G[0], 0, sizeof(int) * 9);
+  G[0][0][0] = G[0][1][1] = G[0][2][2] = 1;
+  int grew = 1;
+  while (grew) {
+    grew = 0;
+    for (int i = 0; i < n; i++) {
+      for (int g = 0; g < ngen; g++) {
+        int P[3][3];
+        irot_mul(G[i], gens[g], P);
+        if (irot_find(G, n, P) < 0) {
+          if (n >= MAX_LAUE_ROT) return -1;
+          memcpy(G[n++], P, sizeof(int) * 9);
+          grew = 1;
+        }
+      }
     }
   }
-  int nzeros = 0;
-  if (habs == 0) nzeros++;
-  if (kabs == 0) nzeros++;
-  if (labs == 0) nzeros++;
-  if (nzeros == 3) return 0;
-  if (SGNum == 1 || SGNum == 2) {
-    return 360;
-  } else if (SGNum >= 3 && SGNum <= 15) {
-    if (nzeros != 2) return 360;
-    else if (ABCABG[3] == 90 && ABCABG[4] == 90 && labs != 0) return 180;
-    else if (ABCABG[3] == 90 && ABCABG[5] == 90 && habs != 0) return 180;
-    else if (ABCABG[3] == 90 && ABCABG[5] == 90 && kabs != 0) return 180;
-    else return 360;
-  } else if (SGNum >= 16 && SGNum <= 74) {
-    if (nzeros != 2) return 360;
-    else return 180;
-  } else if (SGNum >= 75 && SGNum <= 142) {
-    if (nzeros == 0) return 360;
-    else if (nzeros == 1 && labs == 0 && habs == kabs) return 180;
-    else if (nzeros == 2) {
-      if (labs == 0) return 180;
-      else return 90;
-    } else return 360;
-  } else if (SGNum >= 143 && SGNum <= 167) {
-    if (nzeros == 0) return 360;
-    else if (nzeros == 2 && labs != 0) return 120;
-    else return 360;
-  } else if (SGNum >= 168 && SGNum <= 194) {
-    if (nzeros == 2 && labs != 0) return 60;
-    else return 360;
-  } else if (SGNum >= 195 && SGNum <= 230) {
-    if (nzeros == 2) return 90;
-    else if (nzeros == 1) {
-      if (habs == kabs || kabs == labs || habs == labs) return 180;
-    } else if (habs == kabs && kabs == labs) return 120;
-    else return 360;
-  } else
-    return 0;
-  return 0;
+  return n;
+}
+
+/* -31m trigonal groups: 2-folds along <1-10> (P312 family). The rest of
+ * 149-167 are -3m1: 2-folds along <110> (P321 family, and every R group). */
+static int TrigonalType2(int sg) {
+  return sg == 149 || sg == 151 || sg == 153 || sg == 157 || sg == 159 ||
+         sg == 162 || sg == 163;
+}
+
+/* Proper half of the Laue group of (sg, lattice), integer, direct basis.
+ * Returns the order, or -1 for an invalid space group. */
+static int LaueRotationsInt(int sg, const double abc[6], int (*G)[3][3]) {
+  static const int C2a[3][3] = {{1, 0, 0}, {0, -1, 0}, {0, 0, -1}};
+  static const int C2b[3][3] = {{-1, 0, 0}, {0, 1, 0}, {0, 0, -1}};
+  static const int C2c[3][3] = {{-1, 0, 0}, {0, -1, 0}, {0, 0, 1}};
+  static const int C4c[3][3] = {{0, -1, 0}, {1, 0, 0}, {0, 0, 1}};   /* -y,x,z */
+  static const int C3c[3][3] = {{0, -1, 0}, {1, -1, 0}, {0, 0, 1}};  /* -y,x-y,z */
+  static const int C6c[3][3] = {{1, -1, 0}, {1, 0, 0}, {0, 0, 1}};   /* x-y,x,z */
+  static const int C2_110[3][3] = {{0, 1, 0}, {1, 0, 0}, {0, 0, -1}};    /* y,x,-z */
+  static const int C2_1m10[3][3] = {{0, -1, 0}, {-1, 0, 0}, {0, 0, -1}}; /* -y,-x,-z */
+  static const int C3_111[3][3] = {{0, 0, 1}, {1, 0, 0}, {0, 1, 0}};     /* z,x,y */
+  int gens[3][3][3];
+  int ng = 0;
+#define ADDGEN(M) memcpy(gens[ng++], (M), sizeof(int) * 9)
+  const double al = abc[3], be = abc[4], ga = abc[5];
+  if (sg < 1 || sg > 230) return -1;
+  if (sg <= 2) {
+    /* 1 */
+  } else if (sg <= 15) {                                         /* 2 */
+    int a90 = fabs(al - 90.0) < ROT_ANGLE_TOL;
+    int b90 = fabs(be - 90.0) < ROT_ANGLE_TOL;
+    int g90 = fabs(ga - 90.0) < ROT_ANGLE_TOL;
+    if (!a90 && b90 && g90) ADDGEN(C2a);
+    else if (a90 && b90 && !g90) ADDGEN(C2c);
+    else ADDGEN(C2b);
+  } else if (sg <= 74) {                                         /* 222 */
+    ADDGEN(C2c); ADDGEN(C2a);
+  } else if (sg <= 88) {                                         /* 4 */
+    ADDGEN(C4c);
+  } else if (sg <= 142) {                                        /* 422 */
+    ADDGEN(C4c); ADDGEN(C2a);
+  } else if (sg <= 167) {                                        /* 3 / 32 */
+    int rhomb = fabs(ga - 120.0) > ROT_ANGLE_TOL &&
+                fabs(abc[0] - abc[1]) <= 1e-6 * abc[0] &&
+                fabs(abc[1] - abc[2]) <= 1e-6 * abc[0] &&
+                fabs(al - be) < ROT_ANGLE_TOL && fabs(be - ga) < ROT_ANGLE_TOL &&
+                fabs(al - 90.0) > ROT_ANGLE_TOL;
+    ADDGEN(rhomb ? C3_111 : C3c);
+    if (sg >= 149) {
+      if (rhomb) ADDGEN(C2_1m10);
+      else ADDGEN(TrigonalType2(sg) ? C2_1m10 : C2_110);
+    }
+  } else if (sg <= 176) {                                        /* 6 */
+    ADDGEN(C6c);
+  } else if (sg <= 194) {                                        /* 622 */
+    ADDGEN(C6c); ADDGEN(C2_110);
+  } else if (sg <= 206) {                                        /* 23 */
+    ADDGEN(C2c); ADDGEN(C2a); ADDGEN(C3_111);
+  } else {                                                       /* 432 */
+    ADDGEN(C4c); ADDGEN(C3_111);
+  }
+#undef ADDGEN
+  return irot_close(gens, ng, G);
+}
+
+/* #{M in G : h M = h}, h a row of Miller indices. Always >= 1 (E). */
+static int StabilizerOrderInt(const int h[3], int (*G)[3][3], int n) {
+  int cnt = 0;
+  for (int k = 0; k < n; k++) {
+    int ok = 1;
+    for (int j = 0; j < 3 && ok; j++)
+      ok = (h[0] * G[k][0][j] + h[1] * G[k][1][j] + h[2] * G[k][2][j]) == h[j];
+    cnt += ok;
+  }
+  return cnt;
+}
+
+/* Sweep angle for an explicit (space group, lattice, hkl). */
+static double RotationAngleFor(int sg, const double abc[6], const int h[3]) {
+  if (h[0] == 0 && h[1] == 0 && h[2] == 0) return 0;
+  int G[MAX_LAUE_ROT][3][3];
+  int n = LaueRotationsInt(sg, abc, G);
+  if (n <= 0) return 0;
+  int s = StabilizerOrderInt(h, G, n);
+  if (s < 1) s = 1;
+  return 360.0 / (double)s;
+}
+
+static double CalcRotationAngle(int RingNr) {
+  if (!RingInRange(RingNr)) return 0;
+  return RotationAngleFor(SGNum, ABCABG, RingHKLint[RingNr]);
 }
 
 /* GenerateCandidateOrientationsF — PF 3D OrMat layout (line 633).
@@ -979,6 +1126,25 @@ static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant
  * TODO (Phase 9 — multi-detector): per-panel gating happens in CalcDiffrSpots;
  * CompareSpots itself is unchanged.
  * --------------------------------------------------------------------------*/
+/* Sorted copy of ypos[] for the coverage test (PFCoverageAwareCompleteness).
+ * Built once in main() after positions.csv is read; NULL in FF mode. */
+static double *yposSortedCov = NULL;
+static int nYposSortedCov = 0;
+
+/* 1 if some measured scan position lies strictly inside `window` of yRot --
+ * the same strict `dy < window` test the matcher applies, so a spot this
+ * returns 0 for can never be matched. Binary search on the sorted positions. */
+static inline int YRotCovered(RealType yRot, RealType window) {
+  int lo = 0, hi = nYposSortedCov - 1;
+  if (hi < 0) return 0;
+  while (hi - lo > 1) {
+    int mid = (lo + hi) / 2;
+    if (yposSortedCov[mid] < yRot) lo = mid; else hi = mid;
+  }
+  return (fabs(yRot - yposSortedCov[lo]) < window) ||
+         (fabs(yRot - yposSortedCov[hi]) < window);
+}
+
 static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
                          RealType MarginRad, RealType MarginRadial,
                          const RealType etamargins_[],
@@ -988,9 +1154,11 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
                          RealType **GrainSpots,
                          int *nMatchesFracCalc,
                          const int ringsToReject[], int nRingsToReject,
-                         double *wMatchesFracCalc, double *wTspotsFracCalc) {
+                         double *wMatchesFracCalc, double *wTspotsFracCalc,
+                         int *nUncovered, int *nUncoveredFracCalc) {
   int nMatched = 0;
   int nNonMatched = 0;
+  int nUnc = 0, nUncFrac = 0;
   *nMatchesFracCalc = 0;
   /* Weighted twins of nMatchesFracCalc / nTspotsFracCalc. Accumulated in the
    * same loop and under the same skipRadialFilter test, so with every weight
@@ -1027,6 +1195,8 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
   if (softMode == 1) softWindow = softTopHatOuter;
   else if (softMode == 2) softWindow = (softTrunc > 0) ? softTrunc : 1e30;
   else softWindow = scanTol;
+  const int coverageOn =
+      doScanFilter && Params->PFCoverageAwareCompleteness && yposSortedCov;
 
   for (int sp = 0; sp < nTspots; sp++) {
     int RingNr = (int)TheorSpots[sp][9];
@@ -1045,7 +1215,19 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
       double f2 = (ihkl >= 0 && ihkl < n_hkls) ? hkls[ihkl][10] : 1.0;
       wThis = (cmetric == 1) ? ((f2 > f2thr) ? 1.0 : 0.0) : f2;
     }
-    if (!skipRadialFilter) wTspots += wThis;
+    /* Coverage: same yRot expression as the matcher below, same window. An
+     * uncovered spot is written as a non-matched row (empty candidate bin
+     * below) but leaves every denominator. */
+    int uncovered = 0;
+    if (coverageOn) {
+      RealType yRotC = xThis * TheorSpots[sp][14] + yThis * TheorSpots[sp][15];
+      if (!YRotCovered(yRotC, softWindow)) {
+        uncovered = 1;
+        nUnc++;
+        if (!skipRadialFilter) nUncFrac++;
+      }
+    }
+    if (!skipRadialFilter && !uncovered) wTspots += wThis;
     int iEta = (int)floor((180 + TheorSpots[sp][12]) * Params->InvEtaBinSize);
     int iOme = (int)floor((180 + TheorSpots[sp][6]) * Params->InvOmeBinSize);
     RealType etamargin = etamargins_[RingNr];
@@ -1070,14 +1252,17 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
     RealType dyBest = 0.0;  /* |yRot − ypos[scannrobs]| of the winning match;
                              * meaningful only when MatchFound && doScanFilter */
 
-    size_t iRing = (size_t)(RingNr - 1);
+    /* Ring -> bin-table slot (compact layout, or RingNr-1 legacy). A ring
+     * with no slot has no binned spots: treat as an empty bin. */
+    int iSlot = RingSlotOf(RingNr);
+    size_t iRing = (size_t)(iSlot < 0 ? 0 : iSlot);
     size_t Pos = iRing;
     Pos *= n_eta_bins;
     Pos *= n_ome_bins;
     Pos += (size_t)iEta * n_ome_bins;
     Pos += (size_t)iOme;
-    size_t nspotsBin = ndata[Pos * 2];
-    size_t DataPos = ndata[Pos * 2 + 1];
+    size_t nspotsBin = (uncovered || iSlot < 0) ? 0 : ndata[Pos * 2];
+    size_t DataPos = (iSlot < 0) ? 0 : ndata[Pos * 2 + 1];
 
     for (size_t iSpot = 0; iSpot < nspotsBin; iSpot++) {
       size_t spotRow = data[(DataPos + iSpot) * 2 + 0];
@@ -1189,6 +1374,8 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
   *nMatch = nMatched;
   if (wMatchesFracCalc) *wMatchesFracCalc = wMatched;
   if (wTspotsFracCalc) *wTspotsFracCalc = wTspots;
+  if (nUncovered) *nUncovered = nUnc;
+  if (nUncoveredFracCalc) *nUncoveredFracCalc = nUncFrac;
 }
 
 /* Completeness ratio for one candidate.
@@ -1228,14 +1415,18 @@ static inline RealType FracMatched(const struct TParams *Params,
  * Returns malloc'd spotRows array; caller frees. */
 static int GetBin(int ringno, RealType eta, RealType omega, int **spotRows,
                   int *nspotRows) {
-  int iRing = ringno - 1;
+  int iRing = RingSlotOf(ringno); /* compact slot, or ringno-1 legacy */
   int iEta = (int)floor((180 + eta) / EtaBinSize);
   int iOme = (int)floor((180 + omega) / OmeBinSize);
-  size_t Pos = (size_t)iRing * n_eta_bins * n_ome_bins +
-               (size_t)iEta * n_ome_bins + (size_t)iOme;
-  size_t nspots = ndata[Pos * 2];
-  size_t DataPos = ndata[Pos * 2 + 1];
-  *spotRows = (int *)malloc(nspots * sizeof(int));
+  size_t nspots = 0, DataPos = 0;
+  if (iRing >= 0) {
+    size_t Pos = (size_t)iRing * n_eta_bins * n_ome_bins +
+                 (size_t)iEta * n_ome_bins + (size_t)iOme;
+    nspots = ndata[Pos * 2];
+    DataPos = ndata[Pos * 2 + 1];
+  }
+  /* +1 so a ring without a slot (nspots=0) still gets a freeable pointer. */
+  *spotRows = (int *)malloc((nspots + 1) * sizeof(int));
   if (*spotRows == NULL) {
     printf("Memory error: could not allocate memory for spotRows matrix.\n");
     return 1;
@@ -1709,17 +1900,20 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
                            Params->RingRadii[(int)TheorSpots[sp][9]];
     }
     double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
+    int nUncov = 0, nUncovFrac = 0;  /* PFCoverageAwareCompleteness */
     CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
                  Params->MarginRadial, etamargins, Params->MarginOme,
                  Params->StepsizeOrient, numScans, xThis, yThis, Params,
                  &nMatches, GrainSpots, &nMatchesFracCalc,
                  Params->RingsToReject, Params->nRingsToRejectCalc,
-                 &wMatchesFrac, &wTspotsFrac);
+                 &wMatchesFrac, &wTspotsFrac,
+                    &nUncov, &nUncovFrac);
     /* Use FracCalc denominators when RingsToReject is active (ruling #4 +
      * N5 resolution). When nRingsToReject==0, FracCalc denominators equal
      * raw counts → PF bit-identity vs legacy IndexerScanningOMP preserved. */
     int nMatchesAccept = (Params->nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
-    int nTspotsAccept  = (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc  : nTspots;
+    int nTspotsAccept  = (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc - nUncovFrac
+                                                          : nTspots - nUncov;
     FracThis = FracMatched(Params, nMatchesAccept, nTspotsAccept,
                            wMatchesFrac, wTspotsFrac);
     if (FracThis > Params->MinMatchesToAcceptFrac) {
@@ -1732,7 +1926,7 @@ static int DoIndexing_PF(int SpotID, int voxNr, double xThis, double yThis,
         GrainMatchesT[0][9] = ga;
         GrainMatchesT[0][10] = gb;
         GrainMatchesT[0][11] = gc;
-        GrainMatchesT[0][12] = nTspots;
+        GrainMatchesT[0][12] = nTspots - nUncov;  /* covered count */
         GrainMatchesT[0][13] = nMatches;
         GrainMatchesT[0][14] = 1;
         for (r = 0; r < nTspots; r++) {
@@ -2051,16 +2245,19 @@ static int DoIndexing_PF_multi(int SpotID, const int *served,
 #endif
       }
       double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
+      int nUncov = 0, nUncovFrac = 0;  /* PFCoverageAwareCompleteness */
       CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
                    Params->MarginRadial, etamargins, Params->MarginOme,
                    Params->StepsizeOrient, numScans, ga, gb, Params,
                    &nMatches, GrainSpots, &nMatchesFracCalc,
                    Params->RingsToReject, Params->nRingsToRejectCalc,
-                   &wMatchesFrac, &wTspotsFrac);
+                   &wMatchesFrac, &wTspotsFrac,
+                    &nUncov, &nUncovFrac);
       int nMatchesAccept =
           (Params->nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
       int nTspotsAccept =
-          (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc : nTspots;
+          (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc - nUncovFrac
+                                           : nTspots - nUncov;
       FracThis = FracMatched(Params, nMatchesAccept, nTspotsAccept,
                              wMatchesFrac, wTspotsFrac);
       if (FracThis > Params->MinMatchesToAcceptFrac) {
@@ -2073,7 +2270,7 @@ static int DoIndexing_PF_multi(int SpotID, const int *served,
           GrainMatchesT[0][9] = ga;
           GrainMatchesT[0][10] = gb;
           GrainMatchesT[0][11] = gc;
-          GrainMatchesT[0][12] = nTspots;
+          GrainMatchesT[0][12] = nTspots - nUncov;  /* covered count */
           GrainMatchesT[0][13] = nMatches;
           GrainMatchesT[0][14] = 1;
           for (r = 0; r < nTspots; r++)
@@ -2178,15 +2375,18 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
                          Params->RingRadii[(int)TheorSpots[sp][9]];
   }
   double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
+  int nUncov = 0, nUncovFrac = 0;  /* PFCoverageAwareCompleteness */
   CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
                Params->MarginRadial, etamargins, Params->MarginOme,
                Params->StepsizeOrient, numScans, xThis, yThis, Params,
                &nMatches, GrainSpots, &nMatchesFracCalc,
                Params->RingsToReject, Params->nRingsToRejectCalc,
-               &wMatchesFrac, &wTspotsFrac);
+               &wMatchesFrac, &wTspotsFrac,
+                    &nUncov, &nUncovFrac);
   /* N5: use FracCalc denominators when RingsToReject is active. */
   int nMatchesAccept = (Params->nRingsToRejectCalc > 0) ? nMatchesFracCalc : nMatches;
-  int nTspotsAccept  = (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc  : nTspots;
+  int nTspotsAccept  = (Params->nRingsToRejectCalc > 0) ? nTspotsFracCalc - nUncovFrac
+                                                          : nTspots - nUncov;
   FracThis = FracMatched(Params, nMatchesAccept, nTspotsAccept,
                          wMatchesFrac, wTspotsFrac);
   if (FracThis <= Params->MinMatchesToAcceptFrac) return 0;
@@ -2195,7 +2395,7 @@ static int DoIndexing_Seeded(int voxNr, int grainIdx, double OM[3][3],
   GrainMatches[0][9] = ga;
   GrainMatches[0][10] = gb;
   GrainMatches[0][11] = gc;
-  GrainMatches[0][12] = nTspots;
+  GrainMatches[0][12] = nTspots - nUncov;  /* covered count */
   GrainMatches[0][13] = nMatches;
   GrainMatches[0][14] = 1;
   for (r = 0; r < nTspots; r++) {
@@ -2376,7 +2576,8 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
                      Params->StepsizeOrient, /*nScans=*/1, 0.0, 0.0, Params,
                      &nMatches, GrainSpots, &nMatchesFracCalc,
                      Params->RingsToReject, Params->nRingsToRejectCalc,
-                     &wMatchesFrac, &wTspotsFrac);
+                     &wMatchesFrac, &wTspotsFrac,
+                    NULL, NULL);
         if (nMatchesFracCalc > bestnMatchesPos) {
           bestnMatchesPos = nMatchesFracCalc;
           bestnTspotsPos = nTspotsFracCalc;
@@ -2506,6 +2707,8 @@ static int ReadParams(char FileName[], struct TParams *Params) {
   Params->SoftAttrFwhm = 0.0;
   Params->SoftAttrFalloff = 0.0;
   Params->SoftAttrTruncate = 0.0;
+  sprintf(Params->VoxelGridFN, "0");      /* off => positions x positions */
+  Params->PFCoverageAwareCompleteness = 0; /* off => historical denominators */
   /* Phase 9: multi-detector scaffolding init. */
   Params->nDetParams = 0;
   Params->hasRingRadiiPerDet = 0;
@@ -2839,6 +3042,18 @@ static int ReadParams(char FileName[], struct TParams *Params) {
       sscanf(line, "%s %lf", dummy, &(Params->ScanPosTol));
       continue;
     }
+    str = "VoxelGridFile ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %4095s", dummy, Params->VoxelGridFN);
+      continue;
+    }
+    str = "PFCoverageAwareCompleteness ";
+    cmpres = strncmp(line, str, strlen(str));
+    if (cmpres == 0) {
+      sscanf(line, "%s %d", dummy, &(Params->PFCoverageAwareCompleteness));
+      continue;
+    }
     str = "MinSeedGrainRadius ";
     cmpres = strncmp(line, str, strlen(str));
     if (cmpres == 0) {
@@ -3126,6 +3341,7 @@ static int ReadBins(char *cwd) {
   status2 = fstat(fd2, &s2);
   check(status2 < 0, "stat %s failed: %s", file_name2, strerror(errno));
   size_t size2 = s2.st_size;
+  gNDataBytes = size2;
   ndata = mmap(0, size2, PROT_READ, MAP_SHARED, fd2, 0);
   check(ndata == MAP_FAILED, "mmap %s failed: %s", file_name2,
         strerror(errno));
@@ -3135,6 +3351,56 @@ static int ReadBins(char *cwd) {
          (int)sizeof(*ndata), (long long int)(size2 / sizeof(*ndata)));
   fflush(stdout);
   return 1;
+}
+
+/* ----------------------------------------------------------------------------
+ * ReadRingSlots — parse <dir>/RingSlots.csv (header line, then one
+ * "RingNr Slot" pair per line). Fills slotOf[] (-1 = no slot) and returns the
+ * number of slots, or 0 when the file is absent (legacy layout). A present
+ * but malformed file is fatal: guessing a layout would mis-address the bins.
+ * --------------------------------------------------------------------------*/
+static int ReadRingSlots(const char *dir, int slotOf[MAX_N_RINGS]) {
+  char fn[4096];
+  snprintf(fn, sizeof(fn), "%s/RingSlots.csv", dir);
+  for (int i = 0; i < MAX_N_RINGS; i++) slotOf[i] = -1;
+  FILE *f = fopen(fn, "r");
+  if (f == NULL) return 0;
+  static char slotSeen[MAX_N_RINGS];
+  memset(slotSeen, 0, sizeof(slotSeen));
+  char line[1024];
+  int nSlots = 0, lineNo = 0;
+  while (fgets(line, sizeof(line), f) != NULL) {
+    lineNo++;
+    if (lineNo == 1) {
+      check(strncmp(line, "RingNr", 6) != 0,
+            "ERROR: %s: first line must be the header 'RingNr Slot'", fn);
+      continue;
+    }
+    char *p = line;
+    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+    if (*p == '\0') continue;
+    int r, sl;
+    check(sscanf(p, "%d %d", &r, &sl) != 2,
+          "ERROR: %s line %d: expected 'RingNr Slot'", fn, lineNo);
+    check(r < 1 || r >= MAX_N_RINGS,
+          "ERROR: %s line %d: ring %d out of range [1, %d)", fn, lineNo, r,
+          MAX_N_RINGS);
+    check(sl < 0 || sl >= MAX_N_RINGS,
+          "ERROR: %s line %d: slot %d out of range", fn, lineNo, sl);
+    check(slotOf[r] != -1, "ERROR: %s line %d: ring %d listed twice", fn,
+          lineNo, r);
+    check(slotSeen[sl], "ERROR: %s line %d: slot %d listed twice", fn,
+          lineNo, sl);
+    slotOf[r] = sl;
+    slotSeen[sl] = 1;
+    nSlots++;
+  }
+  fclose(f);
+  check(nSlots == 0, "ERROR: %s has no ring entries", fn);
+  for (int sl = 0; sl < nSlots; sl++)
+    check(!slotSeen[sl], "ERROR: %s: slots are not 0..%d (slot %d missing)",
+          fn, nSlots - 1, sl);
+  return nSlots;
 }
 
 /* ReadSpots — returns nrows (PF stride = 10 doubles). */
@@ -3367,6 +3633,9 @@ int main(int argc, char *argv[]) {
     RingHKL[Rnr][0] = hc;
     RingHKL[Rnr][1] = kc;
     RingHKL[Rnr][2] = lc;
+    RingHKLint[Rnr][0] = hi;   /* same row as RingHKL (see CalcRotationAngle) */
+    RingHKLint[Rnr][1] = ki;
+    RingHKLint[Rnr][2] = li;
     RingTtheta[Rnr] = tth;
     for (int i = 0; i < Params.NrOfRings; i++) {
       if (Rnr == Params.RingNumbers[i]) {
@@ -3433,6 +3702,44 @@ int main(int argc, char *argv[]) {
   n_ring_bins = HighestRingNo;
   n_eta_bins = (int)ceil(360.0 / Params.EtaBinSize);
   n_ome_bins = (int)ceil(360.0 / Params.OmeBinSize);
+  {
+    /* Ring -> slot map: RingSlots.csv next to nData.bin (compact layout),
+     * else legacy slot = RingNr - 1. Then refuse any nData.bin whose size
+     * does not fit that layout: reading it anyway silently mis-addresses
+     * every bin (wrong ring's spots, or reads past the end of the map). */
+    int nSlots = ReadRingSlots(cwdstr, gRingSlot);
+    size_t slabBytes = (size_t)n_eta_bins * n_ome_bins * 2 * sizeof(size_t);
+    if (nSlots > 0) {
+      n_ring_bins = nSlots;
+      size_t expect = (size_t)nSlots * slabBytes;
+      check(gNDataBytes != expect,
+            "ERROR: nData.bin is %lld bytes but RingSlots.csv lists %d ring "
+            "slots x %d eta x %d ome bins = %lld bytes. The bin table and its "
+            "RingSlots.csv sidecar do not belong together (or EtaBinSize/"
+            "OmeBinSize differ from the binning run). Re-run binning.",
+            (long long)gNDataBytes, nSlots, n_eta_bins, n_ome_bins,
+            (long long)expect);
+      printf("Bin table: compact ring slots from RingSlots.csv (%d slots)\n",
+             nSlots);
+    } else {
+      for (int r = 1; r <= HighestRingNo && r < MAX_N_RINGS; r++)
+        gRingSlot[r] = r - 1;
+      size_t expect = (size_t)HighestRingNo * slabBytes;
+      check(slabBytes == 0 || gNDataBytes % slabBytes != 0 ||
+                gNDataBytes < expect,
+            "ERROR: nData.bin is %lld bytes, not the legacy layout for "
+            "HighestRingNo=%d x %d eta x %d ome bins (>= %lld bytes, whole "
+            "ring slabs). No RingSlots.csv was found next to it: if this "
+            "table was written with compact ring slots its sidecar is "
+            "missing. Re-run binning.",
+            (long long)gNDataBytes, HighestRingNo, n_eta_bins, n_ome_bins,
+            (long long)expect);
+      if (gNDataBytes > expect)
+        printf("Note: nData.bin has %lld ring slabs, more than "
+               "HighestRingNo=%d; the extra slabs are not read.\n",
+               (long long)(gNDataBytes / slabBytes), HighestRingNo);
+    }
+  }
   EtaBinSize = Params.EtaBinSize;
   OmeBinSize = Params.OmeBinSize;
   Params.InvEtaBinSize = 1.0 / EtaBinSize;
@@ -3467,17 +3774,60 @@ int main(int argc, char *argv[]) {
   int nVoxels = 0;
   int startVoxel = 0, endVoxel = 0;
 
-  /* PF: voxel grid = sorted positions × sorted positions. */
+  /* PF: voxel grid = sorted positions × sorted positions, unless a
+   * VoxelGridFile supplies the voxel centres (half scans). */
   if (isPF) {
-    nVoxels = numScans * numScans;
-    grid = (double *)malloc(nVoxels * 2 * sizeof(double));
     double *ypos_sorted = (double *)malloc(numScans * sizeof(double));
+    check(!ypos_sorted, "ypos_sorted malloc failed");
     memcpy(ypos_sorted, ypos, numScans * sizeof(double));
     qsort(ypos_sorted, numScans, sizeof(double), cmp_double_asc);
-    for (int i = 0; i < numScans; i++) {
-      for (int j = 0; j < numScans; j++) {
-        grid[(i * numScans + j) * 2 + 0] = ypos_sorted[i];
-        grid[(i * numScans + j) * 2 + 1] = ypos_sorted[j];
+    if (Params.PFCoverageAwareCompleteness) {
+      yposSortedCov = (double *)malloc(numScans * sizeof(double));
+      check(!yposSortedCov, "yposSortedCov malloc failed");
+      memcpy(yposSortedCov, ypos_sorted, numScans * sizeof(double));
+      nYposSortedCov = numScans;
+      printf("PFCoverageAwareCompleteness: on (%d scan positions).\n",
+             numScans);
+    }
+    if (strcmp(Params.VoxelGridFN, "0") != 0) {
+      FILE *gridF = fopen(Params.VoxelGridFN, "r");
+      if (!gridF) {
+        fprintf(stderr, "VoxelGridFile %s missing.\n", Params.VoxelGridFN);
+        exit(EXIT_FAILURE);
+      }
+      int cap = 4096;
+      grid = (double *)malloc((size_t)cap * 2 * sizeof(double));
+      check(!grid, "grid malloc failed");
+      nVoxels = 0;
+      while (fgets(aline, 1000, gridF) != NULL) {
+        double gx, gy;
+        if (aline[0] == '#' || sscanf(aline, "%lf %lf", &gx, &gy) != 2)
+          continue;
+        if (nVoxels >= cap) {
+          cap *= 2;
+          grid = (double *)realloc(grid, (size_t)cap * 2 * sizeof(double));
+          check(!grid, "grid realloc failed");
+        }
+        grid[nVoxels * 2 + 0] = gx;
+        grid[nVoxels * 2 + 1] = gy;
+        nVoxels++;
+      }
+      fclose(gridF);
+      if (nVoxels == 0) {
+        fprintf(stderr, "VoxelGridFile %s has no \"x y\" rows.\n",
+                Params.VoxelGridFN);
+        exit(EXIT_FAILURE);
+      }
+      printf("VoxelGridFile: %d voxels from %s (numScans=%d).\n", nVoxels,
+             Params.VoxelGridFN, numScans);
+    } else {
+      nVoxels = numScans * numScans;
+      grid = (double *)malloc(nVoxels * 2 * sizeof(double));
+      for (int i = 0; i < numScans; i++) {
+        for (int j = 0; j < numScans; j++) {
+          grid[(i * numScans + j) * 2 + 0] = ypos_sorted[i];
+          grid[(i * numScans + j) * 2 + 1] = ypos_sorted[j];
+        }
       }
     }
     free(ypos_sorted);

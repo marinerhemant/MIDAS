@@ -108,7 +108,7 @@ def workdir(tmp_path_factory) -> Path:
     d = tmp_path_factory.mktemp("pf_seed_outer")
     for f in ("Spots.bin", "hkls.csv", "paramstest.txt", "positions.csv"):
         shutil.copy(FIXTURE / f, d / f)
-    for f in ("Data.bin", "nData.bin"):
+    for f in ("Data.bin", "nData.bin", "RingSlots.csv"):
         if (FIXTURE / f).exists():
             shutil.copy(FIXTURE / f, d / f)
     if not (d / "Data.bin").exists():
@@ -131,9 +131,10 @@ def _run(workdir: Path, tag: str, *, seed_outer: bool, procs: int,
     """
     run = workdir / tag
     (run / "Output").mkdir(parents=True, exist_ok=True)
-    for f in ("Data.bin", "nData.bin", "Spots.bin", "hkls.csv", "positions.csv"):
+    for f in ("Data.bin", "nData.bin", "Spots.bin", "hkls.csv", "positions.csv",
+              "RingSlots.csv"):
         tgt = run / f
-        if not tgt.exists():
+        if not tgt.exists() and (workdir / f).exists():
             tgt.symlink_to(workdir / f)
     lines = [ln for ln in (workdir / "paramstest.txt").read_text().splitlines()
              if not ln.startswith(("OutputFolder", "ResultFolder"))]

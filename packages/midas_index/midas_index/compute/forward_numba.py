@@ -125,14 +125,14 @@ if _NUMBA_AVAILABLE:
 
                 v_no_wedge = math.sin(theta_m) * len_h
 
-                # Wedge: G' = R_y(-W) @ G_C
-                Gx_p = cos_W * Gx_c - sin_W * Gz_c
+                # Wedge (midas_diffract "Wedge convention"): G_lab = R_y(-W) R_z(w) G_C
+                Gx_p = Gx_c
                 Gy_p = Gy_c
-                Gz_p = sin_W * Gx_c + cos_W * Gz_c
+                Gz_p = Gz_c
                 # Effective for quadratic solver
                 Gx_eff = cos_W * Gx_p
                 Gy_eff = cos_W * Gy_p
-                v_eff = v_no_wedge + sin_W * Gz_p
+                v_eff = v_no_wedge - sin_W * Gz_p
 
                 # Quadratic: a*cos²(ω) + b*cos(ω) + c = 0
                 y2 = Gy_eff * Gy_eff + epsilon
@@ -230,9 +230,9 @@ if _NUMBA_AVAILABLE:
                     mx = cos_w * Gx_p - sin_w * Gy_p
                     my = sin_w * Gx_p + cos_w * Gy_p
                     mz = Gz_p
-                    # G_lab = R_y(W) @ m
+                    # G_lab = R_y(-W) @ m
                     Gy_lab = my
-                    Gz_lab = -sin_W * mx + cos_W * mz
+                    Gz_lab = sin_W * mx + cos_W * mz
 
                     r_yz = math.sqrt(Gy_lab * Gy_lab + Gz_lab * Gz_lab)
                     if r_yz < epsilon:
@@ -364,10 +364,10 @@ def simulate_numba(adapter, R, pos, lattice=None):
     ring_radius_lut_np = np.ascontiguousarray(
         adapter.ring_radius_lut.detach().cpu().numpy().astype(np.float64, copy=False)
     )
-    wedge_rad = float(adapter.geom.wedge * math.pi / 180.0) if hasattr(adapter.geom, "wedge") else 0.0
-    # Indexer params usually carry wedge directly:
-    if hasattr(adapter.params, "Wedge"):
-        wedge_rad = float(adapter.params.Wedge) * math.pi / 180.0
+    # Wedge-free by design: the indexer consumes midas-fit-setup's
+    # wedge-corrected spots (see midas_index.pipeline, same note). ``Wedge``
+    # is an ignored indexer key, so the former hasattr() reads were dead.
+    wedge_rad = 0.0
     Lsd = float(adapter.params.Distance)
     min_eta_rad = float(adapter.params.ExcludePoleAngle) * math.pi / 180.0
 

@@ -80,7 +80,7 @@ def _run_midas_indexer(
     output_subdir.mkdir(parents=True, exist_ok=True)
 
     # Symlink fixture inputs into staging so the binary can mmap them.
-    for fname in ("Spots.bin", "Data.bin", "nData.bin"):
+    for fname in ("Spots.bin", "Data.bin", "nData.bin", "RingSlots.csv"):
         src = fixture_dir / fname
         if not src.is_file():
             continue

@@ -151,12 +151,12 @@ if _NUMBA_AVAILABLE:
 
                 v_no_wedge = math.sin(theta_m) * len_h
 
-                Gx_p = cos_W * Gx_c - sin_W * Gz_c
+                Gx_p = Gx_c
                 Gy_p = Gy_c
-                Gz_p = sin_W * Gx_c + cos_W * Gz_c
+                Gz_p = Gz_c
                 Gx_eff = cos_W * Gx_p
                 Gy_eff = cos_W * Gy_p
-                v_eff = v_no_wedge + sin_W * Gz_p
+                v_eff = v_no_wedge - sin_W * Gz_p
 
                 y2 = Gy_eff * Gy_eff + epsilon
                 x2 = Gx_eff * Gx_eff
@@ -258,7 +258,7 @@ if _NUMBA_AVAILABLE:
                     my = sin_w * Gx_p + cos_w * Gy_p
                     mz = Gz_p
                     Gy_lab = my
-                    Gz_lab = -sin_W * mx + cos_W * mz
+                    Gz_lab = sin_W * mx + cos_W * mz
 
                     r_yz = math.sqrt(Gy_lab * Gy_lab + Gz_lab * Gz_lab)
                     if r_yz < epsilon:

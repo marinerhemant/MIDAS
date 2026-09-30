@@ -91,8 +91,118 @@ def _resolve_spots_ncols(cwd: Path, arr: np.ndarray) -> int:
     return 9
 
 
-def read_bins(cwd: str | Path) -> tuple[np.ndarray, np.ndarray]:
+RING_SLOTS_FILENAME = "RingSlots.csv"
+
+
+def read_ring_slots(cwd: str | Path) -> list[int] | None:
+    """Ring numbers in slot order from ``cwd/RingSlots.csv``; None if absent.
+
+    Format (written by midas_transforms ``bin_data`` / ``bin_data_scanning``
+    next to ``nData.bin``): header ``RingNr Slot``, then one ``<ring> <slot>``
+    pair per line; slots are exactly ``0..N-1``. Malformed -> ``ValueError``.
+    """
+    path = Path(cwd) / RING_SLOTS_FILENAME
+    if not path.exists():
+        return None
+    lines = path.read_text().splitlines()
+    if not lines or not lines[0].startswith("RingNr"):
+        raise ValueError(f"{path}: first line must be the header 'RingNr Slot'")
+    by_slot: dict[int, int] = {}
+    rings: set[int] = set()
+    for i, ln in enumerate(lines[1:], start=2):
+        if not ln.strip():
+            continue
+        parts = ln.split()
+        if len(parts) < 2:
+            raise ValueError(f"{path} line {i}: expected 'RingNr Slot'")
+        r, sl = int(parts[0]), int(parts[1])
+        if not (1 <= r < 500) or r in rings or sl in by_slot:
+            raise ValueError(f"{path} line {i}: bad or duplicate ring {r} / slot {sl}")
+        rings.add(r)
+        by_slot[sl] = r
+    if not by_slot or sorted(by_slot) != list(range(len(by_slot))):
+        raise ValueError(f"{path}: slots must be exactly 0..N-1")
+    return [by_slot[k] for k in range(len(by_slot))]
+
+
+def _ring_slots_to_legacy(
+    ndata: np.ndarray,
+    cwd: str | Path,
+    *,
+    itemsize: int,
+    n_eta_bins: int | None,
+    n_ome_bins: int | None,
+    highest_ring: int | None,
+) -> np.ndarray:
+    """Validate nData.bin's size against its layout; return it LEGACY-shaped.
+
+    With ``RingSlots.csv`` present the file's ring axis is compact (one slab
+    per slot); it must be exactly ``n_slots * n_eta * n_ome * 2`` entries and
+    is expanded in RAM to the legacy ``slot = RingNr - 1`` layout the Python
+    matchers address (empty slabs for rings with no slot; offsets are the
+    exclusive cumsum of counts, exactly what a legacy writer produces). So
+    only the on-disk table shrinks on this path, not the in-RAM one.
+
+    Without the sidecar the file must hold whole ring slabs and at least
+    ``highest_ring`` of them. The size checks run only when the bin geometry
+    is known (``n_eta_bins`` and ``n_ome_bins`` given).
+    """
+    slots = read_ring_slots(cwd)
+    geom = n_eta_bins is not None and n_ome_bins is not None
+    slab = (int(n_eta_bins) * int(n_ome_bins) * 2) if geom else None
+    nbytes = ndata.size * itemsize
+    if slots is None:
+        if geom and highest_ring is not None:
+            need = int(highest_ring) * slab
+            if slab == 0 or ndata.size % slab != 0 or ndata.size < need:
+                raise ValueError(
+                    f"nData.bin is {nbytes} bytes, not the legacy layout for "
+                    f"HighestRingNo={highest_ring} x {n_eta_bins} eta x "
+                    f"{n_ome_bins} ome bins (>= {need * itemsize} bytes, whole "
+                    "ring slabs). No RingSlots.csv next to it: if the table "
+                    "was written with compact ring slots its sidecar is "
+                    "missing. Re-run binning."
+                )
+        return ndata
+    n_slots = len(slots)
+    if geom:
+        if ndata.size != n_slots * slab:
+            raise ValueError(
+                f"nData.bin is {nbytes} bytes but RingSlots.csv lists {n_slots} "
+                f"ring slots x {n_eta_bins} eta x {n_ome_bins} ome bins = "
+                f"{n_slots * slab * itemsize} bytes. The table and its sidecar "
+                "do not belong together. Re-run binning."
+            )
+    elif ndata.size % (2 * n_slots) != 0:
+        raise ValueError(
+            f"nData.bin ({nbytes} bytes) is not {n_slots} whole ring slots"
+        )
+    per_slot = ndata.size // (2 * n_slots)                 # bins per slab
+    n_legacy = max(max(slots), int(highest_ring or 0))
+    counts = np.zeros((n_legacy, per_slot), dtype=np.int64)
+    cmp_counts = np.asarray(ndata).reshape(n_slots, per_slot, 2)[:, :, 0]
+    for sl, r in enumerate(slots):
+        counts[r - 1] = cmp_counts[sl]
+    counts = counts.ravel()
+    offsets = np.zeros_like(counts)
+    offsets[1:] = np.cumsum(counts[:-1])
+    out = np.empty(2 * counts.size, dtype=ndata.dtype)
+    out[0::2] = counts
+    out[1::2] = offsets
+    return out
+
+
+def read_bins(
+    cwd: str | Path,
+    *,
+    n_eta_bins: int | None = None,
+    n_ome_bins: int | None = None,
+    highest_ring: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """Read Data.bin + nData.bin as int32 mmaps.
+
+    A compact (``RingSlots.csv``) table is size-checked and expanded to the
+    legacy layout in RAM; see :func:`_ring_slots_to_legacy`.
 
     Returns (data, ndata) where:
       data[k]       = spot row stored in flat layout
@@ -117,11 +227,23 @@ def read_bins(cwd: str | Path) -> tuple[np.ndarray, np.ndarray]:
         raise ValueError(
             f"nData.bin size {ndata.size * 4} bytes is not a multiple of 2 int32s"
         )
+    ndata = _ring_slots_to_legacy(
+        ndata, cwd, itemsize=4, n_eta_bins=n_eta_bins,
+        n_ome_bins=n_ome_bins, highest_ring=highest_ring)
     return data, ndata
 
 
-def read_bins_scanning(cwd: str | Path) -> tuple[np.ndarray, np.ndarray]:
+def read_bins_scanning(
+    cwd: str | Path,
+    *,
+    n_eta_bins: int | None = None,
+    n_ome_bins: int | None = None,
+    highest_ring: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """Read scanning-mode Data.bin + nData.bin (int64) and project to FF layout.
+
+    A compact (``RingSlots.csv``) table is size-checked and expanded to the
+    legacy layout in RAM; see :func:`_ring_slots_to_legacy`.
 
     ``SaveBinDataScanning.c:672-700`` writes both files as ``size_t``
     (int64 on x86_64):
@@ -175,5 +297,8 @@ def read_bins_scanning(cwd: str | Path) -> tuple[np.ndarray, np.ndarray]:
             "multiple of 2 int64 (expected (count, offset) pairs)."
         )
     spot_ids = data64.reshape(-1, 2)[:, 0].astype(np.int32, copy=True)
+    ndata64 = _ring_slots_to_legacy(
+        ndata64, cwd, itemsize=8, n_eta_bins=n_eta_bins,
+        n_ome_bins=n_ome_bins, highest_ring=highest_ring)
     ndata_i32 = ndata64.astype(np.int32, copy=True)
     return spot_ids, ndata_i32

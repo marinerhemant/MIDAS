@@ -99,10 +99,20 @@ class Indexer:
             # Disambiguate via the Spots.bin column count: 10-col = PF.
             spots_arr = np.asarray(spots)
             n_cols = spots_arr.shape[1] if spots_arr.ndim == 2 else 0
+            # Bin geometry for the nData.bin size gate (and the compact
+            # RingSlots.csv -> legacy expansion).
+            import math as _math
+            _geom = {}
+            if self.params.EtaBinSize > 0 and self.params.OmeBinSize > 0:
+                _geom = dict(
+                    n_eta_bins=int(_math.ceil(360.0 / self.params.EtaBinSize)),
+                    n_ome_bins=int(_math.ceil(360.0 / self.params.OmeBinSize)),
+                    highest_ring=self.params.highest_ring_nr(),
+                )
             if n_cols >= 10:
-                bins = read_bins_scanning(cwd)
+                bins = read_bins_scanning(cwd, **_geom)
             else:
-                bins = read_bins(cwd)
+                bins = read_bins(cwd, **_geom)
         if hkls is None:
             hkls = read_hkls_csv("hkls.csv", ring_numbers=self.params.RingNumbers)
 

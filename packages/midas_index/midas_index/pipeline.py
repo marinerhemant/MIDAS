@@ -1230,7 +1230,13 @@ def _compute_group_cpu_fused(ctx: "IndexerContext", setup: dict, use_c_compat: b
     ring_radius_lut_np = np.ascontiguousarray(
         adapter.ring_radius_lut.detach().cpu().numpy().astype(np.float64, copy=False)
     )
-    wedge_rad = float(p.Wedge) * math.pi / 180.0 if hasattr(p, "Wedge") else 0.0
+    # The indexer works on midas-fit-setup's WEDGE-CORRECTED spots (InputAll /
+    # Spots.bin omega and y/z already have the rotation-axis tilt removed), so
+    # its forward model is wedge-free -- exactly like the C indexer, which
+    # never reads Wedge. ``Wedge`` is in io.params._IGNORED_KEYS; the old
+    # ``hasattr(p, "Wedge")`` read here was therefore always 0 (dead), and
+    # were it ever live it would have tilted G without the spots being raw.
+    wedge_rad = 0.0
     Lsd = float(p.Distance)
     min_eta_rad = float(p.ExcludePoleAngle) * math.pi / 180.0
 
