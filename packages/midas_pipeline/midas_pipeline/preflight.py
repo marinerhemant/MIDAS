@@ -121,9 +121,15 @@ def check_inputs(cfg, layers: Optional[List[int]] = None) -> List[str]:
     kv.setdefault("StartFileNrFirstLayer", kv.get("StartNr", "1"))
 
     raw_dir = Path(kv["RawFolder"])
-    if not raw_dir.is_dir():
+    try:
+        raw_is_dir = raw_dir.is_dir()
+    except OSError as e:                     # e.g. an ACL that denies this account: report, don't crash
+        problems.append(f"RawFolder is not readable by this account: {raw_dir} ({e.strerror or e}); "
+                        "if the raw frames are not needed (resuming past conversion), pass --no-convert")
+        raw_is_dir = None
+    if raw_is_dir is False:
         problems.append(f"RawFolder is not a directory: {raw_dir}")
-    else:
+    elif raw_is_dir:
         for n in layers:
             raw = _resolve_raw_path(kv, n)
             if raw is None:
@@ -140,7 +146,12 @@ def check_inputs(cfg, layers: Optional[List[int]] = None) -> List[str]:
                 problems.append(f"raw data file for layer {n} not found: {raw}{hint}")
 
     dark = kv.get("Dark", "").strip()
-    if dark and not Path(dark).exists():
+    try:
+        dark_ok = not dark or Path(dark).exists()
+    except OSError as e:
+        problems.append(f"Dark file is not readable by this account: {dark} ({e.strerror or e})")
+        dark_ok = True
+    if not dark_ok:
         problems.append(f"Dark file not found: {dark}")
 
     return problems

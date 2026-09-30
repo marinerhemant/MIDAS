@@ -161,3 +161,24 @@ def test_multi_layer_resolves_each_file(tmp_path):
     p.write_text(_params(raw))
     problems = check_inputs(_Cfg(p, tmp_path / "r"), [1, 2])
     assert any("layer 2" in x and "000028" in x for x in problems)
+
+
+def test_unreadable_raw_folder_is_reported_not_raised(tmp_path, monkeypatch):
+    """An ACL that denies the account made Path.is_dir() raise PermissionError out of preflight (found 2026-09-28)."""
+    import pathlib
+    raw = tmp_path / "raw"
+    p = tmp_path / "Parameters.txt"
+    p.write_text(_params(raw, dark=raw / "dark.h5"))
+    real_stat = pathlib.Path.stat
+
+    def denied(self, *a, **k):
+        if str(self).startswith(str(raw)):
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_stat(self, *a, **k)
+
+    monkeypatch.setattr(pathlib.Path, "stat", denied)
+    problems = check_inputs(_Cfg(p, tmp_path / "results"), [1])
+    assert any("RawFolder is not readable" in x and "--no-convert" in x for x in problems)
+    assert any("Dark file is not readable" in x for x in problems)
+    with pytest.raises(PreflightError):
+        preflight(_Cfg(p, tmp_path / "results"), [1])
