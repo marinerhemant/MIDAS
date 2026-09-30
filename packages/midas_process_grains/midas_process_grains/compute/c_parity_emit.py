@@ -57,18 +57,11 @@ from ..io.binary import ORIENT_POS_FIT_DOUBLES_V2
 #: shifts columns without raising anywhere.
 GRAINS_CSV_NCOLS = 53
 
-#: SpotMatrix.csv column count. 12 through 2026-08-21; 28 with the prediction,
-#: the per-spot residuals and the un-found-expected rows. Cols 0-11 are
+#: SpotMatrix.csv column count and header: defined once, in ``io/csv.py``.
+#: 12 through 2026-08-21; 28 with the prediction, the per-spot residuals and the
+#: un-found-expected rows; 29 with ``RelFitRMSE`` (2026-09-28). Cols 0-11 are
 #: unchanged, so a parser reading the first 12 tab fields is unaffected.
-SPOT_MATRIX_NCOLS = 28
-SPOT_MATRIX_HEADER_EXPANDED = (
-    "%GrainID\tSpotID\tOmega\tDetectorHor\tDetectorVert\tOmeRaw"
-    "\tEta\tRingNr\tYLab\tZLab\tTheta\tStrainError"
-    "\tMatched\ttheorSpotID\ttheorRingNr\ttheorEta"
-    "\tYExp\tZExp\tOmegaExp\tDiffLen\tDiffOme\tInternalAngle"
-    "\tYExpPost\tZExpPost\tOmegaExpPost"
-    "\tDiffLenPost\tDiffOmePost\tInternalAnglePost\n"
-)
+from ..io.csv import SPOT_MATRIX_NCOLS, SPOT_MATRIX_HEADER_EXPANDED  # noqa: E402  (one definition)
 from .strain import (
     solve_strain_fable_beaudoin,
     solve_strain_kenesei_batched,
@@ -100,7 +93,8 @@ def gather_per_grain_spot_data(
       - ``g`` (n, 3) float64              — used by Kenesei (sample frame)
       - ``ds_obs`` (n,) float64           — used by Kenesei
       - ``ds_0``   (n,) float64           — used by Kenesei
-      - ``resid`` (n', 11) float64        — signed per-spot residual rows
+      - ``resid_prefit`` (n', 11) float64 — signed PRE-fit per-spot residual
+                                            rows from FitBest
                                             (``collect_residuals``; layout
                                             ``SPOT_RESIDUAL_COLS``)
 
@@ -159,16 +153,15 @@ def gather_per_grain_spot_data(
         entry["res3"] = seed[valid][:, [20, 21, 19]].astype(np.float64)
         if collect_residuals:
             # Signed residual decomposition of the SAME FitBest rows: obs
-            # (cols 1,2,3) vs the refiner's own prediction (cols 7,8,9).
-            # These are the residuals of the *representative seed's* refined
-            # fit — the same convention the spot-aware/legacy path uses, so
-            # the numbers are comparable across modes — not a re-fit over the
-            # merged cluster's pooled spots.
+            # (cols 1,2,3) vs the seed's prediction (cols 7,8,9). FitBest is
+            # PRE-fit (the representative seed at the reference lattice), so
+            # this block feeds /residuals_prefit; the post-fit /residuals come
+            # from FitBestFinal.bin in write_residual_diagnostics.
             if ids_hash is not None:
                 rings = ids_hash.ring_for_spot_ids(sid[valid])
             else:
                 rings = np.full(int(valid.sum()), -1, dtype=np.int64)
-            entry["resid"] = build_spot_residual_block(
+            entry["resid_prefit"] = build_spot_residual_block(
                 gi, seed[valid], sid[valid], rings,
             )
         out.append(entry)
@@ -590,8 +583,13 @@ def write_spot_matrix_csv(
     spot_cache: Optional[List[Optional[dict]]] = None,
     spot_diag=None,
     fb_final=None,
+    rel_fit_rmse=None,
 ) -> int:
     """Write SpotMatrix.csv: observed AND expected, plus the spots never found.
+
+    ``rel_fit_rmse`` is the ``(spot_ids, rel)`` table from
+    :func:`midas_process_grains.io.csv.load_rel_fit_rmse`; it fills col 28
+    ``RelFitRMSE`` (NaN when ``None`` and on un-found rows).
 
     Per C ProcessGrains.c:1011-1037, one row per (kept_grain, matched_spot).
     Columns:
@@ -772,6 +770,10 @@ def write_spot_matrix_csv(
             chunks.append(blk)
         if chunks:
             unmatched_rows = np.concatenate(chunks, axis=0)
+
+    # ── relative peak-fit misfit (col 28) ──
+    from ..io.csv import rel_fit_rmse_for
+    out_arr[:, 28] = rel_fit_rmse_for(all_sid, rel_fit_rmse)
 
     # ── post-fit prediction + residuals, from FitBestFinal.bin ──
     if fb_final is not None:

@@ -195,13 +195,19 @@ SPOT_MATRIX_HEADER = (
 #: since those are integers that cannot hold NaN, and NaN everywhere else on
 #: the observed side. See compute/c_parity_emit.SPOT_MATRIX_HEADER_EXPANDED.
 SPOT_MATRIX_NCOLS_LEGACY = 12
-SPOT_MATRIX_NCOLS = 28
+#: Col 28 ``RelFitRMSE`` (2026-09-28): the merged spot's peak-fit ``FitRMSE / IMax``
+#: from ``Radius_StartNr_*.csv`` -- the relative misfit. On 20-ID-E Fe9Cr it
+#: carried the whole 2x excess of the post-fit radial residual over steel
+#: (reweighting to steel's distribution: 1.88 -> 1.08, shuffled control 1.85),
+#: where the absolute ``FitRMSE`` grows with brightness. NaN when the run has no
+#: ``OrigSpotID`` / ``Radius_*.csv`` link.
+SPOT_MATRIX_NCOLS = 29
 SPOT_MATRIX_HEADER_EXPANDED = (
     SPOT_MATRIX_HEADER.rstrip("\n")
     + "\tMatched\ttheorSpotID\ttheorRingNr\ttheorEta"
       "\tYExp\tZExp\tOmegaExp\tDiffLen\tDiffOme\tInternalAngle"
       "\tYExpPost\tZExpPost\tOmegaExpPost"
-      "\tDiffLenPost\tDiffOmePost\tInternalAnglePost\n"
+      "\tDiffLenPost\tDiffOmePost\tInternalAnglePost\tRelFitRMSE\n"
 )
 
 
@@ -275,3 +281,8 @@ def write_grain_ids_key_csv(
                 tokens.append(str(int(oid)))
                 tokens.append(str(int(opos)))
             fp.write(" ".join(tokens) + "\n")
+
+
+# The canonical implementation lives in midas_transforms (it owns the per-spot
+# tables and ExtraInfo.bin, and the refiner's RelFitRMSE.bin is written there).
+from midas_transforms.io.csv import load_rel_fit_rmse, rel_fit_rmse_for  # noqa: E402,F401

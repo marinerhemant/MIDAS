@@ -79,6 +79,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dtype", choices=("float32", "float64"), default=None)
     p.add_argument("--misori-tol", type=float, default=None,
                    help="Override the Phase 1 misorientation tolerance (degrees).")
+    p.add_argument("--passa-misori-tol", type=float, default=None,
+                   help="(c_parity) Pass A misorientation tolerance, deg. Default: "
+                        "CParityPassAMisoriTol from the parameter file, else C's 0.1.")
+    p.add_argument("--passa-pos-tol", type=float, default=None,
+                   help="(c_parity) Pass A centroid-distance tolerance, um. Default: "
+                        "CParityPassAPosTol from the parameter file, else C's 5.")
     p.add_argument(
         "--merge-primitive", choices=("misori", "forward_predict", "consensus_anchor"),
         default="misori",
@@ -221,6 +227,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             # by the pipeline and then ignored, and only an explicit
             # --min-nr-spots on the command line had any effect.
             min_nr_spots=args.min_nr_spots,
+            # None -> MisoriTol from the parameter file, else C's 0.4 deg.
+            misori_tol_stage1_deg=args.misori_tol,
+            # None -> CParityPassA* from the parameter file, else C's 0.1 deg / 5 um.
+            misori_tol_passa_deg=args.passa_misori_tol,
+            pos_tol_passa_um=args.passa_pos_tol,
             write_diagnostics=not args.no_diagnostics_h5,
             device=device_str,
         )

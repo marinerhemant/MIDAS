@@ -122,23 +122,36 @@ The pipeline reads the standard MIDAS run-directory layout:
 <out_dir>/
   Grains.csv                      # 53 columns (47 legacy + pre/post error triples at 47-52)
   GrainIDsKey.csv                 # one line per kept grain
-  SpotMatrix.csv                  # 28 columns, and one row per UN-FOUND expected spot
+  SpotMatrix.csv                  # 29 columns (RelFitRMSE last; NaN without the link), and one row per UN-FOUND expected spot
   processgrains_diagnostics.h5    # aux diagnostics (skip with --no-diagnostics)
 ```
 
-### `processgrains_diagnostics.h5:/residuals` (v0.6.0+)
+### `processgrains_diagnostics.h5:/residuals` and `/residuals_prefit`
 
-Signed per-spot residual decomposition, collected during the FitBest pass —
-this is what `Grains.csv` `DiffPos`/`DiffOme` aggregate, now decomposable.
+Signed per-spot residual decomposition in two groups with one schema, one per
+refiner table, each stamped with `attrs["source"]`:
+
+* **`/residuals` — post-fit**, from `Output/FitBestFinal.bin`: spots matched
+  and predicted at each grain's representative seed's REFINED orientation,
+  position and lattice. This is the residual of the fit (what SpotMatrix
+  `DiffLenPost`/`DiffOmePost` report). Absent, with a warning, on runs whose
+  refiner predates `FitBestFinal.bin` (2026-08-21).
+* **`/residuals_prefit` — pre-fit**, from `Output/FitBest.bin`: the indexer
+  seed predicted at the reference `LatticeConstant`. Its radial terms carry
+  the reference-lattice mismatch and every grain's strain; its `ring_drad_ppm`
+  is the reference-lattice diagnostic the E7 d0 advisory reads.
+
+Before the unreleased fix after 0.12.0, `/residuals` held the PRE-fit table
+(no `source` attribute): read an old sidecar's `/residuals` as pre-fit.
 
 **Written by every mode that reads FitBest**, `c_parity` (the default)
-included, with one schema — see the mode table below. These are the residuals
-of each grain's **representative seed's** refined fit (obs vs the refiner's own
-prediction), not a re-fit over the merged cluster's pooled spots; the
-convention is the same in every mode, so the numbers are comparable across
-them.
+included — see the mode table below. Both are per representative seed, not a
+re-fit over the merged cluster's pooled spots; the convention is the same in
+every mode, so the numbers are comparable across them.
 
-* `residuals/spot_table` — gzip float32, one row per resolved grain-spot
+Fields, identical in both groups:
+
+* `spot_table` — gzip float32, one row per resolved grain-spot
   claim; column layout = `SPOT_RESIDUAL_COLS` in
   `compute/residual_decomposition.py`:
   `(grain_idx, spot_id, ring_nr, eta_deg, dy_um, dz_um, drad_um, dtan_um,
@@ -150,10 +163,12 @@ them.
   `grain_mad_dtan_um`, `grain_n_spots` (NaN where a grain contributed no
   rows).
 * per-ring: `ring_nr`, `ring_med_drad_um`, `ring_drad_ppm`,
-  `ring_mad_drad_um`, `ring_n_spots`. **`ring_drad_ppm` is the
-  reference-lattice diagnostic**: a consistent |median dR/R| > 200 ppm
-  across rings is the signature of a wrong `LatticeConstant` (a₀), absorbed
-  as fake hydrostatic strain — the run log warns when it trips.
+  `ring_mad_drad_um`, `ring_n_spots`. **In `/residuals_prefit`,
+  `ring_drad_ppm` is the reference-lattice diagnostic**: a consistent
+  |median dR/R| > 200 ppm across rings means the `LatticeConstant` (a₀) is
+  off by that fraction and every grain's hydrostatic strain carries it — the
+  run log warns when it trips. In post-fit `/residuals` the fitted lattice
+  absorbs that, so a surviving ring offset is one the lattice cannot absorb.
 * eta profile (30° bins): `eta_bin_lo_deg`, `eta_med_{drad,dtan}_um`,
   `eta_med_dome_deg`, `eta_n_spots`.
 * global scalars: `overall_med_{dy,dz,drad,dtan}_um`, `overall_med_dome_deg`,
@@ -162,7 +177,7 @@ them.
 
 Per-mode coverage:
 
-| mode | `/residuals` | `/diagnostics` per-grain counters |
+| mode | `/residuals`, `/residuals_prefit` | `/diagnostics` per-grain counters |
 |---|---|---|
 | `c_parity` (default) | **yes** (v0.9.2+) | `cluster_sizes` only |
 | `adaptive` | yes | all five |
@@ -186,9 +201,12 @@ holds ~11 float64 per matched spot until the table is assembled (≈190 MB at
 
 * Stage 1 (`FindInternalAngles` equivalent) does a recursive DFS over the
   `ProcessKey`-defined spot-overlap candidate graph, filtered by misori
-  < `0.4°`. The misorientation for every candidate edge is precomputed in
+  < `0.4°` (`MisoriTol` in the parameter file, or `--misori-tol`; 0.4 when
+  unset). The misorientation for every candidate edge is precomputed in
   one batched torch call before the DFS.
-* Pass A (`misori < 0.1° AND |Δpos| < 5 µm` dedup) uses a 5 µm spatial hash
+* Pass A (`misori < 0.1° AND |Δpos| < 5 µm` dedup; override with
+  `--passa-misori-tol` / `--passa-pos-tol` or the parameter-file keys
+  `CParityPassAMisoriTol` (deg) / `CParityPassAPosTol` (µm)) uses a 5 µm spatial hash
   on rep positions to limit pairs to those within the position threshold,
   then vectorised misori on the surviving pairs. Greedy outer-serial dedup
   matches C's order.

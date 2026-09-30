@@ -1,4 +1,7 @@
-"""``c_parity`` writes the same signed-residual sidecar the spot-aware path did.
+"""``c_parity`` writes the same signed-residual sidecar the spot-aware path does.
+
+Post-fit ``/residuals`` come from FitBestFinal.bin, pre-fit
+``/residuals_prefit`` from FitBest.bin (see compute/residual_decomposition).
 
 The decomposition arithmetic itself is covered by
 ``test_residual_decomposition.py``; these tests cover the *wiring* that used to
@@ -18,7 +21,9 @@ from midas_process_grains.compute.c_parity_run import (
     write_residual_diagnostics,
 )
 from midas_process_grains.compute.residual_decomposition import (
+    RESIDUAL_SOURCES,
     SPOT_RESIDUAL_COLS,
+    build_residual_table,
     build_spot_residual_block,
     build_spot_residual_row,
 )
@@ -141,16 +146,16 @@ def test_gather_collects_residuals():
         kept, fb, distance_um=LSD_UM, wavelength_a=WAVELENGTH_A,
         ids_hash=ids_hash, progress=False,
     )
-    assert cache[0] is not None and "resid" in cache[0]
-    r0 = cache[0]["resid"]
+    assert cache[0] is not None and "resid_prefit" in cache[0]
+    r0 = cache[0]["resid_prefit"]
     assert r0.shape == (40, len(SPOT_RESIDUAL_COLS))
     # Injected +5 µm radial bias recovered on every spot, no tangential leak.
     np.testing.assert_allclose(r0[:, 6], 5.0, atol=1e-6)
     np.testing.assert_allclose(r0[:, 7], 0.0, atol=1e-6)
     assert set(r0[:, 2].astype(int)) == {1}          # ring from IDsHash
     assert set(r0[:, 0].astype(int)) == {0}          # grain_idx
-    np.testing.assert_allclose(cache[1]["resid"][:, 6], -5.0, atol=1e-6)
-    assert set(cache[1]["resid"][:, 2].astype(int)) == {2}
+    np.testing.assert_allclose(cache[1]["resid_prefit"][:, 6], -5.0, atol=1e-6)
+    assert set(cache[1]["resid_prefit"][:, 2].astype(int)) == {2}
 
 
 def test_collect_residuals_off():
@@ -159,11 +164,13 @@ def test_collect_residuals_off():
         kept, fb, distance_um=LSD_UM, wavelength_a=WAVELENGTH_A,
         ids_hash=ids_hash, progress=False, collect_residuals=False,
     )
-    assert "resid" not in cache[0]
+    assert "resid_prefit" not in cache[0]
     assert "ds_obs" in cache[0]          # the strain path is unaffected
 
 
 def test_write_residual_diagnostics_h5(tmp_path):
+    """Without FitBestFinal the FitBest (pre-fit) table goes to /residuals_prefit
+    and there is NO /residuals: the pre-fit table is never filed as post-fit."""
     h5py = pytest.importorskip("h5py")
     fb, kept, ids_hash = _make_run()
     cache = gather_per_grain_spot_data(
@@ -178,19 +185,22 @@ def test_write_residual_diagnostics_h5(tmp_path):
 
     with h5py.File(out, "r") as f:
         assert f["attrs"].attrs["mode"] == "c_parity"
-        st = f["residuals/spot_table"]
+        assert "residuals" not in f
+        g = "residuals_prefit"
+        assert f[g].attrs["source"] == RESIDUAL_SOURCES[g]
+        st = f[f"{g}/spot_table"]
         assert st.shape == (80, len(SPOT_RESIDUAL_COLS))
         assert st.attrs["columns"] == ",".join(SPOT_RESIDUAL_COLS)
 
         # grain_idx is Grains.csv row order: grain 0 is the +5 µm one.
-        assert f["residuals/grain_med_drad_um"][0] == pytest.approx(5.0, abs=1e-6)
-        assert f["residuals/grain_med_drad_um"][1] == pytest.approx(-5.0, abs=1e-6)
-        assert f["residuals/grain_n_spots"][:].tolist() == [40, 40]
-        assert f["residuals/grain_med_internal_angle_deg"][0] == pytest.approx(0.25)
+        assert f[f"{g}/grain_med_drad_um"][0] == pytest.approx(5.0, abs=1e-6)
+        assert f[f"{g}/grain_med_drad_um"][1] == pytest.approx(-5.0, abs=1e-6)
+        assert f[f"{g}/grain_n_spots"][:].tolist() == [40, 40]
+        assert f[f"{g}/grain_med_internal_angle_deg"][0] == pytest.approx(0.25)
 
         # Per-ring dR/R: +5 µm on a 200 mm radius = +25 ppm on ring 1.
-        rings = f["residuals/ring_nr"][:].tolist()
-        ppm = f["residuals/ring_drad_ppm"][:]
+        rings = f[f"{g}/ring_nr"][:].tolist()
+        ppm = f[f"{g}/ring_drad_ppm"][:]
         assert ppm[rings.index(1)] == pytest.approx(25.0, rel=1e-3)
         assert ppm[rings.index(2)] == pytest.approx(-25.0, rel=1e-3)
 
@@ -201,6 +211,73 @@ def test_write_residual_diagnostics_h5(tmp_path):
         for absent in ("n_resolved_hkls", "n_majority_hkls",
                        "n_residual_tie_hkls", "n_forward_sim_hkls"):
             assert absent not in f["diagnostics"]
+
+
+def _post_fit_from(fb, bias_by_grain=(0.5, -0.25), shuffle_seed=3):
+    """A FitBestFinal for ``_make_run``: the fit has pulled the prediction onto
+    the spots (post-fit radial residual = ``bias_by_grain``, not the pre-fit
+    +/-5 um) and the matcher wrote the rows in a DIFFERENT order, as the real
+    post-fit matcher may (the files are not row-aligned)."""
+    fbf = fb.copy()
+    rng = np.random.default_rng(shuffle_seed)
+    for rep, bias in enumerate(bias_by_grain):
+        blk = fbf[rep]
+        v = blk[:, 0] > 0
+        r_obs = np.hypot(blk[v, 1], blk[v, 2])
+        scale = (r_obs - bias) / r_obs
+        blk[v, 7] = blk[v, 1] * scale
+        blk[v, 8] = blk[v, 2] * scale
+        blk[v, 19] = 0.05
+        fbf[rep] = blk[rng.permutation(len(blk))]
+    return fbf
+
+
+def test_post_fit_residuals_come_from_fitbestfinal(tmp_path):
+    """/residuals is the FitBestFinal (post-fit) decomposition, row-order
+    independent; /residuals_prefit keeps the FitBest (seed) one; both are
+    stamped with their source."""
+    h5py = pytest.importorskip("h5py")
+    fb, kept, ids_hash = _make_run()
+    fbf = _post_fit_from(fb)
+    cache = gather_per_grain_spot_data(
+        kept, fb, distance_um=LSD_UM, wavelength_a=WAVELENGTH_A,
+        ids_hash=ids_hash, progress=False,
+    )
+    out = tmp_path / "processgrains_diagnostics.h5"
+    write_residual_diagnostics(
+        out_path=out, kept_grains=kept, spot_cache=cache,
+        fb_final=fbf, ids_hash=ids_hash,
+    )
+    with h5py.File(out, "r") as f:
+        for g in ("residuals", "residuals_prefit"):
+            assert f[g].attrs["source"] == RESIDUAL_SOURCES[g]
+        assert "FitBestFinal" in f["residuals"].attrs["source"]
+        post = f["residuals/grain_med_drad_um"][:]
+        pre = f["residuals_prefit/grain_med_drad_um"][:]
+        np.testing.assert_allclose(post, [0.5, -0.25], atol=1e-6)
+        np.testing.assert_allclose(pre, [5.0, -5.0], atol=1e-6)
+        assert f["residuals/grain_n_spots"][:].tolist() == [40, 40]
+        assert f["residuals/grain_med_internal_angle_deg"][0] == pytest.approx(0.05)
+        rings = f["residuals/ring_nr"][:].tolist()
+        assert f["residuals/ring_drad_ppm"][rings.index(1)] == pytest.approx(2.5, rel=1e-3)
+        # Same spots in both tables, whatever the row order.
+        a = np.sort(f["residuals/spot_table"][:, 1])
+        b = np.sort(f["residuals_prefit/spot_table"][:, 1])
+        np.testing.assert_array_equal(a, b)
+
+
+def test_build_residual_table_filters_and_skips():
+    fb, kept, ids_hash = _make_run()
+    reps = [g.rep_pos for g in kept] + [99]           # 99: beyond the file
+    keep0 = np.array([1, 2, 3])                        # grain 0: three spots only
+    tbl = build_residual_table(reps, fb, ids_hash.ring_for_spot_ids,
+                               spot_ids_per_grain=[keep0, None, None])
+    g = tbl[:, 0].astype(int)
+    assert sorted(tbl[g == 0, 1].astype(int).tolist()) == [1, 2, 3]
+    assert (g == 1).sum() == 40
+    assert 2 not in set(g)                             # rep 99 skipped
+    assert build_residual_table(reps, None, ids_hash.ring_for_spot_ids).shape == (
+        0, len(SPOT_RESIDUAL_COLS))
 
 
 def test_no_residuals_writes_nothing(tmp_path):
@@ -224,3 +301,22 @@ def test_ring_for_spot_ids_vectorised():
     for sid in (1, 1000, 1001, 2000, 2001, 0):
         assert int(ids_hash.ring_for_spot_ids(np.array([sid]))[0]) == \
             ids_hash.ring_for_spot_id(sid)
+
+
+def test_sidecar_carries_rel_fit_rmse_aligned(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    fb, kept, ids_hash = _make_run()
+    fbf = _post_fit_from(fb)
+    cache = gather_per_grain_spot_data(
+        kept, fb, distance_um=LSD_UM, wavelength_a=WAVELENGTH_A,
+        ids_hash=ids_hash, progress=False,
+    )
+    sids = np.r_[np.arange(1, 41), np.arange(1001, 1041)]
+    rel = (sids, sids / 1e4)
+    out = tmp_path / "processgrains_diagnostics.h5"
+    write_residual_diagnostics(out_path=out, kept_grains=kept, spot_cache=cache,
+                               fb_final=fbf, ids_hash=ids_hash, rel_fit_rmse=rel)
+    with h5py.File(out, "r") as f:
+        for g in ("residuals", "residuals_prefit"):
+            st = f[f"{g}/spot_table"][:]
+            np.testing.assert_allclose(f[f"{g}/spot_rel_fit_rmse"][:], st[:, 1] / 1e4)

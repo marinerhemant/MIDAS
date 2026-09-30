@@ -1130,23 +1130,50 @@ class ProcessGrains:
 
         # Signed residual decomposition (dY/dZ/radial/tangential/omega/
         # internal-angle) — per-grain, per-ring and eta-binned diagnostics.
+        # Two tables (compute/residual_decomposition): /residuals is POST-fit
+        # (FitBestFinal.bin, the residual of the refined grain), restricted to
+        # the spots each grain was attributed in SpotMatrix;
+        # /residuals_prefit is the FitBest.bin seed at the reference lattice
+        # that _build_spot_matrix_rows collected.
         from .compute.residual_decomposition import (
+            build_residual_table,
             decompose_residuals,
             summarize_residuals,
         )
-        resid_diag = decompose_residuals(spot_resid_tbl, len(out_grains))
-        diagnostics["residuals"] = resid_diag
-        diagnostics["residuals_spot_table"] = spot_resid_tbl
-        print(summarize_residuals(resid_diag), flush=True)
+        prefit_diag = decompose_residuals(spot_resid_tbl, len(out_grains))
+        diagnostics["residuals_prefit"] = prefit_diag
+        diagnostics["residuals_prefit_spot_table"] = spot_resid_tbl
+        fbf = getattr(self.binaries, "fit_best_final", None)
+        if fbf is not None and sm_rows.shape[0]:
+            ring_of = dict(zip(sm_rows[:, 1].astype(np.int64).tolist(),
+                               sm_rows[:, 7].astype(np.int64).tolist()))
+            post_tbl = build_residual_table(
+                [g["rep_pos"] for g in out_grains], fbf,
+                lambda s: np.array([ring_of.get(int(x), -1) for x in s],
+                                   dtype=np.int64),
+                spot_ids_per_grain=[
+                    np.array([r.spot_id for r in g["resolved"]], dtype=np.int64)
+                    for g in out_grains
+                ],
+            )
+            diagnostics["residuals"] = decompose_residuals(post_tbl, len(out_grains))
+            diagnostics["residuals_spot_table"] = post_tbl
+            print(summarize_residuals(diagnostics["residuals"], "residuals"), flush=True)
+        else:
+            print("[pg-residuals] no FitBestFinal.bin — the sidecar gets "
+                  "/residuals_prefit only (no post-fit /residuals)", flush=True)
+        print(summarize_residuals(prefit_diag, "residuals_prefit"), flush=True)
 
-        # E7: reference-lattice (d0) ADVISORY. When the per-ring dR/R
-        # flag trips (>200 ppm — the datasetB signature: −850 ppm absorbed
-        # as +850 µε fake hydrostatic strain), recover the free-standing
-        # cubic a0 and print the exact LatticeConstant line to paste.
+        # E7: reference-lattice (d0) ADVISORY. When the PRE-fit per-ring
+        # dR/R flag trips (>200 ppm — the datasetB signature: −850 ppm, the
+        # reference LatticeConstant off by that fraction and every grain's
+        # hydrostatic strain carrying it), recover the free-standing cubic a0
+        # and print the exact LatticeConstant line to paste. Pre-fit on
+        # purpose: the post-fit table has the mismatch fitted away.
         # Advisory ONLY, never auto-applied: the free-standing (zero
         # applied macro-stress) assumption is the user's call — loaded
         # samples need recover_d0 with a stiffness + applied stress.
-        _ppm = resid_diag.get("ring_drad_ppm")
+        _ppm = prefit_diag.get("ring_drad_ppm")
         if _ppm is not None:
             _finite = _ppm[np.isfinite(_ppm)]
             _is_cubic = (

@@ -210,3 +210,67 @@ def test_theor_spot_id_joins_matched_rows(setup):
     # every matched row got a theorSpotID from the diagnostics join
     assert np.all(np.isfinite(d[m][:, 13]))
     assert np.all(d[m][:, 13] % 2 == 1), "theorSpotID is ih*2+1+within → odd/even ids"
+
+
+# ---------------------------------------------------------------------------
+# RelFitRMSE (col 28): relative peak-fit misfit, FitRMSE / IMax of the merged spot
+# ---------------------------------------------------------------------------
+
+
+def _write_rel_inputs(d, *, with_orig=True, with_radius=True):
+    """InputAll + Radius where SpotID numbering DIFFERS between the files, so a
+    SpotID join gives wrong values and only the OrigSpotID join is right."""
+    cols = ["YLab", "ZLab", "Omega", "GrainRadius", "SpotID"] + (["OrigSpotID"] if with_orig else [])
+    rows = [[0, 0, 0, 1, s] + ([100 + s] if with_orig else []) for s in range(1, 6)]
+    (d / "InputAllExtraInfoFittingAll.csv").write_text(
+        " ".join(cols) + "\n" + "\n".join(" ".join(str(v) for v in r) for r in rows) + "\n")
+    if with_radius:
+        # Radius SpotID 1..5 is a DIFFERENT numbering; OrigSpotID 101..105 is the link.
+        lines = ["SpotID IMax FitRMSE OrigSpotID"]
+        for k, s in enumerate(range(1, 6)):
+            imax = 0.0 if s == 5 else 100.0 * (k + 1)
+            lines.append(f"{s} {imax} {10.0 * (k + 1) + 1.0} {100 + (6 - s)}")  # reversed OrigSpotID
+        (d / "Radius_StartNr_1_EndNr_10.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_load_rel_fit_rmse_uses_origspotid_link(tmp_path):
+    from midas_process_grains.io.csv import load_rel_fit_rmse, rel_fit_rmse_for
+    _write_rel_inputs(tmp_path)
+    tab = load_rel_fit_rmse(tmp_path)
+    assert tab is not None
+    got = rel_fit_rmse_for([1, 2, 3, 4, 5, 99], tab)
+    # InputAll SpotID s has OrigSpotID 100+s; Radius row with OrigSpotID 100+s is
+    # Radius SpotID 6-s, whose k = 5-s: IMax 100(6-s), FitRMSE 10(6-s)+1.
+    for s in (2, 3, 4, 5):
+        k = 6 - s
+        assert got[s - 1] == pytest.approx((10.0 * k + 1.0) / (100.0 * k))
+    assert np.isnan(got[0])            # its Radius row has IMax 0 -> NaN, not inf
+    assert np.isnan(got[5])            # unknown SpotID -> NaN
+
+
+def test_load_rel_fit_rmse_absent_on_older_runs(tmp_path):
+    from midas_process_grains.io.csv import load_rel_fit_rmse
+    _write_rel_inputs(tmp_path, with_orig=False)
+    assert load_rel_fit_rmse(tmp_path) is None          # no OrigSpotID column
+    d2 = tmp_path / "b"; d2.mkdir()
+    _write_rel_inputs(d2, with_radius=False)
+    assert load_rel_fit_rmse(d2) is None                # no Radius file
+
+
+def test_spotmatrix_relfitrmse_column(setup):
+    grains, caches, im, diag, tmp = setup
+    rel = (np.array([1, 2, 3, 4, 5]), np.array([0.1, 0.2, 0.3, 0.4, 0.5]))
+    p = tmp / "SpotMatrix.csv"
+    write_spot_matrix_csv(out_path=p, kept_grains=grains, fb=object(),
+                          input_matrix=im, spot_cache=caches,
+                          spot_diag=diag, progress=False, rel_fit_rmse=rel)
+    hdr, d = _read(p)
+    assert hdr[-1] == "RelFitRMSE" and len(hdr) == SPOT_MATRIX_NCOLS == 29
+    matched = d[d[:, 12] == 1]
+    np.testing.assert_allclose(matched[:, 28], matched[:, 1] / 10.0)
+    assert np.isnan(d[d[:, 12] == 0][:, 28]).all()      # un-found rows carry no misfit
+    p2 = tmp / "SpotMatrix_norel.csv"
+    write_spot_matrix_csv(out_path=p2, kept_grains=grains, fb=object(),
+                          input_matrix=im, spot_cache=caches,
+                          spot_diag=diag, progress=False)
+    assert np.isnan(_read(p2)[1][:, 28]).all()          # no table -> NaN, never 0

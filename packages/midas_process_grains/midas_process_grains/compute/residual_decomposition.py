@@ -20,6 +20,30 @@ components makes systematics legible:
                      space misfit floor (intragranular spread when it is
                      intensity- and width-independent).
 
+Two tables, two questions
+-------------------------
+The refiner writes two per-spot tables with the same 22-column layout, and
+they answer different questions (``io/binary.py`` ``read_fit_best_final``):
+
+- ``FitBestFinal.bin`` -- **post-fit**: spots matched and predicted at the
+  REFINED orientation, position and lattice (strain). This is the residual of
+  the fit, the one ``DiffLenPost`` / ``DiffOmePost`` in SpotMatrix.csv
+  report. Its per-ring dR/R sits near 0 ppm, because the fitted lattice has
+  absorbed any mismatch in the reference lattice.
+- ``FitBest.bin`` -- **pre-fit**: the indexer seed, predicted at the
+  REFERENCE lattice (``LatticeConstant``). Its per-ring dR/R is the
+  reference-lattice mismatch, and its dRad/dTan also carry every grain's
+  unfitted strain, so it is not a measure of spot precision.
+
+Until 2026-09-28 the sidecar decomposed only ``FitBest.bin`` and called it
+"obs vs fitted-grain prediction". On a 20-ID-E Fe9Cr run with
+``LatticeConstant 2.87`` (fitted a = 2.8723) every ring read -850 ppm, and
+|dRad| was 150 um where the post-fit radial scatter is 30-60 um. The sidecar
+now writes the post-fit table as ``/residuals`` and the pre-fit table as
+``/residuals_prefit``, each stamped with its ``source``
+(:data:`RESIDUAL_SOURCES`). :func:`build_residual_table` builds either one
+from its binary.
+
 Everything here is pure numpy post-processing of the per-spot residual table
 collected while building SpotMatrix rows; there is nothing differentiable to
 preserve, so no torch pass-through is required.
@@ -27,17 +51,33 @@ preserve, so no torch pass-through is required.
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional, Sequence
 
 import numpy as np
 
 
 __all__ = [
     "SPOT_RESIDUAL_COLS",
+    "RESIDUAL_SOURCES",
     "build_spot_residual_row",
     "build_spot_residual_block",
+    "build_residual_table",
     "decompose_residuals",
 ]
+
+
+#: What each sidecar residual group was decomposed from. Stamped on the h5
+#: group as ``attrs["source"]``; keys are the diagnostics-dict / h5 group names.
+RESIDUAL_SOURCES = {
+    "residuals": (
+        "FitBestFinal.bin: post-fit, spots matched and predicted at the "
+        "refined orientation, position and lattice"
+    ),
+    "residuals_prefit": (
+        "FitBest.bin: pre-fit indexer seed, predicted at the reference "
+        "LatticeConstant"
+    ),
+}
 
 
 # Column layout of the per-spot residual table assembled alongside the
@@ -185,6 +225,60 @@ def build_spot_residual_row(
     return block[0].tolist()
 
 
+def build_residual_table(
+    rep_positions: Sequence[int],
+    fb,
+    ring_for_spot_ids: Callable[[np.ndarray], np.ndarray],
+    spot_ids_per_grain: Optional[Sequence[Optional[np.ndarray]]] = None,
+) -> np.ndarray:
+    """Decompose one FitBest-layout binary for a list of output grains.
+
+    Parameters
+    ----------
+    rep_positions
+        The seed row each output grain was taken from, in output (Grains.csv)
+        order; element ``gi`` becomes ``grain_idx = gi``.
+    fb
+        ``FitBest.bin`` or ``FitBestFinal.bin`` as ``(N_seeds, MAX_N_HKLS,
+        22)`` (plain memmap or the tail-padded view the readers return).
+        The two files are NOT row-aligned within a seed, so rows are selected
+        by SpotID, never by index.
+    ring_for_spot_ids
+        Vectorised SpotID -> ring number (``-1`` where unknown), e.g.
+        ``IDsHash.ring_for_spot_ids``.
+    spot_ids_per_grain
+        Optional per-grain SpotID sets. When given, only those spots are kept,
+        so the table covers the same spots the grain was attributed in
+        SpotMatrix.csv. ``None`` (or a ``None`` element) keeps every matched
+        spot of the seed.
+
+    Returns
+    -------
+    ndarray ``(n, 11)`` in :data:`SPOT_RESIDUAL_COLS` layout.
+    """
+    n_cols = len(SPOT_RESIDUAL_COLS)
+    if fb is None:
+        return np.zeros((0, n_cols))
+    n_rows = fb.shape[0]
+    blocks = []
+    for gi, rep in enumerate(rep_positions):
+        rep = int(rep)
+        if rep < 0 or rep >= n_rows:
+            continue
+        seed = np.asarray(fb[rep])
+        sid = seed[:, 0].astype(np.int64)
+        keep = sid > 0
+        if spot_ids_per_grain is not None and spot_ids_per_grain[gi] is not None:
+            keep &= np.isin(sid, np.asarray(spot_ids_per_grain[gi], dtype=np.int64))
+        if not keep.any():
+            continue
+        rings = np.asarray(ring_for_spot_ids(sid[keep]), dtype=np.int64)
+        blk = build_spot_residual_block(gi, seed[keep], sid[keep], rings)
+        if len(blk):
+            blocks.append(blk)
+    return np.concatenate(blocks, axis=0) if blocks else np.zeros((0, n_cols))
+
+
 def _median_or_nan(x: np.ndarray) -> float:
     return float(np.median(x)) if x.size else float("nan")
 
@@ -323,10 +417,18 @@ def decompose_residuals(
     return out
 
 
-def summarize_residuals(diag: Dict[str, np.ndarray]) -> str:
-    """One-paragraph human-readable summary for the pipeline log."""
+def summarize_residuals(diag: Dict[str, np.ndarray],
+                        group: str = "residuals") -> str:
+    """One-paragraph human-readable summary for the pipeline log.
+
+    ``group`` is ``"residuals"`` (post-fit) or ``"residuals_prefit"``; it sets
+    the heading and how a large per-ring dR/R is read.
+    """
+    prefit = group == "residuals_prefit"
+    what = ("PRE-FIT, obs - seed prediction at the reference lattice"
+            if prefit else "POST-FIT, obs - refined-grain prediction")
     lines = [
-        "[pg-residuals] signed residual decomposition (obs - fitted-grain):",
+        "[pg-residuals] signed residual decomposition (%s):" % what,
         "[pg-residuals]   median dY=%+.1f dZ=%+.1f dRad=%+.1f dTan=%+.1f um, "
         "dOme=%+.4f deg" % (
             diag["overall_med_dy_um"], diag["overall_med_dz_um"],
@@ -352,10 +454,19 @@ def summarize_residuals(diag: Dict[str, np.ndarray]) -> str:
         ppm_arr = diag["ring_drad_ppm"]
         finite = ppm_arr[np.isfinite(ppm_arr)]
         if finite.size and abs(np.median(finite)) > 200.0:
-            lines.append(
-                "[pg-residuals]   NOTE: median dR/R = %+.0f ppm -> reference "
-                "lattice / wavelength likely mis-calibrated by that fraction "
-                "(shows up as a uniform fake hydrostatic strain)."
-                % float(np.median(finite))
-            )
+            if prefit:
+                lines.append(
+                    "[pg-residuals]   NOTE: median dR/R = %+.0f ppm -> the "
+                    "reference LatticeConstant differs from the fitted lattice "
+                    "by that fraction; every grain's hydrostatic strain carries "
+                    "it (about %+.0f ue)."
+                    % (float(np.median(finite)), -float(np.median(finite)))
+                )
+            else:
+                lines.append(
+                    "[pg-residuals]   NOTE: median dR/R = %+.0f ppm SURVIVES "
+                    "the lattice fit -> a ring-radius error the per-grain "
+                    "lattice cannot absorb (distance / wavelength / distortion)."
+                    % float(np.median(finite))
+                )
     return "\n".join(lines)

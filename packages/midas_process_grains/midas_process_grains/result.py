@@ -192,7 +192,8 @@ class ProcessGrainsResult:
             # of per-spot residuals with zero-length arrays, and the run would
             # still report success.
             diag_path = d / "processgrains_diagnostics.h5"
-            has_residuals = "residuals" in (self.diagnostics or {})
+            _d = self.diagnostics or {}
+            has_residuals = "residuals" in _d or "residuals_prefit" in _d
             if has_residuals or not diag_path.exists():
                 write_diagnostics_h5(diag_path, self)
             else:

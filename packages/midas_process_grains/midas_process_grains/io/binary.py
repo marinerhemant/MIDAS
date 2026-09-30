@@ -164,10 +164,13 @@ class BinaryInputs:
     n_seeds: int
     index_best: Optional[np.memmap]      # (N, 15) float64, may be None if absent
     index_best_full: Optional[np.memmap] # (N, 5000, 2) float64
-    fit_best: Optional[np.memmap]        # (N, 5000, 22) float64
+    fit_best: Optional[np.memmap]        # (N, 5000, 22) float64 — PRE-fit (seed)
     orient_pos_fit: np.memmap            # (N, 27) float64 — required
     key: np.memmap                       # (N, 2) int32 — required
     process_key: np.memmap               # (N, 5000) int32 — required
+    # (N, 5000, 22) float64 — POST-fit FitBestFinal.bin; None on runs whose
+    # refiner predates it (2026-08-21) or when FitBest was not requested.
+    fit_best_final: Optional[np.memmap] = None
 
 
 # ---------------------------------------------------------------------------
@@ -667,6 +670,13 @@ def read_all(
                 f"OrientPosFit {n_seeds}"
             )
 
+    fbf = None
+    if require_fit_best:
+        try:
+            fbf = read_fit_best_final(rd)
+        except FileNotFoundError:
+            fbf = None
+
     return BinaryInputs(
         n_seeds=n_seeds,
         index_best=ib,
@@ -675,4 +685,5 @@ def read_all(
         orient_pos_fit=opf,
         key=key,
         process_key=pk,
+        fit_best_final=fbf,
     )

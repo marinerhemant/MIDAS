@@ -29,8 +29,10 @@ Operating modes (`mode=` kwarg):
                         better. Use ``"c_parity"``.
 
 Every mode that reads ``FitBest.bin`` also writes the signed per-spot residual
-sidecar ``processgrains_diagnostics.h5:/residuals`` — ``c_parity`` included as
-of 0.9.2, which closed the gap where the *default* mode produced none.
+sidecar ``processgrains_diagnostics.h5`` — ``c_parity`` included as of 0.9.2,
+which closed the gap where the *default* mode produced none. ``/residuals`` is
+POST-fit (``FitBestFinal.bin``) and ``/residuals_prefit`` the pre-fit seed
+(``FitBest.bin``, reference lattice); each group names its ``source``.
 ``"legacy"`` never reads FitBest so its residuals are empty by design, and the
 CLI-only ``mode="physics"`` (``v4_pipeline``) writes none at all. See the
 README for the schema and the per-mode table.
@@ -48,7 +50,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
 
 from .params import ProcessGrainsParams, read_paramstest_pg
 

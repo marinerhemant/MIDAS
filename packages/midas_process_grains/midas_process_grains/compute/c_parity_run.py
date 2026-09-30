@@ -189,13 +189,66 @@ def run_c_parity_clustering(
     )
 
 
+def resolve_stage1_misori_tol(explicit: Optional[float], params) -> Tuple[float, str]:
+    """Stage-1 misorientation tolerance (deg) and where it came from.
+
+    An explicit argument wins; else the parameter file's ``MisoriTol``; else C
+    ProcessGrains' own 0.4 deg. Same defect class as MinNrSpots: this used to be
+    a hardcoded 0.4 on the c_parity path, so ``MisoriTol`` in the file and the
+    CLI's ``--misori-tol`` were both silently ignored in the default mode.
+    Measured on 20-ID garnet (HPcat_P2 att5): the log read ``misori_tol = 0.400``
+    with ``MisoriTol 1.0`` in the file, and the grain list was the same 657 rows.
+    ``raw`` distinguishes "the file set it" from the dataclass default.
+    """
+    if explicit is not None:
+        return float(explicit), "explicit argument"
+    if "MisoriTol" in getattr(params, "raw", {}) and params.MisoriTol is not None:
+        return float(params.MisoriTol), "from the parameter file"
+    return 0.4, "C default; not set in the parameter file"
+
+
+#: C ProcessGrains' Pass A tolerances (ProcessGrains.c:836-874).
+C_PASSA_MISORI_DEG = 0.1
+C_PASSA_POS_UM = 5.0
+
+
+def resolve_passa_tols(misori_explicit: Optional[float], pos_explicit: Optional[float],
+                       params) -> Tuple[float, float, str]:
+    """Pass A (orientation + position dedup) tolerances and where they came from.
+
+    Explicit arguments win; else the parameter file's ``CParityPassAMisoriTol`` (deg)
+    and ``CParityPassAPosTol`` (um); else C ProcessGrains' 0.1 deg and 5 um, so an
+    unset file stays bit-identical to C. Opt-in because the defaults are what
+    c_parity was validated against EBSD with. The 5 um position gate is far
+    tighter than grain-centroid scatter on 20-ID data: bt_20id_jul26b nf_sampleF
+    layer 6 kept 246 pairs < 0.1 deg apart (spot Jaccard median 0.61) at
+    7-40 um separation. Deliberately NOT ``PassAMisoriTol``: that key means the
+    spot-overlap merge (1.0 deg) in the other modes.
+    """
+    raw = getattr(params, "raw", {})
+    src = []
+    if misori_explicit is not None:
+        m = float(misori_explicit); src.append("misori explicit")
+    elif "CParityPassAMisoriTol" in raw:
+        m = float(raw["CParityPassAMisoriTol"][0]); src.append("misori from the parameter file")
+    else:
+        m = C_PASSA_MISORI_DEG; src.append("misori C default")
+    if pos_explicit is not None:
+        d = float(pos_explicit); src.append("pos explicit")
+    elif "CParityPassAPosTol" in raw:
+        d = float(raw["CParityPassAPosTol"][0]); src.append("pos from the parameter file")
+    else:
+        d = C_PASSA_POS_UM; src.append("pos C default")
+    return m, d, "; ".join(src)
+
+
 def run_c_parity_pipeline_from_disk(
     *,
     run_dir: Path,
     out_dir: Path,
-    misori_tol_stage1_deg: float = 0.4,
-    misori_tol_passa_deg: float = 0.1,
-    pos_tol_passa_um: float = 5.0,
+    misori_tol_stage1_deg: Optional[float] = None,
+    misori_tol_passa_deg: Optional[float] = None,
+    pos_tol_passa_um: Optional[float] = None,
     confidence_min: Optional[float] = None,
     min_nr_spots: Optional[int] = None,
     write_spot_matrix: bool = True,
@@ -264,6 +317,13 @@ def run_c_parity_pipeline_from_disk(
         print(f"[c-parity] min_nr_spots={min_nr_spots} "
               f"({'from ' + ps_path.name if 'MinNrSpots' in getattr(params, 'raw', {}) else 'C default; not set in ' + ps_path.name})",
               flush=True)
+
+    misori_tol_stage1_deg, _src = resolve_stage1_misori_tol(misori_tol_stage1_deg, params)
+    print(f"[c-parity] misori_tol_stage1={misori_tol_stage1_deg} deg ({_src})", flush=True)
+    misori_tol_passa_deg, pos_tol_passa_um, _psrc = resolve_passa_tols(
+        misori_tol_passa_deg, pos_tol_passa_um, params)
+    print(f"[c-parity] pass_a misori<{misori_tol_passa_deg} deg AND |dpos|<{pos_tol_passa_um} um "
+          f"({_psrc})", flush=True)
 
     if confidence_min is None:
         confidence_min = (0.05 if params.Completeness is None
@@ -347,6 +407,28 @@ def run_c_parity_pipeline_from_disk(
         kept_grains=res.kept_grains,
     )
 
+    # Post-fit per-spot table: SpotMatrix's *Post columns and the sidecar's
+    # /residuals both come from it. Optional -- an older run has none.
+    fbf = None
+    if write_spot_matrix or write_diagnostics:
+        try:
+            from ..io.binary import read_fit_best_final
+            fbf = read_fit_best_final(rd)
+        except FileNotFoundError:
+            print("[c-parity] no FitBestFinal.bin — SpotMatrix post-fit "
+                  "columns stay NaN and the sidecar has no post-fit /residuals",
+                  flush=True)
+
+    # Relative peak-fit misfit per SpotID (FitRMSE / IMax of the merged spot):
+    # SpotMatrix col 28 and the sidecar's spot_rel_fit_rmse. None on older runs.
+    rel_tab = None
+    if write_spot_matrix or write_diagnostics:
+        from ..io.csv import load_rel_fit_rmse
+        rel_tab = load_rel_fit_rmse(rd)
+        if rel_tab is None:
+            print("[c-parity] no OrigSpotID / Radius_*.csv link — RelFitRMSE "
+                  "stays NaN", flush=True)
+
     if write_spot_matrix and fb is not None:
         iaeif = rd / "InputAllExtraInfoFittingAll.csv"
         if iaeif.exists():
@@ -362,17 +444,11 @@ def run_c_parity_pipeline_from_disk(
             except FileNotFoundError:
                 print("[c-parity] no SpotDiagnostics.bin — SpotMatrix will "
                       "carry no un-found-expected rows", flush=True)
-            fbf = None
-            try:
-                from ..io.binary import read_fit_best_final
-                fbf = read_fit_best_final(rd)
-            except FileNotFoundError:
-                print("[c-parity] no FitBestFinal.bin — SpotMatrix post-fit "
-                      "columns stay NaN", flush=True)
             write_spot_matrix_csv(
                 out_path=out_dir / "SpotMatrix.csv",
                 kept_grains=res.kept_grains, fb=fb, input_matrix=im,
                 spot_cache=spot_cache, spot_diag=sd, fb_final=fbf,
+                rel_fit_rmse=rel_tab,
             )
         else:
             print(f"[c-parity] no InputAllExtraInfoFittingAll.csv — "
@@ -383,6 +459,9 @@ def run_c_parity_pipeline_from_disk(
             out_path=out_dir / "processgrains_diagnostics.h5",
             kept_grains=res.kept_grains,
             spot_cache=spot_cache,
+            fb_final=fbf,
+            ids_hash=ids_hash,
+            rel_fit_rmse=rel_tab,
         )
 
     print(f"[c-parity] DONE: {len(res.kept_grains):,} grains → {out_dir}",
@@ -395,44 +474,86 @@ def write_residual_diagnostics(
     out_path: Path,
     kept_grains: List[CParityKeptGrain],
     spot_cache: Optional[list],
+    fb_final=None,
+    ids_hash=None,
+    rel_fit_rmse=None,
 ) -> Optional[Path]:
-    """Aggregate the per-grain residual blocks and write the sidecar.
+    """Decompose the post-fit and pre-fit residuals and write the sidecar.
 
-    ``spot_cache`` is the list returned by
-    :func:`c_parity_emit.gather_per_grain_spot_data` with
-    ``collect_residuals=True``; each entry carries a ``"resid"`` block whose
-    ``grain_idx`` column is the index into ``kept_grains``, i.e. **Grains.csv
-    row order** — the same convention the spot-aware path uses, so the
-    per-grain arrays line up with the CSV row-for-row in either mode.
+    ``rel_fit_rmse`` (the ``load_rel_fit_rmse`` table) adds, in each group,
+    ``spot_rel_fit_rmse``: the relative peak-fit misfit of every ``spot_table``
+    row, same order (NaN where unknown).
 
-    Returns the path written, or ``None`` when there were no residual rows
-    (no FitBest, or diagnostics were not collected).
+    Two groups, one per refiner table (see
+    :mod:`compute.residual_decomposition`):
+
+    - ``/residuals`` -- POST-fit, from ``fb_final`` (``FitBestFinal.bin``),
+      at each grain's representative seed row ``rep_pos``. Needs ``ids_hash``
+      for ring numbers. Absent (with a printed warning) when ``fb_final`` is
+      ``None``: an older run has no post-fit table, and the pre-fit one is
+      NOT substituted under the post-fit name.
+    - ``/residuals_prefit`` -- PRE-fit, from the ``"resid_prefit"`` blocks
+      that :func:`c_parity_emit.gather_per_grain_spot_data` collected from
+      ``FitBest.bin`` with ``collect_residuals=True``.
+
+    In both, ``grain_idx`` is the index into ``kept_grains``, i.e. **Grains.csv
+    row order**, so the per-grain arrays line up with the CSV row-for-row.
+
+    Returns the path written, or ``None`` when neither table has rows.
     """
     from ..io.consolidated import write_diagnostics_arrays
     from .residual_decomposition import (
         SPOT_RESIDUAL_COLS,
+        build_residual_table,
         decompose_residuals,
         summarize_residuals,
     )
 
     n_grains = len(kept_grains)
+    diagnostics = {}
+
+    post = None
+    if fb_final is not None and ids_hash is not None:
+        post = build_residual_table(
+            [g.rep_pos for g in kept_grains], fb_final, ids_hash.ring_for_spot_ids,
+        )
+    if post is not None and len(post):
+        diagnostics["residuals"] = decompose_residuals(post, n_grains)
+        diagnostics["residuals_spot_table"] = post
+        print(summarize_residuals(diagnostics["residuals"], "residuals"), flush=True)
+    else:
+        print("[c-parity] no post-fit residuals (no FitBestFinal.bin"
+              + ("" if ids_hash is not None else " or no IDsHash") + ") — "
+              "processgrains_diagnostics.h5 gets /residuals_prefit only",
+              flush=True)
+
     blocks = []
     if spot_cache is not None:
         for cache in spot_cache:
             if cache is None:
                 continue
-            blk = cache.get("resid")
+            blk = cache.get("resid_prefit")
             if blk is not None and len(blk):
                 blocks.append(blk)
-    if not blocks:
+    if blocks:
+        pre = np.concatenate(blocks, axis=0)
+        diagnostics["residuals_prefit"] = decompose_residuals(pre, n_grains)
+        diagnostics["residuals_prefit_spot_table"] = pre
+        print(summarize_residuals(diagnostics["residuals_prefit"], "residuals_prefit"),
+              flush=True)
+
+    if rel_fit_rmse is not None:
+        from ..io.csv import rel_fit_rmse_for
+        for grp in ("residuals", "residuals_prefit"):
+            if grp in diagnostics:
+                diagnostics[grp]["spot_rel_fit_rmse"] = rel_fit_rmse_for(
+                    diagnostics[grp + "_spot_table"][:, 1], rel_fit_rmse)
+
+    if not diagnostics:
         print("[c-parity] no per-spot residuals available "
               "(no FitBest.bin?) — skipping processgrains_diagnostics.h5",
               flush=True)
         return None
-
-    tbl = np.concatenate(blocks, axis=0)
-    resid_diag = decompose_residuals(tbl, n_grains)
-    print(summarize_residuals(resid_diag), flush=True)
 
     # cluster_sizes is the ONLY per-grain integer diagnostic c_parity
     # measures: the number of seeds Stage 1 + Pass A merged into this grain.
@@ -440,21 +561,21 @@ def write_residual_diagnostics(
     # n_majority_hkls, n_residual_tie_hkls, n_forward_sim_hkls) describe
     # per-hkl conflict resolution that c_parity does not perform, so they are
     # omitted rather than written as zeros a reader would take for measured.
-    cluster_sizes = np.array(
+    diagnostics["cluster_sizes"] = np.array(
         [len(g.member_positions) for g in kept_grains], dtype=np.int32,
     )
     write_diagnostics_arrays(
         out_path,
-        diagnostics={
-            "cluster_sizes": cluster_sizes,
-            "residuals": resid_diag,
-            "residuals_spot_table": tbl,
-        },
+        diagnostics=diagnostics,
         n_grains=n_grains,
         mode="c_parity",
         int_keys=("cluster_sizes",),
     )
-    print(f"[c-parity] diagnostics: {tbl.shape[0]:,} spot residuals over "
+    counts = ", ".join(
+        f"{grp} {diagnostics[grp + '_spot_table'].shape[0]:,}"
+        for grp in ("residuals", "residuals_prefit") if grp in diagnostics
+    )
+    print(f"[c-parity] diagnostics: spot residuals ({counts}) over "
           f"{n_grains:,} grains → {out_path}  "
           f"(columns: {','.join(SPOT_RESIDUAL_COLS)})", flush=True)
     return out_path

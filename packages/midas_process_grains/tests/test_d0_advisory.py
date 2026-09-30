@@ -64,8 +64,9 @@ def test_d0_advisory_fires_on_large_ring_offset(tiny_run_dir: Path, capsys):
                                        device="cpu")
     res = pg.run(mode="adaptive")   # was spot_aware (disabled)
     out = capsys.readouterr().out
-    if "reference lattice / wavelength likely mis-calibrated" in out:
-        # The flag tripped → the advisory must accompany it.
+    if "the reference LatticeConstant differs from the fitted lattice" in out:
+        # The PRE-fit flag tripped (E7 reads /residuals_prefit, FitBest at the
+        # reference lattice) → the advisory must accompany it.
         assert "ADVISORY (free-standing cubic d0 recovery)" in out
         assert "LatticeConstant" in out
         assert "NOT auto-applied" in out

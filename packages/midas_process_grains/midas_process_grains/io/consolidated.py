@@ -157,9 +157,10 @@ def write_diagnostics_arrays(
     ----------
     diagnostics
         Mapping that may carry any of ``int_keys`` (per-grain int32 arrays),
-        ``"residuals"`` (the :func:`decompose_residuals` output dict),
-        ``"residuals_spot_table"`` (the ``(n_spots, 11)`` per-spot table) and
-        ``"edge_weights_per_cluster"``.
+        ``"residuals"`` / ``"residuals_prefit"`` (post-fit / pre-fit
+        :func:`decompose_residuals` output dicts), their per-spot tables
+        ``"residuals_spot_table"`` / ``"residuals_prefit_spot_table"``
+        (``(n_spots, 11)``) and ``"edge_weights_per_cluster"``.
     n_grains
         Length of the per-grain arrays; a key in ``int_keys`` that is absent
         from ``diagnostics`` is written as zeros of this length.
@@ -186,16 +187,23 @@ def write_diagnostics_arrays(
             g.create_dataset(key, data=arr)
 
         # Signed residual decomposition (see compute/residual_decomposition).
-        #   /residuals/<aggregate arrays + scalars>
-        #   /residuals/spot_table : float32 (n_spots, 11), gzip — layout in
-        #       the ``columns`` attribute (SPOT_RESIDUAL_COLS).
-        if "residuals" in diag:
-            r = f.create_group("residuals")
-            for key, arr in diag["residuals"].items():   # type: ignore[union-attr]
+        #   /residuals/...        post-fit  (FitBestFinal.bin)
+        #   /residuals_prefit/... pre-fit   (FitBest.bin, reference lattice)
+        # each with <aggregate arrays + scalars>, a spot_table float32
+        # (n_spots, 11) gzip whose layout is its ``columns`` attribute, and
+        # attrs["source"] naming the binary it was decomposed from.
+        from ..compute.residual_decomposition import (
+            RESIDUAL_SOURCES, SPOT_RESIDUAL_COLS,
+        )
+        for grp in ("residuals", "residuals_prefit"):
+            if grp not in diag:
+                continue
+            r = f.create_group(grp)
+            r.attrs["source"] = RESIDUAL_SOURCES[grp]
+            for key, arr in diag[grp].items():           # type: ignore[union-attr]
                 r.create_dataset(key, data=np.asarray(arr))
-            tbl = diag.get("residuals_spot_table")
+            tbl = diag.get(grp + "_spot_table")
             if tbl is not None and np.asarray(tbl).size:
-                from ..compute.residual_decomposition import SPOT_RESIDUAL_COLS
                 ds = r.create_dataset(
                     "spot_table",
                     data=np.asarray(tbl, dtype=np.float32),

@@ -4,6 +4,96 @@ All notable changes to midas-process-grains. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] – 2026-09-29
+
+**Numbers that can change for existing users:** `/residuals` in the sidecar is now the post-fit table (the
+old one is `/residuals_prefit`); `SpotMatrix.csv` has 29 columns; `c_parity` Pass A now compares every
+neighbour pair, so default grain counts can drop slightly (toward the C reference); a `MisoriTol` in the
+parameter file is now honoured by `c_parity` (it was silently ignored). Requires `midas-transforms>=0.11.0`.
+
+### Added — `RelFitRMSE`, the relative peak-fit misfit, per spot
+
+- `SpotMatrix.csv` col 28 `RelFitRMSE` (29 columns; cols 0-27 unchanged) and, in
+  each residual group of the sidecar, `spot_rel_fit_rmse` aligned with
+  `spot_table`. Value = the merged spot's `FitRMSE / IMax` from
+  `Radius_StartNr_*.csv`, joined through `OrigSpotID` (the two files number
+  `SpotID` differently; the `OrigSpotID` link reproduces `IntegratedIntensity`
+  exactly). NaN on runs without that link; never 0.
+- Why: on 20-ID-E Fe9Cr it carried the whole ~2x excess of the post-fit radial
+  residual over a steel control (reweighting Fe9Cr to steel's distribution
+  1.88 -> 1.08, shuffled control 1.85; radial, along-ring and omega widths,
+  frame count, threshold fill and peak height did not). The absolute `FitRMSE`
+  grows with brightness and ranks the wrong way.
+- `load_rel_fit_rmse()` / `rel_fit_rmse_for()` in `io/csv.py`. The SpotMatrix
+  width and header are now defined once, in `io/csv.py`.
+- Regression gate (LSHR layer 1 vs EBSD, 2026-09-24 harness): Grains.csv
+  byte-identical (md5 91c8d4ae...), SpotMatrix cols 0-27 identical over
+  1,161,004 rows, real layer untouched.
+
+### Fixed — the residual sidecar decomposed the PRE-fit table and called it the fit
+
+- `processgrains_diagnostics.h5:/residuals` was built from `FitBest.bin`, the
+  indexer seed predicted at the **reference** `LatticeConstant`, while the
+  docs called it "obs vs fitted-grain prediction". So its radial terms carried
+  the reference-lattice mismatch and every grain's unfitted strain, not the
+  spot precision. Measured on 20-ID-E Fe9Cr (`LatticeConstant 2.87`, fitted
+  a = 2.8723) and austenitic steel (3.59 vs 3.5930): every ring read
+  -850 / -910 ppm, and the median |dRad| was 150 um where the post-fit radial
+  scatter (MAD-std) is 21 um (steel) and 44 um (Fe9Cr). The predicted ring
+  radius matched the reference lattice to 0.2 um.
+- **`/residuals` is now POST-fit**, decomposed from `FitBestFinal.bin` (the
+  table SpotMatrix's `*Post` columns already came from). On those runs the
+  per-ring dR/R drops to -23..+6 ppm.
+- **`/residuals_prefit`** keeps the FitBest decomposition under its own name.
+  Its per-ring dR/R really is the reference-lattice mismatch, and the E7 d0
+  advisory now reads it explicitly (it always depended on pre-fit semantics).
+- Each group carries `attrs["source"]` (`RESIDUAL_SOURCES`). A run without
+  `FitBestFinal.bin` (refiner before 2026-08-21) gets `/residuals_prefit`
+  only, with a printed warning; the pre-fit table is never filed as post-fit.
+- Both c_parity and the spot-aware modes; the spot-aware post-fit table is
+  restricted to each grain's attributed SpotMatrix spots. New
+  `build_residual_table()` shares the per-grain assembly.
+- `utils/midas_ff_report*.py` read `/residuals` when it carries `source`, else
+  fall back to the pre-fit table and label every residual plot and finding
+  "PRE-fit" (an old sidecar with no `source` is pre-fit).
+- Grains.csv and SpotMatrix.csv are unchanged (byte-identical on two real
+  layers); only the sidecar changes.
+
+### Fixed — `c_parity` Pass A compared only about half of the cross-cell pairs
+
+- `pass_a_position_dedup` walked only the lexicographically positive neighbour offsets AND kept a
+  pair only when `i < j`, so every cross-cell pair whose lower index sat in the lex-greater cell was
+  never compared. Two identical orientations 2 um apart across a cell face both survived; C
+  `ProcessGrains` merges them. All 26 offsets are now walked; the `i < j` mask still emits each pair
+  once. Tests: 7 cell layouts (the reversed ones failed before) and exact agreement with the C loop on
+  random clusters at 5 / 20 / 50 um.
+- EBSD gate (LSHR layer 1, preregistered): the unfixed rerun reproduces the published `Grains.csv`
+  md5; the fixed run removes exactly one grain (a second claim on an already-matched EBSD grain),
+  every other row byte-identical; EBSD grains found 3110/3691 unchanged, misorientation 0.2161 deg,
+  position 5.037 / 12.310 um. **Default grain counts can drop slightly, toward C.**
+
+### Added — opt-in `c_parity` Pass A tolerances
+
+- Pass A's 0.1 deg / 5 um were hard-coded. Resolved as: explicit argument (`--passa-misori-tol`,
+  `--passa-pos-tol`), then parameter-file keys `CParityPassAMisoriTol` (deg) / `CParityPassAPosTol`
+  (um), then C's values; the log names the source. Unset keys give byte-identical output. The defaults
+  do not change. (`PassAMisoriTol`, the spot-overlap merge of the other modes, is a different key.)
+
+### Fixed — `c_parity` ignored `MisoriTol`
+
+- The Stage-1 misorientation tolerance was a hard-coded 0.4 deg: the parameter file's `MisoriTol` was
+  never read and the CLI's `--misori-tol` was parsed and dropped. Resolved now as explicit argument,
+  then the file's `MisoriTol`, then C's 0.4, and logged. Default behaviour is unchanged, but **a file
+  carrying a `MisoriTol` other than 0.4 now changes the grain list**.
+
+### Added — rank / condition diagnostics on the per-spot strain inversion
+
+- `solve_strain_lstsq` checked the reflection count but not rank or conditioning, and fell back to
+  `torch.linalg.pinv` with no signal. It now reports `PerSpotStrainResult.condition_number` and
+  `.degenerate` (`cond_threshold`), on both the normal and the pinv-fallback path. FF-HEDM g-vectors
+  leave `eps_xx` chronically near-degenerate, so this flags rather than rejects. Default return
+  values are unchanged.
+
 ## [0.10.0] – 2026-08-21
 
 ### Closed open question — the post-fit spot loss is a GATE-BOUNDARY effect
