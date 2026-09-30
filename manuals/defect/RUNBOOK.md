@@ -133,8 +133,8 @@ updated to match. Nothing is running.
   voxel products need opposite conventions and `polytype/ladder.py` stated one universally.
   Suite 564 pass / 7 skip.
 * **Manuscript consequence:** `dev/paper/demk_9r_ffhedm.tex` §3.5 and Fig. 5 must lose the
-  18.7 % and gain no replacement; `build_demk_9r_figures.py:392` still hardcodes the old
-  budget. The draft is out with the co-author with §3.5 flagged as open.
+  18.7 % and gain no replacement; line 392 of the local, git-ignored figure script
+  `dev/paper/build_demk_9r_figures.py` still hardcodes the old budget. The draft is out with the co-author with §3.5 flagged as open.
 
 Next actions, in the order I would take them:
 
