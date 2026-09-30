@@ -39,6 +39,7 @@ nothing about reaching it from where you are sitting.
 | `phase-5-report.md` | report with provenance; what a healthy number looks like | at the end |
 | `DIAGNOSIS.md` | symptom → discriminating test → cause → lever | when something looks wrong |
 | `LAB_NOTEBOOK.md` | what was found, how it was measured, what was refuted | before re-opening any question |
+| `POPULATIONS.md` | splitting a rocking curve into up to four populations per pixel (`midas_dfxm.populations`): the verified two-population case, and the PROVISIONAL performance tables | when a pixel's curve is not one peak |
 | `ENVELOPE.md` | what this measurement can and cannot determine, and which of those is changeable | before promising an answer, and before proposing a different measurement |
 | `SURVEY_TEMPLATE.md` | the per-scan survey form — copy to `SURVEY.md` | at the start of every dataset (§0b) |
 | `RUNBOOK.md` | where it runs, healthy ranges, current pick-up point | at session start and end |
@@ -72,7 +73,7 @@ seems wrong:**
 | you are about to compare **integrated intensities between separately-acquired scan groups** and the metadata carries no flux-monitor column | the missing normalisation cannot be recovered from an archive; it is a question for the data's authors (§0b, Notebook §7d) |
 | the **µm/px scale** rests on a constant you cannot trace to an optical record | every length in the result scales with it, and a factor ~2 error is the common one — ask for the optics record (§1, Notebook §7e) |
 | you are about to report a **discrepancy with someone else's published reduction** | read that pipeline's own scripts first (the correction is often already in it), and the report is a collaboration matter, not only a technical one (§0b, Notebook §7d) |
-| the **measured resolution is worse than the instrument's demonstrated best** and you want to correct for it | you need the vibration **spectrum**, not an amplitude — an archive cannot supply it, and short exposures do not recover low-frequency power (Notebook §7f) |
+| the **measured resolution is worse than the instrument's demonstrated best** and you want to correct for it | you need the vibration **spectrum**, not an amplitude — an archive cannot supply it, and short exposures do not recover low-frequency power (Notebook §7f); at 6-ID-C this has been measured and favours short exposures (Notebook §12a) — repeat-frame registration on top of that was checked on 4 real scans and did not pay for itself (Notebook §12b) |
 | a **control returned the expected answer** and you cannot say what result would have refuted it | that is not a control — three of ours could not fail and reached user-facing text (rule 17) |
 | this document and the tree **disagree** | report it; do not work around it |
 
@@ -349,7 +350,7 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
     fraction instead of failing silently.
 
 32. **The top-ranked peak in a periodicity spectrum is not automatically the real one — confirm
-    it by eye, every time the region or cutoff changes (kyay_dfxm_dec2025/artifact_check/,
+    it by eye, every time the region or cutoff changes (datasetJ_dfxm_dec2025/artifact_check/,
     2026-09-12).** Azimuthal whitening fixes the well-known red-spectrum failure (a raw argmax
     rails at the lowest wavevector), but whitening alone is not sufficient: on a real Ba122
     θ-2θ width map, the whitened spectrum's rank-1 peak (41 px, 168° from vertical, 74× the
@@ -422,6 +423,8 @@ your own analysis of it. Each is terse here; the measurement behind it is in Not
 | rank-1 peak of an azimuthally-whitened periodicity spectrum trusted without a visual overlay | picks a real but wrong-direction feature; the true one can be several ranks down and lower-power | rule 32 |
 | a detrend/high-pass cutoff chosen before inspecting a raw profile of the region | can remove the very periodicity being searched for if the cutoff sits below the real period | rule 32 |
 | a grain-mask background percentile copied from a full-frame recipe onto an already-cropped ROI | moth-eaten/disconnected mask, or ~50% coverage on a crop that should be ~85-90% grain | rule 33, DIAGNOSIS |
+| frame-level quality checks (saturation, spike, dead/duplicate) run on a `RockingScan` | it silently checks the repeat-AVERAGE, not individual exposures — `RockingScan` never retains them; use `RawRepeatScan`/`load_6idc_repeat_frames` for a real per-exposure report | Notebook §12c |
+| a scan judged healthy because each point's integrated SNR (or a comparison with neighbouring points) looks fine | S224 passes both: SNR is sqrt(total counts), enormous on a big frame, and every point is equally bad. Check that the signal RISES from the scan edges to a peak (`scan_quality` curve_bracketing) | Notebook §12d |
 
 ---
 

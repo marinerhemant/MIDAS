@@ -22,6 +22,13 @@ shape.
 Every row names where the check lives. A symptom nothing produces is dead text that reads
 as coverage, which is exactly what the generic vocabulary existed to prevent.
 
+**Before diagnosing a symptom below, rule out a raw-acquisition cause.** A scan with
+saturated pixels, a dead or duplicated repeat, a cosmic-ray hit, or a photon-starved point
+can produce a symptom that looks like a real reduction or physics problem downstream.
+`midas_dfxm.scan_quality.assess_scan_quality`, run before reduction, catches these directly
+at the frame/point/scan level (Notebook §12c) — cheaper than diagnosing their downstream
+symptom here.
+
 | symptom | emitted by |
 |---|---|
 | `registration_fail` | inter-reflection co-registration gate (Notebook §2) |

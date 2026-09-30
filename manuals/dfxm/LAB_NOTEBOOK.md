@@ -1271,3 +1271,198 @@ downstream map is not evidence the upstream diagnostic is trustworthy.
 Both findings and their exact numbers: `tests/test_multiplane.py` (regression-tests both bugs'
 exact failure modes), workshop notes `$ANALYSIS/dfxm_datasetG/umich_workshop/README.md`.
 
+## 12. Sixth campaign: the 6-ID-C vibration spectrum §7f asked for, and the repeat-registration chain it closes
+
+### 12a. The spectrum: measured, and it favours short exposures at 6-ID-C — the opposite regime from §7f
+
+§7f's halt — "you need the vibration spectrum, not an amplitude, and an archive cannot supply
+it" — was answered for 6-ID-C by a dedicated re-measurement, not assumed: two 10,000-frame,
+~96 fps direct-beam records (`baseline_10000frms_96fps`, `S39-AHU403_10000frms_96fps`,
+2025-12-22), Nyquist 48.15 Hz. Against a preregistered <20% criterion, **84-95% of beam-motion
+variance sits in 20-48 Hz and only 1.7-5.8% below 5 Hz**, across 2 estimators x 2 axes x
+2 records. Unlike the archived case §7f describes (dominant power at 1-5 Hz, where short
+exposures cannot help), **at 6-ID-C the power sits high enough that short exposures + register +
+sum is the right acquisition fix** — confirming, rather than assuming, that this dataset is in
+the opposite regime from §7f's. The two conclusions do not contradict: whether short frames help
+depends on where the power sits (§7f), and here it was measured.
+
+Trap hit while measuring it, distinct from but adjacent to §7f's own registration caution: raw
+whole-frame cross-correlation locks onto the **detector's fixed pattern** (speckle/dust), not
+the beam — read 0.2 px of motion while the beam envelope actually moved 6-14 px, and applying
+that wrong shift made the residual **3x worse**. Use a centroid/envelope estimator for beam
+motion, never blind whole-ROI xcorr. A dominant ~29.5 Hz line is real (confirmed by a
+frame-rate-change decisive experiment, not by amplitude alone), but its origin — beam vs stage
+vs upstream optic — is not separated by this data; direct-beam and diffracted-beam acquisitions
+share it, so it is upstream of or common to both. PROVISIONAL, not `/verify`'d:
+`$ANALYSIS/dfxm_vibration_06id/` (`RESULTS.md`, `PREREGISTER.md`).
+
+### 12b. Repeat-frame registration: measured on 4 real scans, and it does not pay for itself here
+
+§7f separately noted that whole-ROI "registration" of a rocking stack only fixes between-frame
+drift, not within-frame blur — leaving open whether that between-frame part is worth building at
+all. Checked end-to-end on 4 6-ID-C repeat-exposure scans, same validated estimator throughout
+(two earlier naive cross-correlation attempts on this data railed to exactly 0.000 shift for the
+same detector-fixed-pattern reason as §12a):
+
+| scan | repeats × exposure | angle jitter | rigid motion |
+|---|---|---|---|
+| S995 | 10 × 0.07 s | 0.221 mdeg vs 5.17 mdeg curve width — negligible | not shown; gate only marginally passed |
+| S168 | 2 × 0.5 s | present, but fails the independent-halves test | **untestable** — needs a ≥5-vs-5 split; 2 repeats can't provide it |
+| S224 | 20 × 0.05 s | unmeasurable — estimator's own flux gate failed (photon-starved) | not measured |
+| S1000 | 20 × 0.1 s, coupled th+tth | present for the first time and real (corr(top,bot)=+0.725) — but 0.037% FWHM broadening, negligible | **NOT SHOWN, decisively** (corr ≈ 0.000-0.001) — the one scan with enough repeats to run this test cleanly |
+
+**4-for-4 non-confirmation.** S1000 was the one dataset able to actually falsify "registration
+doesn't matter" with real statistical power (enough repeats, clean photon budget, a longer
+exposure than S995) and it came back cleanly null, not marginally. No registration module was
+built in `midas_dfxm` as a result: the short-exposure half of "short exposure + register + sum"
+(§12a) already does the real work at this beamline; the registration half is not shown to add
+anything, at least across the exposure/repeat combinations checked (0.05-0.5 s, 2-20 repeats). If
+a future scan shows large between-repeat rigid motion, that would be new evidence worth
+revisiting this — the conclusion is scoped to what was measured, not a general claim that
+registration never matters. All PROVISIONAL, not `/verify`'d: working scripts and results notes
+in `$ANALYSIS/datasetJ_dfxm_dec2025/` (`frame_jitter.py`, `frame_jitter_new.py`,
+`NOTE_S995_frames.md`, `NOTE_S168_frames.md`, `NOTE_S224_frames.md`, `NOTE_S1000_frames.md`).
+
+### 12c. §12b's near-miss becomes package code: `scan_quality.py`, and a trap on the way
+
+S224 (§12b) wasted a full estimator run before its own flux gate finally caught that it was
+photon-starved — a problem knowable in seconds, before any reduction, if anything had checked
+for it. Nothing did: the generic post-fit detector (`beamreport`, working strictly from
+per-observation residuals against declared coordinates) cannot see it, because there is no fit
+yet; and the closest existing in-package logic — `rocking.py`'s `_repeat_excess`/`_repeat_shift`
+(whole-scan, per-pixel diagnostic maps of excess repeat-to-repeat scatter) and `io_6idc.py`'s
+`drop_first_repeat="auto"` (a scan-wide decision that only ever considers repeat index 0) — both
+operate at the wrong granularity to say *which specific point or repeat* is the problem.
+
+Built `midas_dfxm.scan_quality` to close this: `assess_scan_quality()` runs three tiers
+BEFORE reduction — frame (saturation; a repeat's lit-region total compared against that
+POINT'S OWN other repeats, not a scan-wide reference; a localized-spike/cosmic-ray check that
+requires both high local contrast AND a small connected cluster, so a real, broad DFXM peak
+never trips it; dead/frozen and duplicate-frame detection), point (repeat-survival fraction;
+an ABSOLUTE per-point photon-budget floor — deliberately not comparative, because a uniformly
+starved scan like S224 would pass any check that only compares a point against its neighbours,
+since every point is equally bad), and scan (frame-count/motor-table consistency, including a
+heuristic for the duplicated-header-block CSV corruption class documented separately; step
+regularity; a rollup built from the point results, never an independent verdict). Every check
+reports what it measured and against what threshold rather than silently excluding anything —
+`apply_quality_filter()` is a separate, explicitly opt-in step. 28 new tests, including that a
+real, broad peak does not trip the spike check and that several random clean synthetic scans
+produce zero false positives.
+
+**The trap, not previously recorded: `RockingScan` does not retain individual repeat
+exposures.** Its own docstring says so directly — "repeats already averaged" — and the
+indexed-layout loader in `io_6idc.py` confirms it: repeats are accumulated into a running sum
+and only the average (plus, optionally, a 2-way even/odd `.halves` split for the existing
+error-bar machinery) ever reaches a `RockingScan`. A frame-level check written against
+`RockingScan.frames` would silently be checking the repeat-average, not individual exposures —
+exactly the kind of check that "looks like coverage" while checking nothing. The fix was a new
+container, `RawRepeatScan` (shape `(n_points, R, H, W)`), with its own loader
+(`load_6idc_repeat_frames`) for the same indexed 6-ID-C layout, keeping every repeat; it reuses
+`io_6idc.py`'s motor-table reading but necessarily duplicates the file-reading loop and its
+zero-byte/contiguous-index guards, since the two loaders serve different purposes (one averages
+for reduction, one keeps everything for QC) — a known, deliberate near-term duplication, worth
+revisiting as a `keep_raw=` option on `io_6idc.py`'s own loader later. `assess_scan_quality()`
+also runs in a documented DEGRADED mode directly on a plain `RockingScan` (frame-level checks on
+the coarser `.halves` split, or skipped if absent; point/scan-level checks run in full either
+way), so existing code does not need to migrate to get the point- and scan-level checks today.
+
+**Correction after real-data testing (§12d):** the description above is the first design and was
+wrong in three ways on real 6-ID-C frames -- the point-level "absolute SNR" does not catch S224
+(its integrated SNR is huge), S224's real defect is an unbracketed peak (a scan-level
+`curve_bracketing` check), and nearly every real frame trips the spike test unless static hot pixels and stable texture are
+excluded first. Read §12d for what the module does now.
+
+Full account, thresholds and their reasoning: `midas_dfxm/scan_quality.py` docstrings;
+regression tests in `midas_dfxm/tests/test_scan_quality.py`.
+
+
+### 12d. What real 6-ID-C data taught `scan_quality` (datasetJ Dec 2025: S168, S995, S996, S1050, S224)
+
+The first version, checked only on synthetic frames, called **every point of every real scan
+"not usable"** (S168 61/61, S996 101/101, S995 101/101, S224 51/51, S1050 21/21). Each cause was
+found by looking at the raw frames, and each fix is a measured fact about this detector, not a
+tuned threshold. Debug scripts and logs: `$ANALYSIS/datasetJ_dfxm_dec2025/scan_quality_debug/`.
+
+1. **Static hot pixels are 0.1-0.9 % of a frame** (S168 2236, S996 24880, S224 47361 px) and
+   fire the "isolated spike" test at the same location in every frame (~10^4 candidates per
+   frame). They are found by recurrence (a pixel that trips the test at the same place more often
+   than the scan's own background rate allows) and masked; ~10 min per 400 frames.
+2. **Gain is not 1** (auto-estimated 1.27-1.43 counts/photon on S995/S996/S1050). The estimate is
+   unstable on a photon-starved scan (S224: 0.278 in one run, fallback 1.0 in another, R² 0.13)
+   and only an order of magnitude on a 2-repeat scan (S168). Nothing that has to work on a starved
+   scan may depend on it: the starvation check below does not.
+3. **Most residual "spikes" are stable sample texture, not cosmic rays.** After hot-pixel masking,
+   10 of 12 sampled candidates on S996 point 77 read 150-200 counts (background ~108) in *every*
+   repeat, z = 3-7 in the other repeats; only repeat 0 (the hot first repeat) crossed z > 8. Two
+   genuine one-offs (207 counts in one repeat, ~100 in the rest) had sibling z ≈ 0. The
+   discriminator is the **median z across the sibling repeats** (> spike_zscore/4 → stable). Two
+   plausible alternatives were tried and failed: a strict "also z > 8 in a sibling" test (stable
+   texture rarely clears 8 twice) and calibrating a count threshold from the scan's own background
+   rate (it silently absorbs a genuinely wrong gain as "normal"). A pure-Poisson synthetic null
+   gives *zero* false positives at z > 8 for both an 8- and a 24-neighbour MAD, so this is not an
+   estimator artifact. It is a trap for any local-outlier test on DFXM images: **pixel-scale
+   texture is real**.
+4. **A frame is flagged on impact, not presence.** 1-8 isolated transient pixels per 5.5 Mpx frame
+   is normal (essentially every S996 frame); the allowance is 1e-5 of the frame's pixels
+   (`max_spike_fraction`). Planted one-off spikes in a real S996 frame: 30 not flagged, 100 and 300
+   flagged. This threshold is a judgement, not a measurement.
+5. **The hot first repeat is systematic and real**: repeat 0 reads +4.6 % (88 σ) at ~half the S996
+   points, exactly what `io_6idc.drop_first_repeat` handles. The frame check is right; the *rollup*
+   was wrong to call the scan unusable for it. A scan is now "not usable" only for point-level
+   failures or a failed scan-level check; repeat-only flags are reported as "excludable", and a
+   note says when ≥80 % of flagged frames share one repeat index.
+6. **S168 point 32 (whole frame +35 %, both repeats agree) is caught by the off-sample pedestal**
+   (`pedestal_drift`), not by any lit-region comparison (two earlier lit-region attempts were
+   retracted, see the docstring). Off-sample level 123.56 vs ~118.9: z = 11.7 with a 4-point
+   window, only 3.7 with 8 (slow pedestal drift inflates the local sigma); point 33 (+2 %) is
+   flagged as its tail. A z-score alone false-alarms on smooth scans: S996's pedestal moves 0.01
+   counts point to point (shot floor 0.0017), so a 0.014 % dip read z = -9. The check therefore
+   also needs a 0.5 % effect size (S168's real defect is 2-4 %). Point 0 of a scan often reads low
+   (z -4 to -7 on S168, S224, S995): a first-point effect, below the effect-size floor there.
+7. **S224 is not "photon-starved": its peak is not bracketed.** Two point-level ideas failed on
+   it first. The point-level SNR is sqrt(total lit counts), enormous on any multi-megapixel frame,
+   so S224 passed it. A lit-pixel-fraction floor then read 0 for S224 *and* S1050, because the lit
+   mask compares a single frame's noise with the repeat-average (it wants ~60 counts/px; the
+   noise of a 20-frame mean is sigma/sqrt(20)); isolated lit pixels are also just hot pixels
+   (S1050's flat 7.8e-3 "lit floor" equals its hot-pixel fraction). With the noise of the mean and
+   spatial contiguity (>= 6 of the 3x3 block), the significant-signal fraction along each scan is:
+   S996 0.55 -> 10.7 %, S995 0.55 -> 12.5 %, S1050 3 -> 17 % (edge/peak 0.05, 0.04, 0.28), all
+   rising from the edges to a peak, but **S224 0.198-0.213 at every point (edge/peak 0.99; the
+   module's own version of the measurement gives 5.8 % at the peak and 97 % of that at the edge)**: the
+   edges are as bright as the centre, no rocking curve is bracketed (its notes: 89 % of the
+   maximum at the first point). That is the survey rule of Notebook 5l made automatic
+   (`curve_bracketing`, flag when the brighter edge exceeds 60 % of the peak; the 0.6 sits between
+   the measured populations, it is not derived). It does not depend on the auto-gain, which
+   S224 breaks. Whether S224 is *also* too weak per pixel is not established here.
+
+**Final check with the finished module** (`scan_quality_debug/validate_final_*.json`, 2026-09-29;
+all five scans, full frames except S168's ROI, gain auto-estimated):
+
+| scan | repeats × points | verdict | flagged repeats | point-level flags |
+|---|---|---|---|---|
+| S168 | 2 × 61 | usable, 2 of 61 points flagged | 0 / 122 | points 32, 33 (`pedestal_drift`) |
+| S1050 | 20 × 21 | usable | 11 / 420, all repeat 0 | none |
+| S996 | 10 × 101 | usable | 62 / 1010, 61 of them repeat 0 | none |
+| S995 | 10 × 101 | usable | 47 / 1010, all repeat 0 | none |
+| S224 | 20 × 51 | **not usable**: `curve_bracketing` (peak 5.8 %, brighter edge 97 % of it) | 51 / 1020, all repeat 0 | none |
+
+Read as: 171 of the 172 flagged repeats in 3559 are the hot first repeat; S168's known bad point
+is found and nothing else is called unusable except the unbracketed S224. The hot-pixel count
+depends strongly on the assumed gain (S224: 47361 px at 0.278, 3275 at 1.0), one more reason not to
+lean on the auto-gain there. Timing on a heavily loaded machine: 4-47 min per scan.
+
+**Sharpness / blur (evaluated, not added).** A flux-free band-ratio metric (high-k/mid-k tile
+power, photon floor from the frame's own unlit tiles, relative to the leave-one-out mean of the
+other repeats) was validated four ways. It is flux-free (±5 % flux moves it by ~1e-3 against a
+0.08-0.18 natural spread) but: on S996 it detects planted blur only ≥ 0.5 px (0.3 px never); on the
+weaker-signal S1050 it barely detects 1 px (ranked last 57 % of the time); split-half rank
+correlation is 0.14 (S996) and -0.05 (S1050), so the ranking of real repeats is not reproducible;
+and the apparent "sharpest pick gains high-k power" is selection on that noise. **Verdict: not
+usable as a frame-selection criterion**; at most a gross-blur outlier flag on strongly textured
+scans. The sample image is believed to move ≤ 0.1 px while the beam moves ~5 px between 70 ms
+frames, so there is nothing at that scale to select on. PROVISIONAL (7 points per scan, one
+beamtime). Script and numbers: `scan_quality_debug/sharp_eval.py`, `SHARPNESS_EVALUATION.md`.
+
+**Known limits.** ~25-60 min per 1000-frame full-frame scan (per-frame 8-neighbour medians; a
+cache of the hot-pixel pass's candidates would halve it). All thresholds come from five scans of one
+beamtime and one detector. Auto-gain: see item 2.

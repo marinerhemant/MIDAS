@@ -30,6 +30,7 @@ Record, per acquisition:
 | sampling **per channel** | step and pixel size for *each* reflection separately | a weak channel is often acquired far coarser than the strong one, so the highest-resolution map can be structurally blind to the physics of interest (Notebook §7g) |
 | **does each scan's window bracket its own peak?** | per-scan argmax position vs the window edges | one fixed rocking window reused across a raster while θ_B drifts biases widths and integrals, and manufactures apparent two-population structure (Notebook §5l) |
 | **was it reduced before, and by whom?** | the deposit's own analysis scripts | read them before comparing two channels or reporting any discrepancy — the correction you think is missing is often already there (rule 11) |
+| **is every point and every repeat actually usable?** | `midas_dfxm.scan_quality.assess_scan_quality` on a `RawRepeatScan` (or, degraded, a plain `RockingScan`) | catches saturation, cosmic-ray/spike hits, dead or duplicated frames, and per-point photon starvation BEFORE reduction — run this before, not after, a reduction looks wrong (Notebook §12c) |
 
 **Do not derive anything from a folder name.** The archived ID06 set's two reflections
 (111, 002) sat at 2θ = 67.5° and 14.2° — different magnification and FOV — a fact you only
