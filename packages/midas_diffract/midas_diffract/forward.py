@@ -24,6 +24,30 @@ Reference C code:
     CalcDiffrSpots_Furnace: NF_HEDM/src/CalcDiffractionSpots.c:87-183
     DisplacementSpots:      NF_HEDM/src/SharedFuncsFit.c:269-292
     Beam proximity filter:  FF_HEDM/src/FitOrStrainsScanningOMP.c:1048-1058
+
+Wedge convention (the ONE MIDAS convention, shared by FF, NF and PF)
+-------------------------------------------------------------------
+``Wedge`` (degrees, the value in a Parameters file) is the tilt of the omega
+rotation axis about the lab y axis. With ``R_y(a) = [[cos a, 0, sin a],
+[0, 1, 0], [-sin a, 0, cos a]]`` and ``R_z(omega)`` the right-handed rotation
+about z, a crystal with orientation matrix ``O`` at stage position ``p``
+diffracts at rotation angle ``omega`` with::
+
+    G_lab(omega)   = R_y(-Wedge) @ R_z(omega) @ O @ g_crystal
+    pos_lab(omega) = R_y(-Wedge) @ R_z(omega) @ p
+
+i.e. the rotation axis in the lab is ``R_y(-Wedge) e_z = (-sin Wedge, 0,
+cos Wedge)``. ``O`` and ``p`` are expressed in the ROTATION-STAGE frame (the
+frame that turns with omega; it coincides with the lab at omega = 0 only when
+Wedge = 0). This is exactly what the FF C refiner (midas_fit_grain
+``FitUnified.c``: ``DisplacementInTheSpot`` + ``CorrectForOme``) and the
+wedge-corrected spot list from ``midas-fit-setup`` assume, so an orientation /
+position written to Grains.csv, a ``.mic`` from NF fitting and a pf-HEDM
+voxel orientation are the same numbers for the same crystal. Wedge = 0
+reduces to a rotation about z and is bit-identical to the no-wedge code.
+(Before 2026-09 this module used ``G_lab = R_y(W) R_z(omega) R_y(-W) O g``,
+i.e. the OPPOSITE sign of the Parameters value and the lab-at-omega=0 frame
+for ``O`` and ``p``.)
 """
 
 import math
@@ -90,12 +114,14 @@ class HEDMGeometry:
     flip_y: bool = True            # FF/PF: True (DetHor = yBC - ydet/px).
                                    # NF:    False (pixel = yBC + ydet/px).
                                    # Validated against C code conventions.
-    wedge: float = 0.0             # Wedge angle (deg): non-orthogonality
-                                   # of the rotation axis and the X-ray beam.
+    wedge: float = 0.0             # Wedge angle (deg) = the Parameters-file
+                                   # ``Wedge``: tilt of the rotation axis
+                                   # about lab y, axis = (-sin W, 0, cos W).
                                    # Single global value (not per-detector).
                                    # Wedge=0 means rotation axis ⟂ beam.
-                                   # Implementation matches CorrectWedge() in
-                                   # FF_HEDM/src/ForwardSimulationCompressed.c.
+                                   # Same sign and same (rotation-stage)
+                                   # sample frame as the FF C refiner; see
+                                   # "Wedge convention" in the module doc.
     apply_tilts: bool = False      # Force tilt application even in FF mode.
                                    # Default False preserves the existing
                                    # behaviour: NF applies tilts, FF skips.
@@ -494,7 +520,8 @@ class HEDMForwardModel(nn.Module):
         self.multi_mode = geometry.multi_mode
 
         # Wedge angle (deg): single global parameter representing the
-        # non-orthogonality of the rotation axis and the beam. Stored as
+        # non-orthogonality of the rotation axis and the beam, with the
+        # Parameters-file sign (module doc, "Wedge convention"). Stored as
         # nn.Parameter so it can be jointly refined.
         self.wedge = nn.Parameter(
             torch.tensor(float(geometry.wedge), dtype=torch.float64,
@@ -957,29 +984,26 @@ class HEDMForwardModel(nn.Module):
             v_no_wedge = v_no_wedge.unsqueeze(-2)
         v_no_wedge = v_no_wedge.expand_as(gc0)
 
-        # ---- Wedge: rigorous geometric formulation -------------------
-        # The rotation axis tilts from z to n_hat = (sin W, 0, cos W).
-        # Full rotation by omega about n_hat:
-        #     R_n_hat(omega) = R_y(W) @ R_z(omega) @ R_y(-W)
-        # so G_lab = R_y(W) @ R_z(omega) @ G',  where G' = R_y(-W) @ G_sample.
-        # Bragg condition -Gx_lab = sin(theta) * |G| reduces to the same
+        # ---- Wedge (module doc, "Wedge convention") -------------------
+        # G_lab(omega) = R_y(-W) @ R_z(omega) @ G',  G' = O @ g  (stage frame)
+        # with W the Parameters-file Wedge. Writing m = R_z(omega) G',
+        #     G_lab_x = cos W * m_x - sin W * m_z,   m_z = G'_z,
+        # so the Bragg condition -G_lab_x = sin(theta) * |G| has the same
         # quadratic structure as the no-wedge solver, with substitutions:
         #     Gx_eff = cos W * G'_x
         #     Gy_eff = cos W * G'_y
-        #     v_eff  = sin theta * |G| + sin W * G'_z
-        # At W = 0, G' = G_sample and (Gx_eff, Gy_eff, v_eff) collapse to
-        # (Gx, Gy, v), recovering the existing solver bit-identically.
+        #     v_eff  = sin theta * |G| - sin W * G'_z
+        # At W = 0, (Gx_eff, Gy_eff, v_eff) collapse to (Gx, Gy, v),
+        # recovering the no-wedge solver bit-identically.
         wedge_rad = self.wedge.to(dtype) * self.DEG2RAD
         cos_W = torch.cos(wedge_rad)
         sin_W = torch.sin(wedge_rad)
-        # G' = R_y(-W) @ G_sample
-        Gx_p = cos_W * G_C[..., 0] - sin_W * G_C[..., 2]  # (..., N, M)
+        Gx_p = G_C[..., 0]  # (..., N, M) -- G' is the stage-frame G itself
         Gy_p = G_C[..., 1]
-        Gz_p = sin_W * G_C[..., 0] + cos_W * G_C[..., 2]
+        Gz_p = G_C[..., 2]
         Gx = cos_W * Gx_p
         Gy = cos_W * Gy_p
-        Gz = G_C[..., 2]  # unused except for reference; kept for clarity
-        v = v_no_wedge + sin_W * Gz_p
+        v = v_no_wedge - sin_W * Gz_p
         # ---------------------------------------------------------------
 
         # Omega solver -- see module-level ``solve_omega``.
@@ -989,8 +1013,8 @@ class HEDMForwardModel(nn.Module):
         # Concatenate two solutions: (..., 2N, M)
         all_omega = torch.cat([omega_p, omega_n], dim=-2)
 
-        # Rotate G' by omega: m = R_z(omega) @ G' (sample frame, axis-aligned)
-        # then G_lab = R_y(W) @ m. R_z(omega) only mixes (x, y), so we apply
+        # Rotate G' by omega: m = R_z(omega) @ G' (stage frame, axis-aligned)
+        # then G_lab = R_y(-W) @ m. R_z(omega) only mixes (x, y), so we apply
         # the rotation in closed form rather than materialising a 3x3 matrix
         # per spot. Double G' along the N dim to match the 2N K-axis of
         # all_omega.
@@ -1002,9 +1026,9 @@ class HEDMForwardModel(nn.Module):
         m_x = cos_w * Gx_p_d - sin_w * Gy_p_d
         m_y = sin_w * Gx_p_d + cos_w * Gy_p_d
         m_z = Gz_p_d
-        # G_lab = R_y(W) @ m
+        # G_lab = R_y(-W) @ m
         Gy_lab = m_y                              # rotation about y leaves y
-        Gz_lab = -sin_W * m_x + cos_W * m_z
+        Gz_lab = sin_W * m_x + cos_W * m_z
 
         # Eta angle from lab-frame (y, z) components.
         r_yz = torch.sqrt(Gy_lab * Gy_lab + Gz_lab * Gz_lab).clamp(min=self.epsilon)
@@ -1308,6 +1332,52 @@ class HEDMForwardModel(nn.Module):
     #  project_to_detector
     # ------------------------------------------------------------------
 
+    def _wedge_active(self) -> bool:
+        """True when the wedge must enter real-space rotations.
+
+        ``_has_wedge`` covers a nonzero configured value; ``requires_grad``
+        covers a refined wedge that may currently sit at 0 (its gradient
+        through the position rotation must still flow). Same pattern as
+        ``_has_tilts or tilts.requires_grad`` in :meth:`project_to_detector`.
+        """
+        w = self.wedge
+        return bool(self._has_wedge or (torch.is_tensor(w) and w.requires_grad))
+
+    def _rotate_positions(
+        self,
+        px: torch.Tensor,
+        py: torch.Tensor,
+        pz: torch.Tensor,
+        cos_w: torch.Tensor,
+        sin_w: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Rotate stage-frame vectors by omega about the rotation axis.
+
+        ``pos_lab = R_y(-W) @ R_z(omega) @ pos`` with W the Parameters-file
+        Wedge (module doc, "Wedge convention") -- the identical map
+        :meth:`calc_bragg_geometry` applies to G, and the one the FF C
+        refiner's ``DisplacementInTheSpot`` applies to grain positions.
+        With the wedge inactive this is the plain rotation about z, using
+        the original expressions (bit-identical to the pre-wedge code).
+        Returns ``(x, y, z)`` broadcast to ``cos_w``'s shape.
+        """
+        if not self._wedge_active():
+            x = px * cos_w - py * sin_w
+            y = px * sin_w + py * cos_w
+            z = pz.expand_as(x)
+            return x, y, z
+        wedge_rad = self.wedge.to(cos_w.dtype) * self.DEG2RAD
+        cos_W = torch.cos(wedge_rad)
+        sin_W = torch.sin(wedge_rad)
+        # m = R_z(omega) @ p
+        m_x = px * cos_w - py * sin_w
+        m_y = px * sin_w + py * cos_w
+        m_z = pz.expand_as(m_x)
+        # pos_lab = R_y(-W) @ m
+        x = cos_W * m_x - sin_W * m_z
+        z = sin_W * m_x + cos_W * m_z
+        return x, m_y, z
+
     def project_to_detector(
         self,
         omega: torch.Tensor,
@@ -1338,7 +1408,10 @@ class HEDMForwardModel(nn.Module):
         """
         N = positions.shape[-2]
 
-        # Omega-rotated position: rotate (x,y,z) by omega around z-axis
+        # Omega-rotated position about the (wedge-tilted) rotation axis:
+        # pos_lab = R_y(-W) R_z(omega) pos -- the same map
+        # calc_bragg_geometry applies to G. W == 0 keeps the
+        # original about-z expressions (bit-identical).
         pos_doubled = torch.cat([positions, positions], dim=-2)  # (..., 2N, 3)
 
         cos_w = torch.cos(omega)  # (..., 2N, M)
@@ -1348,9 +1421,9 @@ class HEDMForwardModel(nn.Module):
         py = pos_doubled[..., 1].unsqueeze(-1)
         pz = pos_doubled[..., 2].unsqueeze(-1)
 
-        x_grain = px * cos_w - py * sin_w  # (..., 2N, M)
-        y_grain = px * sin_w + py * cos_w
-        z_grain = pz.expand_as(x_grain)
+        x_grain, y_grain, z_grain = self._rotate_positions(
+            px, py, pz, cos_w, sin_w
+        )
 
         tan_2th = torch.tan(two_theta)
         sin_eta = torch.sin(eta)
@@ -1719,7 +1792,10 @@ class HEDMForwardModel(nn.Module):
         px = pos_doubled[..., 0].unsqueeze(-1)  # (..., 2N, 1)
         py = pos_doubled[..., 1].unsqueeze(-1)
 
-        # Omega-rotated y position
+        # Omega-rotated lab y position. The wedge tilts the rotation axis
+        # about lab y, so the lab-y component of pos_lab = R_y(-W) R_z(w) p
+        # (module doc, "Wedge convention") is the no-wedge
+        # sin(w)*px + cos(w)*py for every W: the beam gate is wedge-free.
         y_rot = px * sin_w + py * cos_w  # (..., 2N, M)
 
         # beam_positions: (S,)
@@ -2120,9 +2196,18 @@ class HEDMForwardModel(nn.Module):
 
         # Recompute eta via C's chain: rotate G by omega_deg, then CalcEtaAngle
         G_C_doubled = torch.cat([G_C, G_C], dim=-3)  # (2N, M, 3)
-        # gw = Rz(omega_rad_c) @ G
-        gw_y = G_C_doubled[..., 0] * sin_w + G_C_doubled[..., 1] * cos_w
-        gw_z = G_C_doubled[..., 2]
+        wedge_on = self._wedge_active()
+        if wedge_on:
+            # Rotate G about the wedge-tilted axis, exactly as
+            # calc_bragg_geometry does: G_lab = R_y(-W) R_z(w) G.
+            gw_x, gw_y, gw_z = self._rotate_positions(
+                G_C_doubled[..., 0], G_C_doubled[..., 1],
+                G_C_doubled[..., 2], cos_w, sin_w,
+            )
+        else:
+            # gw = Rz(omega_rad_c) @ G
+            gw_y = G_C_doubled[..., 0] * sin_w + G_C_doubled[..., 1] * cos_w
+            gw_z = G_C_doubled[..., 2]
         r_yz = torch.sqrt(gw_y * gw_y + gw_z * gw_z).clamp(min=self.epsilon)
         eta_c_rad = torch.acos(torch.clamp(gw_z / r_yz,
                                            -1.0 + self.epsilon, 1.0 - self.epsilon))
@@ -2162,12 +2247,21 @@ class HEDMForwardModel(nn.Module):
             vx = verts_doubled[:, vi, 0].unsqueeze(-1)  # (2N, 1)
             vy = verts_doubled[:, vi, 1].unsqueeze(-1)
 
-            xa = vx * cos_w - vy * sin_w  # (2N, M)
-            ya = vx * sin_w + vy * cos_w
+            if wedge_on:
+                # Vertex rotates about the wedge-tilted axis; it then sits
+                # off the z = 0 plane, so its lab z enters Displ_Z.
+                vz = verts_doubled[:, vi, 2].unsqueeze(-1)
+                xa, ya, za = self._rotate_positions(vx, vy, vz, cos_w, sin_w)
+                t = 1.0 - xa / Lsd_0
+                displ_y = ya + ythis * t
+                displ_z = za + t * zthis
+            else:
+                xa = vx * cos_w - vy * sin_w  # (2N, M)
+                ya = vx * sin_w + vy * cos_w
 
-            t = 1.0 - xa / Lsd_0
-            displ_y = ya + ythis * t
-            displ_z = t * zthis
+                t = 1.0 - xa / Lsd_0
+                displ_y = ya + ythis * t
+                displ_z = t * zthis
 
             # Apply NF tilt (no-op when tilts are zero)
             displ_y_tilt, displ_z_tilt = self._apply_nf_tilt(

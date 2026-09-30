@@ -357,7 +357,10 @@ def _write_panel_zarr(
         _w("WriteSpots", [1], dtype=np.int32)
         _w("nScans", [1], dtype=np.int32)
         _w("tInt", [0.3])
-        _w("tGap", [0.15])
+        # No readout gap is rendered, so none may be declared: fit-setup
+        # corrects omega by tGap/(tGap+tInt)*OmegaStep*(row weight), which
+        # with the old tGap 0.15 shifted every spot by up to +0.083 deg.
+        _w("tGap", [0.0])
         _w("Twins", [0], dtype=np.int32)
         _w("TakeGrainMax", [0], dtype=np.int32)
         ap.create_dataset("InFileName", data=np.bytes_(b"GrainsSim.csv"))
@@ -694,15 +697,21 @@ def simulate_panel_zarrs(
         fs = spot_records["frame_nr"][det_mask]
         floor_f = np.floor(fs).astype(np.int64)
         frac_f = (fs - floor_f).astype(np.float64)            # ∈ [0, 1)
+        # Nearest frame: the pipeline labels frame f with omega
+        # OmegaStart + f*OmegaStep (midas_peakfit zarr_io.frame_omega), so a
+        # single-frame spot must go to the frame whose LABEL is nearest its
+        # omega. floor() (the ForwardSimulationCompressed habit) put every
+        # spot up to one full step away, a mean |step|/2 omega bias (0.128 deg
+        # at step -0.25) that reads as a rigid rotation of every grain about z.
+        near_f = np.floor(fs + 0.5).astype(np.int64)
 
         # Build per-frame spot lists. Two modes:
-        #   omega_sigma_frames == 0  → full intensity in floor(frame_nr)
-        #                             (matches ForwardSimulationCompressed)
+        #   omega_sigma_frames == 0  → full intensity in the nearest frame
         #   omega_sigma_frames  > 0  → Gaussian smear across ±3σ frames
         per_frame: dict[int, list[tuple[np.ndarray, np.ndarray, np.ndarray]]] = {}
         if cfg.omega_sigma_frames <= 0:
-            for tf in np.unique(floor_f):
-                idx = np.where(floor_f == tf)[0]
+            for tf in np.unique(near_f):
+                idx = np.where(near_f == tf)[0]
                 if 0 <= int(tf) < n_frames:
                     per_frame.setdefault(int(tf), []).append((
                         ys[idx], zs[idx],

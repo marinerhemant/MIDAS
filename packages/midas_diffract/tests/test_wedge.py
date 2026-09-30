@@ -1,8 +1,9 @@
 """Tests for the global wedge angle (rotation-axis / beam non-orthogonality).
 
-The wedge enters the forward as a rigorous geometric transformation:
-the rotation axis is tilted from z to ``n_hat = (sin W, 0, cos W)``,
-so ``R_n_hat(omega) = R_y(W) @ R_z(omega) @ R_y(-W)``. With wedge=0
+The wedge enters the forward as a rigorous geometric transformation
+(``midas_diffract.forward`` module doc, "Wedge convention"): the rotation
+axis is ``R_y(-W) e_z = (-sin W, 0, cos W)`` and a stage-frame G is seen as
+``G_lab = R_y(-W) @ R_z(omega) @ G``. With wedge=0
 the forward should be bit-identical to the existing no-wedge code; with
 non-zero wedge the omega solver and eta extraction should produce
 self-consistent predictions, and the wedge value should be
