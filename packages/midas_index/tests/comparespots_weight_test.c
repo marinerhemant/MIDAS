@@ -99,6 +99,8 @@ int main(void) {
   P.ConfidenceMetric = 0;  P.ForbiddenF2Threshold = 1e-6;
   P.nRingsToRejectCalc = 0;
   n_eta_bins = N_ETA;  n_ome_bins = N_OME;
+  /* legacy ring axis (slot = RingNr - 1): main() fills this from nData.bin's layout */
+  for (int r = 0; r < MAX_N_RINGS; r++) gRingSlot[r] = (r >= 1 && r <= N_RING) ? r - 1 : -1;
 
   RealType etamargins[MAX_N_RINGS];
   for (int i = 0; i < MAX_N_RINGS; i++) etamargins[i] = 5.0;
@@ -143,7 +145,7 @@ int main(void) {
   P.ConfidenceMetric = 0;
   CompareSpots(T, nT, 0.0, P.MarginRad, P.MarginRadial, etamargins,
                P.MarginOme, P.StepsizeOrient, 1, 0.0, 0.0, &P,
-               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT);
+               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT, NULL, NULL);
   double frac_raw = FracMatched(&P, nMFrac, nT, wM, wT);
   printf("[raw]      matched %d/%d  frac %.10f\n", nMFrac, nT, frac_raw);
   if (nMFrac != 3) { printf("FAIL: expected 3 matches, got %d\n", nMFrac); return 1; }
@@ -154,7 +156,7 @@ int main(void) {
   nMatch = 0; nMFrac = 0; wM = 0.0; wT = 0.0;
   CompareSpots(T, nT, 0.0, P.MarginRad, P.MarginRadial, etamargins,
                P.MarginOme, P.StepsizeOrient, 1, 0.0, 0.0, &P,
-               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT);
+               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT, NULL, NULL);
   double frac_uniform = FracMatched(&P, nMFrac, nT, wM, wT);
   printf("[uniform]  wM %.4f wT %.4f  frac %.10f\n", wM, wT, frac_uniform);
   if (frac_uniform != frac_raw) {
@@ -168,7 +170,7 @@ int main(void) {
   nMatch = 0; nMFrac = 0; wM = 0.0; wT = 0.0;
   CompareSpots(T, nT, 0.0, P.MarginRad, P.MarginRadial, etamargins,
                P.MarginOme, P.StepsizeOrient, 1, 0.0, 0.0, &P,
-               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT);
+               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT, NULL, NULL);
   double frac_dm = FracMatched(&P, nMFrac, nT, wM, wT);
   double want_dm = (0.1 + 1.0 + 1.0) / (0.1 + 1.0 + 1.0 + 1.0);
   printf("[matched   down] wM %.4f wT %.4f  frac %.10f (want %.10f)\n",
@@ -182,7 +184,7 @@ int main(void) {
   nMatch = 0; nMFrac = 0; wM = 0.0; wT = 0.0;
   CompareSpots(T, nT, 0.0, P.MarginRad, P.MarginRadial, etamargins,
                P.MarginOme, P.StepsizeOrient, 1, 0.0, 0.0, &P,
-               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT);
+               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT, NULL, NULL);
   double frac_du = FracMatched(&P, nMFrac, nT, wM, wT);
   double want_du = 3.0 / (3.0 + 0.1);
   printf("[unmatched down] wM %.4f wT %.4f  frac %.10f (want %.10f)\n",
@@ -196,7 +198,7 @@ int main(void) {
   nMatch = 0; nMFrac = 0; wM = 0.0; wT = 0.0;
   CompareSpots(T, nT, 0.0, P.MarginRad, P.MarginRadial, etamargins,
                P.MarginOme, P.StepsizeOrient, 1, 0.0, 0.0, &P,
-               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT);
+               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT, NULL, NULL);
   double frac_filt = FracMatched(&P, nMFrac, nT, wM, wT);
   printf("[filtered]  wM %.4f wT %.4f  frac %.10f\n", wM, wT, frac_filt);
   if (fabs(frac_filt - 1.0) > 1e-12) {
@@ -210,7 +212,7 @@ int main(void) {
   nMatch = 0; nMFrac = 0; wM = 0.0; wT = 0.0;
   CompareSpots(T, nT, 0.0, P.MarginRad, P.MarginRadial, etamargins,
                P.MarginOme, P.StepsizeOrient, 1, 0.0, 0.0, &P,
-               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT);
+               &nMatch, GS, &nMFrac, NULL, 0, &wM, &wT, NULL, NULL);
   double frac_raw2 = FracMatched(&P, nMFrac, nT, wM, wT);
   if (frac_raw2 != frac_raw) {
     printf("FAIL: raw mode moved after weights were set (%.17g vs %.17g)\n",
