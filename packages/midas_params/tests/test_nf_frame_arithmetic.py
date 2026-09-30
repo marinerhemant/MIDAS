@@ -133,3 +133,42 @@ def test_end_nr_is_not_the_last_file_on_disk(tmp_path):
     flagged = _issues(_write(tmp_path, nfd=1800, end=5043 + 3600 - 1,
                              step=-0.1, n_sum=1), errors_only=False)
     assert any(e.rule == "nf_frames_match_files_per_distance" for e in flagged)
+
+
+# --- HDF5 (20-ID-D): one container per DISTANCE, not one file per frame ------
+
+def _write_h5(tmp_path, *, n_dist, present, start=722):
+    scan = tmp_path / "h5scan"
+    scan.mkdir(exist_ok=True)
+    for n in present:
+        (scan / f"nf_{n:06d}.h5").write_bytes(b"")
+    f = tmp_path / "p_h5.txt"
+    f.write_text(
+        f"DataDirectory {scan}\nOrigFileName nf\nextOrig h5\nDataLoc exchange/data\n"
+        f"StartNr 0\nEndNr 1439\nRawStartNr {start}\n"
+        f"NrFilesPerDistance 1440\nnDistances {n_dist}\nSumFrames 1\n"
+        f"OmegaStart 179.75\nOmegaStep -0.25\nOmegaRange -180 180\n"
+        + "".join(f"Lsd {8138.7 + 2000 * i}\nBC 2450 63\n" for i in range(n_dist))
+        + "NrPixelsY 5120\nNrPixelsZ 4600\npx 0.548\n"
+        f"Wavelength 0.19582415\nSpaceGroup 225\n"
+        f"LatticeParameter 3.5954 3.5954 3.5954 90 90 90\n")
+    return f
+
+
+def test_h5_one_file_per_distance_passes(tmp_path):
+    """The bt_20id_jul26b nf_sampleF layout: files 722, 723 for two distances."""
+    assert not _errors(_write_h5(tmp_path, n_dist=2, present=[722, 723]))
+
+
+def test_h5_missing_distance_file_is_reported(tmp_path):
+    errs = _errors(_write_h5(tmp_path, n_dist=2, present=[722]))
+    assert any(e.rule == "frames_exist_on_disk" and "000723.h5" in e.message for e in errs)
+
+
+def test_h5_matches_the_reader(tmp_path):
+    """Anchor on the loader: the validator's range is what layer_file opens."""
+    from midas_nf_preprocess.process_images.io import layer_file
+    p = ProcessParams(data_directory="/d", orig_filename="nf", raw_start_nr=722,
+                      n_distances=3, ext_orig="h5")
+    opened = [int(layer_file(p, d).split("_")[-1].split(".")[0]) for d in (1, 2, 3)]
+    assert opened == [722, 723, 724]

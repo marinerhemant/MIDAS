@@ -321,6 +321,12 @@ PARAMS: list[ParamSpec] = [
     ParamSpec(
         name="Wedge", type=ParamType.FLOAT, category="Detector geometry",
         description="Deviation from 90° between rotation axis and beam.",
+        notes="One convention for FF, NF and PF: rotation axis in the lab = "
+              "(-sin W, 0, cos W); a grain with stage-frame orientation O and "
+              "position p is seen at omega as G_lab = R_y(-W) R_z(omega) O g, "
+              "pos_lab = R_y(-W) R_z(omega) p. Grains.csv, NF .mic and pf "
+              "outputs report O, p in that stage frame. See the 'Wedge "
+              "convention' note in midas_diffract/forward.py.",
         applies_to=ALL, default=0, units="deg", stages=S_INDEX,
     ),
     ParamSpec(
@@ -986,6 +992,29 @@ PARAMS: list[ParamSpec] = [
         validators=("positive",),
     ),
     ParamSpec(
+        name="MisoriTol", type=ParamType.FLOAT, category="Indexing",
+        description="process-grains Stage-1 cluster misorientation tolerance.",
+        applies_to=FF_PF, units="deg", typical=0.4, stages=S_INDEX,
+        validators=("positive",),
+        notes="c_parity default is C ProcessGrains' 0.4 deg when unset.",
+    ),
+    ParamSpec(
+        name="CParityPassAMisoriTol", type=ParamType.FLOAT, category="Indexing",
+        description="process-grains c_parity Pass A dedup: misorientation tolerance.",
+        applies_to=FF_PF, default=0.1, units="deg", stages=S_INDEX,
+        validators=("positive",),
+        notes="Opt-in; unset = C ProcessGrains 0.1 deg. Not PassAMisoriTol, which is "
+              "the spot-overlap merge of the other modes.",
+    ),
+    ParamSpec(
+        name="CParityPassAPosTol", type=ParamType.FLOAT, category="Indexing",
+        description="process-grains c_parity Pass A dedup: centroid-distance tolerance.",
+        applies_to=FF_PF, default=5.0, units="um", stages=S_INDEX,
+        validators=("positive",),
+        notes="Opt-in; unset = C ProcessGrains 5 um. Far below grain-centroid "
+              "scatter on 20-ID data, where one grain found twice survives Pass A.",
+    ),
+    ParamSpec(
         name="UseFriedelPairs", type=ParamType.BOOL, category="Indexing",
         description="Use Friedel-pair speedup in indexing.",
         applies_to=FF_PF, default=1, typical=1, stages=S_INDEX,
@@ -1410,8 +1439,28 @@ PARAMS: list[ParamSpec] = [
     # them into their text config don't get "unknown key" warnings.
     # ═══════════════════════════════════════════════════════════════════════
     ParamSpec(
-        name="UsePixelOverlap", type=ParamType.BOOL, category="Peak search",
-        description="Use pixel-overlap deblurring for closely-spaced spots.",
+        name="UsePixelOverlap", type=ParamType.INT, category="Peak search",
+        description="Frame-merge matcher: 0 centroid distance, 1 C-compatible "
+                    "(C output, which matches by centroid), 2 opt-in "
+                    "pixel-overlap-first matching (not C-compatible).",
+        applies_to=frozenset({FF, PF}), default=0, stages=S_PEAK,
+        validators=("non_negative",),
+        hidden_in_wizard=True,
+        notes="Issue #13: the C UsePixelOverlap 1 golden "
+              "(midas_transforms/tests/data/c_goldens_px) is identical to "
+              "centroid matching, row for row. Mode 2 matches each new peak "
+              "to the current spot it shares most pixels with, with no "
+              "distance or ring gate; on that golden it merges 297 extra "
+              "pairs of distinct reflections. Values other than 0/1/2 are "
+              "rejected by midas_transforms.merge.",
+    ),
+    ParamSpec(
+        name="IncludeSaturatedSpots", type=ParamType.BOOL, category="Peak search",
+        description="Merge saturated regions (a pixel over UpperBoundThreshold) "
+                    "into the spot list used for indexing. 0 (default) keeps them "
+                    "out so grains are unchanged; either way every spot that "
+                    "contains or touches one gets ReturnCode -2 (intensity "
+                    "unreliable).",
         applies_to=frozenset({FF, PF}), default=0, stages=S_PEAK,
         hidden_in_wizard=True,
     ),
@@ -1517,6 +1566,28 @@ PARAMS: list[ParamSpec] = [
         name="WeightFitRMSE", type=ParamType.FLOAT, category="Refinement",
         description="Weight applied to the fit RMSE term in the refinement objective.",
         applies_to=FF_PF, default=0, units="fraction", stages=S_REFINE, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="RelFitRMSEWeightR0", type=ParamType.FLOAT, category="Refinement",
+        description=(
+            "c-omp refiner: when > 0, weight each spot 1/(1 + RelFitRMSE/r0) in the "
+            "orientation, position and strain objectives, RelFitRMSE = the merged "
+            "spot's FitRMSE/IMax (RelFitRMSE.bin, written by the refinement stage). "
+            "0 = off (bit-identical to the unweighted refiner)."
+        ),
+        applies_to=FF_PF, default=0, units="relative misfit", stages=S_REFINE, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="SpotWeightsDirectional", type=ParamType.FLOAT, category="Refinement",
+        description=(
+            "c-omp refiner: when > 0, read SpotWeights.bin (w_rad, w_tan, w_ome per spot, from a "
+            "measured noise model vs RelFitRMSE) and weight the radial, along-ring and omega "
+            "misses separately in the stage objectives. With RelFitRMSEWeightR0 also set: the "
+            "orientation and position stages use the scalar weight and only the strain stage the "
+            "directional ones (stage-specific). "
+            "0 = off (bit-identical)."
+        ),
+        applies_to=FF_PF, default=0, stages=S_REFINE, hidden_in_wizard=True,
     ),
     ParamSpec(
         name="TopLayer", type=ParamType.INT, category="Refinement",
@@ -1716,6 +1787,120 @@ PARAMS: list[ParamSpec] = [
     # --- NLM denoise of the median-corrected residual -----------------------
     # Implemented in midas_nf_preprocess.process_images.pipeline; these were
     # live and effective while the validator reported them as unknown keys.
+    # --- keys read by midas_nf_preprocess.process_images (params.py table) that
+    # --- the registry did not know: each raised a false "Unknown key" warning.
+    ParamSpec(
+        name="DataLoc", type=ParamType.STR, category="Data source",
+        description="HDF5 dataset holding the frames (extOrig h5; DXchange at 20-ID).",
+        applies_to=frozenset({NF}), default="exchange/data", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="PixelScale", type=ParamType.FLOAT, category="Image processing",
+        description="Divide raw counts by this on read (64 for 10-bit data stored x64).",
+        applies_to=frozenset({NF}), default=1.0, stages=S_IMG,
+        notes="Per SCAN, never inferred: run np.unique on a frame. A wrong value "
+              "turns a threshold of 2 into 128 and thresholds the pedestal.",
+    ),
+    ParamSpec(
+        name="StreamFrames", type=ParamType.INT, category="Image processing",
+        description="0 auto (stream HDF5, materialise TIFF), 1 always stream, -1 never.",
+        applies_to=frozenset({NF}), default=0, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="MedianFrames", type=ParamType.INT, category="Image processing",
+        description="Frames used for the temporal median; 0 = all (evenly spaced subset if > 0).",
+        applies_to=frozenset({NF}), default=0, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="MedianRowBlock", type=ParamType.INT, category="Image processing",
+        description="Rows per block for the streamed median; 0 = whole frame at once.",
+        applies_to=frozenset({NF}), default=0, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="NLMBackend", type=ParamType.STR, category="Image processing",
+        description="Residual NLM denoise backend: skimage (default) or torch.",
+        applies_to=frozenset({NF}), default="skimage", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="SpotDetect", type=ParamType.STR, category="Image processing",
+        description="Spot detection backend: log (historical, mirrors C), matched, or poisson.",
+        applies_to=frozenset({NF}), default="log", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="MatchedSigma", type=ParamType.FLOAT, category="Image processing",
+        description="Matched-filter Gaussian sigma (SpotDetect matched); 0 = calibrate from data.",
+        applies_to=frozenset({NF}), default=0.0, units="px", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="MatchedThreshold", type=ParamType.FLOAT, category="Image processing",
+        description="Matched-filter detection threshold; 0 = calibrate from data.",
+        applies_to=frozenset({NF}), default=0.0, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="MatchedFPBudget", type=ParamType.INT, category="Image processing",
+        description="False positives allowed per frame when calibrating the matched threshold.",
+        applies_to=frozenset({NF}), default=5, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="MatchedMinPx", type=ParamType.INT, category="Image processing",
+        description="Matched-filter blobs smaller than this many pixels are dropped.",
+        applies_to=frozenset({NF}), default=4, units="px", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="MatchedCalibFrames", type=ParamType.INT, category="Image processing",
+        description="Frames used for the one-off matched-filter calibration.",
+        applies_to=frozenset({NF}), default=3, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="WriteGreyResidual", type=ParamType.INT, category="Image processing",
+        description="1 = also write SpotsGrey.npz (grey level of every lit pixel).",
+        applies_to=frozenset({NF}), default=0, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="PoissonWindow", type=ParamType.INT, category="Image processing",
+        description="SpotDetect poisson: k for the k x k window sum tested against the local background rate.",
+        applies_to=frozenset({NF}), default=3, units="px", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="PoissonFPPerFrame", type=ParamType.FLOAT, category="Image processing",
+        description="SpotDetect poisson: expected background false alarms per frame (sets the threshold).",
+        applies_to=frozenset({NF}), default=5.0, stages=S_IMG,
+        notes="Left at the strict 5.0 on purpose. The budget trades gain for cleanliness: on one 20-ID layer "
+              "5 gave 1.3x the threshold-8 voxels at C >= 0.8 and 50000 gave 7.3x (manuals/nf-hedm/"
+              "PARAMETERS.md). Choose it against a reconstruction, not a false-alarm target.",
+    ),
+    ParamSpec(
+        name="PoissonRateFrames", type=ParamType.INT, category="Image processing",
+        description="SpotDetect poisson: evenly spaced frames used to build the background rate map.",
+        applies_to=frozenset({NF}), default=60, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="PoissonRateSmooth", type=ParamType.INT, category="Image processing",
+        description="SpotDetect poisson: box smoothing of the mean and variance maps.",
+        applies_to=frozenset({NF}), default=9, units="px", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="PoissonClip", type=ParamType.FLOAT, category="Image processing",
+        description="SpotDetect poisson: per-pixel clip applied before estimating the rate; 0 = automatic.",
+        applies_to=frozenset({NF}), default=0.0, stages=S_IMG,
+        notes="The automatic clip is estimated from the sampled frames, so two runs only match exactly if "
+              "they use the same frames or the same explicit value.",
+    ),
+    ParamSpec(
+        name="PoissonRobustVar", type=ParamType.INT, category="Image processing",
+        description="SpotDetect poisson: 1 = MAD-based variance (recommended), 0 = plain variance.",
+        applies_to=frozenset({NF}), default=1, stages=S_IMG,
+    ),
+    ParamSpec(
+        name="PoissonMinPx", type=ParamType.INT, category="Image processing",
+        description="SpotDetect poisson: blobs smaller than this many pixels are dropped.",
+        applies_to=frozenset({NF}), default=4, units="px", stages=S_IMG,
+    ),
+    ParamSpec(
+        name="SoftTemperature", type=ParamType.STR, category="Image processing",
+        description="Soft-surrogate sigmoid temperature: 'auto' or a positive float.",
+        applies_to=frozenset({NF}), default="auto", stages=S_IMG,
+    ),
     ParamSpec(
         name="NLMDenoise", type=ParamType.BOOL, category="Image processing",
         description="Non-local-means denoise the median-corrected residual "

@@ -510,3 +510,22 @@ def test_c_vs_python_divergences_are_recorded():
     specs = by_name()
     for name in ("MaxNFrames", "WidthTthPx"):
         assert "DIVERGENCE" in (specs[name].notes or ""), name
+
+
+def test_every_nf_process_images_key_is_registered():
+    """Every key the NF reduction reads must be known to the validator.
+
+    Regression (bt_20id_jul26b, 2026-09-24): 14 real keys (PixelScale, DataLoc,
+    StreamFrames, MedianFrames, ...) were missing, so every valid 20-ID NF
+    paramfile drew a wall of false "Unknown key" warnings.
+    """
+    import re
+    from pathlib import Path
+    import pytest
+    pp = pytest.importorskip("midas_nf_preprocess.process_images.params")
+    table = re.findall(r'\("([A-Za-z0-9_]+)", "[a-z0-9_]+", \w+\)', Path(pp.__file__).read_text())
+    assert table, "could not read the process_images key table"
+    src = (Path(__file__).parents[1] / "midas_params" / "registry.py").read_text()
+    known = set(re.findall(r'name="([A-Za-z0-9_]+)"', src))
+    missing = sorted(set(table) - known)
+    assert not missing, f"NF keys read by process_images but unknown to the registry: {missing}"

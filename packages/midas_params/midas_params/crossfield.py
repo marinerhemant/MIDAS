@@ -449,15 +449,24 @@ def frames_exist_on_disk(ctx: Ctx) -> list[ValidationIssue]:
         n_dist = ctx.all_values.get("nDistances") or 1
         if None in (folder, stem, start, nfd):
             return []
-        # NrFilesPerDistance is the RAW image count, so the file demand does not
-        # depend on SumFrames at all -- summing regroups the frames it reads, it
-        # does not read more of them.
-        n_raw = n_dist * (nfd + wf)
+        if str(ext).lower().lstrip(".") in ("h5", "hdf5", "hdf", "nxs"):
+            # HDF5 (20-ID-D): ONE container per detector distance holding all
+            # frames -- process_images.io.layer_file opens RawStartNr + d - 1.
+            # Demanding one file per frame here produced a false ERROR on every
+            # valid 20-ID paramfile ("..._001442.h5 missing, frames 722..3601").
+            n_raw = n_dist
+            nf_arith = (f"{n_dist} HDF5 file(s), one per distance "
+                        f"(nDistances {n_dist}), so {start}..{start + n_dist - 1}")
+        else:
+            # NrFilesPerDistance is the RAW image count, so the file demand does
+            # not depend on SumFrames at all -- summing regroups the frames it
+            # reads, it does not read more of them.
+            n_raw = n_dist * (nfd + wf)
+            nf_arith = (f"{n_raw} raw files = nDistances({n_dist}) x "
+                        f"[NrFilesPerDistance({nfd}) + WFImages({wf})], "
+                        f"so {start}..{start + n_raw - 1}")
         candidates = [n_raw]
         end = start + n_raw - 1
-        nf_arith = (f"{n_raw} raw files = nDistances({n_dist}) x "
-                    f"[NrFilesPerDistance({nfd}) + WFImages({wf})], "
-                    f"so {start}..{end}")
         ext_with_dot = ext if ext.startswith(".") else f".{ext}"
         key_for_error = "OrigFileName"
     else:
