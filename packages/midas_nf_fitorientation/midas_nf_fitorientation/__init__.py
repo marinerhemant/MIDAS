@@ -29,7 +29,7 @@ to full detector resolution)::
     )
 """
 
-__version__ = "0.9.4"
+__version__ = "0.10.0"
 
 from .params import FitParams, parse_paramfile
 from .fit_orientation import fit_orientation_run

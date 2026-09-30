@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-nf-fitorientation"
-version = "0.9.4"
+version = "0.10.0"
 description = "Differentiable NF-HEDM orientation and calibration fitter (drop-in replacement for FitOrientationOMP, FitOrientationParameters, FitOrientationParametersMultiPoint)"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -24,13 +24,13 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "midas-params>=0.9.0",  # preflight: CLI errors + path checks
+    "midas-params>=0.13.0",  # preflight: CLI errors + path checks
     "numpy>=1.22",
     "scipy>=1.7",
     "torch>=2.0",
     # >=0.7.0: HEDMGeometry.omega_ranges/box_sizes, the paired OmegaRange/BoxSize
     # gate soft_overlap.build_forward_model passes unconditionally.
-    "midas-diffract>=0.7.0",
+    "midas-diffract>=0.9.0",
     "midas-stress>=0.6.0",
 ]
 
