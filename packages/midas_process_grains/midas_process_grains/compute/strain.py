@@ -23,6 +23,11 @@ The MIDAS paper §3.7 documents two strain-tensor methods:
          has g_x ≈ -sin θ ≈ 0.05–0.15, nearly constant per ring), so on
          real data ε_xx blows up under noise without bounds. Use only
          when (a) gradients matter and (b) bounds are not a substitute.
+         Neither ``lstsq`` nor its ``pinv`` fallback check rank/condition
+         before solving, so this near-degeneracy passes through silently;
+         :func:`design_matrix_conditioning` attaches a rank/condition-number
+         diagnostic (``PerSpotStrainResult.condition_number``/``degenerate``)
+         on both paths so callers can flag rather than trust a blown-up fit.
 
 The math: for each indexed spot ``i``,
 
@@ -68,6 +73,7 @@ import torch
 
 __all__ = [
     "build_design_matrix",
+    "design_matrix_conditioning",
     "solve_strain_kenesei_bounded",
     "solve_strain_kenesei_unbounded",
     "solve_strain_kenesei_prior_anchored",
@@ -101,12 +107,27 @@ class PerSpotStrainResult:
     n_spots : int
         Number of spots that fed into the solve. Diagnostic; may differ from
         the input row count if any rows were filtered (zero-magnitude g).
+    condition_number : float
+        SVD-based condition number (``s_max / s_min``) of the design matrix
+        actually solved (see :func:`design_matrix_conditioning`); ``inf`` if
+        rank-deficient. ``nan`` for solvers that do not attach this
+        diagnostic (default, kept for backwards compatibility).
+    degenerate : bool
+        ``True`` iff the design matrix was rank-deficient or ill-conditioned
+        per :func:`design_matrix_conditioning`. This is a FLAG, not a
+        rejection: near-degenerate reflection geometry (e.g. the chronically
+        small ε_xx singular value in FF-HEDM, see :func:`solve_strain_lstsq`)
+        is the norm for this data, not a rare edge case, so a degenerate fit
+        is still returned -- callers filter/reweight/trust-flag downstream.
+        ``False`` (unflagged) for solvers that do not attach this diagnostic.
     """
 
     epsilon_voigt: torch.Tensor
     epsilon_tensor: torch.Tensor
     residual_norm: torch.Tensor
     n_spots: int
+    condition_number: float = float("nan")
+    degenerate: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +160,60 @@ def build_design_matrix(g_obs: torch.Tensor) -> torch.Tensor:
     return G
 
 
+def design_matrix_conditioning(
+    G: torch.Tensor,
+    *,
+    rank_rtol: float = 1e-10,
+    cond_threshold: float = 1e3,
+) -> Tuple[int, float, bool]:
+    """SVD-based rank / condition-number diagnostic for a strain design matrix.
+
+    ``torch.linalg.lstsq`` (and its ``pinv`` fallback) return *a*
+    least-squares solution even when ``G`` is rank-deficient or merely
+    ill-conditioned -- neither checks rank or condition before solving. FF-
+    HEDM g-vector geometry chronically starves the ε_xx direction of a small
+    singular value even at ``n >= 6`` spots (module docstring, and the ``g_x
+    ≈ -sinθ`` per-ring geometry exercised in
+    ``test_kenesei_bounded_clamps_blow_up_at_box_edge``), so this is the norm
+    for real data, not a rare edge case. We therefore **flag, not reject**:
+    the caller decides whether to filter, reweight, or trust-flag a
+    degenerate grain downstream.
+
+    Parameters
+    ----------
+    G : torch.Tensor
+        ``(n, 6)`` design matrix (see :func:`build_design_matrix`), i.e. the
+        matrix actually being solved (post-weighting, if any).
+    rank_rtol : float
+        Singular values below ``rank_rtol * s_max`` count as zero for rank
+        (mirrors ``midas_dfxm.inverse.strain_identifiability``'s ``1e-10``).
+    cond_threshold : float
+        Flag as degenerate when ``s_max / s_min`` exceeds this (mirrors
+        ``midas_stress.elastic_inverse``'s ``cond_threshold`` default, 1e3).
+
+    Returns
+    -------
+    rank : int
+    condition_number : float
+        ``s_max / s_min``; ``inf`` when the matrix is rank-deficient.
+    degenerate : bool
+        ``True`` iff ``rank < G.shape[1]`` or ``condition_number >
+        cond_threshold``.
+    """
+    s = torch.linalg.svdvals(G.detach())
+    s_max = float(s.max())
+    n_cols = G.shape[-1]
+    tol = s_max * rank_rtol
+    rank = int((s > tol).sum())
+    if rank < n_cols:
+        condition_number = float("inf")
+    else:
+        s_min = float(s.min())
+        condition_number = (s_max / s_min) if s_min > 0.0 else float("inf")
+    degenerate = (rank < n_cols) or (condition_number > cond_threshold)
+    return rank, condition_number, degenerate
+
+
 def voigt6_to_tensor(eps: torch.Tensor) -> torch.Tensor:
     """Convert ``(6,)`` Voigt strain to ``(3, 3)`` symmetric tensor.
 
@@ -167,6 +242,7 @@ def solve_strain_lstsq(
     weights: Optional[torch.Tensor] = None,
     rcond: Optional[float] = None,
     regularization: float = 0.0,
+    cond_threshold: float = 1e3,
 ) -> PerSpotStrainResult:
     """Solve ``G ε = b`` for one grain's six strain components.
 
@@ -195,6 +271,13 @@ def solve_strain_lstsq(
         return huge ε_xx values. A small α (~1e-6) anchors ε_xx without
         biasing the well-constrained components. The C reference solver
         achieves the same effect via NLOPT bounds ±0.01 inside the simplex.
+    cond_threshold : float, optional
+        Passed to :func:`design_matrix_conditioning` to set the
+        ``degenerate`` flag on the returned result (default 1e3). This is a
+        FLAG, not a rejection -- see :func:`design_matrix_conditioning` and
+        the ``degenerate`` field on :class:`PerSpotStrainResult`. Fires
+        whether the primary ``lstsq`` solve succeeds or falls back to
+        ``pinv``.
 
     Returns
     -------
@@ -233,6 +316,15 @@ def solve_strain_lstsq(
         G = G * w
         b = b * weights
 
+    # Rank/condition diagnostic on the design matrix actually being solved
+    # (post-weighting). Neither `lstsq` nor `pinv` check this themselves --
+    # both silently return *a* answer for a rank-deficient or ill-conditioned
+    # `G`, which is the FF-HEDM norm (chronic near-degenerate ε_xx direction),
+    # not a rare edge case. We flag, not reject: see `design_matrix_conditioning`.
+    _rank, condition_number, degenerate = design_matrix_conditioning(
+        G, cond_threshold=cond_threshold,
+    )
+
     if regularization > 0.0:
         # Column-normalised Tikhonov: rescale each column of G to unit L2 norm
         # so the regularisation α has the same physical effect on every
@@ -257,7 +349,9 @@ def solve_strain_lstsq(
             eps = sol.solution.squeeze(1)                                   # (6,)
         except RuntimeError:
             # MPS / older torch can choke on lstsq with autograd; pinv is
-            # equivalent and also differentiable.
+            # equivalent and also differentiable. This fallback used to be
+            # silent -- the rank/condition diagnostic above fires here too,
+            # since it was computed on `G` before the branch, not skipped.
             eps = torch.linalg.pinv(G) @ b
 
     residual = G @ eps - b
@@ -267,6 +361,8 @@ def solve_strain_lstsq(
         epsilon_tensor=voigt6_to_tensor(eps),
         residual_norm=residual_norm,
         n_spots=int(n),
+        condition_number=condition_number,
+        degenerate=degenerate,
     )
 
 

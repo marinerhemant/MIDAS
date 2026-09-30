@@ -11,6 +11,7 @@ import torch
 from midas_process_grains.compute.strain import (
     PerSpotStrainResult,
     build_design_matrix,
+    design_matrix_conditioning,
     solve_strain_kenesei_bounded,
     solve_strain_kenesei_unbounded,
     solve_strain_fable_beaudoin,
@@ -312,6 +313,130 @@ def test_tikhonov_well_conditioned_round_trip_keeps_truth():
     np.testing.assert_allclose(
         res.epsilon_voigt.numpy(), eps_true, atol=5e-6,
     )
+
+
+def _ffhedm_like_near_degenerate_geometry(n, rng, two_theta_deg=7.8):
+    """FF-HEDM-like g-vectors: g_x small and nearly constant per ring (the
+    geometry the module docstring says chronically starves ε_xx of a
+    singular value), matching the fixture already used by
+    ``test_kenesei_bounded_clamps_blow_up_at_box_edge``.
+    """
+    two_theta = math.radians(two_theta_deg)
+    g_x_const = -math.sin(two_theta / 2)
+    eta = rng.uniform(0, 2 * math.pi, size=n)
+    g = np.stack([
+        np.full(n, g_x_const),
+        math.cos(two_theta / 2) * np.cos(eta),
+        math.cos(two_theta / 2) * np.sin(eta),
+    ], axis=1)
+    g /= np.linalg.norm(g, axis=1, keepdims=True)
+    return g
+
+
+def test_design_matrix_conditioning_well_conditioned_random_set():
+    rng = np.random.default_rng(99)
+    g = _random_unit_vectors(50, rng)
+    G = build_design_matrix(torch.from_numpy(g))
+    rank, cond, degenerate = design_matrix_conditioning(G)
+    assert rank == 6
+    assert math.isfinite(cond)
+    assert not degenerate
+
+
+def test_design_matrix_conditioning_flags_ffhedm_like_geometry():
+    rng = np.random.default_rng(33)
+    g = _ffhedm_like_near_degenerate_geometry(240, rng)
+    G = build_design_matrix(torch.from_numpy(g))
+    rank, cond, degenerate = design_matrix_conditioning(G)
+    assert degenerate
+    assert rank < 6 or cond > 1e3
+
+
+def test_solve_strain_lstsq_no_regression_on_well_conditioned_geometry():
+    """Wiring the diagnostic in must NOT change the numerical output for a
+    well-conditioned fit (additive change only)."""
+    rng = np.random.default_rng(42)
+    n = 60
+    g = _random_unit_vectors(n, rng)
+    eps_true = np.array([
+        [1e-4, 5e-5, -2e-5],
+        [5e-5, -3e-4, 1e-5],
+        [-2e-5, 1e-5, 2e-4],
+    ])
+    bb = np.einsum("ni,ij,nj->n", g, eps_true, g)
+    ds_0 = np.full(n, 2.0784)
+    ds_obs = ds_0 * (1.0 + bb)
+
+    res = solve_strain_lstsq(
+        torch.from_numpy(g), torch.from_numpy(ds_obs), torch.from_numpy(ds_0),
+    )
+    assert isinstance(res, PerSpotStrainResult)
+    # same exact numerics as test_recover_known_strain_from_synthetic_spots
+    np.testing.assert_allclose(res.epsilon_tensor.numpy(), eps_true, atol=1e-12)
+    assert float(res.residual_norm) < 1e-12
+    # and the new diagnostic reports the geometry as healthy
+    assert res.degenerate is False
+    assert res.condition_number < 1e3
+    assert math.isfinite(res.condition_number)
+
+
+def test_solve_strain_lstsq_flags_degenerate_ffhedm_geometry_without_crashing():
+    """The documented near-degenerate ε_xx direction (g_x small & nearly
+    constant per ring, n >= 6) must be FLAGGED, not raised/rejected: the
+    function still returns a finite result."""
+    rng = np.random.default_rng(33)
+    n = 240
+    g = _ffhedm_like_near_degenerate_geometry(n, rng)
+    bb = rng.normal(scale=2e-3, size=n)        # white noise; truth is 0
+    ds_0 = np.full(n, 1.27)
+    ds_obs = ds_0 * (1.0 + bb)
+
+    res = solve_strain_lstsq(
+        torch.from_numpy(g), torch.from_numpy(ds_obs), torch.from_numpy(ds_0),
+    )
+    assert isinstance(res, PerSpotStrainResult)
+    assert res.epsilon_voigt.shape == (6,)
+    assert torch.isfinite(res.epsilon_voigt).all()  # no crash, no silent nan/inf
+    assert res.degenerate is True
+    assert res.condition_number > 1e3
+
+
+def test_pinv_fallback_still_attaches_conditioning_diagnostic(monkeypatch):
+    """The ``pinv`` fallback (taken when ``torch.linalg.lstsq`` raises
+    ``RuntimeError``) used to have ZERO diagnostic visibility -- that was the
+    actual bug. Force the fallback and confirm the same rank/condition
+    diagnostic fires there too, on both a well-conditioned and a degenerate
+    reflection set.
+    """
+    def _raise(*args, **kwargs):
+        raise RuntimeError("forced failure to exercise the pinv fallback")
+
+    monkeypatch.setattr(torch.linalg, "lstsq", _raise)
+
+    rng = np.random.default_rng(5)
+    n = 20
+    g = _random_unit_vectors(n, rng)
+    ds_0 = np.full(n, 1.5)
+    ds_obs = ds_0 * 1.0005
+    res_good = solve_strain_lstsq(
+        torch.from_numpy(g), torch.from_numpy(ds_obs), torch.from_numpy(ds_0),
+    )
+    assert torch.isfinite(res_good.epsilon_voigt).all()
+    assert not math.isnan(res_good.condition_number)
+    assert res_good.degenerate is False
+
+    rng2 = np.random.default_rng(33)
+    n2 = 240
+    g2 = _ffhedm_like_near_degenerate_geometry(n2, rng2)
+    bb2 = rng2.normal(scale=2e-3, size=n2)
+    ds_0_2 = np.full(n2, 1.27)
+    ds_obs_2 = ds_0_2 * (1.0 + bb2)
+    res_bad = solve_strain_lstsq(
+        torch.from_numpy(g2), torch.from_numpy(ds_obs_2), torch.from_numpy(ds_0_2),
+    )
+    assert torch.isfinite(res_bad.epsilon_voigt).all()
+    assert res_bad.degenerate is True
+    assert res_bad.condition_number > 1e3
 
 
 def test_weighted_solve_accepts_weights():
