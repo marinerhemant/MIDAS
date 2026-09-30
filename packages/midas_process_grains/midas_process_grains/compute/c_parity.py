@@ -402,13 +402,14 @@ def pass_a_position_dedup(
                         chunk = np.stack([a[ii], a[jj]], axis=1)
                     else:
                         # Cross-cell pairs; only emit (i, j) with i < j to
-                        # match C's serial outer-loop order. Avoid double-
-                        # emission by only walking offsets (dx, dy, dz) > 0
-                        # in lex order.
-                        if (dx, dy, dz) < (0, 0, 0):
-                            continue
-                        if (dx, dy, dz) == (0, 0, 0):
-                            continue
+                        # match C's serial outer-loop order. EVERY offset must
+                        # be walked: the i < j mask already emits each unordered
+                        # pair exactly once, from the side holding the lower
+                        # index. Walking only lex-positive offsets as well
+                        # dropped every cross-cell pair whose lower index sat in
+                        # the lex-greater cell -- about half of them -- so pairs
+                        # C merges survived (two identical orientations 2 um
+                        # apart across a cell face were never compared).
                         a = np.asarray(members_a, dtype=np.int64)
                         b = np.asarray(other, dtype=np.int64)
                         ai, bj = np.meshgrid(a, b, indexing="ij")
