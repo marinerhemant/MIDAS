@@ -201,7 +201,7 @@ a printed label. One more reason not to run < 0.5.7.
 accurately. What changed is that it no longer runs.** The opening sentence of §2e —
 "`--mode spot_aware`, what `midas-pipeline --scan-mode ff` runs" — is **no longer
 true**: `--pg-mode` defaults to `c_parity`, `spot_aware` is off the choice list, and
-`PipelineConfig.__post_init__` rejects it (`midas_pipeline/config.py:687`).
+`PipelineConfig.__post_init__` rejects it (`midas_pipeline/config.py:781`).
 
 **The adjudication that settled it — against EBSD, on a population, not on one
 specimen.** `shade_LSHR` layer 1, a single refiner output, `MinNrSpots 3` +
@@ -716,7 +716,7 @@ Handbook §11 is the one-paragraph summary of this table.
 | Energy **95.0 keV** | three instrument records + beamline confirmation | 4 |
 | CeO₂ 0/180 repeatability | `Lsd`/`BC` repeat to 0.01 % / 0.01 px across an independent 180° repeat | 5f |
 | Shared env missing `matplotlib`, `scikit-image` | import failure on chutoro | 1 |
-| `darkLoc` vs `darkDataset` | the zipper reads `config['darkLoc']` (`ff_zip.py:290`) and writes an all-zero dark when unset. Confirmed by reading `zarr["exchange/dark"]` before (max 0) and after (mean **1870.55**) | 3d |
+| `darkLoc` vs `darkDataset` | the zipper reads `config['darkLoc']` (`ff_zip.py:306`) and writes an all-zero dark when unset. Confirmed by reading `zarr["exchange/dark"]` before (max 0) and after (mean **1870.55**) | 3d |
 | `midas-fit-grain` 0.5.6 rotated the residual columns; 0.5.7 fixes it | the same grain's ω residual went from **223.87°** to **0.054°** | 8a |
 | `RingThresh` sensitivity | measured on this dataset | 6b |
 | Pipeline is bit-reproducible | 3 runs identical at all 27 artifacts; `Grains.csv` md5 `0449046c4a1eaa698d447fa480f10671` | 12 |
@@ -1017,7 +1017,7 @@ orientation and lattice into the three files the C codes read — `ExtraInfo.bin
 5000 × 2 doubles**, not the per-seed spot count) — inside the *real* the FCC parent
 geometry, reusing its own `paramstest_comp.txt` and `hkls.csv`. Writing only
 the legacy seed pair feeds all three implementations: c-omp probes for
-`IndexBest_all.bin` first and falls back (`FitUnified.c:1466-1481`), and the
+`IndexBest_all.bin` first and falls back (`FitUnified.c:1736-1751`), and the
 python driver does the same (`driver.py:411`).
 
 Geometry drops out by construction, which is worth stating because it was
@@ -2489,7 +2489,9 @@ tail does not look like that. It is a hard clipping ceiling.
 
 `FF_HEDM/Example/Parameters.txt` ships `UpperBoundThreshold 70000`, more than **4×** that
 ceiling. On this detector the whole-region drop it exists to trigger
-(`midas_peakfit/seeds.py:156`) can therefore **never fire**: clipped peaks are fitted as
+(`midas_peakfit/seeds.py:251`; from midas-peakfit 0.7.0 such a region is recorded in
+`AllPeaks_PS_sat.bin` and flagged `ReturnCode -2` at merge, still not fitted) can therefore
+**never fire**: clipped peaks are fitted as
 though real, and the failure mode is not the documented loss of a strong reflection but a
 silent bias in its fitted intensity — which feeds the ring's powder normalisation and so
 every grain volume on that ring.
@@ -2683,3 +2685,158 @@ where a 2-D section and any segmentation are least reliable. Our 4625 exceeds Sp
 so the re-segmentation may itself over-split; the rescue fractions would shift, the
 direction would not. **The `DiffPos` ranking separating good grains from bad less cleanly
 than the 2024 run's is a real, unexplained defect.**
+
+## 12. Settled by asking — station conventions
+
+Quantities no file can give. Each row is a name and a date, not a measurement, so a later
+session can tell a *confirmed* value from an *inherited* one. Mirrors `manuals/nf-hedm/LAB_NOTEBOOK.md` §12.
+
+| date | quantity | value | source | status |
+|---|---|---|---|---|
+| 2026-08-28 | 20-ID-D HT-HEDM ω sign | `aero`; **ω_MIDAS = −ω_logged** | instrument scientist (H. Sharma) | established |
+| 2026-08-14..19 | 20-ID-D HT-HEDM Varex `ImTransOpt` | **2** | measured, beamstop support from below (phase-1 §2b arg. 2), bt_20id_jul26b | established |
+| 2026-09-21 | 1-ID `ramsrot` ω sign | counterclockwise, **as logged** | instrument scientist | established |
+| 2026-09-27 | 20-ID-E HEXM ω sign | **positive, as logged** | instrument scientist | established |
+| 2026-09-27 | 20-ID-E HEXM `s20varex2` `ImTransOpt` | **1** (flip-Y) | instrument scientist; y-handedness measured by §2b argument 3 on `PUP_AML_bt_20id_sep26b` ss_cal: 46743 within-grain Bragg pairs, 99.88 % correct class (median residual 0.075°), verified (4 lenses, incl. raw-pixel reproduction 95.6 % of 6250 pairs, ω-shuffle null 0.50) | established |
+| 2026-09-27 | 20-ID-E z (detector vertical) | **not flipped**; +samE.y moves the sample up | instrument scientist ("I think so"); adjacent FF layers put straddling grains higher in lab Z by +150 µm per +200 µm stage step (23/24), though a raw-pixel spot-shift test was inconclusive | established by statement, consistent with data |
+| 2026-09-27 | 20-ID-E CeO2 0/180 pair, `PUP_AML_bt_20id_sep26b` | calibrant mounted off the rotation axis ⇒ average the pair (Lsd 998.810 mm) | instrument scientist ("I think it was"); model-free ring ratio 0.996654 flat over 11 rings | established by statement + phase-1-geometry.md §5f tests 1–2 |
+
+**The old "20-ID = ω negated, `ImTransOpt 2`" was always 20-ID-D.** It was written when D was
+the only 20-ID station through this doc set. Do not carry it to E: the detector is a different
+Varex and the stage turns the other way relative to the logged angle.
+
+## 13. The residual sidecar was pre-fit (fixed 2026-09-28)
+
+**Found on** PUP_AML_bt_20id_sep26b (20-ID-E, Fe9Cr and austenitic steel, c_parity). The question
+was whether the Fe9Cr spot residual lies along the ring (streaked spots) or radially.
+`processgrains_diagnostics.h5:/residuals` gave |dRad| of 150 um on every run, steel included, with
+per-ring dR/R of -850 ppm (Fe9Cr) and -910 ppm (steel), equal and opposite to each run's mean
+hydrostatic strain (+820, +896 ue).
+
+**Cause.** The sidecar decomposed `FitBest.bin`, the indexer seed predicted at the reference
+`LatticeConstant` (2.87 / 3.59 here; fitted 2.8723 / 3.5930). Its predicted ring radius matched the
+reference lattice to 0.2 um. So its radial terms were the reference-lattice mismatch plus each grain's
+unfitted strain, not spot precision; the docs called it "obs vs fitted-grain prediction".
+
+**Fix.** `/residuals` is now decomposed from `FitBestFinal.bin` (post-fit, the source SpotMatrix's
+`*Post` columns always used); the FitBest table moved to `/residuals_prefit`, where its ring ppm is the
+genuine reference-lattice diagnostic the E7 d0 advisory reads. Each group carries `attrs["source"]`.
+On the same two layers, post-fit per-ring dR/R is -23..+6 ppm and the radial scatter (MAD-std) is
+21 um (steel) / 44 um (Fe9Cr L0035). Grains.csv and SpotMatrix.csv are byte-identical before and after.
+
+**What to do with old sidecars.** Anything read from an old `/residuals` radial column, ring ppm or
+per-grain dRad was pre-fit. The internal angle (col 9) comes from the same 1.0-deg-capped matcher in
+both tables, so the censoring test (ENVELOPE, DIAGNOSIS) still reads the same way, but the values are
+the seed's, not the refined grain's.
+
+**Trap for analysis scripts.** SpotMatrix `YLab/ZLab` are RAW observed positions and `YExpPost/ZExpPost`
+are predicted for the grain at the origin, so `YLab - YExpPost` is NOT the residual (median 253 um vs
+`DiffLenPost` 34 um on steel). Use FitBestFinal cols 1-3 (position-corrected obs) against cols 7-9, or
+the sidecar. Evidence: bt_20id_sep26b analysis logs `s08f_drad_ppm.log`, `s08g0_inspect.log`,
+`s08g_resid_direction_v2.log`, `s08h_sidecar_fix_e2e.log`.
+
+## 14. Per-spot weights in the refiner — what the residuals said and what helped (2026-09-28)
+
+**Question** (HS). Fe9Cr (20-ID-E, bt_20id_sep26b) grain fits are far worse than a steel control. Is that the spot
+centroids, and can the refiner use per-spot quality to do better? Evidence and preregistrations:
+`$ANALYSIS/bt_20id_sep26b/{logs,prereg,scripts}`; LSHR/EBSD gate harness
+`$ANALYSIS/bt_20id_jul26b_survey/ff_dedup/ebsd_gate.py`.
+
+| step | result | status |
+|---|---|---|
+| direction of the post-fit residual, Fe9Cr / steel at matched intensity | along-ring 4.6-4.8x, radial 1.8-2.1x, omega 1.4-1.5x (`s08g`) | ESTABLISHED (4 lenses) |
+| which peak descriptor carries the radial excess | relative misfit `FitRMSE/IMax` (reweighting 1.88 -> 1.08x); widths, frame count, threshold fill, IMax do not (`s10b`) | CONFIRMED (prereg) |
+| shape-robust re-centring (1-D radial profile fit; intensity moment) | worse, incl. on steel (`s10c`) | REFUTED |
+| Friedel mates' radial residuals agree (real d-spread?) | rho -0.15, null -0.01: not real spread; the sign reads as position along the beam (`s10d`) | REFUTED (noise) |
+| radius-only strain after process-grains | load-step noise 0.94x, steel 1.13x (`s09`) | INCONCLUSIVE -> dropped (HS: no post-PG iterative fitting) |
+| **scalar weight `RelFitRMSEWeightR0 0.69`** | LSHR vs EBSD: position paired -0.135 um [-0.164, -0.107], 58 % improved, gain grows with prior error (>20 um bin ~-1.1 um after regression-to-mean correction); +1 EBSD grain found; orientation vs EBSD unchanged; W2-vs-W1 replicates, W1-vs-H0 null flat | **ESTABLISHED** (4 lenses) |
+| same, strain / orientation | bt_20id_sep26b load-step strain 1.02x (no gain); orientation -4 % per grain (p 0.0002, below the registered 5 %) | REFUTED / INCONCLUSIVE |
+| directional weights (radial / along-ring / omega) | strain 0.876x (bt_20id_sep26b) but LSHR position +0.13 um, orientation +11 % | REFUTED (gate) |
+| stage-specific (scalar in orientation + position, directional in strain) | LSHR keeps the full position gain (-0.135 um); held-out datasetH 190 -> 90 MPa elastic unload: strain 1.001x, orientation 1.003x | REFUTED for strain; position intact |
+
+**What to use.** `RelFitRMSEWeightR0 0.69` is the one measured improvement (position). It is off by default until a
+second dataset with ground truth confirms it. `SpotWeightsDirectional` is experimental.
+
+**Also fixed here.**
+- The process-grains residual sidecar decomposed the PRE-fit table (§13).
+- `SpotMatrix.csv` gained `RelFitRMSE` (col 28).
+
+**Traps met.**
+- An `OFF` arm must be byte-identical to the baseline before an `ON` arm is read. Prod, HEAD and patched builds all gave
+  LSHR md5 91c8d4ae. Toolchain differences did not matter here, but check.
+- datasetH's spots are clean even after 290 MPa: mean weight 0.935, against ~0.55 on Fe9Cr. So its test cannot separate
+  "no effect" from "nothing to act on".
+- The unload layers index only ~25-35 grains; April's run found the same, so this is the data.
+- Noise models in absolute `rel` units may not transfer between detectors or brightness. datasetH's median `rel` is 0.004;
+  LSHR's is 0.069.
+
+
+## 15. `bt_20id_sep26`: 20-ID-D Varex, ten layers, and the traps they exposed (2026-09-27/29)
+
+Re K edge (71.676 keV), CeO2 calibrant (23 µε, 16 rings within 0.021 ± 0.024 px of the prediction; the mirrored case scatters
+2.96 px), gold control (best grain completeness 0.957, Friedel sign test 0 of 193 against a chance of 0.50), one fcc phase
+(a = 3.5912 / 3.5913 / 3.5927 Å for three samples). Provenance for every figure: `CHECKPOINT.md` and the result files in the
+analysis folder named there.
+
+**Layers.** Four crack-tip / IG-crack layers: 3,285 / 3,267 / 2,577 / 2,808 grains, median completeness 0.69 / 0.72 / 0.68 / 0.75
+(pass mark, fixed before the runs: 0.55). Adjacent layers of one sample: 58.9 % of the 389 grains at completeness ≥ 0.8 reappear
+within 0.5° against 0.37 % for random orientations (30 of 8,000), i.e. 157×; with position within 100 µm too, 31.4 % (bar 50 %).
+An earlier ratio of "588 million ×" was a divide-by-zero on a null with no hits; the null needs ≥ 8,000 draws for a 0.3 % rate.
+
+**Beam setting.** Same region, same exposure: completeness ≥ 0.8 grains were 674 / 5 / 0 (line / 10 µm / 50 µm) in one region and
+192 / 3 / 2 in another, median completeness 0.71 vs 0.56 / 0.54 and 0.63 vs 0.45 / 0.50. The line focus put 2–3× more counts in
+the spots, the 50 µm scans used a different attenuator, and its horizontal slit was narrower: "line focus as run", not beam height.
+
+**The traps** (each is a row of the README traps table).
+1. Transient filesystem permission errors made the peak search zero-fill 847 of 1,441 frames of one layer (3 grains against
+   ~2,900) while the stage reported success; two other layers lost one frame each. Retry-then-raise exists in the local tree.
+2. `ring-thresh` printed 500 in its paste block when criterion C was clean only at the sweep ceiling (a rail: the last sweep
+   point has no higher point to confirm a floor); the driver substituted the most cleanly-resolved threshold (on HAO #422 ring 2 the 500 discarded ~45 % of the kept spots
+   relative to 50; figure from the note in `run_ff_layer.py`, measured in the first-pass runs) and wrote its
+   choice to `thresholds_chosen.json` (all six beam-size layers' `Parameters.txt` matched it). Fixed in `midas_peakfit`
+   `ring_thresh.py` (2026-09-29): C reports RAILED, the recommendation uses that substitute, the paste block says so.
+3. The FF `scan_parameters` block described a previous 162-frame test scan; ω came from the `aero` readback (start 179.75,
+   step −0.25, frame 0 skipped).
+4. Dark files sat ~100 counts above the data floor; per-layer synthetic dark, stored as a 2-frame stack (a 1-frame dark is
+   zeroed by `SkipFrame`).
+5. A `tx` / `Wedge` refit (tx −0.036147, Wedge −0.002896) looked better on the population (Z ±270 → ±220 µm, match 38.0 → 63.7 %)
+   but the gain was 245 newly indexed grains; the 761 grains at completeness ≥ 0.8 stayed at ±155 → ±157 µm. Refuted.
+6. A matcher applying symmetry on the sample side reported 9.3 % against the correct 58.9 % (crystal side).
+
+## 16. Where the Fe9Cr noise lives, a position yardstick, and the datasetB 2025 redo (2026-09-28/29)
+
+Follow-up to §14 (HS asked: "chase the peaks more"). Evidence: `$ANALYSIS/bt_20id_sep26b/{logs,prereg,scripts}` and
+`$ANALYSIS/datasetB_oct25_hs/{logs,prereg,scripts,figs}`.
+
+**bt_20id_sep26b Fe9Cr (20-ID-E, 6055).**
+
+| question | result | status |
+|---|---|---|
+| orientation-aware strain noise (Sachs prediction removed, `s15a`) | load-step S_res/S_raw 0.734 (137 ue) bt_20id_sep26b, 0.65-0.77 park; anisotropy explains 18-28 % of variance; dir/off 0.918 [0.748, 1.082] | INCONCLUSIVE |
+| how much strain noise do the centroids explain (`s16a`) | per-state 30.1 ue Fe9Cr vs 19.3 ue steel; steel-like centroids would give 20.0. Load-step difference 42.5 vs 28.4 ue | PROVISIONAL; the rest is not peaks (irradiation? HS) |
+| streak-centre ExtraInfo (`s18`) | median FF-pf 59.9 vs 53.8 um unpaired (worse alone); paired on 14 grains no difference; not adopted | REFUTED (prereg s18) |
+| grain Z against the beam (`s14a`) | steel robust sigma 41.1 um; Fe9Cr layers 71.1-106.5 um (0.2 mm beam: uniform fill 57.7 um) | descriptive |
+| directional weights, FF position vs the UNSEEDED pf map (`s17a`) | median 54.0 -> 48.3 um, paired -4.2 um [-7.2, -2.8], 67 % of 101 improved; scalar -0.5 [-2.1, +0.9] | PROVISIONAL (physics lens UNCERTAIN: regression to the mean) |
+
+**datasetB oct25 (20-ID-E, scan 3580, 304SS), redone from scratch on 1 layer** (HS: "residuals were 5 pixels off").
+
+| step | result |
+|---|---|
+| OmegaStep (`e01`) | 0.25 (360 deg lag >= 1439 frames => <= 0.25017); the pooled 0.2515 is a truncated-window artefact |
+| CeO2 calibration (`e03`, 0/180 deg) | Lsd 899867.8 / 899866.2 um (split 1.6 um, no beam-axis displacement), BC (1459.514, 1345.818), strain 11.5 ue PASS; old params had Lsd 902562 |
+| CeO2 dark trap (`e02b/c`) | `data_dark` all zeros in the CeO2 files; their pedestal is ~281 counts below every real dark. Used `dark_002708` shifted by one constant. The guard message says the dark is in `/exchange/bright`; in these 2025 files it is not |
+| ring thresholds (`e05b`) | A and B agree on every ring: 75/50/50/50/30/30/50/50/50/50 |
+| new run vs old `recon_3580_003` (`e06`) | 3862 vs 7889 grains; robust sigma Z 100.5 vs 98.1 um against a 50 um beam: **recalibration did not fix Z** |
+| refiner arms (`e07/e08`, prereg e05, one binary) | off2 - off = 0; rel - off -0.42 um [-1.04, +0.46]; **dir - off -18.2 um [-19.6, -16.9]** (paired median of |Z - median|, n 3721, 71 % improved); robust sigma Z 100.5 -> 74.3 um; spots > 5 px off 2.70 -> 4.57 % |
+| /verify of the dir claim (2ef9907f4865) | **PROVISIONAL.** Reproduction SURVIVES; physics, statistics, artifact UNCERTAIN: Z_dir = 0.726 x Z_off, and a plain 0.74x shrink of Z_off gives -17.5 um (permuted labels -14.8): the metric cannot separate noise reduction from shrinkage |
+| independent check against the old recon (`e10`, prereg) | gate FAILED, VOID: only 143/3721 grains match (misorientation 42 deg median for nearest XY neighbours, not a global rotation); the two reconstructions of the same scan share ~4 % of their grains; median Confidence of all new grains 0.485 vs Completeness 0.4 |
+
+| where the residuals > 5 px sit (`e11`, post-fit sidecar, off arm) | 2.70 % of 626,145 spots; **tangential 2.49 %, radial 0.21 %**; rises with ring radius (ring 1 0.7 % -> ring 10 5.7 %); flat in eta (1.9-3.7 %); spread over grains (top 5 % of grains hold 13 %; median per-grain 2.47 %). dir: 4.57 % (tangential 4.38 %) | descriptive |
+
+**Lessons.**
+- A spread metric (|Z - median|, sigma) rewards any contraction. Before calling a weighting an improvement, run a shrink placebo
+  (scale the baseline toward the median by the fitted slope) and a permuted-label placebo.
+- Two reconstructions of one scan that share only ~4 % of their grains means the crowded 304SS layer (~2100 peaks/frame) is mostly
+  marginal indexings; grain count is not a quality figure. Untested next steps: a Completeness sweep; a split-half refit.
+- The pipeline's radial-vs-tangential residual decomposition (§13) now reads post-fit; the old datasetB investigation's radial numbers came
+  from the pre-fit sidecar.

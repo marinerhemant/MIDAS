@@ -36,7 +36,7 @@ Metadata folder: <ABSOLUTE PATH>     # or "find it"
 Sample material: <e.g. gold cubes / unknown, tell me from the data>
 ```
 
-## Three things to know before you start
+## Seven things to know before you start
 
 1. **Run the install gate first** (spine §0). Several version floors exist only to keep out
    versions that produce plausible wrong answers rather than errors. It is free, and
@@ -50,6 +50,26 @@ Sample material: <e.g. gold cubes / unknown, tell me from the data>
 3. **The order is not optional.** Two steps (the ω sign, the frame-0 skip) cannot be
    checked after the fact, because getting them wrong changes the answer without changing
    anything you would look at.
+
+4. **A layer that "succeeds" can have silently lost frames.** Transient filesystem
+   permission errors made the peak search zero-fill 847 of 1441 frames of one layer (3
+   grains against ~2,900) with the stage marked done. `grep -c 'failed to read'
+   driver.log` on every layer, and compare grain counts across a series.
+
+5. **20-ID metadata lies in two places.** `scan_parameters` can describe the previous test
+   scan (take ω from the `aero` readback), and a dark file can sit ~100 counts above the
+   data floor (build the dark from the layer's own frames; a 1-frame dark is zeroed by
+   `SkipFrame`, store two). Older `ring-thresh` printed `RingThresh N 500` when criterion C was
+   clean only at the sweep ceiling (a rail, not a floor): read the per-ring criterion lines and do not paste a ceiling value.
+
+6. **Judge a refit on the same grains.** A `tx`/`Wedge` refit improved the whole-population
+   spread and match rate purely through 245 newly indexed grains; the grains that were
+   already well indexed did not move. Compare the same grains before and after.
+
+7. **Comparing beam settings**: the settings differ in counts, attenuator and slits as well
+   as beam height. Report median completeness and the count at ≥ 0.8, and say "as run".
+   Orientation matching against another layer or modality: crystal-side symmetry only.
+   Lab notebook §15.
 
 ## Two configurations
 
@@ -66,12 +86,16 @@ things are genuinely different and each has cost a day:
   Carrying one scan's answer to the next left an 1850-count pedestal in place
   and turned every ring band into a single blob, which reads as *"this sample
   is a powder"*. Measure the three group means on every scan;
-* **there is no par file at 20-ID**, so the ω-sign source the 1-ID recipe
+* **there is no par file at 20-ID** (D or E), so the ω-sign source the 1-ID recipe
   depends on does not exist — and the ω sign is *coupled* to the detector
   mirror, which powder rings cannot break either. **§2b** settles both with
   three independent physical arguments. Do not adopt another run's answer:
   the two pre-existing 20-ID parameter files disagree, and both produced
-  plausible results;
+  plausible results. **Exception, 20-ID-E (HEXM):** the detector there is
+  `s20varex2`, not the D Varex; ω is **positive as logged** and `ImTransOpt`
+  is **1** (y-flip only, z not flipped; established on PUP_AML_bt_20id_sep26b by the §2b Friedel test on the first grain
+  list). Also **measure `OmegaStep`**: 0.25051-0.25058 (not 0.25) on
+  `PUP_AML_bt_20id_sep26b`. Spine scope block has the details;
 * **`RhoD`** must be computed, never copied (spine rule 15, §6d). Wrong, it
   indexes **zero seeds and exits 0**, and whether it bites at all depends on the
   sample's symmetry;

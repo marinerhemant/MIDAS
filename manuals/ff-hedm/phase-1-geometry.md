@@ -18,8 +18,9 @@ awk '{print $9}' <METADATA_DIR>/<beamtime>_FF.par | sort | uniq -c
 | field 9 reads | meaning | action |
 |---|---|---|
 | `aero` / `Aero` | stage turns **clockwise**; **ω_MIDAS = −ω_logged** | negate `OmegaStart` **and** `OmegaStep` |
+| `ramsrot` | RAMS-III load-frame stage; turns **counterclockwise**; **ω_MIDAS = +ω_logged** | use `OmegaStart` / `OmegaStep` **as logged**. Determined 2026-09-21, instrument scientist (H. Sharma): the 1-ID RAMS-III load-frame stage `ramsrot` always turns **counterclockwise**, the MIDAS sense, so ω is used **as logged**. First applied to `datasetI` (NF and FF), whose 2021 paramfiles already carried the un-negated sweep. |
 | anything else | not established by this session | **stop and ask** |
-| *there is no par file* | 20-ID and anything else without one | **§2b** — settle ω and the detector mirror together |
+| *there is no par file* | 20-ID-D, 20-ID-E and anything else without one — conventions table in the spine scope block | **§2b** — settle ω and the detector mirror together |
 
 Verified on `bt_1id_jul26`: all **7297** FF rows read `aero`.
 
@@ -46,7 +47,7 @@ OmegaRange -180 180
 > at r = 500 µm; every difference — misorientation, relative orientation, strain —
 > unaffected). Read the zarr instead. The zipper stores
 > `measurement/process/scan_parameters/start = OmegaStart − SkipFrame·OmegaStep`
-> (`ff_zip.py:250`), so on this sweep the stored `start` **must equal the negated raw
+> (`ff_zip.py:266`), so on this sweep the stored `start` **must equal the negated raw
 > frame 0, +180.25**. Measured on the 1441-frame `aero` sweep: `OmegaStart 180.25` stored
 > 180.50 — one step past raw frame 0, wrong — and `OmegaStart 180.00` stored 180.25,
 > correct.
@@ -72,7 +73,7 @@ same beamline, and the bundled NF reference paramfile carries `OmegaStart 180` /
 
 ### 2b. No par file — settle the ω sign and the detector mirror TOGETHER
 
-**20-ID HT-HEDM has no par file at all.** Metadata lives in EPICS NDAttributes inside
+**20-ID (D and E) has no par file at all.** Everything worked below is 20-ID-D; for 20-ID-E the stage sense (argument 1) is known — ω positive — see the spine's conventions table. Metadata lives in EPICS NDAttributes inside
 each `.vrx.h5` (§3b-2). There is no field 9, so §2 has no input — and the problem is
 worse than one missing convention, because **the ω sign and the detector mirror are
 coupled and neither the calibration nor the grain list can break either one:**
@@ -329,7 +330,7 @@ spellings consumed by different code:
 
 | key | read by | default |
 |---|---|---|
-| `dataLoc` / `darkLoc` | `midas_zipper.ff_zip` — `config['darkLoc']`, `ff_zip.py:334` | `exchange/data` / **`exchange/dark`** |
+| `dataLoc` / `darkLoc` | `midas_zipper.ff_zip` — `config['darkLoc']`, `ff_zip.py:350` | `exchange/data` / **`exchange/dark`** |
 | `dataDataset` / `darkDataset` | downstream consumers (`FF_Parameters_Reference.md` §2) | same |
 
 Set **both**:
@@ -398,7 +399,7 @@ layered design is easy to misread:
 Consequently **`OmegaStart` is the ω of the first frame you want to USE** (post-skip), and
 the zarr's `scan_parameters/start` is deliberately back-dated to
 `OmegaStart − SkipFrame·OmegaStep`, which the zipper computes as
-`start_omega` (`ff_zip.py:250`), so that it describes raw frame 0.
+`start_omega` (`ff_zip.py:266`), so that it describes raw frame 0.
 The consumer recovers `start + SkipFrame·step = OmegaStart` for the first frame it
 processes. The chain is self-consistent; changing either half alone breaks it.
 
@@ -421,7 +422,7 @@ Sanity check in the peakfit banner: `nFrames` must equal *logged frames − Skip
 For a hand-reduced average outside the pipeline (calibrant staging, quick looks) there is
 no consumer to do it for you, so drop it yourself: `data[1:].mean(axis=0)`, dark included.
 
-> #### 20-ID carries a known **one-step (0.25°) ω zero-point offset**. Quote it, do not chase it.
+> #### 20-ID-D carries a known **one-step (0.25°) ω zero-point offset**. Quote it, do not chase it.
 >
 > **This is documented, accepted and not a defect to fix mid-analysis.** It is recorded
 > here because it is invisible in every output and would otherwise be rediscovered once
@@ -469,7 +470,9 @@ it (`midas_peakfit/midas_peakfit/preprocess.py`,
 | 2 | flip vertical, along Z / the column axis | `image[l, m] := image[N-l-1, m]` |
 | 3 | transpose | `image[l, m] := image[m, l]` |
 
-`ImTransOpt 2` on 20-ID Varex; establish it per detector, not per run.
+`ImTransOpt 2` on the 20-ID-D HT-HEDM Varex; **`ImTransOpt 1`** (y-flip only, z not flipped; established) on the
+20-ID-E HEXM `s20varex2`, where ω is also **positive as logged** (README scope block).
+Establish it per detector, not per run.
 
 **It is a convention, like the ω sign, and it belongs in the same category of
 danger.** A wrong flip does not fail. It mirrors the reconstruction, and a

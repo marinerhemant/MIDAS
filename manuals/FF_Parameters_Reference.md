@@ -101,7 +101,7 @@ For HDF5/Zarr data sources (non-raw-frame inputs).
 | `ty`        | double | deg    | 0       | no       | Detector rotation about horizontal axis. |
 | `tz`        | double | deg    | 0       | no       | Detector rotation about vertical axis. |
 | `p0`–`p14`  | double | varies | 0 (see [§3a](#3a-distortion-model)) | no | Distortion polynomial coefficients. **Not applicable to NF-HEDM** (NF uses direct pinhole+tilts geometry, no polynomial). |
-| `Wedge`     | double | deg    | 0       | no       | Deviation from 90° between rotation axis and beam. |
+| `Wedge`     | double | deg    | 0       | no       | Deviation from 90° between rotation axis and beam. Tilt of the ω rotation axis about lab y; axis in the lab = (−sin W, 0, cos W), so a positive `Wedge` leans the top of the axis upstream (toward the source). One convention for every MIDAS package (FF C refiner, fit-setup, indexer input, midas_diffract, NF fitting, pf_odf): a grain with orientation O at position p diffracts at ω with G_lab = R_y(−W)·R_z(ω)·O·g and sits at R_y(−W)·R_z(ω)·p, R_y(a) = [[cos a, 0, sin a], [0, 1, 0], [−sin a, 0, cos a]]; O and p are in the rotation-stage frame, the frame Grains.csv, NF `.mic` and pf-HEDM outputs report. See the "Wedge convention" note in `midas_diffract/forward.py`. (Before 2026-09 the Python midas_diffract forward used the opposite sign and a lab-at-ω=0 frame; C outputs are unchanged.) |
 | `RhoD`      | double | µm     | 0       | no       | Max ring radius for distortion model. Alias: `MaxRingRad`. |
 | `Parallax`  | double | —      | 0       | no       | Parallax correction term. |
 | `ResidualCorrectionMap` | str | path | `""` | no     | Residual distortion correction map file. |
@@ -327,7 +327,9 @@ These are passed to `IndexerOMP` via the Zarr analysis file (not via
 | `GBAngle`                | double | deg   | 0       | Grain-boundary angle tolerance (twin analysis). |
 | `DebugMode`              | int    | bool  | 0       | Verbose diagnostic output. |
 | `WeightMask`             | double | frac  | 0       | Weighting for masked regions. |
-| `WeightFitRMSE`          | double | frac  | 0       | Weighting by fit RMSE. |
+| `WeightFitRMSE`          | double | frac  | 0       | Weighting by fit RMSE: `w *= exp(-FitRMSE * WeightFitRMSE)`, position stages only. The ABSOLUTE `FitRMSE` grows with brightness, so this down-weights bright spots first; prefer `RelFitRMSEWeightR0`. |
+| `RelFitRMSEWeightR0`     | double | rel   | 0 (off) | c-omp refiner: weight each spot `1/(1 + rel/r0)` in the orientation, position and strain stage objectives, `rel` = the merged spot's `FitRMSE/IMax` (`RelFitRMSE.bin`, written by the refinement stage). **0.69 improves grain position vs EBSD** (LSHR layer 1: paired median −0.135 µm over 3694 grains, 58 % improved, gain grows with prior error; ESTABLISHED 2026-09-28); orientation vs EBSD unchanged, strain noise not reduced (bt_20id_sep26b, datasetH). `r0 = 0.69` came from an EBSD-blind noise model (post-fit radial scatter vs `rel`, 20-ID-E steel + Fe9Cr). Off is bit-identical. |
+| `SpotWeightsDirectional` | double | bool  | 0 (off) | **Experimental.** c-omp refiner: read `SpotWeights.bin` (w_rad, w_tan, w_ome per spot, `midas_transforms.io.csv.write_spot_weights_bin` from a measured noise-vs-`rel` table) and weight the radial / along-ring / omega misses separately. Alone: all stages directional — lowered bt_20id_sep26b load-step strain noise 0.876× but made LSHR position (+0.13 µm) and bt_20id_sep26b orientation (+11 %) worse. With `RelFitRMSEWeightR0` too: orientation and position stages scalar, strain stage directional (stage-specific) — keeps the LSHR position gain, but the strain gain did NOT replicate on held-out datasetH (190→90 MPa unload 1.001×). The pipeline does not write `SpotWeights.bin`; write it yourself. Off is bit-identical. |
 
 ## 12. Refinement — tolerances (calibration)
 

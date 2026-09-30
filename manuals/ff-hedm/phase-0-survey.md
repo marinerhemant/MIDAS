@@ -31,7 +31,7 @@ Record, per file:
 | its dark | `dark_before_<N-1>` for data `<N>` (§3d) | the single highest-cost trap in this path |
 | energy | `instrument/HEM/Energy`, cross-checked twice | **never the filename** (§4a) |
 | `DetZ` | `instrument/DMS/DetZ` | an `Lsd` **seed** only; was +181 mm off here (§4b) |
-| ω sweep bounds and step | par fields 10, 11, 17 | negate for `aero` (§2) |
+| ω sweep bounds and step | par fields 10, 11, 17 | negate for `aero`; as logged for `ramsrot` (§2) |
 | is a calibrant present? | classification above | **if not, stop** — there is no geometry without one (§5) |
 
 **Do not derive anything from a folder name.** A companion pipeline lost a factor of 2 in

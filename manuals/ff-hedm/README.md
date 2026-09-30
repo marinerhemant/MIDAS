@@ -20,11 +20,39 @@ checked after the fact.
 | files | DM-converted `.ge5.h5` | `.vrx.h5` |
 | detector | monolithic GE, 2048² @ 200 µm | Varex, 2880² @ 150 µm |
 | dark | `Dark` file, `darkLoc` | `Dark` file, **`darkLoc` is per SCAN — measure it every time** (§3d). One beamtime carried all three of `/exchange/dark`, `/exchange/bright` and a scan already dark-subtracted at the DAQ |
-| ω sign | par field 9 = `aero` ⇒ negate (§2) | **no par file exists.** Settle ω sign *and* detector mirror together, from physical arguments (§2b). `OmegaStart 180` / `OmegaStep -0.25` is the answer for `bt_20id_jul26b`, **not** a property of the station |
+| ω sign | par field 9 = `aero` ⇒ negate; `ramsrot` ⇒ as logged (§2) | **no par file exists.** Settle ω sign *and* detector mirror together, from physical arguments (§2b). `OmegaStart 180` / `OmegaStep -0.25` is the answer for `bt_20id_jul26b`, **not** a property of the station |
 | frame 0 | throwaway, `SkipFrame 1` (rule 2) | same |
 | `ImTransOpt` | establish per detector (§3f) | **2** (flip-Z), verified on `bt_20id_jul26b` |
 | verified on | `bt_1id_jul26`, and `bt_1id_mar23` (2023 archive, same GE5) — **these two disagree on the par-file tail (§3b), the `E_HEM` column (§4a) and `ImTransOpt`; see §R2a vs §R2f** | `bt_20id_jul26b` ti7al / nf709 / ruby, and `nfdev_jul26` Au / alumina — **the two disagree, see §R2d vs §R2e** |
 | branch | — | **D.** FF and PF run at both 20-ID-D and 20-ID-E; NF only at D. Everything verified here is **D**. Confirm the branch, never infer it from "20-ID" — one campaign was filed as E for nine days (rule 13) |
+
+**Station conventions — the single table.** ω sign and `ImTransOpt` are properties of a
+*station + stage + detector*, never of "20-ID". **In this doc set a bare "20-ID" or a
+"20-ID:" callout means 20-ID-D HT-HEDM**; none of those callouts has been checked at 20-ID-E.
+Every value below was settled by asking the instrument scientist (a name and a date, not a
+measurement — Lab Notebook §12), except where marked.
+
+| station / stage / detector | ω | `ImTransOpt` | status |
+|---|---|---|---|
+| 1-ID, `aero` stage, GE | **negated** (ω_MIDAS = −ω_logged) | per detector/vintage (§3f; 2 on bt_1id_jul26, 0 on bt_1id_mar23) | established |
+| 1-ID, `ramsrot` (RAMS-III load frame) | **as logged** | per detector | established 2026-09-21 |
+| **20-ID-D HT-HEDM**, `aero`, Varex | **negated** (`OmegaStart 180`, `OmegaStep −0.25`) | **2** (flip-Z) | ω established 2026-08-28; `ImTransOpt` measured on bt_20id_jul26b (§2b arg. 2) |
+| **20-ID-E HEXM**, `s20varex2` | **positive, as logged** (CCW, right-handed; `OmegaStart −180`, `OmegaStep +`, *measured* 0.2505) | **1** (flip-Y only; **z not flipped**) | ω established 2026-09-27 (HS); y-handedness **ESTABLISHED** by §2b argument 3 on `PUP_AML_bt_20id_sep26b` ss_cal (46743 within-grain pairs, 99.88 %; verified incl. raw-pixel reproduction); z not flipped per HS 2026-09-27 ("+samE.y moves the sample up, I think"), consistent with adjacent-layer grain shifts |
+
+**20-ID-E (HEXM) is a different station with a different detector.** Its Varex is
+`s20varex2` (files still `.vrx.h5`, 2880² @ 150 µm), not the 20-ID-D HT-HEDM Varex, and
+the D column above does not carry over:
+
+| | **20-ID-E HEXM `s20varex2`** | source |
+|---|---|---|
+| ω sign | **positive, used as logged** (sweep −180 → +180 ⇒ `OmegaStart −180`, `OmegaStep +…`) | stage sense, stated by HS 2026-09-27 — this is §2b argument 1 for E |
+| `ImTransOpt` | **1** (flip-Y only) | y: established by §2b argument 3 on `PUP_AML_bt_20id_sep26b` (ff-hedm Lab Notebook §12). z: not flipped, HS 2026-09-27 |
+| `OmegaStep` | **measure it**; do not assume 0.25 | on `PUP_AML_bt_20id_sep26b`: 0.250514 from 360° pattern periodicity (16 lags / 7 files), 0.250552 from independent spot tracking, 0.25058 from the frame period (0.100232 s) × commanded 2.5°/s — true value 0.25051–0.25058; nominal 0.25 drifts ~0.75° over the sweep. Verified PROVISIONAL (the two routes disagree beyond their quoted errors) |
+| rotation readback | **none** in the file (`SMS/E/HR/samRy` all NaN); the beamline explog polls `E_HRSMS_samRy`/`samY` every ~7 s | same campaign |
+| CeO2 0/180 pair | Lsd split 3.3 mm = calibrant off-axis (HS: "I think it was"); **average the pair** (phase-1 §5f regime 2) | same campaign |
+
+Everything else in the doc set (dark per scan, frame 0, `RhoD`, `midas-calibrate-v2 --mode ff`)
+applies unchanged. Nothing at E has yet been verified end to end.
 
 Multi-panel (GE1–4) and multi-layer scans are *not* covered: `cross_det_merge`
 appears in this document only as a no-op. If your data differs in detector count
@@ -126,10 +154,10 @@ seems wrong:**
 
 | Condition | Why you cannot decide it yourself |
 |---|---|
-| par field 9 is **not** `aero` | no other value's ω sign has ever been established here (§2, §11) |
-| there is **no par file at all**, and no prior geometry you measured yourself | the ω sign and the detector mirror are **coupled**, and neither the calibration nor the grain list can break either one. Work §2b's three physical arguments and say which you used; adopting another run's answer is not a substitute — the two pre-existing 20-ID files disagree and both looked fine (§2b) |
+| par field 9 is **neither** `aero` **nor** `ramsrot` | no other value's ω sign has ever been established here (§2, §11). `aero` is negated; `ramsrot` (RAMS-III load frame) is counterclockwise and used as logged (§2) |
+| there is **no par file at all**, and no prior geometry you measured yourself | the ω sign and the detector mirror are **coupled**, and neither the calibration nor the grain list can break either one. Work §2b's three physical arguments and say which you used; adopting another run's answer is not a substitute — the two pre-existing 20-ID files disagree and both looked fine (§2b). **At 20-ID-E this halt is closed: ω positive, `ImTransOpt 1`, z not flipped (scope block, Lab Notebook §12)** |
 | `ImTransOpt` unknown for this detector, with no prior geometry and no asymmetric feature | a wrong flip mirrors the reconstruction and neither the grain list nor the calibrant strain shows it — the mirrored fit scored the *better* strain (§3f) |
-| the data is neither 1-ID GE nor 20-ID Varex, or is multi-panel / multi-layer | every field map and geometry recipe below assumes one of the two configurations in the scope table (header, §3) |
+| the data is neither 1-ID GE nor 20-ID Varex (D, or E per the conventions table), or is multi-panel / multi-layer | every field map and geometry recipe below assumes one of the two configurations in the scope table (header, §3) |
 | **no calibrant** file in the folder | there is no geometry without one, and `DetZ` is not a substitute (§0b, §4b) |
 | any package **below floor** after §0 | three of them produce plausible wrong answers, not errors (§0) |
 | calibrant strain **> 100 µε** after §5 | hard gate; a converged fit above it is not usable (rule 6) |
@@ -151,9 +179,10 @@ proceed. Everything not blocked by it should still be finished first.
    reads `aero`, the stage turns **clockwise** and **ω_MIDAS = −ω_logged**: negate
    `OmegaStart` *and* `OmegaStep`. Get this wrong and the reconstruction is **mirrored**,
    which is **not detectable from the grain list**. Step 1 of every new dataset, no
-   exceptions.
+   exceptions. **`ramsrot`** (the RAMS-III load-frame stage) turns **counterclockwise**:
+   use ω **as logged, not negated** (determined 2026-09-21, instrument scientist; §2).
 
-   **Where there is no par file (20-ID and anywhere else), ω and the detector mirror
+   **Where there is no par file (20-ID-D, 20-ID-E and anywhere else), ω and the detector mirror
    must be settled together — §2b.** They are coupled: a powder calibrant converges
    identically under `ImTransOpt` 1 and 2 because rings are centro-symmetric (only the
    refined BC lands on `N-1 − BC`), and a wrong ω sign mirrors the microstructure with
@@ -201,7 +230,7 @@ proceed. Everything not blocked by it should still be finished first.
 10b. **Indexing and refinement are BOTH c-omp — there is no GPU backend for either
    stage, in FF or PF.** This is now **enforced, not advisory**: `--indexer-backend`
    and `--refine-backend` accept `c-omp` and nothing else, and
-   `_require_comp_backends` (`midas_pipeline/config.py:666`) re-checks from
+   `_require_comp_backends` (`midas_pipeline/config.py:760`) re-checks from
    `__post_init__` so a library caller cannot bypass it. Both default to `c-omp`, so passing them is
    optional. The refiner *used* to default to python + torch + CUDA, which made a
    log line reading `indexing(FF, c-omp)` mean the run was silently half on the GPU
@@ -303,17 +332,17 @@ file — but is numbered last so the references above keep their numbers:
 | first frame kept | one bad frame + every ω off by one step | §3e |
 | "fixing" the zipper to skip the first file too | double skip — 1440 frames become 1439 | §3e |
 | `OmegaStart` set to the ω of **raw** frame 0 | it is the ω of the first frame **USED**, after `SkipFrame`. One step out, silently: nothing errors, `nFrames` is right, and `Grains.csv` is unchanged apart from a 0.25° rigid rotation of every orientation about ω. **§2 and §10 of this doc set said "raw frame 0" until 2026-08-31** — a run built from either is one step out. Check the zarr's `scan_parameters/start`, which must equal the negated raw frame 0 | §3e (authority), §2 |
-| expecting the zarr's frame count to be `logged − SkipFrame` | on the raw `.ge` path `exchange/data` keeps **all** raw frames and `SkipFrame` is recorded in `analysis_parameters` for downstream. Peakfit reads `frame_nr + skipFrame` via `frame_omega` (`midas_peakfit/orchestrator.py:360`) and `finalize()` does `nFrames -= skipFrame` (`params.py:151`), so raw frame 0 is never read. `shade_LSHR`: 1441 frames in the zarr, `start` 180.25, first frame used ω = 180.00. A reduced count here would mean a **double** skip | §3e |
+| expecting the zarr's frame count to be `logged − SkipFrame` | on the raw `.ge` path `exchange/data` keeps **all** raw frames and `SkipFrame` is recorded in `analysis_parameters` for downstream. Peakfit reads `frame_nr + skipFrame` via `frame_omega` (`midas_peakfit/orchestrator.py:383`) and `finalize()` does `nFrames -= skipFrame` (`params.py:151`), so raw frame 0 is never read. `shade_LSHR`: 1441 frames in the zarr, `start` 180.25, first frame used ω = 180.00. A reduced count here would mean a **double** skip | §3e |
 | `grain-tx` reporting `tx = 0.000000` with `rc=0` | **read `matched spots` before the number.** 0 (or a handful) means the forward model was built on default geometry or a mis-read ω scan — a **wrong `--paramstest`**, not a converged fit. `--paramstest` is the MASTER param file (`Parameters.txt`), never `<result>/LayerNr_1/paramstest.txt`, whose keys are `LsdFit`/`YBCFit`/`txFit`. Fingerprint: \|Δω\|, \|Δη\| medians ≈ 1.56 rad = π/2 | §5h |
 | re-running to change `tx` and getting a **byte-identical** `Grains.csv` | `tx` lives in the **zarr**; only `zip_convert` refreshes it, and every stage skips when its output exists. Resume `--from zip_convert` (peakfit self-skips on `Temp/AllPeaks_PS.bin`) and delete downstream outputs. Do not hand-roll a `tx` scan in the first place — `grain-tx` is the tool | §5h |
 | `DetZ` used as `Lsd` | 11 % geometry error that still "converges" | §4b |
 | energy taken from the filename | 1 % λ error → 1 % `Lsd`, wrong absolute lattice parameter | §4a |
 | dark read from `exchange/dark` | that group does not exist in DM files; dark silently all-zero | §3d |
 | `darkLoc` carried over from another scan **in the same beamtime** | it is a per-scan property. Measured across one 20-ID folder: gold `/exchange/dark` (mean 7.95), alumina `/exchange/bright` (1946), CeO2 calibrant `/exchange/dark` (1484), and the gold *data* already DAQ-dark-subtracted (97 % exact zeros) while the calibrant's was not. Wrong ⇒ the pedestal survives and each ring band becomes one ~42,000-px blob | §3d |
-| ω sign or `ImTransOpt` adopted from a prior run rather than measured | the two pre-existing 20-ID parameter files disagree — one is `ImTransOpt 1` + ω positive, the other `ImTransOpt 2` + ω negated — and **both produced plausible reconstructions**. The pair is self-consistent when wrong | §2b |
+| ω sign or `ImTransOpt` adopted from a prior run rather than measured | the two pre-existing 20-ID parameter files disagree — one is `ImTransOpt 1` + ω positive, the other `ImTransOpt 2` + ω negated (in hindsight these match the **E** and **D** conventions respectively; check which station a file came from before reading it as a contradiction) — and **both produced plausible reconstructions**. The pair is self-consistent when wrong | §2b |
 | a population `DiffPos` quoted as "the fit quality" | it can be a **mixture**. On a 20-ID alumina layer the population median was 655.7 µm while the 2.1 % of grains at `Confidence` ≥ 0.95 sat at **57.1 µm** — a 9.3× step across one 0.05 confidence bin. The median is a correct statistic *about a mixture* and describes neither population | DIAGNOSIS *A population `DiffPos` that will not come down* |
 | `Confidence` trusted, or dismissed, without checking whether it is **saturated** | on one alumina run 46.9 % of grains sit at ≥ 0.999 with `DiffPos` 619.7 µm against a 602.0 µm population — the column carries nothing. On another, 0.6 % sit there at **35.2 µm** against 655.7 — it is the sharpest discriminator in the file. Same sample, same station | DIAGNOSIS, same entry |
-| a matcher statistic quoted on a **censored** population | `CalcAngleErrors` drops any spot whose best candidate exceeds **1.0°** (`midas_fit_grain/c_port.py`), so the per-spot internal angle is truncated, not measured. Measured: alumina max exactly 1.0000 with p99 0.9878 and 0.82 % of spots at the cap; gold max 0.9427, uncensored. Read it from `residuals/spot_table` col 9 — `Grains.csv` `DiffAngle` is a per-grain *mean* and hides it | phase-3 §7 |
+| a matcher statistic quoted on a **censored** population | `CalcAngleErrors` drops any spot whose best candidate exceeds **1.0°** (`midas_fit_grain/c_port.py`), so the per-spot internal angle is truncated, not measured. Measured: alumina max exactly 1.0000 with p99 0.9878 and 0.82 % of spots at the cap; gold max 0.9427, uncensored. Read it from `residuals_prefit/spot_table` col 9 (`residuals/spot_table` before midas-process-grains 0.13.0) — `Grains.csv` `DiffAngle` is a per-grain *mean* and hides it | phase-3 §7 |
 | "distance to the nearest observed spot" compared **between samples** | it is a minimum over the candidates in the window, so it shrinks as the peak list gets denser. Raw it ranked alumina 21.9 µm against gold 106 µm — backwards. Against a random-orientation null the margins are gold 418×, alumina 18× | DIAGNOSIS, same entry |
 | `SigmaEta` from the peak fit read as a mosaicity | it is a Gaussian width and **under-reports a streaked spot by 18×** — 0.396 px where the second-moment principal axis measures 7.3 px. It was the basis of a retracted "mosaicity is refuted" claim | Lab Notebook §9d |
 | calibrant fit accepted on strain alone | wrong ring assignment fits beautifully | §5d |
@@ -352,12 +381,19 @@ file — but is numbered last so the references above keep their numbers:
 | grain counts compared across `--pg-mode` values | the modes are **not** interchangeable, and `spot_aware` is now **disabled** for manufacturing grains — 4.1 % of them outside the physical sample on a 20-ID rod, and only 7.2 % of the ones it added over `c_parity` had an EBSD partner. A higher grain count from it was never evidence of better recall | rule 10c, §7 |
 | `processgrains_diagnostics.h5` missing on a default run | **is** a version problem as of `midas-process-grains` 0.9.2, which makes `c_parity` write the residual sidecar. Below 0.9.2 the default mode returned without writing it and `--generate-h5` did not change that — so an older run's missing sidecar indicates nothing about that run's quality. `mode=physics` still has none (`v4_pipeline` never reads FitBest) | §7 |
 | a grain count one short of what the seeds justify, on `midas-process-grains` < 0.9.3 | **the LAST seed was silently deleted from every c-omp run.** `FitUnified.c` pwrites only `nSpotsComp` records per seed at a full-slot stride, so `FitBest.bin`/`ProcessKey.bin` end mid-slot; the readers floor-divided by the stride and truncated, and `c_parity_run` then truncated everything else to match, on the false rationale that the dropped seed "gets NrIDsPerID=0 anyway". Measured: a 56,125-seed Ni layer lost seed 56,124 (SpotID 245283, `keep_flag` set, completeness 0.777) — an ordinary live grain, gone with no warning, while `OrientPosFit.bin`/`Key.bin` both saw it. Fixed in 0.9.3 (zero-padded tail); the "truncating to common length" line no longer appears | §7 |
-| `DiffPos` re-derived from `residuals/spot_table` | **it does not reconcile.** Per-spot values reproduce the refiner's own FitBest `DiffLen`/`DiffOmega`/`InternalAngle` exactly, and per-grain means reproduce `Grains.csv` `DiffOme`/`DiffAngle` to 6e-7 — but `DiffPos` is not the mean of the per-spot `DiffLen` (median ratio 0.61, datasetA Ni, reproduced inside single-invocation c-omp `Results/FitBest_*.csv`). Different quantities; cause not diagnosed. Provisional | §7 |
+| `DiffPos` re-derived from the pre-fit `residuals_prefit/spot_table` (`residuals/spot_table` before midas-process-grains 0.13.0) | **it does not reconcile.** Per-spot values reproduce the refiner's own FitBest `DiffLen`/`DiffOmega`/`InternalAngle` exactly, and per-grain means reproduce `Grains.csv` `DiffOme`/`DiffAngle` to 6e-7 — but `DiffPos` is not the mean of the per-spot `DiffLen` (median ratio 0.61, datasetA Ni, reproduced inside single-invocation c-omp `Results/FitBest_*.csv`). Different quantities; cause not diagnosed. Provisional | §7 |
 | `MinNrSpots` < 3 on a full rotation | a 2-spot "grain" is **under-determined** (orientation has 3 DOF) — the refiner fits it, reports a position and lattice, and it survives every downstream filter, diluting every population statistic. **≥ 3 always; 2 only for a partial rotation; never below 2** | §6 |
 | matching margins tightened to "improve" `DiffPos` | **Do not.** `MarginRadial` / `MarginEta` / `MarginRadius` / `MarginOme` bracket what **indexing does not yet know** — position, orientation and strain are all still coarse at that stage (`StepSizePos 100`, `StepSizeOrient 0.1`) — **not** the spot size. Two consequences. (1) Tightening cannot lower `DiffPos` for a given grain: the **refiner never reads these values**, and applying `500 / 500 / 0.5` produced **bit-identical** refiner output. (2) What it actually changes is **which candidates survive indexing**, dropping the ones whose position the coarse search placed least well. On a sample wider than the beam that deletes off-axis grains and *looks* like an improvement while biasing the result toward the rotation axis. Sizing them against the spot width (2–3 px) is the specific error to avoid | rule 9, §6 |
 | a run passing `--refine-solver` / `--refine-loss` / `--refine-mode` / `--use-bounds` / `--bound-*` / `--pf-refine-mode` | **removed** (2026-08-19), so argparse fails with `unrecognized arguments`. Every one configured the in-process PyTorch refiner, which is disabled; the c-omp refiner has no configurable solver or loss. Delete the flag — there is no replacement and nothing is lost | rule 10b, §7 |
 | a backend judged by grepping its source for `tx` | `tx` is applied in `transforms`, not in indexing or refinement — **no** backend carries it, python included, and re-applying it downstream would double-count. Concluding "c-omp cannot see `tx`" abandons the only supported fast path for a non-defect. The deprecated `FF_HEDM/src/FitPosOrStrainsOMP.c` is also not the binary c-omp runs (that is `midas_fit_grain/c_src/FitUnified.c`) | §7 |
 | `--only` given a **comma-separated** list | `--only` is *repeatable*, not comma-separated. `--only a,b` is read as one stage named `"a,b"`, matches nothing, and the run reports **success with zero stages executed** in ~1 s. The orchestrator validates that `--only` omits required *upstream* stages, but does **not** validate that a stage name exists | §7 |
+| a layer that finishes with a tiny grain count next to its siblings (3 vs ~2,900) | the peak search logged `Frame N: failed to read` on transient filesystem permission errors (847 of 1441 frames) and zero-filled them, with the stage still marked success. `grep -c 'failed to read' driver.log` on every layer; re-run any layer that has one | lab notebook §15 |
+| the `ring-thresh` "paste this into the parameter file" block (`midas-peakfit` before the railed-C fix) | when criterion C was clean only at the sweep ceiling (500) the block printed `RingThresh N 500`, which discards most real spots on weak rings (~45 % of the kept spots on one ring). Fixed: C then reports RAILED and the block uses the most cleanly-resolved threshold. On an older install, read the per-ring "criterion C" line and replace any 500 that is the sweep ceiling | lab notebook §15 |
+| 20-ID `measurement/process/scan_parameters` | it can describe the PREVIOUS test scan (a 162-frame sweep of −180 to −139.5). Take ω from the stage readback (`measurement/instrument/SMS/aero`), never from that block | lab notebook §15 |
+| a dark file ~100 counts above the data floor, or a 1-frame dark | build the dark from the layer's own frames (per-pixel median). `SkipFrame` removes frames from the dark stack (`nDarks = max(0, nDarks − SkipFrame)`), so a 1-frame dark becomes zero darks: store it as a 2-frame stack | lab notebook §15 |
+| a `tx` / `Wedge` refit judged by the whole-population position spread or by the match rate | both improved, but the gain came from 245 NEWLY indexed grains; the same grains at completeness ≥ 0.8 did not tighten (±155 → ±157 µm). Compare the same grains before and after | lab notebook §15 |
+| comparing beam settings (10 µm, 50 µm, line focus) by grain count | the settings differ in more than beam height: spot counts (2–3× for the line focus at equal exposure), attenuator, slits. Report median completeness as well as the count at ≥ 0.8, and say "as run" | lab notebook §15 |
+| your own misorientation matcher for MIDAS orientation matrices | crystal symmetry goes on the CRYSTAL side (Oᵀ₁ O₂ S), as `midas_stress` does; sample-side gave 9.3 % where the right side gave 58.9 % on the same layers, and a check built on it wrongly refuted a true result | lab notebook §15 |
 
 ---
 

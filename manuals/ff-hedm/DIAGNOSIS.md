@@ -21,11 +21,11 @@ reads as coverage, which is exactly what the generic vocabulary existed to preve
 
 | symptom | emitted by |
 |---|---|
-| `bound.parameter_railed` | `midas_joint_ff_calibrate.grain_refine` names any refined parameter that finished on a bound (`grain_refine.py:344`) and exits 1 |
+| `bound.parameter_railed` | `midas_joint_ff_calibrate.grain_refine` names any refined parameter that finished on a bound (`grain_refine.py:401`) and exits 1 |
 | `count.zero_indexed` | `n_seeds_indexed` in `<result>/LayerNr_N/midas_state.h5` (`stages/indexing/metrics`), written by the pipeline's indexing stage, read against the indexer's wall time |
 | `split.illumination_radial` | this entry's own two tests — per-grain `DiffPos` binned by `r = sqrt(X²+Y²)` from `Grains.csv`, and the per-grain lit-ω-arc duty-cycle enrichment (its own null) |
 | `systematic.mirrored_beam_centre` | this entry's comparison of the `midas_calibrate_v2` refined beam centre against its mirror `N-1 − BC`, since strain does not diagnose it |
-| `resid.population_mixture` | this entry's own test — per-grain `DiffPos` from `Grains.csv` binned by `Confidence`, with the per-spot internal angle from `residuals/spot_table` col 9 as the censoring check. Both read from files the default run already writes |
+| `resid.population_mixture` | this entry's own test — per-grain `DiffPos` from `Grains.csv` binned by `Confidence`, with the per-spot internal angle from `residuals_prefit/spot_table` col 9 (that table was `residuals/spot_table` before midas-process-grains 0.13.0) as the censoring check. Both read from files the default run already writes |
 | `resid.hard_floor` | this entry's own test — the **shape** of the per-grain `DiffPos` distribution from `Grains.csv`: a distribution rising vertically from zero at some non-zero value, rather than approaching zero smoothly. Read from a file the default run already writes |
 
 Strain railing at the Kenesei `MargStrain` bound is **not** listed here: it is the
@@ -86,7 +86,7 @@ the discriminator. Procedure and the known-answer test: §5f, Lab Notebook §10b
 **Lever.** Refine Lsd against a calibrant. Powder cannot constrain `tx` (rotation about
 the beam) — keep it fixed there and refine it from grains in a second pass with
 `midas_joint_ff_calibrate.grain_refine`, whose reported `tx` is a **residual** that must be
-composed onto the applied one and iterated (`midas_joint_ff_calibrate/grain_refine.py:426`).
+composed onto the applied one and iterated (`midas_joint_ff_calibrate/grain_refine.py:483`).
 Put the resulting `tx` in `Parameters.txt` and re-run from `transforms` — that is the stage
 that applies it (`midas_transforms/fit_setup/core.py:376`). Do not look for `tx` in the
 indexer or refiner: neither backend carries one, and neither should.
@@ -187,7 +187,7 @@ fit = refine_lattice_from_d_spacings(hkls, d_obs, "hexagonal")   # no starting c
 A mismatch beyond ~2000 µε is the cause. **Do not widen `MargStrain`** — the box
 is not the problem, and a wider one hides a bad reference instead of exposing it.
 
-**Cause.** `StrainTensorKenesei` (`FitUnified.c:1061`) gauges
+**Cause.** `StrainTensorKenesei` (`FitUnified.c:1167`) gauges
 `(dsObs − ds0)/ds0` against the `ds0` implied by `LatticeParameter`, inside
 `MargStrain` (default ±0.01 = ±10000 µε; a compiled-in constant before
 2026-08-21). A reference wrong by ~0.7 % — e.g. pristine values used for a
@@ -405,8 +405,8 @@ the time on a random alumina sample against **79.2 %** on the high-confidence gr
 
 **Corollary — matcher statistics on such a population are CENSORED, and the censoring is
 invisible in `Grains.csv`.** The per-spot internal angle is truncated at the cap, so every
-statistic derived from it is biased low. Read it from `residuals/spot_table` column 9 in
-`processgrains_diagnostics.h5`, never from the `DiffAngle` column, which is a per-grain
+statistic derived from it is biased low. Read it from `residuals_prefit/spot_table` column 9 in
+`processgrains_diagnostics.h5` (that table was `residuals/spot_table` before midas-process-grains 0.13.0, which made `residuals/` the post-fit table), never from the `DiffAngle` column, which is a per-grain
 *mean* and smooths the truncation away:
 
 | run | per-spot max | p99 | frac at the cap | `Grains.csv` `DiffAngle` max |

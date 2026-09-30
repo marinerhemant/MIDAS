@@ -92,7 +92,21 @@ Grains are selected by **best fit** (smallest mean g-vector angle at the seed
 pose), not by highest confidence — confidence admits badly-fit grains whose
 residuals swamp `tx`'s sub-degree signal.
 
-Add `Wedge` to `--refine` to co-refine the rotation axis.
+Add `Wedge` to `--refine` to co-refine the rotation axis. The fitted `Wedge`
+has the Parameters-file sign, the C refiner's (see `Wedge` in
+[FF_Parameters_Reference.md](FF_Parameters_Reference.md)). Whenever `Wedge`
+is refined, or the input file already carries a non-zero one, the fit runs in
+the raw (pre-wedge) frame — observed (Y,Z) re-derived from `DetectorHor/Vert`,
+`OmeRaw` for ω, predictions that include each grain's rotated position — and
+the Wedge (and `tx`) written back are ABSOLUTE, not composed. The grain poses
+are held at the C refiner's values, which absorb part of a wrong wedge, so
+iterate (pipeline → grain-tx → Parameters) until it stops moving: on a
+synthetic at `Wedge −0.5`, from 0: −0.207, −0.372, −0.462, −0.489; at the
+true value it returns −0.4998. **Values produced before 2026-09 are not in
+this convention** — that grain-tx fitted a relative correction with the old
+opposite-sign midas_diffract forward and ignored grain positions (from 0 on a
+`Wedge −0.3` synthetic it returned +0.012; its iteration on the −0.5
+synthetic settled at −0.41). Re-derive them.
 
 ### Library
 

@@ -228,8 +228,9 @@ four frames left after the 1-ID skip-first-frame convention — a per-file total
 a per-frame count.)
 `FF_HEDM/Example/Parameters.txt` carries `UpperBoundThreshold 70000`, more than 4× the
 ceiling, so **no saturated peak on this detector would ever be flagged** and the
-whole-region drop that `UpperBoundThreshold` exists to trigger (`midas_peakfit/seeds.py:156`)
-never fires. Set it from the measured ceiling, not from the template.
+whole-region exclusion from the fit that `UpperBoundThreshold` exists to trigger
+(`midas_peakfit/seeds.py:251`; from midas-peakfit 0.7.0 that region is also written to
+`AllPeaks_PS_sat.bin` and flagged `ReturnCode -2` at merge) never fires. Set it from the measured ceiling, not from the template.
 
 > **Some fraction of those ceiling pixels are stuck, not signal — measure it, do not
 > carry this number.** The **dark** for the same scan was reported at **387 pixels** at
@@ -319,7 +320,7 @@ reference (§R2e) — landed today, together with three corrections listed under
    constant, not a parameter, and the earlier plan to expose it is dropped. What matters
    downstream is that statistics derived from the per-spot internal angle are *censored*
    on some samples — that check is now in DIAGNOSIS.
-2. **The 20-ID 0.25° ω zero-point offset stays.** Documented in §3e with its cost
+2. **The 20-ID-D 0.25° ω zero-point offset stays.** Documented in §3e with its cost
    (≤ 2.2 µm position at r = 500 µm; a 0.25° rigid rotation of every orientation) and the
    one case that must state it — absolute orientations compared against a measurement
    outside this pipeline. The attribution is still open; the symptom is measured.
@@ -328,7 +329,7 @@ reference (§R2e) — landed today, together with three corrections listed under
 
 * "On the 20-ID Varex the dark is in `/exchange/bright`" — one scan's answer promoted to
   a station property. It is per scan; one beamtime held all three cases (§3d).
-* "20-ID ω is already negated in the file" — it is not determinable from the file at all
+* "20-ID(-D) ω is already negated in the file" — it is not determinable from the file at all
   (§2b).
 * "Do not use `Confidence` to find the good grains" — true of a saturated run, false of a
   live one, and the discriminator is now the entry (DIAGNOSIS).

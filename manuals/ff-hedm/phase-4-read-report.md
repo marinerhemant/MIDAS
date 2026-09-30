@@ -11,7 +11,7 @@
 
 ### 8-0. The spots that were never found
 
-`SpotMatrix.csv` is **28 columns** from `midas-process-grains` 0.10.0, and the
+`SpotMatrix.csv` is **28 columns** from `midas-process-grains` 0.10.0 and **29** from 0.13.0 (`RelFitRMSE` appended; the first 28 are unchanged), and the
 important part is not the extra columns — it is the extra **rows**. Col 12
 `Matched` is 1 for an observed spot that matched a prediction and **0 for a
 reflection the grain was predicted to produce and which was never found**. Until
@@ -233,7 +233,7 @@ not let a §11 item become a fact by being quoted often enough.
 
 - [ ] §0 install gate run, output pasted, **no package below floor**
 - [ ] `SURVEY.md` written, every number read from a file rather than a name
-- [ ] ω sign established from par field 9 — or **stopped and asked** if it was not `aero`
+- [ ] ω sign established from par field 9 (`aero` negated, `ramsrot` as logged) — or **stopped and asked** if it was neither
 - [ ] `SkipFrame` set, and the peakfit banner's `nFrames` = logged frames − `SkipFrame`
 - [ ] dark verified **non-zero in the zarr**, not merely configured (§3d)
 - [ ] energy from three instrument records, never the filename

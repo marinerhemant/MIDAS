@@ -68,6 +68,10 @@ GrainRadius  Confidence  eFab11..eFab33  eKen11..eKen33  RMSErrorStrain  PhaseNr
 - `Confidence` is completeness (fraction of expected reflections observed).
 
 ### `processgrains_diagnostics.h5`
+`residuals/` is post-fit (FitBestFinal.bin); `residuals_prefit/` has the same fields for the
+pre-fit seed at the reference lattice (FitBest.bin). Each group's `attrs["source"]` says which.
+A sidecar with no `source` (written before 2026-09-28) holds the PRE-fit table under `residuals/`;
+the reports label it "PRE-fit" and add a finding saying so.
 ```
 residuals/spot_table   (N,11)  grain_idx, spot_id, ring_nr, eta_deg, dy_um, dz_um,
                                drad_um, dtan_um, dome_deg, internal_angle_deg, r_exp_um

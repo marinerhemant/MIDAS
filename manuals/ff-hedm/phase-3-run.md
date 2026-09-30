@@ -22,7 +22,7 @@ midas-pipeline run --scan-mode ff \
 
 **This is no longer something you have to remember.** `--indexer-backend` and
 `--refine-backend` each take **`c-omp` and nothing else**: argparse restricts the
-choice list, and `_require_comp_backends` (`midas_pipeline/config.py:666`), called
+choice list, and `_require_comp_backends` (`midas_pipeline/config.py:760`), called
 from `PipelineConfig.__post_init__`, re-checks it — so a notebook or library caller
 that builds a `PipelineConfig` directly cannot bypass it either. Both flags default
 to `c-omp`, so the two lines above are optional — keep them if you like the run
@@ -64,10 +64,10 @@ already carry the correction:
 
 | stage | what it does with `tx` |
 |---|---|
-| `zip_convert` | carries `tx` from `Parameters.txt` into the zarr — it is in the zipper's float key set (`midas_zipper/ff_zip.py:204`) |
+| `zip_convert` | carries `tx` from `Parameters.txt` into the zarr — it is in the zipper's float key set (`midas_zipper/ff_zip.py:220`) |
 | `transforms` | **applies it.** `apply_tilt_distortion` (`midas_transforms/fit_setup/core.py:376`) sends every raw pixel through `pixel_to_REta_torch` (`midas_transforms/fit_setup/transform.py:82`) and writes *corrected* lab-frame µm into `InputAll.csv` → `Spots.bin` / `ExtraInfo.bin` |
-| `indexing` (c-omp) | reads those corrected spots. It parses a `DetTx` out of `DetParams` and then never reads it back (`midas_index/c_src/IndexerUnified.c:2920`) — a dead store, not a dropped correction |
-| `refinement` (c-omp) | reads the same corrected spots — it mmaps `AllSpots` straight out of the transforms output (`midas_fit_grain/c_src/FitUnified.c:1348`). No `tx` in the geometry model, by design |
+| `indexing` (c-omp) | reads those corrected spots. It parses a `DetTx` out of `DetParams` and then never reads it back (`midas_index/c_src/IndexerUnified.c:3135`) — a dead store, not a dropped correction |
+| `refinement` (c-omp) | reads the same corrected spots — it mmaps `AllSpots` straight out of the transforms output (`midas_fit_grain/c_src/FitUnified.c:1572`). No `tx` in the geometry model, by design |
 | `refinement` (python) | parses `tx` into its config and deliberately does **not** apply it — `apply_tilts` stays False because "the refined tilts live in the *observed* positions already" (`midas_fit_grain/driver.py:249`) |
 
 The two refiner backends therefore agree: **observed spots are in the ideal
@@ -86,7 +86,7 @@ Two further traps in this diagnosis:
 - **Fitting `tx` is a separate tool, not a refiner setting.**
   `midas_joint_ff_calibrate.grain_refine` is the only thing that fits it; it
   works on **raw** `SpotMatrix` pixels and rotates them by a trial `tx`
-  (`midas_joint_ff_calibrate/grain_refine.py:426`). Its output is the *residual*
+  (`midas_joint_ff_calibrate/grain_refine.py:483`). Its output is the *residual*
   roll relative to whatever `tx` the reconstruction already ran with, so it must
   be **composed** (`tx_total = tx_applied + tx_reported`) and **iterated** to
   convergence — see [`ENVELOPE.md`](ENVELOPE.md) §5.
@@ -111,7 +111,7 @@ at startup; explicit values always win.
 
 `--pg-mode` takes `legacy`, `paper_claim` or **`c_parity`** (the default).
 **`spot_aware` has been removed from the choice list and is rejected in four
-independent places** — `PipelineConfig.__post_init__` (`midas_pipeline/config.py:687`),
+independent places** — `PipelineConfig.__post_init__` (`midas_pipeline/config.py:781`),
 the `midas-process-grains` CLI, and the package's own dispatcher and pipeline
 (`midas_process_grains/modes.py:69`, `pipeline.py:235`). Calling the library directly
 does not get you around it; an old script or config that asks for it fails with the
@@ -137,8 +137,9 @@ them outside the physical sample** (out to r = 1290 µm in a 500 µm-radius rod,
 0.6 %), and spread `|Z|` to a **p90 of 286 µm through a 50 µm beam half-height**
 (vs 57). Grains outside the rod and above the beam are not a tuning preference.
 
-`c_parity` reproduces the C reference: on datasetA Ni it returns **6150 grains vs
-C's 6138**, and matched pairs agree to **0.0000°** and **0.000 µm**.
+`c_parity` reproduces the C reference: on datasetA Ni it returned **6150 grains vs
+C's 6138** before the Pass A fix (midas-process-grains 0.13.0 compares every neighbour pair,
+so default counts can drop slightly toward C's), and matched pairs agree to **0.0000°** and **0.000 µm**.
 
 > **Open, not closed.** *Why* the `spot_aware` branch manufactures those grains is
 > **not yet diagnosed** — it is disabled on its output, not on a root cause. Do not
@@ -147,7 +148,9 @@ C's 6138**, and matched pairs agree to **0.0000°** and **0.000 µm**.
 
 **`c_parity` writes the residual sidecar** as of `midas-process-grains` 0.9.2.
 `processgrains_diagnostics.h5` — which carries `residuals/spot_table`, the
-per-observation residuals every downstream diagnostic needs — is produced by a default
+per-observation residuals every downstream diagnostic needs (post-fit, from
+`FitBestFinal.bin`, since 2026-09-28; the pre-fit seed table is `residuals_prefit/`, and an
+older sidecar's `residuals/` IS that pre-fit table) — is produced by a default
 run, and `utils/midas_ff_report.py` renders its full figure set from it. It costs no
 extra FitBest I/O (the rows are already in RAM for the strain solve); skip it with
 `--no-diagnostics-h5`.
@@ -169,7 +172,7 @@ describe the same geometry, and `DiffPos` is *not* the mean of the per-spot
 `DiffLen` in `FitBest.bin` — measured ratio **1.711** over all 55,593 seeds of a
 from-scratch Ni layer, 0 exceptions. ESTABLISHED: the mechanism is that
 `SpotsComp` is filled only by `CalcAngleErrors` at `Ini`
-(`FitUnified.c:1804`/`:1828`), the post-fit re-match being env-gated and off, while
+(`FitUnified.c:2074`/`:1828`), the post-fit re-match being env-gated and off, while
 `ErrorFin[0]` is `FitErrors12D(FinalResult)/nSpotsComp`. Convention-free
 confirmation: the theoretical ring radii in `FitBest.bin` vary by **3e-16** across
 grains whose refined `a` spans 4.3e-3, and match `hkls.csv` (built at the seed
@@ -204,7 +207,7 @@ rather than 0.0, so a missing value cannot be read as a measured one.
 
    **Geometry used to bite hardest here, and `tx` most of all.** `zip_convert(FF)` reuses
    any existing `*.MIDAS.zip`, and `transforms` reads the geometry out of the **zarr**,
-   not out of `Parameters.txt` (`midas_transforms/params.py:751`). So editing `tx`, `Lsd`,
+   not out of `Parameters.txt` (`midas_transforms/params.py:760`). So editing `tx`, `Lsd`,
    `BC` or a distortion coefficient and re-running into the same result folder silently
    kept the *old* value while the run reported success — the observation "changing `tx`
    does nothing", which is a **stale zarr** and not a backend that ignores `tx`.

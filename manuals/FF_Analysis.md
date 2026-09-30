@@ -471,10 +471,17 @@ The `Grains.csv` file has a multi-line header (lines starting with `%`) followed
 > dome_deg, internal_angle_deg, r_exp_um)` plus per-grain medians/MADs,
 > per-ring `dR/R` ppm, 30° eta profiles, and global scalars (schema =
 > `SPOT_RESIDUAL_COLS` in `compute/residual_decomposition.py`; see the
-> package README). A consistent per-ring |median dR/R| > 200 ppm indicates
-> a wrong reference `LatticeConstant` (a₀) absorbed as fake hydrostatic
-> strain — the run log warns when this trips. Legacy mode (no FitBest pass)
-> writes empty `/residuals` by design.
+> package README). `/residuals` is **post-fit** (from `FitBestFinal.bin`,
+> the refined grain); `/residuals_prefit` is the indexer seed at the
+> reference lattice (`FitBest.bin`), and each group names its `source`. In
+> `/residuals_prefit`, a consistent per-ring |median dR/R| > 200 ppm means
+> the reference `LatticeConstant` (a₀) is off by that fraction and every
+> grain's hydrostatic strain carries it — the run log warns when this trips.
+> **Sidecars written before 2026-09-28 have no `source` attribute and their
+> `/residuals` is the PRE-fit table**: its radial terms include the
+> reference-lattice mismatch and each grain's strain, so do not read them as
+> spot precision. Legacy mode (no FitBest pass) writes empty `/residuals` by
+> design.
 
 ### SpotMatrix.csv Column Format
 
