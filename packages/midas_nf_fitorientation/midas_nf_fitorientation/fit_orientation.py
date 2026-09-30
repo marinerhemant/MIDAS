@@ -55,7 +55,7 @@ from .soft_overlap import (
     forward_batched_grains,
     soft_overlap_loss,
 )
-from .torch_nm import batched_nelder_mead
+from .torch_nm import NM_MAX_ITER_DEFAULT, batched_nelder_mead
 from .triton_kernels import HAS_TRITON, fused_hard_frac
 
 
@@ -245,7 +245,7 @@ def fit_orientation_run(
     voxel_indices: Optional[np.ndarray] = None,
     create_output: bool = True,
     refine: str = "nm-batched",
-    nm_max_iter: int = 200,
+    nm_max_iter: Optional[int] = None,
     nm_batch_size: int = 4096,
 ) -> str:
     """
@@ -277,6 +277,12 @@ def fit_orientation_run(
           differs); kept for ablation only.
         - ``"lbfgs"``: legacy soft-only path, kept for comparison.
           **Not recommended for production.**
+    nm_max_iter : int or None, default None
+        Nelder-Mead iteration cap per candidate orientation (``nm-batched``
+        and ``nm-serial``). ``None`` takes the paramfile's ``NMMaxIter``,
+        which defaults to 5000 -- the legacy C cap. It is an upper bound
+        only: converged problems stop (and leave the batch) on their own,
+        and the number that hit the cap instead is logged.
     nm_batch_size : int, default 4096
         Maximum number of ``(voxel, winner)`` problems run through one
         batched NM call. The whole block is split into chunks of this
@@ -313,6 +319,8 @@ def fit_orientation_run(
         Path to the ``MicFileBinary`` output.
     """
     p = parse_paramfile(paramfile)
+    if nm_max_iter is None:
+        nm_max_iter = p.nm_max_iter
 
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -582,6 +590,7 @@ def fit_orientation_run(
             _refine_prog = _make_progress_logger("refine", B_total)
             xs_out = torch.empty_like(seeds_t)
             f_out = torch.empty(B_total, device=torch_device, dtype=dtype)
+            n_capped = 0
             for ck in range(n_chunks):
                 lo = ck * nm_batch_size
                 hi = min(lo + nm_batch_size, B_total)
@@ -595,7 +604,18 @@ def fit_orientation_run(
                 )
                 xs_out[lo:hi] = res.x
                 f_out[lo:hi] = res.fun
+                n_capped += int((~res.converged).sum())
                 _refine_prog(hi)
+            # The cap should be a backstop, not the stopping rule. Say so
+            # when it is not, rather than returning unconverged fits silently.
+            if n_capped:
+                LOGGER.warning(
+                    "refine: %d of %d problem(s) hit the %d-iteration NM cap "
+                    "before converging (raise NMMaxIter / --nm-max-iter)",
+                    n_capped, B_total, nm_max_iter)
+            else:
+                LOGGER.info("refine: all %d problem(s) converged within the "
+                            "%d-iteration cap", B_total, nm_max_iter)
 
             # Cache per (voxel, winner-pos).  We pull the whole batch
             # back to host memory once (single sync) instead of doing

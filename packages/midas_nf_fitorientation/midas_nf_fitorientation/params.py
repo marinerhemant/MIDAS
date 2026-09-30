@@ -27,10 +27,19 @@ encountered.
 
 New keys (extensions)
 ---------------------
-``RefineWedge``, ``WedgeTol``, ``TikhonovCalibration``,
+``RefineWedge``, ``WedgeTol``, ``NMMaxIter`` (orientation-fit NM cap,
+default 5000 as in the C), ``TikhonovCalibration``,
 ``TikhonovSigmaLsd``, ``TikhonovSigmaTilts``, ``TikhonovSigmaBC``,
 ``TikhonovSigmaWedge``, ``GaussianSplatSigmaPx`` (overrides automatic σ
 choice for the soft-overlap surrogate).
+
+Multipoint geometry multi-start (``midas-nf-fit-multipoint``, both
+objectives; see :mod:`.geom_multistart`): ``MultipointGeomStarts`` (total
+geometry starts; 0 = auto), ``MultipointGeomScan`` (deterministic scan points
+per scanned parameter, default 4), ``MultipointScanTilts`` (0/1, also scan
+tx/ty/tz), ``MultipointBasinFrac`` (distinct-basin threshold as a fraction of
+the tolerance, default 0.25), ``MultipointBasinMargin`` (relative objective
+margin for the ``multimodal`` flag, default 0.02).
 """
 from __future__ import annotations
 
@@ -170,12 +179,23 @@ class FitParams:
     save_n_solutions: int = 1
     min_miso_n_saves_deg: float = 1.0
     num_iterations: int = 1
+    #: Nelder-Mead iteration cap for the per-voxel orientation fit
+    #: (``NMMaxIter``). 5000 matches the legacy C ``FitOrientationOMP``; it
+    #: is a backstop, since converged problems stop on their own.
+    nm_max_iter: int = 5000
 
     # multipoint
     grid_size_um: float = 0.0
     grid_points: List[Tuple[float, float, float, float, float, float]] = field(
         default_factory=list
     )  # (xc, yc, ud, eul1, eul2, eul3)
+
+    # multipoint geometry multi-start (see geom_multistart.py)
+    multipoint_geom_starts: int = 0        # 0 => auto
+    multipoint_geom_scan: int = 4          # scan points per scanned param
+    multipoint_scan_tilts: bool = False
+    multipoint_basin_frac: float = 0.25    # x tolerance half-width
+    multipoint_basin_margin: float = 0.02  # relative, on frac overlap
 
     # toggles
     nearest_miso: bool = False
@@ -385,6 +405,8 @@ def parse_paramfile(path: str | Path) -> FitParams:
                     p.min_miso_n_saves_deg = float(args[0])
                 elif key == "NumIterations":
                     p.num_iterations = int(args[0])
+                elif key == "NMMaxIter":
+                    p.nm_max_iter = int(args[0])
 
                 # ---------- multipoint ----------
                 elif key == "GridSize":
@@ -429,6 +451,18 @@ def parse_paramfile(path: str | Path) -> FitParams:
                     p.nearest_miso = bool(int(args[0]))
                 elif key == "RefineWedge":
                     p.refine_wedge = bool(int(args[0]))
+
+                # ---------- multipoint geometry multi-start ----------
+                elif key == "MultipointGeomStarts":
+                    p.multipoint_geom_starts = int(args[0])
+                elif key == "MultipointGeomScan":
+                    p.multipoint_geom_scan = int(args[0])
+                elif key == "MultipointScanTilts":
+                    p.multipoint_scan_tilts = bool(int(args[0]))
+                elif key == "MultipointBasinFrac":
+                    p.multipoint_basin_frac = float(args[0])
+                elif key == "MultipointBasinMargin":
+                    p.multipoint_basin_margin = float(args[0])
 
                 # ---------- surrogate / Tikhonov ----------
                 elif key == "GaussianSplatSigmaPx":

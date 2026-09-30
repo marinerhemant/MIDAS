@@ -35,6 +35,15 @@ import numpy as np
 import torch
 
 from .fit_kernel import LBFGSConfig, run_lbfgs
+from .geom_multistart import (
+    analyse_basins,
+    build_geometry_starts,
+    default_n_starts,
+    geom_dict,
+    geometry_layout,
+    print_multimodal_warning,
+    scanned_params,
+)
 from .io import read_grid, read_hkls, read_mic_gridpoints, read_orientations
 from .obs_volume import ObsVolume
 from .params import FitParams, parse_paramfile
@@ -202,12 +211,18 @@ def fit_multipoint_run(
     verbose: bool = True,
     seed: int = 0,
     lbfgs_config: Optional[LBFGSConfig] = None,
+    result_dir: Optional[str] = None,
 ) -> dict:
     """Joint multi-voxel calibration. Replaces
     :program:`FitOrientationParametersMultiPoint`.
 
     Voxels and seed Eulers come from the paramfile's ``GridPoints``
     block (the C code's existing convention).
+
+    The refined geometry is always written to ``multipoint_result.json`` and
+    ``params_refined.txt`` in ``result_dir`` (default: ``OutputDirectory``,
+    else the cwd) and a summary is always printed; ``verbose`` only adds the
+    per-trial detail.
     """
     p = parse_paramfile(paramfile)
 
@@ -270,10 +285,9 @@ def fit_multipoint_run(
     )
 
     n_spots = len(grid_points)
-    if verbose:
-        print(f"Multipoint calibration: {n_spots} voxels, "
-              f"{p.n_distances} distances, "
-              f"{'wedge ON' if p.refine_wedge else 'wedge OFF'}")
+    print(f"Multipoint calibration (soft surrogate): {n_spots} voxels, "
+          f"{p.n_distances} distances, "
+          f"{'wedge ON' if p.refine_wedge else 'wedge OFF'}", flush=True)
 
     # Per-voxel positions (centroids) and Euler seeds from GridPoints.
     positions_np = np.zeros((n_spots, 3), dtype=np.float64)
@@ -313,10 +327,31 @@ def fit_multipoint_run(
 
     rng = torch.Generator(device="cpu").manual_seed(seed)
 
-    n_trials = max(1, p.num_iterations)
+    # ---- GEOMETRY multi-start (issue #16) ---------------------------------
+    # Every trial used to start the geometry at the paramfile value; only
+    # trials after the first were perturbed, by ~0.3 of a tolerance, and
+    # NumIterations defaults to 1. On real data the objective is multimodal
+    # in the wedge, so the answer depended on where the wedge was started.
+    # Each trial now has its own geometry START: the seed, a deterministic
+    # scan of the wedge (and optionally the tilts) over its tolerance box,
+    # and random starts inside the boxes (fixed RNG seed).
+    geom_names, geom_seed, geom_hw = geometry_layout(p)
+    geom_starts = build_geometry_starts(
+        geom_names, geom_seed, geom_hw,
+        scan=scanned_params(p), n_scan=p.multipoint_geom_scan,
+        n_total=default_n_starts(p), rng_seed=seed,
+    )
+    geometry_trials: List[dict] = []
+    nL = p.n_distances
+
+    n_trials = len(geom_starts)
+    print(f"  geometry multi-start: {n_trials} start(s) "
+          f"({', '.join(g.label for g in geom_starts)})", flush=True)
     for trial in range(n_trials):
+        gstart = geom_starts[trial]
         if verbose:
-            print(f"\n--- Multi-start trial {trial+1}/{n_trials} ---")
+            print(f"\n--- Multi-start trial {trial+1}/{n_trials} "
+                  f"[{gstart.label}] ---")
 
         # Per-voxel Euler boxes
         tol_rad = p.orient_tol * math.pi / 180.0
@@ -350,19 +385,33 @@ def fit_multipoint_run(
             if p.refine_wedge else None
         )
 
-        # Trials > 0: perturb the unbounded leaves so we sample a
-        # different basin. Scale 0.3 = 30% of one tolerance width.
+        # Trials > 0: the geometry starts at this trial's geometry start
+        # (the boxes stay centred on the seed), and the Eulers are perturbed
+        # by 0.3 of a tolerance as before.
         if trial > 0:
             for be in box_eulers:
                 be.perturb(0.3, generator=rng)
-            box_lsd0.perturb(0.3, generator=rng)
+            gx = torch.tensor(gstart.x, device=torch_device, dtype=dtype)
+            box_tilts.set_x(gx[0:3])
+            box_lsd0.set_x(gx[3:4])
             if box_lsd_delta is not None:
-                box_lsd_delta.perturb(0.3, generator=rng)
-            box_ybc.perturb(0.3, generator=rng)
-            box_zbc.perturb(0.3, generator=rng)
-            box_tilts.perturb(0.3, generator=rng)
+                box_lsd_delta.set_x(gx[4:3 + nL])
+            box_ybc.set_x(gx[3 + nL:3 + 2 * nL])
+            box_zbc.set_x(gx[3 + 2 * nL:3 + 3 * nL])
             if box_wedge is not None:
-                box_wedge.perturb(0.3, generator=rng)
+                box_wedge.set_x(gx[3 + 3 * nL])
+
+        def geom_vector() -> np.ndarray:
+            parts = [box_tilts.x, box_lsd0.x]
+            if box_lsd_delta is not None:
+                parts.append(box_lsd_delta.x)
+            parts += [box_ybc.x, box_zbc.x]
+            if box_wedge is not None:
+                parts.append(box_wedge.x.reshape(1))
+            return torch.cat([t.detach().reshape(-1) for t in parts]
+                             ).cpu().numpy().astype(np.float64)
+
+        start_vec = geom_vector()
 
         def make_geom_ov() -> GeometryOverrides:
             if box_lsd_delta is None:
@@ -506,6 +555,22 @@ def fit_multipoint_run(
         res = run_lbfgs(closure_joint, joint_leaves, cfg_joint)
         trial_secs = time.perf_counter() - t0
 
+        with torch.no_grad():
+            trial_end_loss = float(
+                _multipoint_loss(model, obs, box_eulers, positions_um,
+                                 sigma_px, make_geom_ov())
+            )
+        end_vec = geom_vector()
+        geometry_trials.append(dict(
+            trial=trial,
+            label=gstart.label,
+            start=start_vec.tolist(),
+            end=end_vec.tolist(),
+            start_geometry=geom_dict(geom_names, start_vec),
+            end_geometry=geom_dict(geom_names, end_vec),
+            start_frac_overlap=1.0 - trial_start_loss,
+            end_frac_overlap=1.0 - trial_end_loss,
+        ))
         if verbose:
             gain = trial_start_loss - res.final_loss
             print(f"Trial {trial+1}: {trial_start_loss:.6f} -> "
@@ -540,31 +605,94 @@ def fit_multipoint_run(
                 ],
             }
 
-    if verbose:
-        print(f"\nBest result from trial {best_overall_state['trial']+1}: "
-              f"avg overlap = {1.0 - best_overall_state['loss']:.6f}")
-        # State the gain against the seed, not just the final value: a good
-        # absolute number with no gain means the seed was already there, and a
-        # tiny gain on a near-1.0 loss means the objective saw nothing.
-        _gain = seed_loss - best_overall_state['loss']
-        print(f"  vs SEED: loss {seed_loss:.6f} -> "
-              f"{best_overall_state['loss']:.6f} (improved {_gain:+.6f})")
-        if seed_loss > 0.99:
-            print("  DO NOT ADOPT THIS GEOMETRY without an independent check: "
-                  "the seed scored ~zero overlap, so the objective is not "
-                  "tracking the data on this dataset.")
-        for d in range(p.n_distances):
-            print(f"Layer {d}: Lsd={best_overall_state['Lsd'][d]:.4f}, "
-                  f"BC=({best_overall_state['y_BC'][d]:.4f}, "
-                  f"{best_overall_state['z_BC'][d]:.4f})")
-        for d in range(p.n_distances):
-            print(f"Tilts[{d}]: tx={best_overall_state['tilts'][d][0]:.4f}, "
-                  f"ty={best_overall_state['tilts'][d][1]:.4f}, "
-                  f"tz={best_overall_state['tilts'][d][2]:.4f}")
-        if best_overall_state.get("wedge") is not None:
-            print(f"Wedge: {best_overall_state['wedge']:.4f}")
+    # The summary is the RESULT, so it is printed unconditionally; only the
+    # per-trial detail above is gated on verbose.
+    print(f"\nBest result from trial {best_overall_state['trial']+1}: "
+          f"avg overlap = {1.0 - best_overall_state['loss']:.6f}")
+    # State the gain against the seed, not just the final value: a good
+    # absolute number with no gain means the seed was already there, and a
+    # tiny gain on a near-1.0 loss means the objective saw nothing.
+    _gain = seed_loss - best_overall_state['loss']
+    print(f"  vs SEED: loss {seed_loss:.6f} -> "
+          f"{best_overall_state['loss']:.6f} (improved {_gain:+.6f})")
+    if seed_loss > 0.99:
+        print("  DO NOT ADOPT THIS GEOMETRY without an independent check: "
+              "the seed scored ~zero overlap, so the objective is not "
+              "tracking the data on this dataset.")
+    for d in range(p.n_distances):
+        print(f"Layer {d}: Lsd={best_overall_state['Lsd'][d]:.4f}, "
+              f"BC=({best_overall_state['y_BC'][d]:.4f}, "
+              f"{best_overall_state['z_BC'][d]:.4f})")
+    # Tilts are ONE shared triple (see tilts0 above); every row is identical.
+    _t = best_overall_state['tilts'][0]
+    print(f"Tilts (shared): tx={_t[0]:.4f}, ty={_t[1]:.4f}, tz={_t[2]:.4f}")
+    if best_overall_state.get("wedge") is not None:
+        print(f"Wedge: {best_overall_state['wedge']:.4f}")
 
+    _print_trial_table(geometry_trials, scanned_params(p) or geom_names)
+    basins = analyse_basins(
+        geometry_trials, geom_names, geom_hw,
+        basin_frac=p.multipoint_basin_frac,
+        rel_margin=p.multipoint_basin_margin,
+    )
+    print_multimodal_warning(basins, "soft")
+
+    summary = dict(
+        objective="soft",
+        seed_frac_overlap=1.0 - seed_loss,
+        final_frac_overlap=1.0 - best_overall_state["loss"],
+        Lsd=best_overall_state["Lsd"],
+        y_BC=best_overall_state["y_BC"],
+        z_BC=best_overall_state["z_BC"],
+        tilts=[float(v) for v in _t],
+        wedge=(best_overall_state["wedge"]
+               if best_overall_state.get("wedge") is not None
+               else float(p.wedge)),
+        wedge_refined=bool(p.refine_wedge),
+        n_voxels=n_spots,
+        best_trial=best_overall_state["trial"],
+        eulers=best_overall_state["voxel_eulers_rad"],
+        voxel_individual_overlaps=best_overall_state[
+            "voxel_individual_overlaps"],
+        seed_tracks_data=bool(seed_loss <= 0.99),
+        **_multistart_fields(geom_names, geometry_trials, basins),
+    )
+    paths = write_multipoint_outputs(paramfile, p, summary, result_dir)
+    print(f"Wrote {paths['result_json']}")
+    print(f"Wrote {paths['params_refined']}", flush=True)
+    best_overall_state.update(paths)
+    best_overall_state.update(
+        _multistart_fields(geom_names, geometry_trials, basins))
     return best_overall_state
+
+
+def _multistart_fields(names, trials, basins) -> dict:
+    """The geometry multi-start record that goes into the result json."""
+    return dict(
+        geometry_names=list(names),
+        geometry_trials=trials,
+        multimodal=basins["multimodal"],
+        n_basins=basins["n_basins"],
+        n_competitive_basins=basins["n_competitive_basins"],
+        ambiguous_params=basins["ambiguous_params"],
+        basins=basins["basins"],
+        multimodal_criteria=basins["criteria"],
+    )
+
+
+def _print_trial_table(trials: List[dict], show: Sequence[str]) -> None:
+    """One line per geometry start: start -> end of the scanned parameters
+    and the objective. Always printed; it is the evidence for (or against)
+    a unique geometry."""
+    if len(trials) <= 1:
+        return
+    print(f"  geometry trials ({len(trials)}):")
+    for t in trials:
+        se = "  ".join(
+            f"{n} {t['start_geometry'][n]:.5g}->{t['end_geometry'][n]:.5g}"
+            for n in show if n in t["start_geometry"])
+        print(f"    [{t['label']}] overlap {t['start_frac_overlap']:.6f}"
+              f" -> {t['end_frac_overlap']:.6f}   {se}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -612,10 +740,30 @@ def fit_multipoint_hard_run(
         x[3+i]        i=1..nL-1       Lsd[i] = Lsd[i-1] + x[3+i]   (cumulative)
         x[3+nL : 3+2nL]               ybc per layer
         x[3+2nL : 3+3nL]              zbc per layer
-        x[3+3nL + 3i : +3]            Eulers of voxel i
+        [x[3+3nL]                     wedge, ONLY with RefineWedge 1]
+        x[n_geom + 3i : +3]           Eulers of voxel i
+
+    The C never refines the wedge; ``RefineWedge 1`` (with ``WedgeTol``) is
+    the extension the soft path already honoured, and it is honoured here the
+    same way: one extra geometry slot, bounded to ``Wedge +/- WedgeTol``.
+    With ``RefineWedge 0`` the layout is exactly the C's.
 
     It also uses the PACKED obs volume, so it needs ~1 bit/pixel instead of the
     dense float32 the soft path requires (1.9 GB vs 56 GiB on a 3600-frame scan).
+
+    SATURATION. The objective is a mean of per-voxel fractions and tops out at
+    exactly 1.0 once every predicted spot of every chosen voxel lands inside an
+    observed spot. With ~10-20 voxels on real data that happens easily (Au at
+    1-ID: 0.745 -> 1.0000 in round 1), and from then on the objective is FLAT:
+    the geometry returned is one arbitrary point on a plateau, not a
+    measurement. This is detected (``saturated``), the geometry parameters the
+    objective cannot see around the optimum are listed (``flat_params``, a
+    +/- quarter-tolerance probe), and ``under_determined`` is set and warned
+    about loudly if either holds. The objective itself is unchanged.
+
+    Output: always prints a summary and writes ``multipoint_result.json`` and
+    ``params_refined.txt`` to ``result_dir`` (default ``OutputDirectory``, else
+    the cwd). ``verbose`` adds per-round detail only.
     """
     from scipy.optimize import minimize
 
@@ -659,7 +807,19 @@ def fit_multipoint_hard_run(
     positions_um = torch.tensor(positions_np, device=torch_device, dtype=dtype)
 
     nL = p.n_distances
-    n_geom = 3 + 3 * nL
+    # Wedge slot, appended to the geometry block only when refined, so that
+    # RefineWedge 0 keeps the C's exact layout. This path used to ignore
+    # RefineWedge entirely: no slot, no bound, no report.
+    refine_wedge = bool(p.refine_wedge)
+    i_wedge = 3 + 3 * nL if refine_wedge else None
+    n_geom = 3 + 3 * nL + (1 if refine_wedge else 0)
+    geom_names = (
+        ["tx", "ty", "tz", "Lsd[0]"]
+        + [f"dLsd[{i}]" for i in range(1, nL)]
+        + [f"ybc[{i}]" for i in range(nL)]
+        + [f"zbc[{i}]" for i in range(nL)]
+        + (["wedge"] if refine_wedge else [])
+    )
 
     # ---- seed vector in the C's layout ------------------------------------
     x0 = np.zeros(n_geom + 3 * n_spots, dtype=np.float64)
@@ -670,6 +830,8 @@ def fit_multipoint_hard_run(
     for i in range(nL):
         x0[3 + nL + i] = p.ybc[i]
         x0[3 + 2 * nL + i] = p.zbc[i]
+    if refine_wedge:
+        x0[i_wedge] = p.wedge
     x0[n_geom:] = seed_eulers_np.reshape(-1)
 
     # ---- bounds straight from the paramfile tolerances ---------------------
@@ -683,6 +845,8 @@ def fit_multipoint_hard_run(
     for i in range(nL):
         lo[3 + nL + i] -= p.bc_tol_a; hi[3 + nL + i] += p.bc_tol_a
         lo[3 + 2 * nL + i] -= p.bc_tol_b; hi[3 + 2 * nL + i] += p.bc_tol_b
+    if refine_wedge:
+        lo[i_wedge] -= p.wedge_tol; hi[i_wedge] += p.wedge_tol
     ot = math.radians(p.orient_tol)
     lo[n_geom:] -= ot; hi[n_geom:] += ot
     bounds = list(zip(lo.tolist(), hi.tolist()))
@@ -704,7 +868,15 @@ def fit_multipoint_hard_run(
         eul = torch.tensor(
             np.asarray(x[n_geom:], dtype=np.float64).reshape(n_spots, 3),
             device=torch_device, dtype=dtype)
-        return GeometryOverrides(Lsd=Lsd, y_BC=ybc, z_BC=zbc, tilts=tilts), eul
+        # Wedge is degrees, as in the paramfile and GeometryOverrides. When it
+        # is not refined it is left to the model, which was built with p.wedge.
+        wedge = (
+            torch.tensor(float(x[i_wedge]), device=torch_device, dtype=dtype)
+            if refine_wedge else None
+        )
+        return GeometryOverrides(
+            Lsd=Lsd, y_BC=ybc, z_BC=zbc, tilts=tilts, wedge=wedge,
+        ), eul
 
     n_eval = [0]
 
@@ -858,7 +1030,8 @@ def fit_multipoint_hard_run(
 
     seed_val = objective(x0)
     print(f"Multipoint (HARD FracOverlap, C-equivalent): "
-          f"{n_spots} voxels, {nL} distances", flush=True)
+          f"{n_spots} voxels, {nL} distances, "
+          f"{'wedge ON' if refine_wedge else 'wedge OFF'}", flush=True)
     print(f"  Original val: {1.0 - seed_val:.10f}   "
           f"(this is the C's 'Original val')", flush=True)
 
@@ -930,6 +1103,77 @@ def fit_multipoint_hard_run(
     if verbose and _pool is not None:
         print(f"  global phase: {_nw} threads (deferred updating)", flush=True)
 
+    # Best value after each stage, so a plateau is visible in the output.
+    history: List[dict] = [dict(stage="seed", frac_overlap=1.0 - f_best)]
+    saturated_at: Optional[str] = (
+        "seed" if (1.0 - f_best) >= 1.0 - SATURATION_EPS else None
+    )
+
+    def _record(stage: str) -> None:
+        nonlocal saturated_at
+        v = 1.0 - f_best
+        history.append(dict(stage=stage, frac_overlap=v))
+        if saturated_at is None and v >= 1.0 - SATURATION_EPS:
+            saturated_at = stage
+            # Say it NOW, not only at the end: every later stage is searching
+            # a flat objective and cannot change the answer.
+            print(f"  WARNING: hard objective SATURATED at 1.0 after {stage}; "
+                  f"the geometry is no longer determined by the data (see "
+                  f"the end-of-run summary).", flush=True)
+
+    # ---- GEOMETRY multi-start (issue #16) ---------------------------------
+    # The ladder below starts from ONE point, the paramfile geometry. Its
+    # global phase samples the whole box, but with a small budget in a
+    # 3 + 3*nL + 3*nSpots dimensional space, so a weakly-determined, multimodal
+    # coordinate (the wedge, on real AlON NF) is not reliably explored. Run a
+    # local search from each geometry start (seed, deterministic scan of the
+    # wedge / optionally tilts, random starts in the boxes; Eulers at their
+    # seeds), record every start and end, and hand the best to the ladder.
+    # With a single start (RefineWedge 0, NumIterations <= 1, no
+    # MultipointGeomStarts) this is skipped and the run is exactly as before.
+    assert geometry_layout(p)[0] == geom_names   # one layout, both paths
+    geom_starts = build_geometry_starts(
+        geom_names, x0[:n_geom], _halfwidth[:n_geom],
+        scan=scanned_params(p), n_scan=p.multipoint_geom_scan,
+        n_total=default_n_starts(p), rng_seed=seed,
+    )
+    geometry_trials: List[dict] = []
+
+    def _trial_record(label, xs, fs, xe, fe):
+        geometry_trials.append(dict(
+            trial=len(geometry_trials), label=label,
+            start=[float(v) for v in xs[:n_geom]],
+            end=[float(v) for v in xe[:n_geom]],
+            start_geometry=geom_dict(geom_names, xs[:n_geom]),
+            end_geometry=geom_dict(geom_names, xe[:n_geom]),
+            start_frac_overlap=1.0 - float(fs),
+            end_frac_overlap=1.0 - float(fe),
+        ))
+
+    if len(geom_starts) > 1:
+        print(f"  geometry multi-start: {len(geom_starts)} starts "
+              f"({', '.join(g.label for g in geom_starts)})", flush=True)
+        for gs in geom_starts:
+            xs = x0.copy()
+            xs[:n_geom] = np.clip(gs.x, _lo[:n_geom], _hi[:n_geom])
+            fs = objective(xs)
+            r = minimize(
+                objective, xs, method="Nelder-Mead", bounds=bounds,
+                options=dict(maxiter=max_iter, maxfev=max_iter,
+                             xatol=1e-7, fatol=_fatol, adaptive=True,
+                             initial_simplex=_simplex(xs)),
+            )
+            _trial_record(gs.label, xs, fs, r.x, r.fun)
+            if float(r.fun) < f_best:
+                f_best, x_best = float(r.fun), r.x.copy()
+            if verbose:
+                print(f"    [{gs.label}] {1.0 - fs:.10f} -> "
+                      f"{1.0 - float(r.fun):.10f}", flush=True)
+        _record("geometry starts")
+    x_ladder_start = x_best.copy()
+    f_ladder_start = f_best
+    _i_ladder = len(history)
+
     for rnd in range(n_rounds):
         r = minimize(
             objective, x_best, method="Nelder-Mead", bounds=bounds,
@@ -939,6 +1183,7 @@ def fit_multipoint_hard_run(
         )
         if float(r.fun) < f_best:
             f_best, x_best = float(r.fun), r.x.copy()
+        _record(f"round {rnd+1} local")
         if verbose:
             print(f"  round {rnd+1}/{n_rounds} local : "
                   f"{1.0 - f_best:.10f}", flush=True)
@@ -952,6 +1197,7 @@ def fit_multipoint_hard_run(
         )
         if float(gr.fun) < f_best:
             f_best, x_best = float(gr.fun), gr.x.copy()
+        _record(f"round {rnd+1} global")
         if verbose:
             print(f"  round {rnd+1}/{n_rounds} global: "
                   f"{1.0 - f_best:.10f}", flush=True)
@@ -965,6 +1211,7 @@ def fit_multipoint_hard_run(
     )
     if float(r.fun) < f_best:
         f_best, x_best = float(r.fun), r.x.copy()
+    _record("final polish")
     if _pool is not None:
         _pool.shutdown(wait=True)
 
@@ -976,6 +1223,42 @@ def fit_multipoint_hard_run(
     secs = time.perf_counter() - t0
 
     best_val = 1.0 - float(res.fun)
+
+    # ---- is the returned geometry actually DETERMINED? ---------------------
+    # Probe each geometry coordinate by +/- a quarter of its tolerance
+    # half-width. A coordinate whose move changes the objective in NEITHER
+    # direction sits on a plateau: the data do not pin it, and its returned
+    # value is whatever the optimiser happened to stop on. 2*n_geom extra
+    # evaluations, negligible next to the search.
+    flat_params: List[str] = []
+    for j in range(n_geom):
+        step = 0.25 * _halfwidth[j]
+        if step <= 0:
+            continue
+        moved = False
+        for sgn in (+1.0, -1.0):
+            xp = res.x.copy()
+            xp[j] = float(np.clip(xp[j] + sgn * step, _lo[j], _hi[j]))
+            if xp[j] == res.x[j]:
+                continue
+            if abs(objective(xp) - float(res.fun)) > SATURATION_EPS:
+                moved = True
+                break
+        if not moved:
+            flat_params.append(geom_names[j])
+
+    saturated = saturated_at is not None
+    # Flat across rounds: nothing after round 1 changed the value. On its own
+    # this is also what a converged run looks like, so it is REPORTED but is
+    # not by itself the under-determined verdict -- the probe above is.
+    _after_r1 = [h["frac_overlap"] for h in history[_i_ladder + 1:]]
+    flat_across_rounds = bool(
+        n_rounds >= 2 and _after_r1
+        and max(_after_r1) - min(_after_r1) <= SATURATION_EPS
+    )
+    under_determined = bool(saturated or flat_params)
+
+    # ---- summary: ALWAYS printed (it is the result, not chatter) ----------
     print(f"  Final value:  {best_val:.10f}   "
           f"({n_eval[0]} evals, {secs:.1f} s)")
     print(f"  improvement:  {best_val - (1.0 - seed_val):+.10f}")
@@ -988,23 +1271,64 @@ def fit_multipoint_hard_run(
               f"{float(geom_ov.z_BC[d]):.4f})")
     print(f"Tilts (shared): tx={res.x[0]:.4f}, ty={res.x[1]:.4f}, "
           f"tz={res.x[2]:.4f}")
-    print(f"Wedge: {float(p.wedge):.4f} (fixed)")
+    wedge_out = float(res.x[i_wedge]) if refine_wedge else float(p.wedge)
+    print(f"Wedge: {wedge_out:.4f} "
+          f"({'refined' if refine_wedge else 'fixed, RefineWedge 0'})")
+
+    if under_determined:
+        bar = "!" * 72
+        print(bar)
+        print("WARNING: the multipoint geometry is UNDER-DETERMINED.")
+        if saturated:
+            print(f"  The hard objective saturated at 1.0 (at: {saturated_at})."
+                  f" Every predicted spot of the {n_spots} chosen voxels is"
+                  f" already inside an observed spot, so the objective is"
+                  f" flat and the geometry above is one arbitrary point on a"
+                  f" plateau.")
+        if flat_params:
+            print(f"  Moving these by +/-25% of their tolerance does not change"
+                  f" the objective: {', '.join(flat_params)}")
+        print("  Do NOT adopt it as is. Use --objective soft, and/or more (and")
+        print("  more widely spread) voxels, and/or tighter tolerances, then")
+        print("  check the result against an independent measurement.")
+        print(bar, flush=True)
+    elif flat_across_rounds:
+        print("  note: nothing after round 1 changed the objective.")
+
+    # The ladder's own end point is a trial too (its global phase can change
+    # basin), so it takes part in the basin analysis.
+    _trial_record("ladder" if len(geom_starts) > 1 else "seed",
+                  x_ladder_start, f_ladder_start, res.x, res.fun)
+    _print_trial_table(geometry_trials, scanned_params(p) or geom_names)
+    basins = analyse_basins(
+        geometry_trials, geom_names, _halfwidth[:n_geom],
+        basin_frac=p.multipoint_basin_frac,
+        rel_margin=p.multipoint_basin_margin,
+    )
+    print_multimodal_warning(basins, "hard")
 
     result = dict(
         objective="hard",
-        wedge=float(p.wedge),
-        wedge_refined=False,
-        n_voxels=n_spots,
-        compiled_forward=compiled_forward,
         seed_frac_overlap=1.0 - seed_val,
         final_frac_overlap=best_val,
         Lsd=lsd_out,
         y_BC=geom_ov.y_BC.tolist(),
         z_BC=geom_ov.z_BC.tolist(),
         tilts=[float(res.x[0]), float(res.x[1]), float(res.x[2])],
+        wedge=wedge_out,
+        wedge_refined=refine_wedge,
+        n_voxels=n_spots,
         eulers=eul.tolist(),
         n_evals=n_eval[0],
         seconds=secs,
+        history=history,
+        saturated=saturated,
+        saturated_at=saturated_at,
+        flat_across_rounds=flat_across_rounds,
+        flat_params=flat_params,
+        under_determined=under_determined,
+        compiled_forward=compiled_forward,
+        **_multistart_fields(geom_names, geometry_trials, basins),
     )
     paths = write_multipoint_outputs(paramfile, p, result, result_dir)
     print(f"Wrote {paths['result_json']}")

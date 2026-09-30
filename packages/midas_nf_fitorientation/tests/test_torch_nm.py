@@ -226,3 +226,45 @@ def test_batched_nm_handles_shared_bounds():
     assert torch.allclose(
         res.x[1], torch.tensor([-2.0, -2.0, -2.0], dtype=torch.float64), atol=1e-2,
     )
+
+
+def _rosenbrock(x, idx):
+    return (100.0 * (x[:, 1:] - x[:, :-1] ** 2) ** 2
+            + (1.0 - x[:, :-1]) ** 2).sum(dim=-1)
+
+
+def test_default_cap_lets_a_long_problem_converge():
+    """Regression: the default cap used to be 200 iterations, which
+    silently truncated anything that needed more (the C uses 5000).
+
+    5-D Rosenbrock from the textbook start needs ~440 iterations here. With
+    the old cap it stops far from the minimum and reports not-converged;
+    with the default it must converge on its own, well BEFORE the cap, so
+    it is the tolerance test and not the cap that ends the loop.
+    """
+    from midas_nf_fitorientation.torch_nm import NM_MAX_ITER_DEFAULT
+
+    assert NM_MAX_ITER_DEFAULT == 5000
+    x0 = torch.full((2, 5), -1.2, dtype=torch.float64)
+    x0[1] = 0.0
+
+    old = batched_nelder_mead(_rosenbrock, x0.clone(), None,
+                              max_iter=200, init_step=0.5)
+    assert not bool(old.converged.any()), "toy problem no longer needs >200"
+
+    res = batched_nelder_mead(_rosenbrock, x0.clone(), None, init_step=0.5)
+    assert bool(res.converged.all())
+    assert 200 < res.n_iter < NM_MAX_ITER_DEFAULT
+    assert torch.allclose(res.x, torch.ones_like(res.x), atol=1e-4)
+
+
+def test_orientation_cap_defaults_from_paramfile(tmp_path):
+    """``NMMaxIter`` is a paramfile key; absent, it is the C's 5000."""
+    from midas_nf_fitorientation.params import parse_paramfile
+
+    base = "nDistances 1\nLsd 1000\nBC 1 1\n"
+    f = tmp_path / "p.txt"
+    f.write_text(base)
+    assert parse_paramfile(f).nm_max_iter == 5000
+    f.write_text(base + "NMMaxIter 750\n")
+    assert parse_paramfile(f).nm_max_iter == 750

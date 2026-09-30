@@ -33,6 +33,7 @@ from scipy.optimize import minimize
 from midas_diffract.forward import HEDMForwardModel
 
 from .obs_volume import ObsVolume
+from .torch_nm import NM_MAX_ITER_DEFAULT
 
 
 @dataclass
@@ -66,7 +67,7 @@ def polish_hard_frac(
     pos_um: torch.Tensor,
     tol_rad: float,
     *,
-    max_iter: int = 200,
+    max_iter: int = NM_MAX_ITER_DEFAULT,
     xatol: float = 1e-5,
     fatol: float = 1e-5,
     adaptive: bool = True,
@@ -90,9 +91,10 @@ def polish_hard_frac(
     tol_rad : float
         Half-width of the ±-box in radians (matches the L-BFGS tanh box,
         which in turn matches the C NLopt ``[x0 ± OrientTol]`` bounds).
-    max_iter : int
-        scipy NM ``maxiter``. The C NLopt call uses 5000 evals and a 30 s
-        time-limit; from a warm seed we typically need < 200.
+    max_iter : int, default :data:`~.torch_nm.NM_MAX_ITER_DEFAULT` (5000)
+        scipy NM ``maxiter``. Matches the C NLopt call (5000 evals); from a
+        warm seed we typically need < 200, so the tolerances, not the cap,
+        normally end the search.
     xatol, fatol : float
         scipy NM tolerances. Match the C NLopt's ``xtol_rel = ftol_rel =
         1e-5``.

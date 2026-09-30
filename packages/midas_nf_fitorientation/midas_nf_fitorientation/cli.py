@@ -78,9 +78,11 @@ def _parse_common(args: List[str]) -> argparse.Namespace:
                          "are kept for ablation: 'nm-serial' (per-winner "
                          "scipy NM, parity oracle), 'lbfgs+nm' (soft warmup "
                          "+ NM polish), 'lbfgs' (legacy soft-only).")
-    pp.add_argument("--nm-max-iter", type=int, default=200,
+    pp.add_argument("--nm-max-iter", type=int, default=None,
                     help="(fit-orientation only) Max NM iterations per "
-                         "candidate orientation. C uses 5000.")
+                         "candidate orientation. Default: the paramfile's "
+                         "NMMaxIter, else 5000 (the C cap). Converged "
+                         "problems stop earlier on their own.")
     pp.add_argument("--nm-batch-size", type=int, default=4096,
                     help="(fit-orientation, --refine nm-batched only) Max "
                          "(voxel × winner) problems run through one batched "
@@ -207,6 +209,13 @@ def fit_multipoint_main(argv: List[str] | None = None) -> int:
     ran, and it OOMs on anything the size of a 20-ID detector (previously
     a 393 GiB allocation on a 47 GiB GPU) -- see DIAGNOSIS.md in the
     nf-hedm doc set for the incident this fixes.
+
+    Either objective always prints the refined geometry and writes
+    ``multipoint_result.json`` plus ``params_refined.txt`` (the input
+    paramfile with Lsd/BC/tx/ty/tz, and Wedge if refined, replaced) to
+    ``OutputDirectory``, else the cwd. ``--verbose`` adds per-round detail.
+    The hard objective flags ``under_determined`` in the json, and warns,
+    when it saturates at 1.0 or leaves geometry parameters flat.
     """
     argv = list(sys.argv[1:] if argv is None else argv)
     common, rest = _parse_common(argv)

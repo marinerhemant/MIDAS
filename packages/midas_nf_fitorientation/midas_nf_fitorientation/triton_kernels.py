@@ -12,7 +12,8 @@ that:
 1. computes ``R = euler2mat(eulers)`` per grain;
 2. solves the wedge-aware Bragg quadratic for both omega solutions
    per HKL;
-3. projects the predicted spot through the voxel position at every
+3. projects the predicted spot through the voxel position (rotated
+   about the same wedge-tilted axis as G) at every
    detector distance;
 4. applies the per-distance NF tilt ray-plane correction;
 5. extracts the bit at ``(d, frame, y, z)`` from the packed obs
@@ -157,13 +158,15 @@ if HAS_TRITON:
         G_mag = tl.sqrt(G_x * G_x + G_y * G_y + G_z * G_z)
         sin_theta = tl.sin(theta)
 
-        # Wedge transform: G' = R_y(-W) @ G; (Gx_eff, Gy_eff, v_eff)
-        Gx_p = cos_W * G_x - sin_W * G_z
+        # Wedge (midas_diffract.forward "Wedge convention"):
+        # G_lab = R_y(-W) R_z(omega) G, G in the rotation-stage frame, so
+        # (Gx_eff, Gy_eff, v_eff) = (cos W Gx, cos W Gy, sin th |G| - sin W Gz).
+        Gx_p = G_x
         Gy_p = G_y
-        Gz_p = sin_W * G_x + cos_W * G_z
+        Gz_p = G_z
         Gx = cos_W * Gx_p
         Gy = cos_W * Gy_p
-        v_eff = sin_theta * G_mag + sin_W * Gz_p
+        v_eff = sin_theta * G_mag - sin_W * Gz_p
 
         # ---- Omega quadratic solver ----
         x2 = Gx * Gx
@@ -229,7 +232,7 @@ if HAS_TRITON:
         m_y = sin_w_om * Gx_p + cos_w_om * Gy_p
         m_z = Gz_p
         Gy_lab = m_y
-        Gz_lab = -sin_W * m_x + cos_W * m_z
+        Gz_lab = sin_W * m_x + cos_W * m_z
         r_yz = tl.sqrt(Gy_lab * Gy_lab + Gz_lab * Gz_lab)
         r_yz_safe = tl.maximum(r_yz, EPS)
         eta_arg = tl.maximum(-1.0 + EPS, tl.minimum(1.0 - EPS, Gz_lab / r_yz_safe))
@@ -251,9 +254,17 @@ if HAS_TRITON:
 
         # Project at voxel position.
         cw = tl.cos(omega); sw = tl.sin(omega)
-        x_grain = pos_x * cw - pos_y * sw
-        y_grain = pos_x * sw + pos_y * cw
-        # z_grain = 0 (pos_z = 0).
+        if HAS_WEDGE:
+            # Voxel rotates about the wedge-tilted axis, like G:
+            # pos_lab = R_y(-W) R_z(omega) (pos_x, pos_y, 0).
+            m_px = pos_x * cw - pos_y * sw
+            y_grain = pos_x * sw + pos_y * cw
+            x_grain = cos_W * m_px
+            z_grain = sin_W * m_px
+        else:
+            x_grain = pos_x * cw - pos_y * sw
+            y_grain = pos_x * sw + pos_y * cw
+            # z_grain = 0 (pos_z = 0).
 
         tan_2th = tl.extra.cuda.libdevice.tan(two_theta)
         sin_eta = tl.sin(eta); cos_eta = tl.cos(eta)
@@ -295,6 +306,8 @@ if HAS_TRITON:
             dist = Lsd_d - x_grain
             ydet = y_grain - dist * tan_2th * sin_eta
             zdet = dist * tan_2th * cos_eta
+            if HAS_WEDGE:
+                zdet = zdet + z_grain
 
             if HAS_TILTS:
                 # NF ray-plane intersection through the tilted detector
@@ -352,7 +365,7 @@ if HAS_TRITON:
         m_y = sin_w_om * Gx_p + cos_w_om * Gy_p
         m_z = Gz_p
         Gy_lab = m_y
-        Gz_lab = -sin_W * m_x + cos_W * m_z
+        Gz_lab = sin_W * m_x + cos_W * m_z
         r_yz = tl.sqrt(Gy_lab * Gy_lab + Gz_lab * Gz_lab)
         r_yz_safe = tl.maximum(r_yz, EPS)
         eta_arg = tl.maximum(-1.0 + EPS, tl.minimum(1.0 - EPS, Gz_lab / r_yz_safe))
@@ -372,8 +385,17 @@ if HAS_TRITON:
         f_idx = tl.minimum(n_frames - 1, tl.maximum(0, frame_nr_f.to(tl.int32)))
 
         cw = tl.cos(omega); sw = tl.sin(omega)
-        x_grain = pos_x * cw - pos_y * sw
-        y_grain = pos_x * sw + pos_y * cw
+        if HAS_WEDGE:
+            # Voxel rotates about the wedge-tilted axis, like G:
+            # pos_lab = R_y(-W) R_z(omega) (pos_x, pos_y, 0).
+            m_px = pos_x * cw - pos_y * sw
+            y_grain = pos_x * sw + pos_y * cw
+            x_grain = cos_W * m_px
+            z_grain = sin_W * m_px
+        else:
+            x_grain = pos_x * cw - pos_y * sw
+            y_grain = pos_x * sw + pos_y * cw
+            # z_grain = 0 (pos_z = 0).
 
         tan_2th = tl.extra.cuda.libdevice.tan(two_theta)
         sin_eta = tl.sin(eta); cos_eta = tl.cos(eta)
@@ -408,6 +430,8 @@ if HAS_TRITON:
             dist = Lsd_d - x_grain
             ydet = y_grain - dist * tan_2th * sin_eta
             zdet = dist * tan_2th * cos_eta
+            if HAS_WEDGE:
+                zdet = zdet + z_grain
 
             if HAS_TILTS:
                 R00d = tl.load(R_tilt_ptr + d * 9 + 0)

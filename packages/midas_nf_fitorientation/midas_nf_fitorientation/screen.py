@@ -451,6 +451,38 @@ def _measure_lit_fraction(obs) -> float:
     return float((d > 0).to(_t.float32).mean())
 
 
+def _wedge_cos_sin(p) -> "Optional[tuple]":
+    """``(cos W, sin W)`` for a nonzero ``p.wedge`` (degrees), else None."""
+    w = float(getattr(p, "wedge", 0.0) or 0.0)
+    if w == 0.0:
+        return None
+    w_rad = w * (math.pi / 180.0)
+    return (math.cos(w_rad), math.sin(w_rad))
+
+
+def _rotate_vertices(XG, YG, cos_w, sin_w, wedge_cs):
+    """Rotate in-plane (z = 0) voxel vertices by omega.
+
+    With no wedge this is the plain rotation about z used by
+    ``DisplacementSpots`` and returns ``za = None`` (bit-identical to the
+    pre-wedge code). With a wedge the voxel rotates about the tilted axis
+    ``(-sin W, 0, cos W)`` -- the same map midas_diffract applies to G
+    (``midas_diffract.forward`` "Wedge convention"):
+    ``pos_lab = R_y(-W) R_z(w) (x, y, 0)`` -- and the lab ``za`` it
+    acquires must be added to ``Displ_Z``.
+    """
+    if wedge_cs is None:
+        xa = XG * cos_w - YG * sin_w
+        ya = XG * sin_w + YG * cos_w
+        return xa, ya, None
+    cW, sW = wedge_cs
+    m_x = XG * cos_w - YG * sin_w
+    ya = XG * sin_w + YG * cos_w
+    xa = cW * m_x
+    za = sW * m_x
+    return xa, ya, za
+
+
 @torch.no_grad()
 def screen(
     grid: GridTable,
@@ -572,6 +604,7 @@ def screen(
 
     has_tilts = bool(p.tx != 0 or p.ty != 0 or p.tz != 0)
     R_tilt = build_rot_tilts(p.tx, p.ty, p.tz, device, dtype) if has_tilts else None
+    wedge_cs = _wedge_cos_sin(p)
 
     # ---- per-spot frame index (orientation-independent of voxel) ----
     frame_idx = (
@@ -690,18 +723,19 @@ def screen(
             sin_w_ = sin_w_t.reshape(1, Tt, 1)
             XG_ = XG_all.reshape(Vc, 1, 3)
             YG_ = YG_all.reshape(Vc, 1, 3)
-            xa = XG_ * cos_w_ - YG_ * sin_w_                       # (Vc, Tt, 3)
-            ya = XG_ * sin_w_ + YG_ * cos_w_
+            xa, ya, za = _rotate_vertices(XG_, YG_, cos_w_, sin_w_, wedge_cs)
             t_0 = 1.0 - xa / Lsd_0
             yl_0_ = yl_0_t.reshape(1, Tt, 1)
             zl_0_ = zl_0_t.reshape(1, Tt, 1)
             dy_v = ya + yl_0_ * t_0
             dz_v = zl_0_ * t_0
+            if za is not None:
+                dz_v = za + dz_v
             if has_tilts:
                 dy_v, dz_v = apply_nf_tilt(dy_v, dz_v, Lsd_0, R_tilt)
             v_y_px = dy_v / px + ybc[0]                            # (Vc, Tt, 3)
             v_z_px = dz_v / px + zbc[0]
-            del xa, ya, t_0, dy_v, dz_v
+            del xa, ya, za, t_0, dy_v, dz_v
 
             # ---- spot centres at primary distance (voxel-independent) ----
             cy_lab = yl_0_t
@@ -983,11 +1017,13 @@ def _screen_per_voxel(
         sin_w_ = sin_w.unsqueeze(1)
         XG_ = XG.unsqueeze(0)
         YG_ = YG.unsqueeze(0)
-        xa = XG_ * cos_w_ - YG_ * sin_w_
-        ya = XG_ * sin_w_ + YG_ * cos_w_
+        wedge_cs = _wedge_cos_sin(p)
+        xa, ya, za = _rotate_vertices(XG_, YG_, cos_w_, sin_w_, wedge_cs)
         t_0 = 1.0 - xa / Lsd_0
         dy_v = ya + yl_0.unsqueeze(1) * t_0
         dz_v = zl_0.unsqueeze(1) * t_0
+        if za is not None:
+            dz_v = za + dz_v
         if has_tilts:
             dy_v, dz_v = apply_nf_tilt(dy_v, dz_v, Lsd_0, R_tilt)
         v_y_px = dy_v / px + ybc[0]

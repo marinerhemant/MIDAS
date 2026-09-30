@@ -30,6 +30,18 @@ from typing import Callable, Optional
 
 import torch
 
+#: Default Nelder-Mead iteration cap, matching the legacy C
+#: ``FitOrientationOMP`` (NLopt ``maxeval`` 5000).
+#:
+#: This used to be 200, which silently truncated any problem that needed
+#: more: a 4-D Rosenbrock from the textbook start needs 280 iterations here,
+#: 5-D needs 439. The cap is only an upper bound -- a simplex that meets
+#: ``xatol``/``fatol`` stops, and in the default (trimming) mode it is also
+#: dropped from the batch, so a generous cap costs nothing for problems that
+#: converge. It only costs time for problems that genuinely have not
+#: converged, which is exactly when stopping early gives a wrong answer.
+NM_MAX_ITER_DEFAULT = 5000
+
 
 @dataclass
 class BatchedNMResult:
@@ -113,7 +125,7 @@ def batched_nelder_mead(
     x0: torch.Tensor,
     bounds: Optional[torch.Tensor] = None,
     *,
-    max_iter: int = 200,
+    max_iter: int = NM_MAX_ITER_DEFAULT,
     xatol: float = 1e-5,
     fatol: float = 1e-5,
     init_step: float = 0.05,
@@ -139,10 +151,12 @@ def batched_nelder_mead(
         Per-element ``[lo, hi]`` bounds. If ``(n_dim, 2)`` is given,
         the same bounds apply to every simplex. Vertices outside the
         box are clipped on every update.
-    max_iter : int, default 200
-        Hard iteration cap. The C ``FitOrientationOMP`` NLopt run
-        uses 5000 evals + 30 s; from a screen-warm seed in 3D, ~50–
-        100 iterations is usually enough.
+    max_iter : int, default :data:`NM_MAX_ITER_DEFAULT` (5000)
+        Hard iteration cap, matching the C ``FitOrientationOMP`` NLopt
+        run (5000 evals). From a screen-warm seed in 3D ~50–100
+        iterations is usually enough, so convergence (``xatol`` +
+        ``fatol``), not the cap, is what normally ends the loop; check
+        ``converged`` to see which problems hit the cap instead.
     xatol, fatol : float, default 1e-5
         Convergence tolerances. A simplex is "converged" when
         **both**: the max coordinate range across its vertices is

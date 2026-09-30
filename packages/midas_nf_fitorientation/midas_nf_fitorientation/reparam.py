@@ -64,6 +64,16 @@ class TanhBox:
         with torch.no_grad():
             self._u.zero_()
 
+    def set_x(self, target: torch.Tensor | float) -> None:
+        """Start the search at ``target`` while keeping the box centred on
+        the seed: ``u = atanh((target - x0) / tol)``, clipped just inside the
+        box. Used by the multipoint geometry multi-start."""
+        with torch.no_grad():
+            t = torch.as_tensor(target, dtype=self._x0.dtype,
+                                device=self._x0.device)
+            r = ((t - self._x0) / self._tol).clamp(-0.999, 0.999)
+            self._u.copy_(torch.atanh(r).expand_as(self._u))
+
     def perturb(self, scale: float, generator: torch.Generator | None = None) -> None:
         """Re-seed the unbounded variable with a Gaussian perturbation
         scaled by ``scale * tol``. ``scale`` is in units of "tolerance

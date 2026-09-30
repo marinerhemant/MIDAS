@@ -236,6 +236,7 @@ def overrides(
     """
     saves: Dict[str, object] = {}
     saves["_has_tilts_orig"] = model._has_tilts
+    saves["_has_wedge_orig"] = model._has_wedge
 
     def _set(name: str, value):
         saves[name] = getattr(model, name)
@@ -259,10 +260,14 @@ def overrides(
         yield
     finally:
         for name, val in saves.items():
-            if name == "_has_tilts_orig":
+            if name in ("_has_tilts_orig", "_has_wedge_orig"):
                 continue
             object.__setattr__(model, name, val)
         model._has_tilts = saves["_has_tilts_orig"]
+        # Restore the wedge flag too: it now gates the position rotation
+        # (HEDMForwardModel._rotate_positions), so a stale True would keep
+        # the tilted-axis path on after the override is gone.
+        model._has_wedge = saves["_has_wedge_orig"]
 
 
 # ---------------------------------------------------------------------------
