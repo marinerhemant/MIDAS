@@ -371,6 +371,10 @@ microscopy — the other escalation for intragranular detail, skill `dfxm`), `ma
 `manuals/pdf/` (total scattering and G(r) from continuous rings, skill `pdf`),
 and `manuals/tomo/` (the coordinate-system reference, skill `tomo`).
 
+**Per-domain intensity shares and spreads at one raster point** (not just which domains are present) are
+`midas_defect.column_content`: a joint fit of every domain on shared voxels, with discovery on the residual.
+Method, measured envelope and traps: `manuals/column-content/` (read ENVELOPE §2 before quoting a share; the registered validation reads NOT VALIDATED on one recall gate).
+
 ## Log a halt
 
 Technique skills carry no verdicts of their own, so there is one thing worth logging: when the

@@ -31,6 +31,7 @@
 | [FF_Benchmark.md](FF_Benchmark.md) | FF-HEDM benchmark testing | Validating the FF-HEDM pipeline with simulated data |
 | [FF_Integrator_Benchmark.md](FF_Integrator_Benchmark.md) | Integrator peak fitting benchmark | Validating calibration → integration → peak fitting with CeO₂ data |
 | [FF_Phase_Identification.md](FF_Phase_Identification.md) | Multi-phase identification | Identifying crystallographic phases from diffraction images |
+| [column-content/README.md](column-content/README.md) | Orientation content of one interaction volume | Which orientations a raster point / beam column contains, with intensity shares, spreads and a measured completeness (recall table on synthetic columns; both registered validations read NOT VALIDATED on recall). Laue and monochromatic-rotation implementations |
 
 ---
 
@@ -209,7 +210,10 @@ MIDAS uses the **ESRF convention** for the laboratory coordinate system and here
 | **Z_L** | X_L × Y_L | **Y_L** |
 
 
-The angle between **Z_L** and **Z'_L** is the **wedge angle** (Ω). For standard HEDM setups, the wedge angle is zero — the rotation axis is perpendicular to the beam.
+The angle between **Z_L** and **Z'_L** is the **wedge angle** (Ω, parameter `Wedge`). For standard HEDM setups, the wedge angle is zero — the rotation axis is perpendicular to the beam.
+
+> [!IMPORTANT]
+> **One `Wedge` convention for FF, NF and PF.** Z'_L = R_y(−Wedge)·Z_L = (−sin Wedge, 0, cos Wedge): a positive `Wedge` leans the top of the rotation axis upstream. A grain with orientation matrix O at position p diffracts at ω with **G_lab = R_y(−Wedge)·R_z(ω)·O·g** and sits at **R_y(−Wedge)·R_z(ω)·p**, where R_y(a) = [[cos a, 0, sin a], [0, 1, 0], [−sin a, 0, cos a]]. O and p are expressed in the **rotation-stage frame** (the frame that turns with ω; it equals the lab at ω = 0 only when `Wedge` = 0) — the frame of `Grains.csv`, NF `.mic` files and pf-HEDM voxel orientations, so the same crystal gives the same matrix in all three. This is the convention of the FF C refiner (`midas_fit_grain` `FitUnified.c`) and of every Python package (`midas_diffract` forward — see its "Wedge convention" note — NF fitting, `midas_pf_odf`, fit-setup). Before 2026-09 the Python `midas_diffract` forward used the opposite sign and a lab-at-ω=0 frame.
 
 > [!NOTE]
 > The right-handed rotation about Z'_L is denoted **ω** (omega). A full ω-scan typically covers 360° (or ±180°) to capture all accessible diffraction conditions.

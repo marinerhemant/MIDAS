@@ -174,6 +174,10 @@ test. The true size of seed-cell anchoring on this dataset is **currently unknow
 
 ## A whole position: every domain, in one call
 
+> **Shares and spreads, not just presence:** `find_domains` says which domains are at a position. How much of
+> the detected intensity each carries, and how spread each is, is `midas_defect.column_content`
+> (`manuals/column-content/`), which uses `find_domains` as its round-0 search.
+
 ```python
 from midas_defect.domains import find_domains
 res = find_domains(q, I, spots.row.values, spots.col.values, spots.frame.values,

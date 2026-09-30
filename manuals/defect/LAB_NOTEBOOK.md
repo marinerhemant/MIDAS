@@ -158,6 +158,28 @@ Not in the test suite; recorded in that project's `PORT_TO_MIDAS.md`.
 `E12_port_spots_615.py`, Argo transcript ef79a90a, 2026-09-01. "2.48 M" is 1679 × 1475 pixels,
 computed, not printed by any run.
 
+**E13 — `indexing.build_forward_model` now predicts the same spots as `raster.predict_reflections`
+(fixed 2026-09-27; before that it did NOT, for any tilted or distorted calibration).** Three
+convention errors, each measured against `raster.predict_reflections` (the path checked against
+real DAC data):
+* **omega:** `omega_first_deg` (frame CENTRE) was passed as `HEDMForwardModel`'s leading-edge
+  `omega_start`, which keeps `frame_nr >= 0`. Every reflection in the first half of frame 0 was
+  dropped.
+* **tilts:** the default `multi_mode` applies the NF ray-plane intersection. The calibrated
+  tilts mean the FF convention (`midas_transforms.apply_tilt_distortion`), which is the
+  `multi_mode="panel"` path. At tilts (0.3, 0.15, 0.37) deg the old path was a median 7.6 px off.
+* **distortion:** p0..p14 were not passed. They are legacy v1 raw->ideal coefficients; the model
+  wants v2 ideal->raw, so they go through `v1_to_v2_coeffs` with the amplitudes negated (phases
+  kept), which is exact to first order.
+On the real 2604 geometry (step0 calibration, ty -0.22, tz -0.31 deg, 15-term distortion, 40-frame
+wedge) the OLD path had a median 1.5 px error, p90 4.3 px and max 7.8 px, and missed 12 of 781
+reflections. The FIXED path is within 0.005 px and misses none.
+`tests/test_indexing_forward_conventions.py` fails on the old code (3/3 of the flat/tilted/distorted
+cases) and passes on the fix. Its fourth case (Wedge 2 deg) passes only with a `midas_diffract` carrying
+the shared Wedge convention (after 0.8.1; against 0.8.1 it is 423 px off), so a `midas_defect` release
+with Wedge support needs that floor.
+`index_from_cloud` now takes predicted omega from the edge-referenced `frame_nr`. See **O7**.
+
 ---
 
 ## P — Provisional (do not let these become facts)
@@ -581,3 +603,12 @@ such hedge: its off-axis reflections exclude double diffraction as its origin.
 positive it kills, and so does the correction of one: the first version of this entry
 (`d9c4cd15`) called §3.3 "better supported than the manuscript's own version", quoted "nine of
 twelve carry zero", and had never been verified.
+
+**O7 — Which results went through the pre-fix `build_forward_model` with a tilted geometry?**
+`index_from_cloud`, `resolve_conventions` and any direct `build_forward_model` user
+(assignment, completeness audits, residual windows, cell refinement on assigned spots) carried
+the E13 errors whenever `apply_tilts` resolved True or distortion was non-zero. Flat geometries
+were unaffected apart from the first half-frame. Re-run any such result before quoting it. The
+DAC nickelate development scripts that used these calls with the tilted calibration are the known
+cases.
+
