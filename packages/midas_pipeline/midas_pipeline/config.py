@@ -35,7 +35,7 @@ ScanMode = Literal["ff", "pf"]
 ResumeMode = Literal["none", "auto", "from"]
 Device = Literal["cpu", "cuda", "mps"]
 Dtype = Literal["float32", "float64"]
-ReconMethod = Literal["fbp", "mlem", "osem", "voxelmap", "bayesian"]
+ReconMethod = Literal["fbp", "mlem", "osem", "voxelmap", "bayesian", "all"]
 SinoType = Literal["raw", "norm", "abs", "normabs", "clean"]
 SinoSource = Literal["tolerance", "indexing"]
 SeedingMode = Literal["unseeded", "ff", "merged-ff"]
@@ -122,6 +122,23 @@ class ScanGeometry:
         observed." The OR-form is kept available as an opt-in for
         experimental modes (e.g. sinogram cell masking,
         ``pf_MIDAS.py:242``).
+    voxel_grid : "positions" | "symmetric"
+        ``"positions"`` (default) is the historical grid, sorted positions x
+        sorted positions, so the grid IS the scanned square. ``"symmetric"``
+        spans ``[-R, R]`` around the rotation axis at the scan step, with
+        ``R = max |position|``. It is what a HALF scan needs (360 deg
+        rotation, dty covering one side of the axis, the ESRF nanoscope
+        layout), where no product of the measured positions covers the
+        sample. Positions must then be measured FROM the rotation axis.
+        The grid is written once per layer to ``VoxelGrid.txt`` and handed
+        to the C indexer as ``VoxelGridFile``.
+    coverage_aware_completeness : bool
+        C indexer ``PFCoverageAwareCompleteness``: a predicted spot counts
+        toward completeness only if a measured scan position lies within the
+        beam window of where the voxel is lit at that spot's omega. Required
+        for half scans (otherwise every off-axis voxel scores ~0.5 against
+        reflections that were never recordable). Off by default: it also
+        changes full-scan voxels outside the scanned disc.
     """
 
     scan_mode: ScanMode
@@ -130,6 +147,8 @@ class ScanGeometry:
     beam_size_um: float
     scan_pos_tol_um: float = 0.0
     friedel_symmetric_scan_filter: bool = False
+    voxel_grid: str = "positions"
+    coverage_aware_completeness: bool = False
 
     def __post_init__(self) -> None:
         self.scan_positions = np.asarray(self.scan_positions, dtype=np.float64).ravel()
@@ -150,6 +169,42 @@ class ScanGeometry:
             raise ValueError("ScanGeometry.beam_size_um must be >= 0")
         if self.scan_pos_tol_um < 0:
             raise ValueError("ScanGeometry.scan_pos_tol_um must be >= 0")
+        if self.voxel_grid not in ("positions", "symmetric"):
+            raise ValueError(
+                f"ScanGeometry.voxel_grid must be 'positions' or 'symmetric', "
+                f"got {self.voxel_grid!r}"
+            )
+
+    def voxel_grid_axis(self) -> np.ndarray:
+        """1-D voxel-centre coordinates (um) along x and along y.
+
+        ``"positions"``: the sorted scan positions (the historical grid).
+        ``"symmetric"``: ``k * step`` for ``k = -n..n``, ``n = round(R/step)``,
+        ``R = max |position|``, ``step`` = median spacing of the sorted
+        positions. Centred on the rotation axis (position 0), so voxel
+        centres need not coincide with scan positions.
+        """
+        pos = np.sort(self.scan_positions)
+        if self.voxel_grid == "positions":
+            return pos
+        step = float(np.median(np.diff(pos)))
+        if not step > 0:
+            raise ValueError("symmetric voxel grid needs distinct scan positions")
+        n = int(round(float(np.max(np.abs(pos))) / step))
+        return np.arange(-n, n + 1, dtype=np.float64) * step
+
+    def voxel_grid_xy(self) -> np.ndarray:
+        """(nVoxels, 2) voxel centres in the C indexer's order:
+        voxel ``v = i * n + j`` has ``x = axis[i]``, ``y = axis[j]``
+        (IndexerUnified.c, positions x positions branch)."""
+        ax = self.voxel_grid_axis()
+        return np.stack(np.meshgrid(ax, ax, indexing="ij"), axis=-1).reshape(-1, 2)
+
+    @property
+    def n_grid(self) -> int:
+        """Voxels per side of the (square) voxel grid. Equals ``n_scans`` for
+        the historical ``"positions"`` grid; NOT in general for ``"symmetric"``."""
+        return int(self.voxel_grid_axis().shape[0])
 
     @classmethod
     def ff(cls, *, beam_size_um: float = 0.0) -> "ScanGeometry":
@@ -173,6 +228,8 @@ class ScanGeometry:
         start_um: Optional[float] = None,
         scan_pos_tol_um: float = 0.0,
         friedel_symmetric_scan_filter: bool = False,
+        voxel_grid: str = "positions",
+        coverage_aware_completeness: bool = False,
     ) -> "ScanGeometry":
         """Construct a PF scan geometry from uniform step parameters.
 
@@ -188,6 +245,8 @@ class ScanGeometry:
             beam_size_um=beam_size_um,
             scan_pos_tol_um=scan_pos_tol_um,
             friedel_symmetric_scan_filter=friedel_symmetric_scan_filter,
+            voxel_grid=voxel_grid,
+            coverage_aware_completeness=coverage_aware_completeness,
         )
 
     @property
@@ -290,6 +349,13 @@ class ReconConfig:
     sino_source: SinoSource = "tolerance"
     sino_conf_min: float = 0.5            # MIDAS_PF_SINO_CONF_MIN
     sino_scan_tol_um: float = 1.5         # MIDAS_PF_SINO_SCAN_TOL
+    # Tolerance-mode spot-to-sinogram window (deg). <= 0 => 2 x |OmegaStep| from
+    # paramstest.txt (1.0 if OmegaStep is absent). The old fixed 1 deg admitted
+    # unrelated same-ring spots: on ESRF ma5608 (OmegaStep 0.124) a grain's own
+    # spots sit within |d_omega| p90 0.26 / |d_eta| p95 0.10 deg of its row, and
+    # 0.25-0.35 deg cut out-of-support sinogram cells 0.49 -> 0.33.
+    sino_tol_ome_deg: float = -1.0
+    sino_tol_eta_deg: float = -1.0
     # Concentration filter: zero sino rows carrying less than this fraction
     # of their intensity on the grain's own fitted sinusoid, into an extra
     # ``sinos_clean_*.bin`` variant. 0.0 ⇒ off (no extra file emitted).
@@ -303,6 +369,20 @@ class ReconConfig:
     # 0.0 disables the check.
     out_of_field_occupancy: float = 0.65
     cull_min_size: int = 0                # drop CCs smaller than this many voxels
+    # Per-candidate matched-spot brightness (Output/CandidateBrightness.npz,
+    # diagnostics/candidate_brightness.py). The indexer is intensity-blind, so
+    # a dim orientation can tie with the grain that is there; this records how
+    # bright each candidate's spots are. Needs the per-scan CSVs; skipped with
+    # a warning if they are missing.
+    candidate_brightness: bool = True
+    # Opt-in: among candidates within this completeness margin of a voxel's
+    # best, the one with the brightest matched spots wins. 0.0 = off (the
+    # indexer's rule). Not validated on a phantom yet -- see LAB_NOTEBOOK.
+    brightness_tiebreak_margin: float = 0.0
+    # (n_scans, n_scans) .npy/.tif on the pf voxel grid, nonzero = sample (e.g. from a tomogram:
+    # ``python -m midas_pipeline.recon.sample_mask``). Reconstructions are zeroed outside it, so vacuum
+    # voxels get label -1, and the method="all" quality report is restricted to it. None = no mask.
+    sample_mask: Optional[str] = None
 
 
 @dataclass
@@ -311,6 +391,10 @@ class FusionConfig:
 
     enable_bayesian: bool = False
     max_ang_deg: float = 1.0
+    # Opt-in, 0 = off (C parity). Merge find_grains unique grains whose representative orientations are
+    # within this many degrees, so process_spots' unique-only filter does not starve near-duplicate
+    # (sibling) grains; 1.0 removed every nr < 30 grain on 20-ID-E Fe9Cr (28 % of solved voxels).
+    sibling_merge_deg: float = 0.0
     min_conf: float = 0.5
     cw_potts_lambda: float = 0.0          # 0 ⇒ disabled
     cw_potts_max_iter: int = 30
@@ -458,11 +542,21 @@ class SeedingConfig:
     merged_tol_px: float = -1.0           # -1 ⇒ 2 * pixel_size
     merged_tol_ome: float = -1.0          # -1 ⇒ 2 * omega_step
 
+    # Null-gated seed augmentation (mode "ff"): the merged-FF layer that made
+    # grains_file. When set, the seeding stage builds augment_null_runs
+    # omega-shuffled copies of it, indexes them identically, and adds back
+    # merged-FF orientations the seed cut dropped whose completeness beats
+    # every shuffled one (midas_pipeline.seeding.augment). None = off.
+    augment_ff_layer: Optional[str] = None
+    augment_null_runs: int = 1
+
     def __post_init__(self) -> None:
         if self.grains_file:
             self.grains_file = str(Path(self.grains_file).resolve())
         if self.mic_file:
             self.mic_file = str(Path(self.mic_file).resolve())
+        if self.augment_ff_layer:
+            self.augment_ff_layer = str(Path(self.augment_ff_layer).resolve())
 
 
 @dataclass

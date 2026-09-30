@@ -38,6 +38,40 @@ def _read_space_group(layer_dir: Path) -> int:
     return 225
 
 
+def _read_omega_step(layer_dir: Path):
+    """|OmegaStep| from paramstest.txt, or None."""
+    p = layer_dir / "paramstest.txt"
+    if not p.exists():
+        return None
+    for line in p.read_text().splitlines():
+        toks = line.replace(";", " ").split()
+        if len(toks) >= 2 and toks[0] == "OmegaStep":
+            try:
+                return abs(float(toks[1]))
+            except ValueError:
+                return None
+    return None
+
+
+def _sino_tolerances(recon_cfg, layer_dir: Path) -> tuple[float, float, str]:
+    """(tol_ome_deg, tol_eta_deg, how) for tolerance-mode sinograms.
+
+    A configured value > 0 wins; otherwise 2 x |OmegaStep|; otherwise the
+    historical 1.0 deg.
+    """
+    step = _read_omega_step(layer_dir)
+    out, how = [], []
+    for name in ("sino_tol_ome_deg", "sino_tol_eta_deg"):
+        v = float(getattr(recon_cfg, name, -1.0))
+        if v > 0:
+            out.append(v); how.append("configured")
+        elif step:
+            out.append(2.0 * step); how.append("2xOmegaStep")
+        else:
+            out.append(1.0); how.append("default 1 deg (no OmegaStep)")
+    return out[0], out[1], "/".join(how)
+
+
 def run(ctx: StageContext) -> StageResult:
     if ctx.is_ff:
         # FF doesn't run find_grains; record a clean skipped row.
@@ -73,6 +107,15 @@ def run(ctx: StageContext) -> StageResult:
                 return np.exp(-(ome_d * ome_d) / (2.0 * sigma_w * sigma_w))
         emit_softsum = True
 
+    tol_ome, tol_eta, how = _sino_tolerances(ctx.config.recon, layer_dir)
+    LOG.info("find_grains(PF): sinogram window omega %.3f deg, eta %.3f deg (%s)",
+             tol_ome, tol_eta, how)
+
+    tb_margin = float(getattr(ctx.config.recon, "brightness_tiebreak_margin", 0.0))
+    if getattr(ctx.config.recon, "candidate_brightness", True) or tb_margin > 0:
+        _write_candidate_brightness(layer_dir, ctx.config.scan.n_scans,
+                                    required=tb_margin > 0)
+
     if ctx.config.one_sol_per_vox:
         # soft-attribution kwargs only when the optional plumbing is wired —
         # keep parity with versions of find_grains_single that predate it.
@@ -88,6 +131,7 @@ def run(ctx: StageContext) -> StageResult:
             scan_tolerance_um=ctx.config.recon.sino_scan_tol_um,
             cluster_misorientation_deg=ctx.config.fusion.max_ang_deg,
             n_scans=ctx.config.scan.n_scans,
+            tol_ome_deg=tol_ome, tol_eta_deg=tol_eta,
             conc_threshold=getattr(ctx.config.recon, "sino_conc_threshold", 0.0),
             conc_min_band_um=getattr(
                 ctx.config.recon, "sino_conc_min_band_um", 4.0,
@@ -96,6 +140,9 @@ def run(ctx: StageContext) -> StageResult:
             # dense maps; it once ran 94 min on s5/L3 with no way to tell it
             # from a hang.
             progress_cb=(ctx.progress.update if ctx.progress else None),
+            cluster_device=str(ctx.config.device),
+            brightness_tiebreak_margin=tb_margin,
+            sibling_merge_deg=getattr(ctx.config.fusion, "sibling_merge_deg", 0.0),
             **soft_kwargs,
         )
     else:
@@ -105,6 +152,8 @@ def run(ctx: StageContext) -> StageResult:
             cluster_misorientation_deg=ctx.config.fusion.max_ang_deg,
             progress_cb=(ctx.progress.update if ctx.progress else None),
         )
+
+    sine = _write_sine_consistency(layer_dir / "Output")
 
     finished = time.time()
     return FindGrainsResult(
@@ -118,5 +167,32 @@ def run(ctx: StageContext) -> StageResult:
         n_unique_grains=int(getattr(artifacts, "n_unique_grains", 0)),
         outputs={},
         metrics={"scan_mode": "pf", "space_group": space_group,
-                 "one_sol_per_vox": ctx.config.one_sol_per_vox},
+                 "one_sol_per_vox": ctx.config.one_sol_per_vox,
+                 "sine_consistency": sine},
     )
+
+
+def _write_sine_consistency(output_dir) -> dict:
+    """Output/SineConsistency.csv: does each grain trace one sine? Never fails the stage."""
+    from ..diagnostics.sine_consistency import sine_consistency
+    try:
+        return sine_consistency(output_dir)
+    except Exception as e:                                # noqa: BLE001 - diagnostic only
+        LOG.warning("find_grains: sine consistency skipped (%s)", e)
+        return {}
+
+
+def _write_candidate_brightness(layer_dir, n_scans: int, required: bool) -> None:
+    """Write Output/CandidateBrightness.npz. Missing inputs (per-scan CSVs,
+    IDsMergedScanning.csv) skip it with a warning, unless the tie-break needs
+    it, in which case the stage fails rather than silently not tie-breaking."""
+    from ..diagnostics.candidate_brightness import candidate_brightness
+    try:
+        candidate_brightness(layer_dir, int(n_scans))
+    except Exception as e:      # default-on diagnostic: it must never abort the stage
+        if required:
+            raise RuntimeError(
+                f"find_grains: --brightness-tiebreak-margin needs "
+                f"CandidateBrightness.npz, which could not be built: {e}") from e
+        LOG.warning("find_grains: candidate brightness skipped (%s: %s)",
+                    type(e).__name__, e)

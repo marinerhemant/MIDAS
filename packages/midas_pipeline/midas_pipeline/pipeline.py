@@ -315,6 +315,13 @@ class Pipeline:
             root_pcsv = Path(self.config.result_path) / "positions.csv"
             if not root_pcsv.exists():
                 root_pcsv.write_text(lines)
+            # Half-scan support: the symmetric voxel grid is fixed by the
+            # config, so it is (re)written every setup -- the indexer reads
+            # it as VoxelGridFile, find_grains / consolidation_pf read it
+            # instead of re-deriving positions x positions.
+            if self.config.scan.voxel_grid != "positions":
+                from .stages._voxel_grid import write_voxel_grid
+                write_voxel_grid(layer_dir, self.config.scan)
         log_dir = layer_dir / "midas_log"
         log_dir.mkdir(parents=True, exist_ok=True)
         return StageContext(

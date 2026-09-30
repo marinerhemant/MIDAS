@@ -110,6 +110,21 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="beam half-width along Y, micrometers")
     run.add_argument("--scan-pos-tol", type=float, default=0.0,
                      help="(pf) scan-position-filter tolerance (0 → beam_size/2)")
+    run.add_argument("--scan-start-um", type=float, default=None,
+                     help="PF: position of the FIRST scan relative to the "
+                          "rotation axis (um). Default centres the scan on "
+                          "the axis. Set it for a half scan, where the dty "
+                          "range spans one side of the axis.")
+    run.add_argument("--voxel-grid", choices=["positions", "symmetric"],
+                     default="positions",
+                     help="PF voxel grid. 'positions' (default) = positions x "
+                          "positions. 'symmetric' = [-R, R] around the axis "
+                          "at the scan step; needed for half scans.")
+    run.add_argument("--coverage-aware-completeness", action="store_true",
+                     help="PF: count a predicted spot toward completeness only "
+                          "if a measured scan position lies within the beam "
+                          "window of where the voxel is lit at its omega. "
+                          "Needed for half scans.")
     run.add_argument("--friedel-symmetric-scan-filter", dest="friedel",
                      action="store_true",
                      help="(pf) enable OR-form scan filter: "
@@ -208,8 +223,14 @@ def _build_parser() -> argparse.ArgumentParser:
     # Recon (PF)
     run.add_argument("--do-tomo", type=int, default=1, choices=[0, 1])
     run.add_argument("--recon-method",
-                     choices=["fbp", "mlem", "osem", "voxelmap", "bayesian"],
-                     default="fbp")
+                     choices=["fbp", "mlem", "osem", "voxelmap", "bayesian", "all"],
+                     default="fbp",
+                     help="all = fbp + mlem + voxelmap with Recons/ReconQuality.json (which is better "
+                          "depends on the data)")
+    run.add_argument("--sample-mask", default=None,
+                     help="(n_scans, n_scans) .npy/.tif sample mask on the pf voxel grid (nonzero = sample); "
+                          "reconstructions are zeroed outside it. Build from a tomogram with "
+                          "python -m midas_pipeline.recon.sample_mask")
     run.add_argument("--mlem-iter", type=int, default=50)
     run.add_argument("--osem-subsets", type=int, default=4)
     run.add_argument("--sino-type",
@@ -219,6 +240,16 @@ def _build_parser() -> argparse.ArgumentParser:
                      default="tolerance")
     run.add_argument("--sino-conf-min", type=float, default=0.5)
     run.add_argument("--sino-scan-tol", type=float, default=1.5)
+    run.add_argument("--sino-tol-ome", type=float, default=-1.0,
+                     help="sinogram omega window (deg); <=0: 2 x |OmegaStep|")
+    run.add_argument("--sino-tol-eta", type=float, default=-1.0,
+                     help="sinogram eta window (deg); <=0: 2 x |OmegaStep|")
+    run.add_argument("--no-candidate-brightness", action="store_true",
+                     help="(pf) skip Output/CandidateBrightness.npz, the per-candidate "
+                          "matched-spot brightness written before find_grains")
+    run.add_argument("--brightness-tiebreak-margin", type=float, default=0.0,
+                     help="(pf) opt-in: among candidates within this completeness of a "
+                          "voxel's best, the brightest matched spots win; 0 = off")
     run.add_argument("--sino-conc-threshold", type=float, default=0.0,
                      help="(pf) drop sino rows with less than this fraction "
                           "of their intensity on the grain's own sinusoid, "
@@ -237,6 +268,10 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--cw-potts-lambda", type=float, default=0.0,
                      help="(pf) Potts ICM strength; 0 disables")
     run.add_argument("--max-ang-deg", type=float, default=1.0)
+    run.add_argument("--sibling-merge-deg", type=float, default=0.0,
+                     help="opt-in: merge find_grains unique grains whose representative orientations are within this many degrees "
+                          "before the spot association (0 = off). process_spots drops any spot shared by two grains from BOTH, so "
+                          "near-duplicate grains keep few sinogram rows; 1.0 = the clustering tolerance.")
     run.add_argument("--min-conf", type=float, default=0.5)
 
     # EM (PF)
@@ -254,6 +289,11 @@ def _build_parser() -> argparse.ArgumentParser:
                      default="unseeded")
     run.add_argument("--grains-file", default=None)
     run.add_argument("--mic-file", default=None)
+    run.add_argument("--seed-augment-ff-layer", default=None,
+                     help="(pf, --seeding-mode ff) merged-FF layer that produced --grains-file: add back orientations "
+                          "the seed cut dropped that beat an omega-shuffled null run of it (seeding.augment)")
+    run.add_argument("--seed-augment-null-runs", type=int, default=1,
+                     help="number of omega-shuffled null runs for the augmentation gate")
     run.add_argument("--merged-align-method",
                      choices=["ring-center", "cross-correlation", "none"],
                      default="ring-center")
@@ -699,8 +739,11 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
             n_scans=int(n_scans),
             scan_step_um=float(scan_step),
             beam_size_um=float(beam_size),
+            start_um=args.scan_start_um,
             scan_pos_tol_um=float(scan_pos_tol),
             friedel_symmetric_scan_filter=args.friedel,
+            voxel_grid=args.voxel_grid,
+            coverage_aware_completeness=args.coverage_aware_completeness,
         )
 
     # Solver / loss / bounds are PYTHON-REFINER knobs only. The c-omp refiner
@@ -719,14 +762,20 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         sino_source=args.sino_source,
         sino_conf_min=args.sino_conf_min,
         sino_scan_tol_um=args.sino_scan_tol,
+        sino_tol_ome_deg=args.sino_tol_ome,
+        sino_tol_eta_deg=args.sino_tol_eta,
         sino_conc_threshold=args.sino_conc_threshold,
+        candidate_brightness=not args.no_candidate_brightness,
+        brightness_tiebreak_margin=args.brightness_tiebreak_margin,
         sino_conc_min_band_um=args.sino_conc_min_band,
         out_of_field_occupancy=args.out_of_field_occupancy,
         cull_min_size=args.cull_min_size,
+        sample_mask=args.sample_mask,
     )
     fusion = FusionConfig(
         enable_bayesian=(args.recon_method == "bayesian"),
         max_ang_deg=args.max_ang_deg,
+        sibling_merge_deg=args.sibling_merge_deg,
         min_conf=args.min_conf,
         cw_potts_lambda=args.cw_potts_lambda,
     )
@@ -744,6 +793,8 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         mode=args.seeding_mode,
         grains_file=args.grains_file,
         mic_file=args.mic_file,
+        augment_ff_layer=args.seed_augment_ff_layer,
+        augment_null_runs=args.seed_augment_null_runs,
         merged_align_method=args.merged_align_method,
         merged_ref_scan=args.merged_ref_scan,
         merged_min_nhkls=args.merged_min_nhkls,

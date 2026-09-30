@@ -59,7 +59,10 @@ def run(ctx: StageContext) -> StageResult:
     # PF mode — dispatch to the pure-Python port.
     from .consolidation_pf import consolidate_pf
     space_group = _read_space_group(ctx.layer_dir)
-    n_scans = int(ctx.config.scan.n_scans)
+    # consolidate_pf's ``n_scans`` is the voxel-grid SIDE (it reshapes the
+    # voxel array to (n, n)). That equals n_scans only for the historical
+    # positions x positions grid; a half-scan symmetric grid is larger.
+    n_scans = int(ctx.config.scan.n_grid)
     # n_grains is computed inside consolidate_pf from the per-voxel
     # CSV stack; we pass 0 here as a signal to "auto-detect from
     # disk", which is the legacy behaviour at pf_MIDAS.py:2429.

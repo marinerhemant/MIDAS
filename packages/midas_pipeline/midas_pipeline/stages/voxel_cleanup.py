@@ -39,6 +39,8 @@ def run(ctx: StageContext) -> StageResult:
     cfg = getattr(ctx.config, "voxel_cleanup", None)
     if cfg is None or not cfg.run or ctx.is_ff:
         return stub_run("voxel_cleanup", ctx)
+    from ._voxel_grid import require_positions_grid
+    require_positions_grid(ctx.layer_dir, "voxel_cleanup")
 
     started = time.time()
     layer_dir = Path(ctx.layer_dir)

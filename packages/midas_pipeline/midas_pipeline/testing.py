@@ -176,6 +176,26 @@ def _make_test_paramfile(template: Path, work_dir: Path,
     return new_param, params
 
 
+def _force_no_readout_gap(param_file: Path) -> None:
+    """Rewrite ``tGap`` to 0 in a synthetic dataset's parameter file.
+
+    ``simulate_panel_zarrs`` renders no readout gap, so the parameter file
+    that goes with its data must not declare one: fit-setup shifts every
+    omega by ``tGap/(tGap+tInt)*OmegaStep*(row weight)``, and the pipeline's
+    param refresh copies ``tGap`` from this file over the zarr's. With the
+    example template's ``tGap 0.15`` that was a +0.051 deg mean (up to
+    +0.083 deg) omega bias, i.e. a rigid rotation of every recovered grain
+    about z.
+    """
+    txt = param_file.read_text()
+    new = "\n".join(
+        ("tGap 0  # synthetic: no readout gap is simulated"
+         if ln.split()[:1] == ["tGap"] else ln)
+        for ln in txt.splitlines()) + ("\n" if txt.endswith("\n") else "")
+    if new != txt:
+        param_file.write_text(new)
+
+
 def generate_synthetic_dataset(*,
                                out_dir: Path,
                                params_template: Path,
@@ -212,6 +232,7 @@ def generate_synthetic_dataset(*,
     template_local = out_dir / params_template.name
     if not template_local.exists() or template_local.resolve() != params_template.resolve():
         shutil.copy2(params_template, template_local)
+    _force_no_readout_gap(template_local)
     params = _parse_parameter_file(template_local)
 
     def _scalar(key: str, default: float) -> float:
@@ -482,6 +503,7 @@ def generate_multidet_synthetic_dataset(*,
     template_local = out_dir / params_template.name
     if not template_local.exists() or template_local.resolve() != params_template.resolve():
         shutil.copy2(params_template, template_local)
+    _force_no_readout_gap(template_local)
     params = _parse_parameter_file(template_local)
 
     # ---- One shared GrainsSim.csv ----

@@ -14,7 +14,10 @@ tolerance-mode (:mod:`._sinogen`):
   3. **Scan-position consistency filter** ``MIDAS_PF_SINO_SCAN_TOL``
      (default 1.5 µm, env-overridable). For each candidate spot the
      code checks the spot's observed scan position against the voxel's
-     ``s_V_at_ome = -x_V*cos(ome) + y_V*sin(ome)``; if neither the
+     projected position ``_geom.scan_projection_um`` (x = pos[row], y = pos[col];
+     s = x sin(ome) + y cos(ome) - the indexer's beam gate; the C, and this port until
+     2026-09-28, used -x cos + y sin with x = pos[col], i.e. y mirrored, which rejected
+     most true spots of any grain off the y = 0 line); if neither the
      direct match nor the Friedel-pair sign flip passes
      ``|s_V_at_ome ± s_observed| <= s_scan_tol``, the spot is rejected
      as spurious. This is the key fix (~75% reduction in spurious cells
@@ -49,7 +52,7 @@ from ._sinogen import (
     write_clean_variant,
     write_occupancy,
 )
-from ._geom import ScanGrid
+from ._geom import ScanGrid, scan_projection_um
 
 _DEG2RAD = np.pi / 180.0
 
@@ -171,8 +174,8 @@ def generate_sinograms_indexing(
         if spatial_positions is not None:
             v_row = vox_nr // n_scans
             v_col = vox_nr % n_scans
-            x_V = float(spatial_positions[v_col])
-            y_V = float(spatial_positions[v_row])
+            x_V = float(spatial_positions[v_row])     # voxel_grid.csv / indexer layout
+            y_V = float(spatial_positions[v_col])
         else:
             x_V = 0.0
             y_V = 0.0
@@ -231,9 +234,7 @@ def generate_sinograms_indexing(
                 # Scan-position consistency filter (the key fix).
                 if scan_tol > 0.0 and spatial_positions is not None:
                     ome_s = float(all_spots[idx, 2])
-                    cw = float(np.cos(ome_s * _DEG2RAD))
-                    sw = float(np.sin(ome_s * _DEG2RAD))
-                    s_V_at_ome = -x_V * cw + y_V * sw
+                    s_V_at_ome = float(scan_projection_um(x_V, y_V, ome_s))
                     spot_scan_nr = int(all_spots[idx, 9])
                     if spot_scan_nr < 0 or spot_scan_nr >= n_scans:
                         continue

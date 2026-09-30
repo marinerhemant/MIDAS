@@ -1,6 +1,6 @@
 """Unit tests for midas_pipeline.recon.voxelmap.
 
-Builds a synthetic ``Output/IndexBest_all.bin`` + ``UniqueOrientations.csv``
+Builds a synthetic ``Output/IndexBest_all.bin`` + ``Output/UniqueOrientations.csv``
 fixture with 2 grains and a small voxel grid; asserts the recon assigns
 each voxel to the grain whose OM matches its top candidate, and zeros
 out unassigned voxels.
@@ -62,7 +62,8 @@ def _write_unique_orientations(tmp_path: Path, oms_3x3):
             [float(g), 0.0, 0.0, 0.0, 0.0] + list(np.asarray(om).flatten())
         )
     data = np.asarray(rows, dtype=np.float64)
-    path = tmp_path / "UniqueOrientations.csv"
+    path = tmp_path / "Output" / "UniqueOrientations.csv"   # find_grains' grain list
+    path.parent.mkdir(parents=True, exist_ok=True)
     np.savetxt(path, data, fmt="%.10f", delimiter=" ")
     return path
 

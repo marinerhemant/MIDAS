@@ -95,9 +95,32 @@ def voxel_to_xy_um(vox_nr: int, n_scans: int, spatial_positions: np.ndarray) -> 
     + col``. Both axes use the same ``spatial_positions`` array.
 
     Matches ``generate_sinograms_from_indexing`` lines 1995-1998.
+
+    NOT the projection convention of the indexer / tolerance sinograms / per-voxel map: with
+    ``s = -x cos + y sin`` this mirrors y. For the scan position a voxel projects to, use
+    :func:`scan_projection_um` with ``x = pos[row], y = pos[col]``.
     """
     if vox_nr < 0 or vox_nr >= n_scans * n_scans:
         raise IndexError(vox_nr)
     row = vox_nr // n_scans
     col = vox_nr % n_scans
     return float(spatial_positions[col]), float(spatial_positions[row])
+
+
+def scan_projection_um(x_um, y_um, omega_deg):
+    """Scan (beam-axis) position, in um, at which the beam passes voxel (x, y) at rotation ``omega_deg``.
+
+    ``s = x * sin(omega) + y * cos(omega)`` with ``x = spatial_positions[row]``, ``y = spatial_positions[col]``
+    for voxel ``row * n_scans + col`` (the layout of ``Output/voxel_grid.csv`` and of the indexer's voxel grid),
+    compared with the SPATIAL (ascending) position of a spot's scan. This is the indexer's beam gate
+    (``midas_index/compute/matching.py``), the convention of the tolerance-mode sinogram columns, and of the
+    per-voxel map. Verified on 20-ID-E Fe9Cr pf data (2026-09-28): 18 in-field grains' sinogram row centres
+    within 1.85 scans; every other sign/axis choice 12-31 scans off; the per-voxel map agrees with FF grain
+    positions and FBP at the identity transform.
+
+    ``voxel_to_xy_um`` (above) returns ``(pos[col], pos[row])`` with ``s = -x cos + y sin``, ported from the
+    C indexing-mode sinogram code; on the same voxel grid that is ``x sin - y cos``: y mirrored. It kept 24 %
+    of each grain's own sinogram intensity where this convention keeps 86 %. Use this function instead.
+    """
+    w = np.deg2rad(omega_deg)
+    return np.asarray(x_um) * np.sin(w) + np.asarray(y_um) * np.cos(w)

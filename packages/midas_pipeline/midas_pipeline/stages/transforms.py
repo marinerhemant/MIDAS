@@ -125,12 +125,14 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
             allpeaks_px_bin=(s.allpeaks_px_bin
                              if s.allpeaks_px_bin.exists() else None),
             result_folder=s.scan_dir,
+            overlap_length=zp.OverlapLength,
             skip_frame=zp.SkipFrame,
             use_maxima_positions=bool(zp.UseMaximaPositions),
-            use_pixel_overlap=bool(zp.UsePixelOverlap),
+            use_pixel_overlap=int(zp.UsePixelOverlap),
             nr_pixels=zp.NrPixels,
             device=device, dtype=dtype,
             write=True,
+            include_saturated=bool(getattr(zp, "IncludeSaturatedSpots", 0)),
         )
         # ── radius ─────────────────────────────────────────────────
         rad = calc_radius(

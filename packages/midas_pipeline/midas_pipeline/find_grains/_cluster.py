@@ -436,6 +436,91 @@ def global_cluster(
     )
 
 
+def merge_sibling_grains(
+    glob: GlobalClusterResult,
+    per_vox_confs: np.ndarray,
+    *,
+    space_group: int,
+    merge_deg: float,
+) -> GlobalClusterResult:
+    """Opt-in: merge unique grains whose representative orientations are within ``merge_deg``.
+
+    Why: :func:`global_cluster` is greedy. A seed voxel absorbs everything within
+    ``max_ang_deg`` of the SEED, but the grain keeps the orientation of its highest-confidence
+    MEMBER, up to ``max_ang_deg`` from the seed. Two neighbouring seeds just over ``max_ang_deg``
+    apart can therefore end as two unique grains whose representatives are a fraction of a degree
+    apart (0.13 - 0.4 deg on 20-ID-E Fe9Cr). ``process_spots`` then drops every spot shared by two
+    grains from BOTH, so each sibling keeps a few sinogram rows (nr < 30 on 28 % of the solved
+    voxels there) and its reconstruction is starved. Merging siblings before the spot association
+    gives the merged grain the signature of its best-confidence member.
+
+    Single-linkage on the representative orientations (symmetry-aware). ``merge_deg <= 0`` returns
+    ``glob`` unchanged (the default, C-parity). A merged group whose members span more than
+    ``2 * merge_deg`` is logged: single linkage can chain distinct crystals.
+
+    The merged grain keeps the key row and OM of the member whose representative voxel has the
+    highest confidence (ties: lowest original index); grains keep their original relative order
+    (by lowest member index). ``voxel_to_unique`` is remapped.
+    """
+    import logging
+
+    n = int(glob.n_uniques)
+    if merge_deg is None or merge_deg <= 0.0 or n < 2:
+        return glob
+    thr = float(merge_deg) * np.pi / 180.0
+    OMs = np.ascontiguousarray(glob.unique_OM_arr, dtype=np.float64)
+    par = list(range(n))
+
+    def find(x: int) -> int:
+        while par[x] != x:
+            par[x] = par[par[x]]
+            x = par[x]
+        return x
+
+    for i in range(n - 1):
+        ang = misorientation_om_batch(
+            np.broadcast_to(OMs[i], (n - i - 1, 9)), OMs[i + 1:], space_group)
+        for k in np.flatnonzero(np.asarray(ang) < thr):
+            ra, rb = find(i), find(i + 1 + int(k))
+            if ra != rb:
+                par[max(ra, rb)] = min(ra, rb)         # root = lowest member index
+    roots = [find(i) for i in range(n)]
+    if len(set(roots)) == n:
+        return glob
+    confs = np.asarray(per_vox_confs, dtype=np.float64).ravel()
+    rep_conf = confs[glob.unique_key_arr[:, 0].astype(np.int64)]
+    new_of_old = np.full(n, -1, dtype=np.int64)
+    keep_rows: list[int] = []
+    log = logging.getLogger(__name__)
+    for r in sorted(set(roots)):
+        members = [i for i in range(n) if roots[i] == r]
+        best = members[int(np.argmax(rep_conf[members]))]       # first max = lowest index
+        new_idx = len(keep_rows)
+        keep_rows.append(best)
+        for m in members:
+            new_of_old[m] = new_idx
+        if len(members) > 2:
+            spread = 0.0
+            for a in members:
+                ang = misorientation_om_batch(
+                    np.broadcast_to(OMs[a], (len(members), 9)), OMs[members], space_group)
+                spread = max(spread, float(np.max(ang)) * 180.0 / np.pi)
+            if spread > 2.0 * merge_deg:
+                log.warning("sibling merge: %d grains chained into one spanning %.2f deg "
+                            "(> 2 x %.2f deg); single linkage may have joined distinct crystals",
+                            len(members), spread, merge_deg)
+    v2u = np.asarray(glob.voxel_to_unique, dtype=np.int64).copy()
+    ok = v2u >= 0
+    v2u[ok] = new_of_old[v2u[ok]]
+    log.info("sibling merge (%.2f deg): %d unique grains -> %d", merge_deg, n, len(keep_rows))
+    return GlobalClusterResult(
+        n_uniques=len(keep_rows),
+        unique_key_arr=glob.unique_key_arr[keep_rows].copy(),
+        unique_OM_arr=glob.unique_OM_arr[keep_rows].copy(),
+        voxel_to_unique=v2u,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Torch path — the OM math goes via misorientation_om_batch which already
 # dispatches to torch when fed tensors. We expose a thin wrapper that does

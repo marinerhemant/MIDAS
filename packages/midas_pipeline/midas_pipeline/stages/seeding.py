@@ -73,17 +73,33 @@ def run(ctx: StageContext) -> StageResult:
             raise FileNotFoundError(
                 f"seeding(ff): grains_file {grains_path} not on disk."
             )
+        aug = None
+        if cfg.seeding.augment_ff_layer:
+            # The merged-FF seed is what survives process-grains' clustering;
+            # on ESRF ma5608 that dropped real crystals (incl. twin domains).
+            # Add back the ones that beat an omega-shuffled null run.
+            from ..seeding.augment import augment_from_ff_layer
+            aug = augment_from_ff_layer(
+                cfg.seeding.augment_ff_layer, layer_dir / "seed_augment",
+                sg=space_group, n_null=cfg.seeding.augment_null_runs,
+                n_cpus=int(getattr(cfg, "n_cpus", 8) or 8))
+            LOG.info("seeding(ff): augmented seed %s (+%d orientations, gate %.4f)",
+                     aug["out_csv"], aug["added"], aug["gate"])
+            grains_path = Path(aug["out_csv"])
         LOG.info("seeding(ff): handoff %s → %s", grains_path, seed_csv)
         n_seeds = grains_csv_to_unique_orientations(
             grains_path, seed_csv, space_group=space_group,
         )
         finished = time.time()
+        metrics = {"mode": "ff", "n_seed_grains": n_seeds, "space_group": space_group}
+        if aug is not None:
+            metrics.update(augment_added=aug["added"], augment_gate=aug["gate"],
+                           augment_null_runs=len(aug["null_distinct_far"]))
         return StageResult(
             stage_name="seeding",
             started_at=started, finished_at=finished, duration_s=finished - started,
             outputs={str(seed_csv): ""},
-            metrics={"mode": "ff", "n_seed_grains": n_seeds,
-                     "space_group": space_group},
+            metrics=metrics,
         )
 
     if cfg.seeding.mode == "merged-ff":
@@ -137,6 +153,18 @@ def run(ctx: StageContext) -> StageResult:
             )
         n_seeds = grains_csv_to_unique_orientations(
             grains_csv, seed_csv, space_group=space_group,
+        )
+        # The merged-FF Grains.csv is indexed with a 1-row positions.csv, which
+        # puts the indexer in FF mode: no beam-position gate, so every scan's
+        # spots can support every orientation. It is a SEED list for the
+        # per-voxel indexer, not a grain count. On ma5608 it held 568 rows
+        # against 204 find_grains grains; on the reference campaign its
+        # omega-shuffle null found MORE grains than the real data.
+        LOG.warning(
+            "seeding(merged-ff): %d seed orientations written to %s. This is a "
+            "seed list indexed with the beam gate OFF (FF mode), not a grain "
+            "count; quote find_grains' Output/UniqueOrientations.csv instead.",
+            n_seeds, seed_csv,
         )
         finished = time.time()
         return StageResult(

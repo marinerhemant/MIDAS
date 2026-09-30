@@ -47,6 +47,7 @@ from ._cluster import (
     GlobalClusterResult,
     global_cluster,
     global_cluster_fast,
+    merge_sibling_grains,
     per_voxel_cluster,
     per_voxel_cluster_torch,
 )
@@ -93,7 +94,7 @@ from ._voxel_keys import (
 __all__ = [
     # cluster
     "PerVoxelClusterResult", "GlobalClusterResult",
-    "global_cluster", "per_voxel_cluster", "per_voxel_cluster_torch",
+    "global_cluster", "merge_sibling_grains", "per_voxel_cluster", "per_voxel_cluster_torch",
     # consolidation io
     "ConsolidatedReader", "CONSOLIDATED_KEY_COLS", "CONSOLIDATED_VALS_COLS",
     "open_all_three", "open_vals", "open_keys", "open_ids",
@@ -155,8 +156,15 @@ def _pervoxel_worker(args):
     ``(v, OM(9), conf, SpotID, nMatches, nIDs, best_row)`` for valid voxels, in
     ascending ``v``. Byte-identical to the original serial loop body.
     """
-    out_dir, v0, v1, space_group, max_ang_deg = args
+    out_dir, v0, v1, space_group, max_ang_deg = args[:5]
+    margin = args[5] if len(args) > 5 else 0.0
     vals_r, keys_r, _ = open_all_three(out_dir)
+    bright = cstart = None
+    if margin > 0:
+        from ..diagnostics.candidate_brightness import (
+            BRIGHTNESS_NAME, brightness_tiebreak)
+        with np.load(Path(out_dir) / BRIGHTNESS_NAME) as z:
+            bright, cstart = z["brightness"], z["cand_start"]
     rows: list = []
     for v in range(v0, v1):
         vals_v = vals_r.get_vals(v)
@@ -183,6 +191,10 @@ def _pervoxel_worker(args):
         if result.best_row < 0:
             continue
         br = result.best_row
+        if bright is not None:
+            s0 = int(cstart[v])
+            br = brightness_tiebreak(confs, vals_v[:, 1],
+                                     bright[s0:s0 + vals_v.shape[0]], margin)
         rows.append((int(v), vals_v[br, 2:11].copy(), float(confs[br]),
                      int(keys_v[br, 0]), int(keys_v[br, 1]), int(keys_v[br, 2]), int(br)))
     # The span comes back with the rows so a progress reporter can count
@@ -192,7 +204,7 @@ def _pervoxel_worker(args):
 
 
 def _per_voxel_pass(out_dir, n_voxels, space_group, max_ang_deg, n_jobs=1,
-                    progress_cb=None):
+                    progress_cb=None, tiebreak_margin=0.0):
     """Per-voxel pass over all voxels, optionally parallel across CPU workers.
 
     The loop is embarrassingly parallel; for DEFORMED maps with many candidate
@@ -225,7 +237,8 @@ def _per_voxel_pass(out_dir, n_voxels, space_group, max_ang_deg, n_jobs=1,
     if n_jobs and n_jobs > 1 and n_voxels > 0:
         import multiprocessing as mp
         step = (n_voxels + n_jobs - 1) // n_jobs
-        chunks = [(str(out_dir), i, min(i + step, n_voxels), space_group, max_ang_deg)
+        chunks = [(str(out_dir), i, min(i + step, n_voxels), space_group, max_ang_deg,
+                   tiebreak_margin)
                   for i in range(0, n_voxels, step)]
         ctx = mp.get_context("fork")
         results = []
@@ -236,7 +249,8 @@ def _per_voxel_pass(out_dir, n_voxels, space_group, max_ang_deg, n_jobs=1,
                 n_done += res[1] - res[0]
                 _report(n_done)
     else:
-        results = [_pervoxel_worker((str(out_dir), 0, n_voxels, space_group, max_ang_deg))]
+        results = [_pervoxel_worker((str(out_dir), 0, n_voxels, space_group, max_ang_deg,
+                                     tiebreak_margin))]
         _report(n_voxels)
 
     for _v0, _v1, rows in results:
@@ -275,6 +289,9 @@ def find_grains_single(
     conc_min_band_um: float = 4.0,
     frame_loader=None,
     progress_cb=None,
+    cluster_device: Optional[str] = None,
+    brightness_tiebreak_margin: float = 0.0,
+    sibling_merge_deg: float = 0.0,
 ) -> FindGrainsArtifacts:
     """Replace ``findSingleSolutionPFRefactored.c``.
 
@@ -325,6 +342,11 @@ def find_grains_single(
         :func:`._sinogen.sinogram_concentration`.
     conc_min_band_um : float
         Floor on the concentration acceptance band, micrometres.
+    sibling_merge_deg : float
+        Opt-in (default 0 = off, C parity). Merge unique grains whose representative
+        orientations are within this many degrees before the spot association, so the
+        unique-only spot filter does not starve near-duplicate grains
+        (:func:`._cluster.merge_sibling_grains`; 1.0 = the clustering tolerance).
     frame_loader : callable, optional
         Required only when ``extract_patches=True``.
     """
@@ -353,7 +375,7 @@ def find_grains_single(
     _njobs = int(_osj.environ.get("MIDAS_FINDGRAINS_NJOBS", "1") or "1")
     per_vox_OMs, per_vox_confs, per_vox_keys_for_global, single_key_rows = _per_voxel_pass(
         out_dir, n_voxels, space_group, cluster_misorientation_deg, n_jobs=_njobs,
-        progress_cb=progress_cb,
+        progress_cb=progress_cb, tiebreak_margin=brightness_tiebreak_margin,
     )
 
     single_key_path = out_dir / "UniqueIndexSingleKey.bin"
@@ -366,14 +388,9 @@ def find_grains_single(
     # speedup, byte-parity), else the exact reference. Override via
     # MIDAS_FINDGRAINS_CLUSTER = auto | gpu | reference | binned (+ MIDAS_FINDGRAINS_DEVICE).
     # ("binned" is the O(N*k) asymptotic fix but EXPERIMENTAL — see _cluster.py.)
-    import os as _os
-    _cmethod = _os.environ.get("MIDAS_FINDGRAINS_CLUSTER", "auto").strip().lower()
-    _cdev = None
-    if _cmethod in ("gpu", "binned"):
-        _d = _os.environ.get("MIDAS_FINDGRAINS_DEVICE", "").strip()
-        if _d:
-            import torch as _torch
-            _cdev = _torch.device(_d)
+    # ``cluster_device`` (the run's --device, passed by the stage) decides
+    # "auto". It used to be env-only, so a CPU run silently took GPU 0 here.
+    _cmethod, _cdev = resolve_cluster_device(cluster_device)
     glob = global_cluster_fast(
         per_vox_OMs=per_vox_OMs,
         per_vox_confs=per_vox_confs,
@@ -384,6 +401,9 @@ def find_grains_single(
         method=_cmethod,
         device=_cdev,
     )
+    # Opt-in (default 0 = C parity): merge unique grains whose representatives are within
+    # ``sibling_merge_deg`` so the unique-only spot filter does not starve them (see merge_sibling_grains).
+    glob = merge_sibling_grains(glob, per_vox_confs, space_group=space_group, merge_deg=sibling_merge_deg)
 
     unique_orientations_csv = out_dir / "UniqueOrientations.csv"
     write_unique_orientations_csv(
@@ -400,8 +420,19 @@ def find_grains_single(
     # Falls back to placeholder zeros if positions.csv is absent.
     voxel_grid_csv = out_dir / "voxel_grid.csv"
     try:
+        from ..stages._voxel_grid import read_voxel_grid
         positions_path = work / "positions.csv"
-        if positions_path.exists():
+        grid_xy = read_voxel_grid(work)
+        if grid_xy is not None:
+            # Explicit grid (e.g. a half scan): the indexer ran on exactly
+            # these rows, so voxel v's centre is row v. positions x
+            # positions would be the wrong grid.
+            if grid_xy.shape[0] != n_voxels:
+                raise ValueError(
+                    f"VoxelGrid.txt has {grid_xy.shape[0]} rows but "
+                    f"IndexBest has {n_voxels} voxels")
+            xs, ys = grid_xy[:, 0], grid_xy[:, 1]
+        elif positions_path.exists():
             sg = read_positions_csv(positions_path)
             # spatial_positions are sorted-by-y; the IndexerScanningOMP
             # convention uses sorted positions for the (xThis, yThis) grid.
@@ -681,3 +712,38 @@ def find_grains_multiple(
         spots_to_index_csv=str(spots_to_index_csv),
         n_unique_grains=n_total,
     )
+
+
+def resolve_cluster_device(cluster_device=None, environ=None):
+    """Pick the cross-voxel dedup path: ``(method, torch_device_or_None)``.
+
+    ``MIDAS_FINDGRAINS_CLUSTER`` (auto|gpu|reference|binned) and
+    ``MIDAS_FINDGRAINS_DEVICE`` override; otherwise ``cluster_device`` (the
+    run's ``--device``) decides "auto": a CUDA device that exists means the
+    exact GPU path, anything else (cpu, mps -- the GPU path needs float64 --
+    or cuda on a host without one) the exact reference path. Logs the choice.
+    """
+    import logging
+    import os
+    env = os.environ if environ is None else environ
+    method = env.get("MIDAS_FINDGRAINS_CLUSTER", "auto").strip().lower()
+    d = env.get("MIDAS_FINDGRAINS_DEVICE", "").strip() or (cluster_device or "")
+    dev = None
+    cuda_ok = False
+    if d.lower().startswith("cuda") or (method != "reference" and not d):
+        try:
+            import torch
+            cuda_ok = torch.cuda.is_available()
+        except Exception:
+            cuda_ok = False
+    if d.lower().startswith("cuda") and cuda_ok and method in ("auto", "gpu", "binned"):
+        import torch
+        dev = torch.device(d)
+    if method == "auto":
+        method = "gpu" if (dev is not None or (not d and cuda_ok)) else "reference"
+    logging.getLogger("midas_pipeline.find_grains").info(
+        "find_grains: cross-voxel dedup method=%s device=%s (device arg %r, "
+        "CUDA_VISIBLE_DEVICES=%r)", method,
+        dev if dev is not None else ("cuda" if method == "gpu" else "cpu"),
+        d or None, env.get("CUDA_VISIBLE_DEVICES"))
+    return method, dev

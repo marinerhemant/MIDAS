@@ -77,6 +77,7 @@ KEY_EARLIEST_STAGE: Dict[str, str] = {
     "tolTilts": "transforms", "tolBC": "transforms", "tolLsd": "transforms",
     "GlobalPosition": "transforms", "BeamStopY": "transforms",
     "BeamStopZ": "transforms",
+    "IncludeSaturatedSpots": "transforms",   # read at merge, not peak search
     # ── indexing: search envelope and matching windows ──
     "Rsample": "indexing", "Hbeam": "indexing", "Vsample": "indexing",
     "MinNrSpots": "indexing", "Completeness": "indexing",

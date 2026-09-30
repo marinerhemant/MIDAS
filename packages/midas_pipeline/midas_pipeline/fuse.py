@@ -25,6 +25,7 @@ import numpy as np
 
 from midas_stress.orientation import misorientation_om_batch
 
+from ._grain_list import require_grain_list
 from .recon.voxelmap import _read_indexbest
 
 LOG = logging.getLogger("midas_pipeline.fuse")
@@ -78,7 +79,7 @@ def _orient_score_per_grain(
     cand_confs_arr = np.asarray(cand_confs, dtype=np.float64)
     cand_voxels_arr = np.asarray(cand_voxels, dtype=np.int64)
 
-    grain_oms = np.genfromtxt(topdir / "UniqueOrientations.csv", delimiter=" ")
+    grain_oms = np.genfromtxt(require_grain_list(topdir), delimiter=" ")
     if grain_oms.ndim == 1:
         grain_oms = grain_oms.reshape(1, -1)
     grain_oms = grain_oms[:, 5:14]
@@ -125,8 +126,8 @@ def bayesian_fusion(
     all_recons : ndarray, shape (n_grains, n_scans, n_scans), float
         Per-grain tomographic reconstruction.
     topdir : path
-        Directory containing ``Output/IndexBest_all.bin`` and
-        ``UniqueOrientations.csv``.
+        Layer directory containing ``Output/IndexBest_all.bin`` and
+        ``Output/UniqueOrientations.csv`` (the find_grains grain list).
     sgnum : int
     n_grains : int
     max_ang_deg, min_conf : float
@@ -188,7 +189,10 @@ def mask_sino_by_assignment(
         ``|s_V(omega_hkl_i) - spatial_pos[scan_j]| < scan_tol`` OR
         ``|s_V(omega_hkl_i) + spatial_pos[scan_j]| < scan_tol`` (Friedel)
 
-    where ``s_V(omega) = -x_V * cos(omega) + y_V * sin(omega)``.
+    where ``s_V(omega)`` is ``find_grains._geom.scan_projection_um`` (x = spatial_pos[row],
+    y = spatial_pos[col]; ``x sin(omega) + y cos(omega)``, the indexer's beam gate). Until
+    2026-09-28 this used ``-x cos + y sin`` with x = spatial_pos[col] - y mirrored - and kept
+    ~24 % of each grain's own sinogram intensity on real data (~86 % now).
 
     This drops residual cells the C-side scan-pos filter couldn't
     catch because the hard voxel→grain assignment didn't exist yet;
@@ -224,13 +228,12 @@ def mask_sino_by_assignment(
         if len(rows) == 0:
             LOG.info("  step5 G%d: no voxels assigned, sino zeroed", g)
             continue
-        x_v = spatial_pos[cols]
-        y_v = spatial_pos[rows]
+        x_v = spatial_pos[rows]                  # voxel_grid.csv / indexer layout
+        y_v = spatial_pos[cols]
         n_vox = len(x_v)
 
-        cos_w = np.cos(np.deg2rad(th))[:, None]
-        sin_w = np.sin(np.deg2rad(th))[:, None]
-        s_proj = -x_v[None, :] * cos_w + y_v[None, :] * sin_w  # (nSp, n_vox)
+        from .find_grains._geom import scan_projection_um
+        s_proj = scan_projection_um(x_v[None, :], y_v[None, :], th[:, None])  # (nSp, n_vox)
 
         scan_pos = spatial_pos[None, None, :]
         mask = np.zeros((n_sp, n_scans), dtype=bool)

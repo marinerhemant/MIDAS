@@ -22,6 +22,8 @@ def run(ctx: StageContext) -> StageResult:
     cfg = ctx.config
     if ctx.is_ff or not cfg.em.enable:
         return stub_run("em_refine", ctx)
+    from ._voxel_grid import require_positions_grid
+    require_positions_grid(ctx.layer_dir, "em_refine")
 
     started = time.time()
     layer_dir = Path(ctx.layer_dir)
@@ -38,7 +40,7 @@ def run(ctx: StageContext) -> StageResult:
         sigma_min=cfg.em.sigma_min,
         sigma_decay=cfg.em.sigma_decay,
         refine_orientations=cfg.em.refine_orientations,
-        opt_steps=cfg.em.opt_steps,
+        n_opt_steps=cfg.em.opt_steps,
         lr=cfg.em.lr,
     )
     out_map = {str(p): "" for p in (refined_sinos_paths or [])} if refined_sinos_paths else {}

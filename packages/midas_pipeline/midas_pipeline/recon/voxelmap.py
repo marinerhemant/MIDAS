@@ -17,7 +17,8 @@ The function reads:
 - ``{topdir}/Output/IndexBest_all.bin``: consolidated indexer output
   (``int32 nVox``, then ``int32 nSolArr[nVox]``, ``int64 offArr[nVox]``,
   ``float64 records[N, 16]``).
-- ``{topdir}/UniqueOrientations.csv``: 14 cols
+- ``{topdir}/Output/UniqueOrientations.csv`` (the find_grains grain list, not the
+  layer-level seed list): 14 cols
   ``[grainID, rowNr, nSpots, startRowNr, listStartPos, OM1..OM9]``.
 """
 
@@ -29,6 +30,7 @@ from typing import Tuple, Union
 import numpy as np
 
 # midas-stress orientation primitives — never calcMiso.
+from .._grain_list import require_grain_list
 from midas_stress.orientation import misorientation_om_batch
 
 
@@ -72,7 +74,7 @@ def voxelmap_recon(
     ----------
     topdir : path
         Work dir containing ``Output/IndexBest_all.bin`` and
-        ``UniqueOrientations.csv``.
+        ``Output/UniqueOrientations.csv``.
     sgnum : int
         Crystallographic space group (1-230).
     n_scans : int
@@ -110,10 +112,13 @@ def voxelmap_recon(
         top_oms[v] = sols[bi, 2:11]
         top_conf[v] = confs[bi]
 
-    grain_oms = np.genfromtxt(topdir / "UniqueOrientations.csv", delimiter=" ")
+    grain_oms = np.genfromtxt(require_grain_list(topdir), delimiter=" ")
     if grain_oms.ndim == 1:
         grain_oms = grain_oms.reshape(1, -1)
     grain_oms = grain_oms[:, 5:14]
+    if len(grain_oms) != n_grains:
+        raise ValueError(f"voxelmap_recon: n_grains={n_grains} but the grain list "
+                         f"{require_grain_list(topdir)} has {len(grain_oms)} rows")
 
     max_ang_rad = np.deg2rad(max_ang_deg)
     ang_to_grain = np.zeros((n_vox, n_grains), dtype=np.float64)

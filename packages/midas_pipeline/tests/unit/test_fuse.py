@@ -46,7 +46,10 @@ def _write_unique_orientations(tmp_path: Path, oms_3x3):
     for g, om in enumerate(oms_3x3):
         rows.append([float(g), 0.0, 0.0, 0.0, 0.0] + list(np.asarray(om).flatten()))
     data = np.asarray(rows, dtype=np.float64)
-    path = tmp_path / "UniqueOrientations.csv"
+    # The grain list lives where find_grains writes it (Output/), not at the
+    # layer level, where seeding writes the seed list.
+    path = tmp_path / "Output" / "UniqueOrientations.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
     np.savetxt(path, data, fmt="%.10f", delimiter=" ")
     return path
 
@@ -116,14 +119,14 @@ def test_mask_sino_friedel_keeps_both():
     # spatial_pos: [−1, 0, 1] um
     spatial_pos = np.array([-1.0, 0.0, 1.0])
 
-    # One grain assigned to voxel (row=2, col=0) → y=spatial_pos[2]=1, x=spatial_pos[0]=-1
+    # One grain assigned to voxel (row=2, col=0) → x=spatial_pos[2]=1, y=spatial_pos[0]=-1
     max_id = -np.ones((n_scans, n_scans), dtype=np.int32)
     max_id[2, 0] = 0
 
     # Two HKLs at omega=0° and omega=180° (Friedel pair).
-    # s = -x*cos(omega) + y*sin(omega)
-    # omega=0:   s = -x*1 + y*0 = -(-1) = 1
-    # omega=180: s = -x*(-1) + y*0 = -1
+    # s = x*sin(omega) + y*cos(omega)   (find_grains._geom.scan_projection_um)
+    # omega=0:   s = y = -1
+    # omega=180: s = -y = 1
     omegas = np.array([[0.0, 180.0]])
 
     # Build sinos that put intensity at the scan position the Friedel pair maps to
@@ -135,15 +138,81 @@ def test_mask_sino_friedel_keeps_both():
         sinos, omegas, nr_hkls, max_id, n_grains, n_scans,
         spatial_pos, scan_tol=0.5,
     )
-    # HKL0 (omega=0): s_proj=1, |1 - scan_pos| < 0.5 → scan_pos=1 only
-    # HKL1 (omega=180): s_proj=-1, |-1 - scan_pos|<0.5 → scan_pos=-1 only
+    # HKL0 (omega=0): s_proj=-1 → scan_pos=-1 by the primary branch
+    # HKL1 (omega=180): s_proj=1 → scan_pos=1 by the primary branch
     # Friedel filter also adds |-s_proj - scan_pos| < 0.5, so for HKL0
     # |−1 − scan_pos| < 0.5 → scan_pos=−1 also kept; HKL1 similarly keeps scan_pos=1.
     # → both rows should have BOTH endpoints kept.
-    assert masked[0, 0, 0] > 0   # HKL0, scan_pos=-1 kept by Friedel branch
-    assert masked[0, 0, 2] > 0   # HKL0, scan_pos=1 kept by primary branch
-    assert masked[0, 1, 0] > 0   # HKL1, scan_pos=-1 kept by primary branch
-    assert masked[0, 1, 2] > 0   # HKL1, scan_pos=1 kept by Friedel branch
+    assert masked[0, 0, 0] > 0   # HKL0, scan_pos=-1 kept by primary branch
+    assert masked[0, 0, 2] > 0   # HKL0, scan_pos=1 kept by Friedel branch
+    assert masked[0, 1, 0] > 0   # HKL1, scan_pos=-1 kept by Friedel branch
+    assert masked[0, 1, 2] > 0   # HKL1, scan_pos=1 kept by primary branch
     # Middle scan (scan_pos=0) is not within tol of ±1, so it should be zero.
     assert masked[0, 0, 1] == 0
     assert masked[0, 1, 1] == 0
+
+
+def test_fusion_reads_grain_list_not_seed_list(tmp_path):
+    """Seeded layout: a layer-level seed list with MORE rows, in another order,
+    must not be read. Grain g is row g of Output/UniqueOrientations.csv."""
+    n_scans, n_vox = 2, 4
+    om_g0, om_g1 = np.eye(3), _rot_z(np.deg2rad(30.0))
+
+    def _record(om, conf):
+        r = np.zeros(16, dtype=np.float64)
+        r[2:11] = np.asarray(om).flatten(); r[14] = 10.0; r[15] = 10.0 * conf
+        return r
+
+    _write_indexbest_fixture(tmp_path, n_vox, [1, 1, 1, 1],
+                             [_record(om_g0, .9), _record(om_g0, .9),
+                              _record(om_g1, .9), _record(om_g1, .9)])
+    _write_unique_orientations(tmp_path, [om_g0, om_g1])
+    # decoy seed list at layer level: reversed order plus an extra row
+    rows = [[float(g), 0, 0, 0, 0] + list(np.asarray(om).flatten())
+            for g, om in enumerate([om_g1, _rot_z(1.0), om_g0])]
+    np.savetxt(tmp_path / "UniqueOrientations.csv", np.asarray(rows), fmt="%.10f")
+
+    shape = np.zeros((2, n_scans, n_scans), dtype=np.float32)
+    shape[0, 0, :] = 1.0; shape[1, 1, :] = 1.0
+    post = bayesian_fusion(shape, tmp_path, sgnum=225, n_grains=2,
+                           max_ang_deg=1.0, min_conf=0.5)
+    assert post[0, 0, 0] > 0 and post[1, 1, 0] > 0
+    assert post[0, 1, 0] == 0 and post[1, 0, 0] == 0
+
+
+def test_fusion_without_grain_list_says_so(tmp_path):
+    r = np.zeros(16); r[2:11] = np.eye(3).flatten(); r[14] = 10.0; r[15] = 9.0
+    _write_indexbest_fixture(tmp_path, 1, [1], [r])
+    np.savetxt(tmp_path / "UniqueOrientations.csv", np.zeros((1, 14)))  # seed list only
+    with pytest.raises(FileNotFoundError, match="find_grains"):
+        bayesian_fusion(np.ones((1, 1, 1), np.float32), tmp_path, sgnum=225,
+                        n_grains=1, max_ang_deg=1.0, min_conf=0.5)
+
+
+
+def _asym_grain_sinogram(n=31, conv="indexer"):
+    """An off-centre, asymmetric grain (an L of voxels) and its sinogram in the given convention."""
+    pos = np.linspace(-150.0, 150.0, n)                 # spatial (ascending) positions, 10 um apart
+    max_id = -np.ones((n, n), dtype=np.int32)
+    max_id[20:26, 5:9] = 0; max_id[23:26, 9:14] = 0      # x = pos[row] 50..100, y = pos[col] -100..-10
+    rows, cols = np.nonzero(max_id == 0)
+    om = np.arange(-180.0, 180.0, 7.0); w = np.deg2rad(om)[:, None]
+    x, y = pos[rows][None], pos[cols][None]
+    s = x * np.sin(w) + y * np.cos(w) if conv == "indexer" else x * np.sin(w) - y * np.cos(w)
+    sino = np.zeros((1, len(om), n))
+    for h in range(len(om)):
+        for v in np.rint((s[h] - pos[0]) / 10.0).astype(int):
+            sino[0, h, v] += 1.0
+    return sino, om[None], np.array([len(om)], np.int32), max_id, pos
+
+
+def test_mask_keeps_a_grain_projected_with_the_indexer_convention():
+    """Off-centre asymmetric grain: the indexer's projection (x = pos[row], y = pos[col], s = x sin + y cos)
+    is the convention of the sinograms; the mask must keep (almost) all of the grain's own intensity.
+    The old convention (y mirrored) kept ~24 % on real 20-ID-E data; a y-mirrored sinogram must lose most."""
+    sino, om, nr, max_id, pos = _asym_grain_sinogram(conv="indexer")
+    kept = mask_sino_by_assignment(sino, om, nr, max_id, 1, len(pos), pos, scan_tol=5.0).sum() / sino.sum()
+    assert kept > 0.99
+    sino_m, *_ = _asym_grain_sinogram(conv="mirrored")
+    kept_m = mask_sino_by_assignment(sino_m, om, nr, max_id, 1, len(pos), pos, scan_tol=5.0).sum() / sino_m.sum()
+    assert kept_m < 0.8

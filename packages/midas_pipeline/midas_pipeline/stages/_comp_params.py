@@ -38,6 +38,8 @@ _INDEXER_KEYS = (
     # PF seed-strength floor
     "MinSeedGrainRadius",
     "SeedDropWeakestFrac",
+    # refiner relative-misfit weight (FitUnified.c; needs RelFitRMSE.bin)
+    "RelFitRMSEWeightR0",
 )
 
 
@@ -164,6 +166,12 @@ _PG_SELECTION_KEYS = (
     # written into paramstest by FitSetup. A multi-phase run that reached
     # process-grains through the pipeline silently saw NumPhases = 1.
     "NumPhases",
+    # Stage-1 cluster misorientation tolerance (deg). Absent here, a user's
+    # MisoriTol never reached process-grains at all.
+    "MisoriTol",
+    # c_parity Pass A dedup tolerances (deg, um); opt-in, C defaults 0.1 / 5.
+    "CParityPassAMisoriTol",
+    "CParityPassAPosTol",
 )
 
 

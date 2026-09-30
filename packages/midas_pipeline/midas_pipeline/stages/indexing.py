@@ -94,6 +94,37 @@ def _ensure_grains_seed_in_paramstest(
              seed)
 
 
+def _ensure_halfscan_keys_in_paramstest(
+    ctx: StageContext, paramstest: Path, layer_dir: Path
+) -> None:
+    """Write ``VoxelGridFile`` / ``PFCoverageAwareCompleteness`` into
+    *paramstest* from the scan config, replacing stale copies. The C indexer
+    reads both only from the file. No-op (file untouched) when neither
+    feature is on, so the historical path is byte-identical."""
+    scan = ctx.config.scan
+    want = []
+    if scan.voxel_grid != "positions":
+        from ._voxel_grid import VOXEL_GRID_NAME, write_voxel_grid
+        grid_f = layer_dir / VOXEL_GRID_NAME
+        if not grid_f.is_file():
+            write_voxel_grid(layer_dir, scan)
+        want.append(f"VoxelGridFile {grid_f.resolve()}")
+    if scan.coverage_aware_completeness:
+        want.append("PFCoverageAwareCompleteness 1")
+    if not want:
+        return
+    keys = {"VoxelGridFile", "PFCoverageAwareCompleteness"}
+
+    def _key(ln: str) -> str:
+        parts = ln.strip().split()
+        return parts[0].rstrip(";") if parts else ""
+
+    kept = [ln for ln in paramstest.read_text().splitlines()
+            if _key(ln) not in keys]
+    paramstest.write_text("\n".join(kept + want) + "\n")
+    LOG.info("indexing(PF): half-scan keys wired: %s", "; ".join(want))
+
+
 def _count_indexed_seeds(out_dir: Path, legacy_path: Path):
     """How many seeds actually got a solution, whichever backend wrote them.
 
@@ -333,6 +364,7 @@ def run(ctx: StageContext) -> StageResult:
     # here reaches the binary. The seed file must be Grains.csv format (ID + 9
     # OM in cols 1..9), NOT UniqueOrientations.csv (OM in cols 5..13).
     _ensure_grains_seed_in_paramstest(ctx, paramstest, layer_dir)
+    _ensure_halfscan_keys_in_paramstest(ctx, paramstest, layer_dir)
 
     LOG.info("indexing(PF): paramstest=%s positions=%s out=%s",
              paramstest, positions_csv, out_path)

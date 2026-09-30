@@ -38,6 +38,8 @@ def run(ctx: StageContext) -> StageResult:
         cfg.fusion.enable_bayesian or cfg.recon.method == "bayesian"
     ):
         return stub_run("fuse", ctx)
+    from ._voxel_grid import require_positions_grid
+    require_positions_grid(ctx.layer_dir, "fuse")
 
     started = time.time()
     layer_dir = Path(ctx.layer_dir)
@@ -60,7 +62,7 @@ def run(ctx: StageContext) -> StageResult:
         all_recons=all_recons,
         topdir=layer_dir,
         sgnum=_read_space_group(layer_dir),
-        nGrs=n_grs,
+        n_grains=n_grs,
         max_ang_deg=cfg.fusion.max_ang_deg,
         min_conf=cfg.fusion.min_conf,
     )

@@ -42,3 +42,16 @@ def test_empty_positions_handled_gracefully():
     grid = build_scan_grid(np.array([], dtype=np.float64))
     assert grid.n_scans == 0
     assert grid.scan_to_spatial.size == 0
+
+
+def test_scan_projection_is_the_indexer_beam_gate():
+    """s = x sin(w) + y cos(w) with x = pos[row], y = pos[col] - the convention verified on real data (the
+    sinogram columns of 18 in-field grains within 1.85 scans; y-mirrored forms 12-31 scans off)."""
+    import numpy as np
+    from midas_pipeline.find_grains._geom import scan_projection_um
+    assert np.isclose(scan_projection_um(100.0, -40.0, 90.0), 100.0)     # omega 90: s = x
+    assert np.isclose(scan_projection_um(100.0, -40.0, 0.0), -40.0)      # omega 0: s = y
+    # the old port's (pos[col], pos[row]) with -x cos + y sin is y-mirrored, not equivalent
+    x, y, w = 100.0, -40.0, np.deg2rad(30.0)
+    old = -(y) * np.cos(w) + (x) * np.sin(w)
+    assert not np.isclose(old, scan_projection_um(x, y, 30.0))

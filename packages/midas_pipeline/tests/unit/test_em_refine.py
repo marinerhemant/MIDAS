@@ -61,7 +61,10 @@ def test_load_grain_orientations_round_trip(tmp_path):
         [0.0, 0.0, 5.0, 0.0, 0.0] + list(om0.flatten()),
         [1.0, 0.0, 7.0, 0.0, 0.0] + list(om1.flatten()),
     ]
-    np.savetxt(tmp_path / "UniqueOrientations.csv",
+    # The grain list lives where find_grains writes it (Output/); the
+    # layer-level name is seeding's seed list.
+    (tmp_path / "Output").mkdir(exist_ok=True)
+    np.savetxt(tmp_path / "Output" / "UniqueOrientations.csv",
                np.asarray(rows, dtype=np.float64), fmt="%.10f", delimiter=" ")
     oms, gids = em_refine.load_grain_orientations(str(tmp_path), refined=False)
     assert oms.shape == (2, 3, 3)

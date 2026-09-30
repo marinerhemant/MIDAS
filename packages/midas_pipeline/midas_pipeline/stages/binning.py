@@ -18,6 +18,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from .._logging import LOG
 from ..results import BinningResult
 from ._base import StageContext
@@ -52,6 +54,18 @@ def _binning_device(ctx: StageContext) -> str:
                  dev, ctx.config.device)
     return dev
 
+
+
+def _omega_coverage(res, out_dir: Path, tag: str) -> list:
+    """Blocked-omega-window check on the binned spots (never fails the stage)."""
+    try:
+        from ..diagnostics.omega_coverage import report_blocked_omega
+        sp = res.spots.detach().cpu().numpy() if hasattr(res.spots, "detach") else np.asarray(res.spots)
+        ranges = list(getattr(res.paramstest, "OmegaRanges", None) or []) or [(-180.0, 180.0)]
+        return report_blocked_omega(sp, ranges, out_dir, tag=tag)["windows"]
+    except Exception as e:                                # noqa: BLE001 - diagnostic only
+        LOG.warning("%s: omega coverage check failed (%s)", tag, e)
+        return []
 
 def _run_ff(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
     """FF-mode binning: delegate to ``midas_transforms.bin_data``.
@@ -109,7 +123,11 @@ def _run_ff(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
         outputs["data_bin"] = str(out_dir / "Data.bin")
     if (out_dir / "nData.bin").exists():
         outputs["ndata_bin"] = str(out_dir / "nData.bin")
+    if (out_dir / "RingSlots.csv").exists():
+        # Ring axis map of nData.bin (compact ring slots); travels with it.
+        outputs["ring_slots_csv"] = str(out_dir / "RingSlots.csv")
 
+    blocked = _omega_coverage(res, out_dir, "binning(ff)")
     n_bins = res.n_ring_bins * res.n_eta_bins * res.n_ome_bins
     finished = time.time()
     return BinningResult(
@@ -122,12 +140,42 @@ def _run_ff(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
         metrics={
             "scan_mode": "ff",
             "n_spots": int(res.spots.shape[0]),
+            "blocked_omega_windows": blocked,
             "n_ring_bins": int(res.n_ring_bins),
             "n_eta_bins": int(res.n_eta_bins),
             "n_ome_bins": int(res.n_ome_bins),
         },
         n_bins=n_bins,
     )
+
+
+def _warn_if_positions_differ(layer_dir: Path, scan_positions) -> bool:
+    """Warn when binning is about to overwrite a positions.csv that says something else.
+
+    binning rewrites ``positions.csv`` and ``voxel_scan_pos.bin`` from the scan geometry
+    (``--scan-step``/``--n-scans``), so a hand-written file -- e.g. the descending
+    convention -- is silently replaced, and the file order/sign is what mirrors or
+    rotates a PF map. A negative ``--scan-step`` gives descending positions. Returns True
+    if a differing file was found.
+    """
+    import numpy as np
+    pcsv = Path(layer_dir) / "positions.csv"
+    if not pcsv.exists():
+        return False
+    try:
+        old = np.loadtxt(pcsv, ndmin=1)
+    except ValueError:
+        return False
+    new = np.asarray(scan_positions, dtype=float).ravel()
+    if old.shape == new.shape and np.allclose(old, new):
+        return False
+    LOG.warning(
+        "binning(pf): %s (%d rows, first %s) differs from the scan geometry "
+        "(%d rows, first %s) and is being OVERWRITTEN from --scan-step. The file "
+        "order/sign sets the map handedness; pass a negative --scan-step for a "
+        "descending convention, and re-run from transforms (it adds y_position "
+        "to YLab).", pcsv, old.size, old[:2].tolist(), new.size, new[:2].tolist())
+    return True
 
 
 def _run_pf(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
@@ -174,6 +222,8 @@ def _run_pf(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
             skipped=True,
         )
 
+    _warn_if_positions_differ(ctx.layer_dir, scan_positions)
+
     res = bin_data_scanning(
         result_folder=ctx.layer_dir,
         n_scans=n_scans,
@@ -209,7 +259,11 @@ def _run_pf(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
         outputs["data_bin"] = str(out_dir / "Data.bin")
     if (out_dir / "nData.bin").exists():
         outputs["ndata_bin"] = str(out_dir / "nData.bin")
+    if (out_dir / "RingSlots.csv").exists():
+        # Ring axis map of nData.bin (compact ring slots); travels with it.
+        outputs["ring_slots_csv"] = str(out_dir / "RingSlots.csv")
 
+    blocked = _omega_coverage(res, out_dir, "binning(pf)")
     n_bins = res.n_ring_bins * res.n_eta_bins * res.n_ome_bins
     finished = time.time()
     return BinningResult(
@@ -225,6 +279,7 @@ def _run_pf(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
         metrics={
             "scan_mode": "pf",
             "n_spots": int(res.spots.shape[0]),
+            "blocked_omega_windows": blocked,
             "n_scans": int(n_scans),
             "n_ring_bins": int(res.n_ring_bins),
             "n_eta_bins": int(res.n_eta_bins),

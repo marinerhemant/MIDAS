@@ -173,6 +173,7 @@ def _run_ff(ctx: StageContext) -> StageResult:
                 "available. Re-install midas-fit-grain with an OpenMP toolchain "
                 "(macOS: `brew install libomp`), or use --refine-backend python."
             )
+        _write_rel_fit_rmse_if_requested(fit_paramstest, layer_dir)
         LOG.info("refinement(FF, c-omp): %s  [%d seeds]",
                  backend_c.binary_path(), n_seeds)
         proc = backend_c.run_refiner(
@@ -413,6 +414,8 @@ def run(ctx: StageContext) -> StageResult:
     all_spot_ids = extra[:, 4].astype(np.int64)
     obs = ObservedSpots.from_extra_info(
         extra, spot_ids=all_spot_ids, device=device, dtype=dtype,
+        # Same Wedge as _build_model below: raw pre-wedge columns when W != 0.
+        wedge_deg=float(getattr(cfg, "Wedge", 0.0) or 0.0),
     )
 
     hkls_path = layer_dir / "hkls.csv"
@@ -454,3 +457,25 @@ def run(ctx: StageContext) -> StageResult:
                  "position_mode": cfg.position_mode,
                  "mode": cfg.mode},
     )
+
+
+
+def _write_rel_fit_rmse_if_requested(paramstest, layer_dir) -> None:
+    """Write RelFitRMSE.bin next to ExtraInfo.bin when the refiner will weight by it.
+
+    ``RelFitRMSEWeightR0 > 0`` in the refiner's paramstest makes FitUnified.c read
+    ``<layer_dir>/RelFitRMSE.bin`` and stop if it is missing, so the file is
+    written here, from the same run's InputAll / Radius tables. The LAST
+    occurrence of the key wins, as in the C parser.
+    """
+    r0 = 0.0
+    for line in Path(paramstest).read_text().splitlines():
+        tok = line.replace(";", " ").split()
+        if len(tok) >= 2 and tok[0] == "RelFitRMSEWeightR0":
+            r0 = float(tok[1])
+    if r0 <= 0:
+        return
+    from midas_transforms.io.csv import write_rel_fit_rmse_bin
+    path, n, known = write_rel_fit_rmse_bin(layer_dir)
+    LOG.info("refinement: RelFitRMSEWeightR0 %g -> wrote %s (%d rows, %d with a value)",
+             r0, path, n, known)

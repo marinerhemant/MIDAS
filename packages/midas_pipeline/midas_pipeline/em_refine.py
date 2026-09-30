@@ -5,7 +5,7 @@ original file stays untouched per the project's "no deletions" rule;
 the new package re-exports it under ``midas_pipeline.em_refine``.
 
 Bridges between pf-HEDM data formats (``Spots.bin``,
-``UniqueOrientations.csv``, ``paramstest.txt``) and the EM model
+``Output/UniqueOrientations.csv``, ``paramstest.txt``) and the EM model
 (``fwd_sim/em_spot_ownership.py``). Generates weighted sinograms from
 EM ownership probabilities, replacing the hard-assignment sinograms
 from ``findSingleSolutionPFRefactored``.
@@ -28,6 +28,8 @@ import sys
 from pathlib import Path
 
 import numpy as np
+
+from ._grain_list import require_grain_list
 
 # Add fwd_sim to path for forward model and EM imports. We anchor on
 # the *MIDAS repo root* (four levels up from this file) the same way
@@ -159,13 +161,15 @@ def load_spots(topdir):
 
 
 def load_grain_orientations(topdir, refined=False):
-    """Load UniqueOrientations.csv → orientation matrices + grain IDs.
+    """Load Output/UniqueOrientations.csv → orientation matrices + grain IDs.
 
     Format: ``grainID rowNr nSpots startRowNr listStartPos OM1..OM9``
     (14 cols, space-delimited).
     """
-    suffix = '_refined' if refined else ''
-    fn = os.path.join(topdir, f'UniqueOrientations{suffix}.csv')
+    # The unrefined list is find_grains' grain list (Output/); the refined one
+    # is written next to the layer by update_unique_orientations_from_refinement.
+    fn = (os.path.join(topdir, 'UniqueOrientations_refined.csv') if refined
+          else str(require_grain_list(topdir)))
     data = np.genfromtxt(fn, delimiter=' ')
     if data.ndim == 1:
         data = data.reshape(1, -1)
@@ -316,7 +320,7 @@ def save_sinograms(topdir, sinograms, omegas, nr_hkls):
 def update_unique_orientations_from_refinement(topdir, n_scans):
     """Re-derive unique grain orientations from pre-tomo refinement results."""
     orig_data = np.genfromtxt(
-        os.path.join(topdir, 'UniqueOrientations.csv'), delimiter=' '
+        require_grain_list(topdir), delimiter=' '
     )
     if orig_data.ndim == 1:
         orig_data = orig_data.reshape(1, -1)

@@ -23,6 +23,8 @@ from ._stub import stub_run
 def run(ctx: StageContext) -> StageResult:
     if ctx.is_ff or not ctx.config.recon.do_tomo:
         return stub_run("sinogen", ctx)
+    from ._voxel_grid import require_positions_grid
+    require_positions_grid(ctx.layer_dir, "sinogen")
 
     started = time.time()
     layer_dir = Path(ctx.layer_dir)

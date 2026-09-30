@@ -948,7 +948,8 @@ cfg.use_bounds = False
 
 extra = read_extra_info(LAYER / 'ExtraInfo.bin', mmap=True)
 obs = ObservedSpots.from_extra_info(
-    extra, spot_ids=extra[:, 4].astype(np.int64), device=device, dtype=dtype)
+    extra, spot_ids=extra[:, 4].astype(np.int64), device=device, dtype=dtype,
+    wedge_deg=cfg.Wedge)                     # same Wedge as _build_model
 max_tt = (2.0 * math.degrees(math.atan(cfg.RhoD / cfg.Lsd))
           if cfg.RhoD > 0 and cfg.Lsd > 0 else 180.0)
 hkls_int, thetas_deg, ring_nr = _read_hkls_csv(
