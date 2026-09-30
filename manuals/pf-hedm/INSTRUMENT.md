@@ -9,19 +9,36 @@ ask** rather than adapting — the ω sign, the dark handling and the entry poin
 
 ## I1. The two configurations
 
-| | **1-ID scanning** | **20-ID HT-HEDM Varex** |
+| | **1-ID scanning** | **20-ID-D HT-HEDM Varex** |
 |---|---|---|
 | files | DM-converted `.h5`, or a per-frame `.tif`/`.tif.bz2` series | `.vrx.h5` |
 | detector | Pilatus 1475 × 1679 @ 172 µm (also GE) | Varex 2880² @ 150 µm |
 | `Lsd` | ~731 mm | ~895.4 mm |
 | energy / λ | per run | 63.000 keV, λ 0.19680 Å |
 | ω | 1440 frames × 0.25° = 360° | 1442 raw frames → **1441 processed**, 0.25° |
-| ω sign | negate the `aero` field (see §I2) | `OmegaStart 180`, `OmegaStep -0.25` — **already negated in the param file** |
+| ω sign | negate the `aero` field (see §I2); a 1-ID `ramsrot` (RAMS-III load frame) sweep is counterclockwise and used **as logged** | `OmegaStart 180`, `OmegaStep -0.25` — **already negated in the param file** |
 | frame 0 | throwaway, `SkipFrame 1` | same |
 | `ImTransOpt` | establish per detector | **2** (flip-Z) |
 | dark | a `Dark` file, `darkLoc` | **`darkLoc /exchange/bright`** — `/exchange/dark` exists and is all zeros |
 | beam / scan step | 1.5 µm / 1.5 µm | 1 µm / 1 µm |
 | reference campaigns | notebook §1–§6 (cracked AM FCC-Ni, 259 × 259); NMC811 `bt_1id_jun25b` (phase 2 §2.5) | notebook §7 (`nf709` set A, 51 × 51) |
+
+**The 20-ID column is 20-ID-D (HT-HEDM) only.** PF also runs at **20-ID-E (HEXM)** on a
+different Varex, `s20varex2`: there ω is **positive as logged** and `ImTransOpt` is **1**
+(y-flip only, z not flipped; established 2026-09-27, ff-hedm Lab Notebook §12), and `OmegaStep` must be measured rather than assumed 0.25
+(0.25051–0.25058 on `PUP_AML_bt_20id_sep26b`). See `manuals/ff-hedm/README.md` scope block.
+**Run once at E (`PUP_AML_bt_20id_sep26b`, pf_KGT6055, 121 x 10 µm, 10 µm beam):** the scan motor
+`zondaSMS.x` is not logged; positions come from the commanded scan. `positions.csv` must be **DESCENDING**
+(`position[file n] = −(zondaSMS.x_n − centre)`, i.e. +600 … −600 µm) — pass **`--scan-step -10`** (the pipeline
+builds positions from it, see the trap below). Verified: with it, 47 FF grains of the same layer sit at median
+29 µm from their pf voxel centroids; every other grid symmetry is ≥ 237 µm (the ascending run is the same map
+rotated 180°). The ω-shuffle null solved 0 voxels (no chance floor). `--preproc-thresh 25` shrank zips 9.4 GB →
+~20 MB each with no spot loss above RingThresh 30; `--preproc-thresh 60` cost ~25 % of spots.
+
+**Outside these two:** one ESRF ID11 layer (Eiger 4M 75 µm, 0.3 µm beam, 335 scans, snake
+ω, reversed positions) has been run end to end — Lab Notebook §9. It is a record, not a
+validation: treat any other station as stop-and-ask, and read Lab Notebook §9's hedges before reusing
+its choices.
 
 **20-ID: the all-zero dark in the zarr is cosmetic, not a fault.** `exchange/dark` reads
 all zeros while the data really is dark-subtracted at zip time (raw frame mean ~1850 →
@@ -33,7 +50,7 @@ A flipped ω mirrors the whole map and reflects every orientation, and nothing d
 complains (spine halt condition; phase 1.1). Confirm it against the encoder, not the
 parameter file.
 
-**20-ID, worked through on the reference campaign.** The `aero` encoder runs
+**20-ID-D, worked through on the reference campaign.** The `aero` encoder runs
 **−180.17 → +179.93 at +0.242°/frame**. The aero stage turns *against* the MIDAS
 convention, so `ω_MIDAS = −ω_aero`, which gives **`OmegaStart 180` / `OmegaStep −0.25`** —
 matching the parameter file. Frame 0 is the throwaway, so `SkipFrame 1`.

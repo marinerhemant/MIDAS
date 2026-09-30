@@ -9,17 +9,17 @@ back.
 
 `§n` means a section of *this* file; handbook sections are `Handbook §n`.
 
-**Three campaigns are recorded here.** They cover different halves of the technique and
+**Four campaigns are recorded here.** They cover different halves of the technique and
 different stations; read the one that matches your data first, then the others for their
 retractions.
 
-| | §1–§6 | §7 | §8 |
-|---|---|---|---|
-| station | **1-ID scanning** | **20-ID HT-HEDM Varex** | **1-ID scanning** |
-| specimen | cracked additively-manufactured FCC-Ni, heavily attenuated (`att5`-class); plus NMC811 cathodes for the reference-cell work | FCC, `nf709` "edge" set A — rotation axis placed just inside a sample edge | NMC811 cathode, four charge states, 32 banked layers |
-| layer | 259 translations → 259 × 259 = 67 081 voxels | 51 translations → 51 × 51 = 2601 voxels at 1 µm | 13–19 translations → 169–361 voxels at 1.5 µm |
-| covered | raw frames → grain map → **per-voxel peak-shape strain** | the **reconstruction-space half**: sinograms, positions, shapes, the sample boundary | **is the map real?** — the ω-shuffle null, the chance ceiling, and scanning vs a line-focus far-field exposure |
-| code | `midas_pipeline` | the **legacy v11 C `pf_MIDAS.py`** (what the beamline had installed) | `midas_pipeline` (c-omp index + refine) |
+| | §1–§6 | §7 | §8 | §9 |
+|---|---|---|---|---|
+| station | **1-ID scanning** | **20-ID HT-HEDM Varex** | **1-ID scanning** | **ESRF ID11** (outside the validated envelope) |
+| specimen | cracked additively-manufactured FCC-Ni, heavily attenuated (`att5`-class); plus NMC811 cathodes for the reference-cell work | FCC, `nf709` "edge" set A — rotation axis placed just inside a sample edge | NMC811 cathode, four charge states, 32 banked layers | corundum (alumina), one layer, 0.3 µm beam |
+| layer | 259 translations → 259 × 259 = 67 081 voxels | 51 translations → 51 × 51 = 2601 voxels at 1 µm | 13–19 translations → 169–361 voxels at 1.5 µm | 335 translations → 112 225 voxels at 0.3 µm (87 605 in the disc) |
+| covered | raw frames → grain map → **per-voxel peak-shape strain** | the **reconstruction-space half**: sinograms, positions, shapes, the sample boundary | **is the map real?** — the ω-shuffle null, the chance ceiling, and scanning vs a line-focus far-field exposure | **what the map is missing** — ambiguity, dim orientations, seed completeness; an independent ImageD11 cross-check; the MLEM rewrite |
+| code | `midas_pipeline` | the **legacy v11 C `pf_MIDAS.py`** (what the beamline had installed) | `midas_pipeline` (c-omp index + refine) | `midas_pipeline` 0.18 + the pf-half-scan change set |
 
 §8 contributed [`phase-7-validation.md`](phase-7-validation.md), and its §8.7 is the
 longest retraction list in this file — read it before re-deriving anything about
@@ -429,7 +429,7 @@ This campaign contributed [`phase-7-validation.md`](phase-7-validation.md).
 
 ## 8.2 Defects found
 
-- **`BeamSize += 0.1` before the gate fallback.** `IndexerUnified.c:2627` adds
+- **`BeamSize += 0.1` before the gate fallback.** `IndexerUnified.c:2830` adds
   0.1 µm to the parsed `BeamSize`; the gate is
   `scanTol = (ScanPosTol > 0) ? ScanPosTol : (BeamSize/2)` at lines 1006
   (**matching**) and 3447 (seeding). The pipeline computes `scan_pos_tol_um` in
@@ -448,7 +448,7 @@ This campaign contributed [`phase-7-validation.md`](phase-7-validation.md).
   all-zero rows rather than dropped — **235 334 of 1 170 954 (20.1 %)** on this
   campaign. Counting them fabricated a "20.2 % collapsed on merge" against a real
   **0.09 %**.
-- **`argv[4]` is ignored in PF mode** (`IndexerUnified.c:3200` prints "argv ignored
+- **`argv[4]` is ignored in PF mode** (`IndexerUnified.c:3466` prints "argv ignored
   for PF"); `nVoxels = numScans²`. A voxel-limited test run silently processes the
   whole layer. Use `blockNr`/`nBlocks`.
 - **LF/far-field peakfit percolation.** At PF thresholds on a line-focus frame the
@@ -522,7 +522,7 @@ merged-FF, 935 k-spot merged list, 10 000 matched seeds:
 | **null** | **97.5 %** | **1.0000** | **0.2896** | **7 652** |
 
 Mechanism, and it is structural: merged-FF writes a **1-row `positions.csv`**, so
-`nScans_ == 1`, `doScanFilter` is 0 (`IndexerUnified.c:1005`) and the beam gate is
+`nScans_ == 1`, `doScanFilter` is 0 (`IndexerUnified.c:1173`) and the beam gate is
 off **in the matching loop**. Collapsing the scans deletes the `scannrobs` column
 that makes the search well-posed.
 
@@ -607,3 +607,211 @@ Exposure, threshold setting and filter transmission were **identical** in both
 | `ScanPosTol` effect | 30 216 (0.75) vs 36 441 (fallback 0.80) over voxels 0–12 | direct binary, one variable |
 | bisect 0.7.8→0.7.9 | 4 refs, all `1025d15ffe513a7d` | `bisect_indexer2.sh` out of canonical |
 | determinism | 30 vs 60 threads, 1 vs 13 shards: byte-identical | md5 of all four `Output/*.bin` |
+
+---
+
+## 9. The ESRF ma5608 alumina campaign — ambiguity, dim orientations, and seed completeness
+
+**Station** ESRF ID11 (Eiger 4M, 75 µm), outside the 1-ID / 20-ID envelope. **Specimen**
+corundum (alumina), layer `NS_Alumina_HT1_Z855`, 335 translations at 0.3 µm, 180° ω.
+**Code** `midas_pipeline` 0.18 seeded PBP (c-omp indexer) from a merged-FF seed of 568
+rows; FBP reconstruction. Full record, every number with its script:
+`$ANALYSIS/datasetD_ma5608_alumina/RESULTS_sinograms.md` and
+`PREREGISTER_sinograms.md` (Amendments 1–29).
+
+## 9.1 What this campaign established
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | Seeded PBP returns seed orientations **unmodified** (`DoIndexing_Seeded`, `IndexerUnified.c:4403-4417`): all 204 final orientations are seed rows. Attribute winners to seed rows **exactly**, never by tolerance | VERIFIED (source) |
+| 2 | The raw merged-FF indexer output **beats** its ω-shuffle null here (median IA 0.6331° vs ~0.918°, three shuffle seeds, Wilcoxon p ≈ 0) — unlike §8.5. Dataset-dependent | VERIFIED |
+| 3 | The map **misses real grains**: ImageD11-only orientations added to the seed win 314 voxels; three matched shuffled nulls win 0 / 0 / 1 | VERIFIED |
+| 4 | At completeness ≥ 0.8, **50.0 %** of the disc also fits an orientation that wins no voxel (65 % at ≥ 0.7 and 6 % at ≥ 0.9 with the same 87 orientations; 68 % if they are re-selected at 0.7); phantoms ≤ 1.3 %. The regions are several grains across (~19 µm) | PROVISIONAL |
+| 5 | Those orientations are **real and dim**: their matched spots are +0.95 ln brighter than random-orientation chance hits (CI 0.46–1.26) and 1.70 ln dimmer than the winner's; not twins (misorientation ≈ random-pair level), not split-peak fragments, 44 / 62 individually beat the null | VERIFIED (4/4) |
+| 6 | A grain **removed from the seed is only partly visible** in the PBP output: a winner-completeness flag recalls 60 % of its voxels (at 1 % false flags); **54 % of them still show a winner at ≥ 0.8**, 94 % of those a neighbouring grain | MEASURED (preregistered, INCONCLUSIVE by its own bar) |
+| 7 | 12 merged-FF orientations **dropped by the process-grains seed cut** win 4 888 in-disc voxels when added back (exact attribution); 1 688 matched shuffled-null orientations and the 12 winners rotated by 3° win 0. **Whether they are missed grains is not established**: 3 586 of the voxels belong to one orientation that ImageD11 does not find (6.2° from its nearest grain) over a region the production map fills with a patchwork; 3 rows sit at the 60°-about-c twin law from their local competitor; 1 is 1.4° from a seed row | PROVISIONAL (verify: physics REFUTED the "real grains" reading). **Follow-up (Amendment 30):** 3 of the rows are real 60°-about-c **twin domains** — they own 67–68 % of their spots, exactly the 1 − 1/3 predicted because corundum reflections with l = 3n coincide under the twin; twin ghosts of present grains own 3 %, reach 0.54 and never win. The other 9 are not twin ghosts and own their spots; that they are grains rests on the null and jitter controls |
+| 8 | Four PF stage paths were unrunnable (keyword mismatches) and four consumers read the seed list as the grain list | FIXED (§9.2) |
+| 9 | MLEM rewritten; beats FBP on every phantom, loses on the real layer | FIXED / NOT ADOPTED (§9.3) |
+
+## 9.2 Defects found
+
+- **Stage calls with keywords the callee does not take** — reconstruct → `mlem_recon(n_pixels=)`,
+  reconstruct → `voxelmap_recon(nScans=, nGrs=)`, fuse → `bayesian_fusion(nGrs=)`,
+  em_refine → `run_em_spot_ownership(opt_steps=)`. Every `mlem` / `osem` / `voxelmap` /
+  `bayesian` / EM run died on first use. `tests/unit/test_stage_call_signatures.py` now
+  checks all 33 stage calls statically; it fails on exactly these three on unfixed master.
+- **Seed list read as grain list.** Layer-level `UniqueOrientations.csv` is seeding's seed
+  list (568); `Output/UniqueOrientations.csv` is find_grains' grain list (204). fuse, the
+  voxelmap recon, the recon-stack count and em_refine read the former. Fixed
+  (`_grain_list.grain_list_path`).
+- **Shipped MLEM ignored measured zeros** (sensitivity and update from non-zero cells only):
+  0.150 / 0.053 on a Voronoi phantom where FBP scored 0.946 / 0.788.
+- **find_grains picked the GPU whenever CUDA was visible**, ignoring the run's `--device`.
+  Fixed and logged.
+- **Peakfit dropped peaks touching Eiger gaps** (65535 mask pixels tripped the saturation
+  test): 2.41 % of spots. Fixed (zero masked pixels, flag gap-cut peaks).
+- **The sinogram window was a fixed 1°**; at OmegaStep 0.124° it admitted same-ring spots
+  from elsewhere (out-of-support cells 0.49 → 0.33 at 2 × OmegaStep). Default now 2 × OmegaStep.
+- **Intensity is dropped at binning** (`ExtraInfo.bin` keeps the C `dummy` slots, not
+  `IntegratedIntensity`), so nothing downstream could weigh candidates by brightness. The
+  new `CandidateBrightness.npz` reads it back through `IDsMergedScanning.csv`.
+
+## 9.3 Method findings
+
+- **PBP voxel assignment is intensity-blind** (`CompareSpots`, geometry only). A dim
+  orientation that is only partly in the beam ties with the grain that is there once
+  completeness saturates. `CandidateBrightness.npz` records it per candidate (11 s on the
+  full layer; reproduces the §9.1-5 gap: winners +2.88, core orientations +1.40).
+- **Missing grains do not announce themselves.** Seed completeness has to be argued from a
+  null-controlled augmentation (add candidate orientations and a shuffled-null set of the
+  same size, count exact wins), not from a clean-looking map.
+- **MLEM**: the rewrite (measured zeros, exact adjoint, grid padded past the field,
+  relative support) is correct on the physics it models — 1.000 / 0.961 / 0.898 against
+  FBP 0.944 / 0.936 / 0.734 (clean / counting noise / uniform spurious cells, three seeds,
+  independent projector) — but on the real layer half-split 0.789 vs FBP 0.864 and 17 / 204
+  grains keep most mass on the border (FBP 0). A per-row background term changed neither.
+  **FBP stays the method for this layer.** On sparse 20-ID-E Fe9Cr MLEM wins (§10): which
+  reconstruction is better depends on the data — run `--recon-method all`.
+- **mlem_recon's image is the transpose of raw fbp_recon's**; the pipeline's FBP applies
+  `transpose_to_voxel=True`, so they agree in the pipeline. A scoring harness must match
+  orientations first — every earlier MLEM phantom score here had it wrong.
+- **Label refinement** (joint relabelling against all sinograms) gains on phantoms
+  (+4.23 pp) and rewrites the real map: 43–49 % of voxels changed, two starts diverge
+  (agreement 0.768 → 0.479). Adding a per-row background and a scan-axis blur did not help
+  (45 % / 51 % changed, agreement → 0.446). Not ported.
+
+## 9.4 Claims RETRACTED or REFUTED
+
+- "~90 % of ImageD11's grains are spurious (y0 spread)" — REFUTED: `fit_sine_wave` refits y0
+  free per grain, so the spread measured fit conditioning.
+- "MIDAS lacks only ~1–2 grains" — REFUTED (all four lenses); see §9.1-3 and -7.
+- "The core orientations lose intrinsically weak (low |F|²) reflections first" — REFUTED:
+  |F|² is a per-ring constant, so 5 quintiles were 12 rings; per-ring ρ −0.49 (p 0.11) and
+  the strongest ring reverses. The dimness in §9.1-5 is uniform across rings.
+- "A calibrated equal-intensity tail phantom reproduces the ambiguity" — REFUTED (2.0× loss
+  gain against a 3× bar; unmapped 0.9–1.7 per voxel vs real 10.4).
+- "Fixed MLEM beats FBP (1.000 / 0.960)" — REFUTED as a real-data claim (border pile-up on
+  sparse real grains; the phantom lacked the real contamination).
+
+## 9.5 Hedges that must NOT be upgraded
+
+- The 50 % ambiguity is **threshold-dependent** (65 / 50 / 6 % at 0.7 / 0.8 / 0.9 for the 87 orientations
+  selected at 0.8; 68 / 50 / 6 % if the set is re-selected at each threshold) and PROVISIONAL. It also depends on
+  **which orientations are in the seed**: see §9.7.
+- "Dim" is established; **where the dim orientations are is not** (partly illuminated
+  in-plane, out-of-slice above/below, or thin grains). The vertical beam size is not on
+  record (0.3 µm assumed; could be a FWHM with tails) and no adjacent layer exists.
+- Winning the argmax is not proof of presence; the evidence in §9.1-3 and -7 is the null
+  contrast, not the win count.
+- The brightness tie-break (`--brightness-tiebreak-margin`) is opt-in and **not validated**.
+- ESRF ID11 is outside the validated envelope; the Eiger2 geometry is not verified to spec.
+- The horizontal beam edge response is consistent with the nominal 0.3 µm (sharpest 5 % of sinogram flanks rise 10–90 %
+  within 0.25 µm, `look/beam_profile.py`); the vertical profile is not measurable from one layer. The MA-5608 archive (public,
+  DOI 10.15151/ESRF-ES-1220323710) holds 19 HT1 layers (Z855–Z945), alignment scans, DCT and PCT of the same sample.
+
+## 9.6 Measurement ledger
+
+| quantity | value | file + command (analysis dir) |
+|---|---|---|
+| merged-FF vs null IA | 0.6331 vs ~0.918 (3 seeds) | `look/mff_score.py` |
+| ImageD11-only orientations' wins | 314 voxels; nulls 0 / 0 / 1 | `look/exact_attr_arms.py` |
+| ambiguity at ≥ 0.8 | 43 327 / 86 581 = 50.0 % (65.5 / 6.4 % at 0.7 / 0.9 for the same 87; 67.8 / 6.3 % re-selected per threshold) | `look/cores.py`, `look/final_map_v3.py`; claim 57ce194176b2 |
+| dim orientations | +0.950 (CI 0.460–1.263) vs chance; −1.704 vs winner | `look/amend25.py` → `amend25.out` |
+| missing grain visibility | recall 0.602 at false 0.010; 53.6 % still ≥ 0.8 | `look/mg_score_a.py` → `mg_score_a.out` |
+| seed-cut orientations' wins | 4 888 (12 rows) vs null 0 | `look/mg_score_b.py` → `mg_score_b.out`; `mg_check_b.out` |
+| candidate brightness regression | winners +2.876, core +1.400, 11 s | `look/brightness_regress.py` → `.out` |
+| MLEM phantom (3 seeds) | 0.9999 / 0.9607 / 0.8981 vs FBP 0.9441 / 0.9360 / 0.7339 | `look/mlem_v3_confirm.py` → `.summary.out` |
+| MLEM real | half-split 0.7888 vs FBP 0.8639; border grains 17 vs 0 | `look/mlem_v3_real.py` → `.summary.out` |
+| label refinement + bg/blur | changed 45.47 % / 51.03 %; A0–A2 agreement 0.4456 | `look/lr2_real.py` → `lr2_real.out` |
+
+## 9.7 Ambiguity depends on the competitor set; seed augmentation checked on known truth (2026-09-27)
+
+- **The competitor set moves the number.** Seeded PBP scores each seed row on its own: the 568
+  rows shared by the production and augmented runs scored identically at all 3 086 366 (row,
+  voxel) pairs. Adding 68 orientations raised "ambiguous against the map's own non-winners" at
+  ≥ 0.8 from 0.495 to 0.577 (87 → 110 such orientations: added rows that win nothing count);
+  against the fixed 87 production dim orientations it was 0.495 for both maps. The 68 % vs 65 %
+  at 0.7 is the same effect: 68 % re-selects the set at 0.7 (119 orientations), 65 % keeps the 87.
+  Counting every other grain-like orientation instead (309 in the union seed, mapped neighbours
+  included) gives 97 % at ≥ 0.8, 50 % at ≥ 0.9: footprints span several grains, so that version
+  measures completeness spread, not dim grains. Rule in phase 7 §7.9.
+- **Seed augmentation on known truth (phantom, PROVISIONAL, claim 80ba8673353e).** 20 large grains
+  removed from the seed all came back (their voxels 0 → 0.857 right). At the real-data gate 0.841
+  the gate admitted 29 out-of-field orientations, 14 twin ghosts and 6 that match nothing; none
+  won a voxel, also with 8 ghost parents removed and kept out (ghosts took 2 of their 3 979
+  voxels). The phantom's own shuffled null is saturated (median completeness 0.92, gate 0.97), so a
+  phantom gate is not the real-data gate. Small grains and a dim population were not tested.
+
+| measurement | value | source (`$B` = the ma5608 analysis root) |
+|---|---|---|
+| shared-row completeness, production vs augmented | 0 of 3 086 366 differ | `look/ambiguity_fixed.py` → `.out` |
+| ambiguity ≥ 0.7 / 0.8 / 0.9, own non-winners | 0.648 / 0.495 / 0.063 (prod.), 0.755 / 0.577 / 0.064 (aug.) | same |
+| ambiguity, fixed 87 production dim set | 0.648 / 0.495 / 0.063 for both maps | same |
+| ambiguity, cores re-selected per threshold (sliver den.) | 0.678 / 0.500 / 0.063 (119 / 87 / 19) | same |
+| gate on phantom: recovery, junk wins | 20/20, 0.000 → 0.857; 0 voxels (A38b), 2/3 979 (A38d) | `look/gatecal*.out` |
+
+## 10. The 20-ID-E Fe9Cr in situ loading campaign (bt_20id_sep26b, 2026-09) — shadows, reconstruction choice, and a clean map
+
+Data: KGT6055, 15 N and after crack, 121 scans of 10 µm, 360° in 1442 frames, 10 µm beam, bcc; unseeded
+PBP runs. Record: `$ANALYSIS/bt_20id_sep26b_pf_sino/` (`RESULTS.md`, `PREREGISTER.md` S1–S4).
+
+- **Load-frame posts shadow two 16° windows 180° apart** (zero spots at ω −98…−82 and +82…+98, all η;
+  partial −101…−78, +82…+104). With one `OmegaRange` every spot predicted there was a miss. Split
+  ranges: completeness +0.072 / +0.073, +549 / +593 voxels (none lost), winners switched in 163 / 149
+  voxels (2.4 % / 2.2 %), ~90 % of them grain-boundary near-ties (lead 0.012 vs 0.17 typical); the new
+  voxels are a 1–3 voxel rim at the sample edge that only a sample mask can judge; nulls 0 (S1, registered
+  INCONCLUSIVE only on a ≤ 2 % switch bar). → `coverage.blocked_omega`.
+- **The map is not ambiguous** (S4, CONFIRM, unverified claim 55ab039485df): a second grain at completeness
+  ≥ 0.8 at 0.9 % / 1.2 % of voxels (seeded by its own grains; alumina 97 %), unmapped orientations at
+  0.12 % / 0.21 %, no dim cores ≥ 30 voxels (alumina 87). Sparse data does not saturate completeness.
+- **Every grain is one sine** (median 0.74 / 0.70 scans; alumina 1.98, 33/204 > 5). → `consistency.one_sine`.
+- **MLEM beats FBP here** (S3, registered REFUTE of "FBP ≥ MLEM transfers"): agreement with the PBP map
+  0.766 vs 0.669, 0.762 vs 0.692; half-split on the sample (post hoc) 0.771 vs 0.559, 0.731 vs 0.570.
+  Neither reaches 0.85 (boundaries, streaks near the edge). The registered half-split was taken over the
+  whole grid and measured vacuum (FBP 0.33, MLEM 0.47) — the harness error that `recon/quality.py` now
+  prevents by always stating a support. → `--recon-method all`, `--sample-mask` (phase 6 §6.10).
+- **Two load states differ by a rigid offset of ~20–28 µm** (S2, registered INCONCLUSIVE: the same shift
+  (2, 2) voxels chosen by both map halves removes ~half of the > 2° boundary bands, held-out 0.48 / 0.54
+  vs bar 0.5). Register before any voxel-wise difference near boundaries.
+- **Placeholder rows**: 1.2–1.7 % of spot-table rows are all-zero with ring 0 (also in alumina); binning
+  drops them; they only mislead direct histograms (the ω = 0 "spike").
+- **A tomogram mask was not usable yet** (S5, registration REFUSED by its preregistered bars): after averaging 52 slices
+  (per-slice Otsu failed on streak noise) the bar's cross-section is 0.602 mm² (recorded 0.599), but a rectangle leaves the
+  in-plane handedness unidentifiable (4 variants within 0.006 IoU), the V2 containment failed (84 % held out) with a
+  NO_POWER meta-null, the pixel size is provisional (IoU 0.79 / 0.87 / 0.90 at 2.80 / 2.95 / 3.10 µm), and the tomo height
+  is not logged. Exploratory: the PBP map has a ~200 × 450 µm lobe (one large grain, also in the FBP/MLEM maps) past the
+  tomogram's straight side, which is constant over 2.4 mm of height. **Followed up the same day (PROVISIONAL after /verify: statistics lens REFUTED the quantitative contrast):** the explog puts the
+  tomogram at the pf layer's exact stage position with the same slit centre (the pf layer is its mid-height slice), and the
+  lobe grain has signal at the scan positions only the lobe explains in 3.3 % of rows (vs 25 % in its own clean-edge tail;
+  S6c, claim 5c9f9bf96d5f): the likely mechanism is **vacuum inheriting the grain's orientation**, completeness ~0.5
+  over the 0.4 gate. /verify: numbers reproduce, but 3.3 % vs 25 % is distance-unmatched (the edge tail decays from ~46 % to
+  < 1 % over 1-7 scans; p 1e-21 .. 1 across window choices) and the lobe was cut with a refused tomo registration. Needs a
+  distance-matched null and a phantom before it is more than likely.
+  Tried and stopped (S8/S8b, 2026-09-29, bt_20id_sep26b `RESULTS.md`): on a known-truth spot-level phantom the mechanism is large
+  (4,300-4,800 vacuum voxels solved per run above the gate, regions to 1,524 voxels behind a straight edge), and a distance-matched
+  unique-ray likelihood ratio never called material vacuum (0/38) and called isolated vacuum vacuum. Two things did not work: a
+  mask-free silhouette from spot counts (D1: 8-57 % of material flagged outside on sparse data), and a candidate bordering another
+  candidate of the same grain (whichever is scored first takes the other's rays: all-removed core lost the vacuum next to a real
+  tab, leave-one-out lost the tab). Do not retry either without a new idea for both.
+  The new idea that worked on the same phantoms (S9, 2026-09-29): per-grain MLEM DENSITY of the grain's own sinogram, read per voxel
+  (rho = R_k[v] / P90_k). No candidates needed; 96-99 % of inherited vacuum below 0.25, the tab 98.5-100 % above and its halo
+  93-96 % below. Registered read INCONCLUSIVE only because 1.1-2.9 % of material fell below 0.25 (bar 2 %), about half of them
+  voxels PBP gave the wrong grain. Confirmed on 8 fresh phantoms at tau 0.15 (S9b: material flagged <= 1.2 %, vacuum 92-95 %,
+  tab kept, its halo flagged 94-99 %). Applied to real bt_20id_sep26b (PROVISIONAL, unverified): 24-26 % of PBP voxels flagged, the lobe
+  grain's outside-rectangle voxels 87 % flagged (rho ~ 3e-5) vs 3 % inside (rho 0.74); kept band 480 um.
+  /verify of that real-data claim (01cb04194fca): PROVISIONAL. Numbers reproduce, physics and artifact lenses could not break it, but the
+  phantom specificity (0.2-0.5 % of deep-interior material flagged) does not transfer (real: 4.0 %), shuffled nulls give ~half the grain-31
+  out-minus-in gap, and grains with < 30 reflection rows (28 % of voxels) are outside the calibrated regime. Wording: 'no own-grain density
+  there', not 'vacuum'.
+  S9c (2026-09-29, VOID): random reflection loss does not reproduce the real low-nr grains (28 % of voxels, nr < 30); raw look shows they are
+  near-duplicate orientation neighbours (0.1-1.1 deg) at grain boundaries with normal matched-spot counts per voxel (hypothesis: siblings starved of
+  spots). The density rule is calibrated only for well-populated grains (nr >= ~60).
+  S10 (CONFIRMED, code): those low-nr grains are siblings 0.13-1.11 deg apart starved by process_spots' unique-only filter (nrHKLs reproduced exactly).
+  Opt-in `--sibling-merge-deg 1.0` removes them from the row-count statistic (28 % -> 0 % of voxels) but S12 (registered) found it does NOT improve the
+  starved voxels' reconstructions (agreement with the per-voxel map -0.01 to -0.05); FBP label agreement on the other voxels rises (+0.06 to +0.17) because starved siblings stop winning the FBP argmax through streaks (/verify PROVISIONAL; zeroing them without merging gives most or all of it).
+  Consequence for the FBP-vs-MLEM ranking on this data (S3: MLEM > FBP on Fe9Cr, 0.77 vs 0.56 half-split): it was measured with the starved siblings in the FBP argmax. On the non-starved
+  voxels FBP-vs-per-voxel-map agreement is 0.615 unmerged and 0.789 merged against MLEM's 0.807 (15 N), so part of the gap is the sibling-streak artefact. Do not quote 'MLEM beats FBP on
+  Fe9Cr' without that qualifier (not re-run with sibling-free FBP; hedge, not a finding).
+  The S1 edge rim reads the same (0 at rim-only positions). ~15 % of this map was inherited vacuum; neither completeness
+  nor the ω-shuffle null separates it (the spots are real, only misplaced). Before trusting a tomo mask on pf: pixel size from the optics record, the height, and
+  a specimen with an asymmetric feature (or a fiducial) for handedness.

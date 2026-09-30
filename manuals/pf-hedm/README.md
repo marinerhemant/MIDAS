@@ -24,8 +24,8 @@ identifiability below assume this configuration throughout.
      far-field recipe applied to a scanning dataset: FF refines position, PF fixes it to
      the voxel grid; FF's SpotsToIndex is a spot list, PF's is a 5-col per-voxel seed. -->
 
-**Two instrument configurations** are covered — **1-ID scanning** and **20-ID HT-HEDM
-Varex**. They differ in the ω sign, the dark group, and the entry point, and each has its
+**Two instrument configurations** are covered — **1-ID scanning** and **20-ID-D HT-HEDM
+Varex** (a bare "20-ID" below means D; 20-ID-E HEXM has a different Varex and the opposite ω convention — `INSTRUMENT.md` and the ff-hedm spine's conventions table). They differ in the ω sign, the dark group, and the entry point, and each has its
 own reference campaign. The split is in [`INSTRUMENT.md`](INSTRUMENT.md); where a recipe
 diverges it is called out inline as "20-ID:". Anything else, **stop and ask**.
 
@@ -43,11 +43,11 @@ diverges it is called out inline as "20-ID:". Anything else, **stop and ask**.
 | `phase-4-strain.md` | `midas_pf_odf` peak-shape per-voxel strain (the novel extension) | if strain is the goal |
 | `phase-5-read-report.md` | read `voxel_grid.csv` + Results, orientation/KAM/GROD/strain maps, report | at the end |
 | `phase-6-reconstruction.md` | sinograms, the concentration filter, the occupancy flag, **why shapes are not quotable** | **before quoting any shape or grain-ID map**; for better fitted positions |
-| `phase-7-validation.md` | **the ω-shuffle null, the chance ceiling, the spatial-coherence screen** | **before quoting any per-voxel result, grain count or acceptance threshold** |
+| `phase-7-validation.md` | **the ω-shuffle null, the chance ceiling, the spatial-coherence screen, ambiguity and seed completeness** | **before quoting any per-voxel result, grain count or acceptance threshold** |
 | `PF_PARAMETERS.md` | the PF-specific parameter reference | when tuning |
 | `DIAGNOSIS.md` | symptom → test → cause → lever | **when something looks wrong** |
 | `RUNBOOK.md` | where it runs, what healthy looks like, pick-up point, **and §R4 multi-layer campaigns** | on resume; **§R4 before driving more than one layer** |
-| `LAB_NOTEBOOK.md` | evidence, ledger, **retracted claims** — Lab Notebook §1–§6 the 1-ID campaign, **Lab Notebook §7 the 20-ID Varex campaign**, **Lab Notebook §8 the validation / null campaign** | before re-investigating |
+| `LAB_NOTEBOOK.md` | evidence, ledger, **retracted claims** — Lab Notebook §1–§6 the 1-ID campaign, **Lab Notebook §7 the 20-ID Varex campaign**, **Lab Notebook §8 the validation / null campaign**, **Lab Notebook §9 the ESRF ma5608 campaign (ambiguity, dim orientations, seed completeness, MLEM)** | before re-investigating |
 
 ## STOP — read this before touching anything
 
@@ -74,6 +74,7 @@ seems wrong:**
 | The **strain reference cell** (`LatticeConstant`) has not been pinned from this sample's own rings | The refiner's strain fit measures against it inside a **±10000 µε** box, so a reference wrong by ~0.7 % rails components silently — and it also costs completeness. Un-noticeable after the fact: the map looks fine. See §"the reference-cell trap". |
 | A **per-voxel result, grain count, or acceptance threshold** is about to be quoted without a measured **chance ceiling** | On a dense layer completeness **saturates** — a quarter of voxels sit at exactly 1.0000 — so it cannot separate a grain from a coincidence, and nothing internal to the run exposes that. The shipped `MinMatchesToAcceptFrac 0.5` sat at or below the measured ceiling on **all five** layers tested, admitting up to one null voxel per 1.5 real ones. The ceiling is **not predictable from spot density and must be measured per layer**. Phase 7. |
 | A **merged-FF grain count** from scanning data is about to be quoted | A 1-row `positions.csv` sets `nScans_ == 1`, so `doScanFilter` is 0 and the beam gate is **off in the matching loop**. Measured: the ω-shuffle null *beat* the real arm. Phase 7 §7.6. |
+| A map is about to be called **complete** ("MIDAS found all the grains"), or a grain count quoted as a census | PBP is seeded: a grain missing from the seed can never be mapped, and on a phantom **54 %** of a removed grain's voxels still showed a winner at completeness ≥ 0.8. On ESRF ma5608 orientations dropped by the seed cut won 4 888 voxels when added back (shuffled null: 0) — whether they are missed grains or twin/pseudo-symmetric fits is unresolved. Only a null-controlled augmentation measures it. Phase 7 §7.10. |
 
 When you halt, say which row fired, what you measured, and what you would need to proceed.
 Finish everything not blocked by it first.
@@ -167,6 +168,12 @@ Finish everything not blocked by it first.
     invocation does not. (DIAGNOSIS: "Solution counts differ between a pipeline run
     and a hand-run".)
 
+13. **A voxel's winner is not its only fit.** The indexer is intensity-blind; on a dense
+    layer a second, dimmer orientation often fits the same voxel at completeness ≥ 0.8
+    (half the disc on ESRF ma5608). Report the ambiguity with the map
+    (`Output/CandidateBrightness.npz`, phase 7 §7.9) rather than presenting the argmax
+    as unique.
+
 ### Traps that silently corrupt results
 
 | Trap | Symptom if missed | Where |
@@ -188,7 +195,9 @@ Finish everything not blocked by it first.
 | **`ScanPosTol` omitted on a hand-run**; the C's `BeamSize/2` fallback uses `BeamSize + 0.1` | beam gate 6.7 % wider than the parameter file says → **+14.7 % solutions**, winner changed in 10.5 % of voxels. Nothing errors | DIAGNOSIS |
 | **`paramstest_comp.txt` is written by two stages under one name** — indexing (`_emit_c_omp_paramstest`, carries `ScanPosTol`) then refinement (`comp_backend_paramstest`, does not), which overwrites it | the file on disk is **not** what the indexer read; reconstructing a run from it reproduces the wrong gate | DIAGNOSIS |
 | **`RingNumber == 0` placeholder rows counted as spots** — failed transforms are written as all-zero rows, not dropped | 20.1 % of rows on the reference campaign; counting them manufactures a fake "20 % collapsed on merge" against a real 0.09 % | DIAGNOSIS |
-| **`argv[4]` (`nWork`) is ignored in PF mode** — `nVoxels = numScans²` from `positions.csv` (`IndexerUnified.c:3200` prints "argv ignored for PF") | a voxel-limited test run silently processes the whole layer; use `blockNr`/`nBlocks` to slice | phase-7 §7.8 |
+| **Two files named `UniqueOrientations.csv`** — layer-level = seeding's **seed list**, `Output/` = find_grains' **grain list** | (before the fix) fuse / voxelmap / em_refine paired grain `g` with seed row `g` — a different grain — in every seeded run | DIAGNOSIS: consistency.grain_list |
+| **Scoring MLEM against raw `fbp_recon`** without matching orientation | `mlem_recon`'s image is the transpose of raw `fbp_recon`'s; a phantom score collapses to chance and "MLEM fails" | phase-6 §6.7 |
+| **`argv[4]` (`nWork`) is ignored in PF mode** — `nVoxels = numScans²` from `positions.csv` (`IndexerUnified.c:3466` prints "argv ignored for PF") | a voxel-limited test run silently processes the whole layer; use `blockNr`/`nBlocks` to slice | phase-7 §7.8 |
 
 ## 0. Verify the install
 
@@ -209,7 +218,7 @@ $PY -c "import midas_pf_odf; from midas_fit_grain import scan_seed, fitbest_adap
 The bridge (`midas_fit_grain.scan_seed` + `fitbest_adapter`) is required for a c-omp PF
 refine to feed pf-odf. If `backend_c.available()` is `False`, **rebuild `midas-fit-grain`
 with an OpenMP toolchain** — that is the only fix. There is no Python fallback any more:
-`--refine-backend` accepts `c-omp` and nothing else (`midas_pipeline/config.py:666`), and
+`--refine-backend` accepts `c-omp` and nothing else (`midas_pipeline/config.py:760`), and
 the Python refiner it used to name is known-broken.
 
 ## 0a. THE ORDER

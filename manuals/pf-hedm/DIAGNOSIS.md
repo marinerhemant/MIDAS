@@ -28,9 +28,17 @@ reads as coverage, which is exactly what the generic vocabulary existed to preve
 |---|---|
 | `consistency.strain_vs_lattice` | this entry's own cross-check: `O E Oᵀ` from `Result_OrientPos_voxel_*.csv` cols 27-35 (sample frame, already µε) against strain rebuilt from cols 15-20 (crystal frame) |
 | `contamination.sino_rows` | `sinogram_concentration` (`midas_pipeline/find_grains/_sinogen.py:91`) → `sinoConc_*.bin`, when `--sino-conc-threshold` is set |
-| `coverage.out_of_field` | the `reconstruct` stage's own warning, read from `sinoOccupancy_<nG>.bin` (`midas_pipeline/stages/reconstruct.py:58`) — written unconditionally by find_grains |
-| `consistency.half_split` | this entry's own cross-check: reconstruct each grain from two disjoint halves of its sinogram rows and correlate the images |
+| `coverage.out_of_field` | the `reconstruct` stage's own warning, read from `sinoOccupancy_<nG>.bin` (`midas_pipeline/stages/reconstruct.py:70`) — written unconditionally by find_grains |
+| `consistency.half_split` | `--recon-method all` (`midas_pipeline/recon/quality.py`) → `Recons/ReconQuality.json` `half_split`, on the sample mask or the PBP-solved voxels, never the whole grid |
+| `coverage.blocked_omega` | the binning stage (`midas_pipeline/diagnostics/omega_coverage.py`) → `omega_coverage.json` in the layer dir and a warning with paste-ready `OmegaRange` lines |
+| `consistency.one_sine` | the find_grains stage (`midas_pipeline/diagnostics/sine_consistency.py`) → `Output/SineConsistency.csv` and its log line |
+| `grains.few_rows` | `Output/nrHKLs_*.bin` (int32 per grain) against `UniqueOrientations.csv`: grains with nr < 30 next to a grain 0.1-1 deg away are starved siblings (Lab Notebook §10) |
+| `density.own_grain` | the reconstruct stage with `--recon-method all` (`midas_pipeline/recon/own_grain_density.py`) -> `Recons/OwnGrainDensity.npy` and `ReconQuality.json["own_grain_density"]` |
 | `baseline.majority_class` | this entry's own cross-check: any map-vs-map agreement score against the score of calling every voxel the most common grain |
+| `ambiguity.dim_contender` | `candidate_brightness` (`midas_pipeline/diagnostics/candidate_brightness.py`) → `Output/CandidateBrightness.npz` and its log line, written by the find_grains stage |
+| `consistency.grain_list` | this entry's own check: layer-level vs `Output/` `UniqueOrientations.csv` row counts; the fixed code raises from `_grain_list.require_grain_list` |
+| `stage.crash` | `tests/unit/test_stage_call_signatures.py` (static keyword check of every stage call) |
+| `resource.device` | find_grains' `cross-voxel dedup method=… device=…` log line (`find_grains.resolve_cluster_device`) |
 
 Strain railing at the Kenesei `MargStrain` bound is **not** listed here: it is the
 generic `bound.pileup` (objects piling against a declared parameter bound).
@@ -296,7 +304,7 @@ the pipeline's exactly, voxel for voxel.
 
 **Cause.** Two things compound.
 
-1. `IndexerUnified.c:2608-2627` **adds 0.1 µm to the parsed `BeamSize`**:
+1. `IndexerUnified.c:2811-2830` **adds 0.1 µm to the parsed `BeamSize`**:
    ```c
    sscanf(line, "%s %lf", dummy, &BeamSize);
    BeamSize += 0.1;          /* silently inflates the parsed value */
@@ -356,7 +364,7 @@ the threshold-free **spatial-coherence ratio** (§7.5) instead.
 symptom: quality.no_null
 
 **Test.** Check `positions.csv` in the merged-FF run directory. One row means
-`nScans_ == 1`, so `doScanFilter` is **0** (`IndexerUnified.c:1005`) and the
+`nScans_ == 1`, so `doScanFilter` is **0** (`IndexerUnified.c:1173`) and the
 beam-position gate is off in the matching loop entirely. Then run the ω-shuffle
 null on the merged spot list.
 
@@ -373,6 +381,13 @@ core-hours than PF unseeded. Raising thresholds until the merged list is sparse
 does restore information, but only by discarding ~92 % of the spots — the weak
 small-grain spots the technique exists to capture. merged-FF as a **seeding**
 route is a different question and is unaffected.
+
+**Not universal.** On ESRF ma5608 (alumina, 0.3 µm beam, 335 scans) the raw merged-FF
+indexer output **beat** its ω-shuffle null: median internal angle 0.6331° vs ~0.918°
+over three shuffle seeds, paired Wilcoxon p ≈ 0 (Lab Notebook §9). The structural
+problem above (no beam gate) is real on every dataset; whether it destroys the signal
+is dataset-dependent, so run the null rather than assume either outcome. Never quote
+the merged list as a grain count either way.
 
 ---
 
@@ -392,3 +407,158 @@ rows (20.1 %)** were placeholders.
 files. Counting raw rows against a merged file that has already dropped them
 manufactures a fake "20 % collapsed on merge" — the real merge collapse was
 0.09 %. The same placeholders are what a stray `ring 0` in a per-ring tally means.
+
+---
+
+## `method=mlem` / `osem` / `voxelmap` / `bayesian`, or `em_refine`, dies with a TypeError
+
+symptom: stage.crash
+
+**Test.** The traceback names an unexpected keyword (`n_pixels`, `nScans`, `nGrs`,
+`opt_steps`). `pytest tests/unit/test_stage_call_signatures.py` checks every keyword
+every stage passes against the function it calls.
+
+**Cause.** Four stage calls passed keywords their callees never took: reconstruct →
+`mlem_recon(n_pixels=)`, reconstruct → `voxelmap_recon(nScans=, nGrs=)`, fuse →
+`bayesian_fusion(nGrs=)`, em_refine → `run_em_spot_ownership(opt_steps=)`. Each path
+died on first use; no test called it (found on ESRF ma5608, 2026-09).
+
+**Lever.** Fixed in the pf-half-scan change set; the signature test now fails on any
+new mismatch. On an older install, FBP (the default) is unaffected.
+
+---
+
+## A fused / voxelmap / em_refine grain carries the wrong orientation (seeded run)
+
+symptom: consistency.grain_list
+
+**Test.** Compare row counts: `wc -l UniqueOrientations.csv Output/UniqueOrientations.csv`
+in the layer directory. In a seeded run they differ (ma5608: 568 vs 204).
+
+**Cause.** Two files share one name. The layer-level `UniqueOrientations.csv` is the
+**seed list** written by the seeding stage; `Output/UniqueOrientations.csv` is the
+**grain list** written by `find_grains`, the one the sinograms, `UniqueIndexSingleKey.bin`
+and the per-grain recons are indexed by. `fuse`, the voxelmap recon, the recon-stack
+count and `em_refine` read the layer-level file, so grain `g` was paired with seed row
+`g` — a different grain — and an unseeded run found no file at all.
+
+**Lever.** Fixed: every consumer reads `midas_pipeline._grain_list.grain_list_path()`
+(`Output/UniqueOrientations.csv`) and fails loudly if find_grains has not run. On an
+older install, symlink the layer-level name to `Output/UniqueOrientations.csv` before
+fusing (the ma5608 analysis did exactly that by hand).
+
+---
+
+## A voxel fits a second orientation at completeness ≥ 0.8 — which one is real?
+
+symptom: ambiguity.dim_contender
+
+**Test.** Read `Output/CandidateBrightness.npz` (written by find_grains unless
+`--no-candidate-brightness`): per voxel, `contender` (best other candidate within 0.05
+of the winner's completeness and ≥ 0.8), `winner_brightness`,
+`contender_brightness` — mean `ln(I / ring median)` of each candidate's matched spots.
+Compare a contender's brightness against the winner's AND against random orientations
+scored at the same voxel (the chance level on ma5608 was ≈ +0.5).
+
+**Cause.** `CompareSpots` is geometry-only, so the winner is the highest completeness
+whatever its intensity. On a dense layer completeness saturates and an orientation that
+is only weakly in the beam ties with the grain that is there. On ESRF ma5608 50.0 % of
+the disc (at ≥ 0.8) also fit an orientation that wins no voxel; those orientations'
+matched spots were **+0.95 ln brighter than chance and 1.70 ln dimmer than the winner's**
+(4/4 lenses): real but dim — partly illuminated, out-of-slice or thin grains, location
+in z unknown. The fraction is threshold-dependent (65 % at ≥ 0.7, 6 % at ≥ 0.9 for the same orientations)
+and depends on which orientations are in the seed: compare maps only against a fixed, named
+competitor set (phase 7 §7.9).
+
+**Lever.** Report the ambiguity with the map (Lab Notebook §9) rather than hiding it.
+`--brightness-tiebreak-margin` makes the brighter candidate win within that margin; it
+is **opt-in and not validated on a phantom** — do not turn it on for a result you quote.
+Do not use brightness alone to find missing grains: on a phantom with 20 grains removed
+from the seed, a brightness flag recalled only 11 % of their voxels.
+
+---
+
+## find_grains used a GPU on a CPU run, or the wrong GPU
+
+symptom: resource.device
+
+**Test.** The stage log line `find_grains: cross-voxel dedup method=… device=…`.
+
+**Cause.** The cross-voxel dedup picked the GPU whenever CUDA was visible, reading only
+`MIDAS_FINDGRAINS_CLUSTER` / `MIDAS_FINDGRAINS_DEVICE`, never the run's `--device`.
+
+**Lever.** Fixed: the run's `--device` decides (`cpu` or `mps` → exact reference path;
+`cuda[:n]` → GPU if present), the env vars still override, and the choice is logged.
+On an older install, pin `CUDA_VISIBLE_DEVICES` or set `MIDAS_FINDGRAINS_CLUSTER=reference`.
+
+## Completeness is low everywhere, and a spots-per-degree histogram has holes
+
+symptom: coverage.blocked_omega
+
+**Test.** Read `omega_coverage.json` (written by binning): `windows` are omega ranges inside the configured
+`OmegaRange` with < 50 % of the median spot density, >= 2 deg wide. Placeholder rows (ring 0, all-zero
+spots kept for numbering; 1-2 % of rows) are ignored.
+
+**Cause.** Something in the beam path at some rotations: load-frame posts, a furnace, a DAC. The indexer
+predicts spots there anyway and counts every one as a miss. On 20-ID-E Fe9Cr two posts blanked omega
+-98..-82 and +82..+98 (partial -101..-78, +82..+104); the pf run used one `OmegaRange -180.25 181`.
+
+**Lever.** One `OmegaRange` per open span, each with its own `BoxSize` line (the warning prints them).
+Measured on Fe9Cr (Lab Notebook §10): completeness +0.072 / +0.073, +549 / +593 voxels solved (none
+lost), 2.4 % / 2.2 % of voxels switched grain, ~90 % of them near-tie grain-boundary voxels; omega-shuffle
+null still empty. The windows 180 deg apart are also a missing wedge in every sinogram (phase 6).
+
+## A grain's sinogram is not one sine
+
+symptom: consistency.one_sine
+
+**Test.** `Output/SineConsistency.csv` (written by find_grains): per grain, the median |residual| (scan
+units) of the row centres of mass about the best c + a sin(w) + b cos(w). Flagged above 5 scans.
+
+**Cause.** Two regions that share an orientation merged into one grain; a grain cut by the scanned field;
+a geometry, omega-sign or positions error in part of the data. Measured: Fe9Cr 0.74 / 0.70 scans, none
+flagged; ESRF ma5608 alumina median 1.98, 33 of 204 grains > 5 (Lab Notebook §10).
+
+**Lever.** Look at the flagged grain's sinogram with rows at their TRUE omega (a plot that spaces rows
+evenly draws false jumps where reflections are missing, e.g. in a shadow). Two interleaved sines = two
+regions; split them before reconstructing.
+
+## Some grains have very few sinogram rows (nr < 30) though their voxels match ~100+ spots each
+
+symptom: grains.few_rows
+
+**Test.** `nrHKLs_*.bin` per grain. For each low-nr grain, the misorientation to the nearest other unique grain in
+`UniqueOrientations.csv` (`midas_stress`, symmetry-aware). On Fe9Cr 15 N: 14 of 46 grains (28 % of solved voxels) had
+nr 2-29, each with a neighbour 0.13-1.11 deg away; the crack layer 11 of 42.
+
+**Cause.** `find_grains` clusters greedily: a seed voxel absorbs everything within `max_ang_deg` of the SEED, but the grain
+keeps its highest-confidence MEMBER's orientation, so neighbouring seeds just over 1 deg apart can end with representatives a
+fraction of a degree apart. `process_spots` then marks every spot within 1.0/1.0 deg omega/eta of another grain's spot
+as a duplicate on BOTH sides ("unique-only") and drops it, so siblings share and lose nearly all rows. Verified by re-running the
+association from the layer's own files (nrHKLs reproduced exactly, every low-nr grain >= 80 % cross-grain losses; bt_20id_sep26b S10).
+
+**Lever.** `--sibling-merge-deg 1.0` (opt-in): merges siblings before the association. Their FBP / MLEM maps and any
+density-based check (a per-grain MLEM density ratio rho, Lab Notebook §10) are unreliable for a starved sibling until merged.
+Reconstruction quality after merging was tested (bt_20id_sep26b S12, registered REFUTE): the starved voxels do NOT reconstruct better (agreement with the per-voxel map -0.01 to -0.05), while FBP label agreement on the other voxels rises (+0.06 to +0.17) only because the starved siblings stop winning the FBP argmax through streaks (a /verify found zeroing them, without merging, gives most or all of the gain; MLEM is unchanged). Treat the merge as a way to remove the starved-sibling artefact from row counts and from FBP labels, not as a repair of anything's reconstruction; with FBP, drop or renormalise very-low-nr grains before the argmax. Not tested: distinct crystals 1-2 deg apart.
+
+## A region of the per-voxel map has the orientation of a big grain but sits outside the sample (vacuum inheritance)
+
+symptom: density.own_grain
+
+**Test.** `Recons/OwnGrainDensity.npy` (written by `--recon-method all`): per voxel, rho = the voxel's per-voxel-map grain's MLEM
+density at that voxel / the 90th percentile of that grain's density over its own voxels. rho < 0.15 flags NOT-THIS-GRAIN: the
+grain's own rays put nothing there. Only grains with >= 30 sinogram rows are scored (NaN otherwise).
+
+**Cause.** A vacuum voxel shares ray lines with real material further along, so the point-by-point map gives it that
+grain's orientation at completeness ~0.5, above the 0.4 gate (phase 1b), and the omega-shuffle null cannot see it. The grain's own
+reconstruction has no density there. A per-voxel wrong-grain assignment is mostly NOT flagged (phantom: 3-6 % of such voxels).
+
+**Measured.** bt_20id_sep26b 20-ID-E Fe9Cr 15 N: the ~200 x 450 um lobe of grain 31 (133 rows): 511 of 588 voxels outside the tomogram cross-section flagged
+(rho median 3e-5), 23 of 786 inside (rho median 0.74). On spot-level phantoms with an intragranular orientation gradient (preregistered S11,
+stratum nr >= 30): correctly assigned material flagged 0.1-0.4 %, inherited vacuum 81-89 %, a real material protrusion kept, its inherited halo flagged 84-94 %.
+Real data: 6.5 % of scored voxels inside the rectangle are flagged and this is UNEXPLAINED: the phantom's own rates (wrong-winner voxels flagged 3-6 %) account for at most ~1 %. "Outside the tomogram cross-section" rests on a rectangle whose registration to the pf grid was refused (S5; a +-30 um shift moves grain 31's split to 75-98 % outside, 0-10 % inside).
+
+**Limits.** rho is normalised by the grain's own P90: a grain more than ~90 % vacuum is flagged entirely, real voxels included. The labels are find_grains' assignment (`Output/voxel_grid.csv`), not `labels_voxelmap.npy` (they differ at ~1,150 voxels). Phantom-calibrated only: the real beam tail and voxel blur are unmeasured; grains with nr 10-30 misflag 3.0 % of correct material and nr < 10 are not
+measured, so they are not scored; the flag is NOT-THIS-GRAIN, not proof of vacuum (a /verify of the real-data statement is PROVISIONAL: the phantom does not reproduce the low-nr sibling grains that
+find_grains creates, see `grains.few_rows`). Do not use it to delete voxels; report it next to the sample edge.
+

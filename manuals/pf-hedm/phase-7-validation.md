@@ -175,7 +175,7 @@ Script: `scripts/layer_coherence_qc.py`.
 
 ## 7.6 Why merged-FF fails this test, and why regular PF does not
 
-`IndexerUnified.c:1005`:
+`IndexerUnified.c:1173`:
 
 ```c
 int doScanFilter = (nScans_ > 1);
@@ -221,6 +221,11 @@ capture.
 For comparison, a genuine single-illumination far-field run of the same layer
 passes cleanly: 786 solutions real, **0** null.
 
+**Not universal — run the null.** On ESRF ma5608 (alumina, 0.3 µm beam, 335 scans) the
+raw merged-FF output **beat** its null (median IA 0.6331° vs ~0.918°, three shuffle
+seeds; Lab Notebook §9). The missing gate is structural everywhere; whether it erases the
+signal depends on the dataset. As a **seed** it is used by design; as a grain count, never.
+
 ## 7.7 What the null does not cover
 
 - It shares the real arm's **geometry, calibration and peak list**. A wrong ω
@@ -240,3 +245,93 @@ null's binning is regenerated from the shuffled CSVs in seconds. On the referenc
 campaign: **~95 min/arm at 30 cores** (169 voxels) and **~3.5 h/arm at 54 cores**
 (361 voxels). The banked real arm can serve as one arm **only if** it used the
 same binary and the same `ScanPosTol`.
+
+## 7.9 Ambiguity — orientations that fit a voxel and win nowhere
+
+The shuffle null asks whether the *winner* could be chance. It says nothing about the
+runner-up. The indexer is intensity-blind (`CompareSpots` matches geometry only), so once
+completeness saturates a second orientation can fit the same voxel almost as well. On
+ESRF ma5608, **50.0 %** of the disc (at completeness ≥ 0.8) also fit an orientation that
+wins no voxel anywhere; 65 % at ≥ 0.7, 6 % at ≥ 0.9 for the same 87 orientations (68 % if the
+set is re-selected at 0.7); a density-matched phantom gave
+≤ 1.5 %.
+
+Those orientations were **real and dim**: their matched spots were +0.95 ln brighter than a
+random orientation's chance matches at the same voxel and 1.70 ln dimmer than the
+winner's (4/4 lenses; not twins, not split peaks). Where they sit — partly illuminated,
+above/below the slice, or thin — is not identifiable from one layer.
+
+**What to do.** find_grains writes `Output/CandidateBrightness.npz` (per candidate:
+matched-spot brightness; per voxel: winner, best contender within 0.05 completeness,
+their brightness). Report the ambiguous fraction **at more than one threshold** next to the
+map. Check a contender against a random-orientation brightness null before calling it a
+grain. `--brightness-tiebreak-margin` is opt-in and not validated.
+
+**Name the competitor set, and keep it fixed when comparing maps.** An ambiguity fraction is a
+property of the map *and* of the orientations it is measured against. Seeded PBP scores every
+seed row on its own (the 568 rows shared by two ma5608 runs scored identically at all 3.09 M
+(row, voxel) pairs), so adding rows to a seed cannot change an existing row's completeness, but
+it adds competitors. On ma5608, adding 68 orientations raised the "own non-winners" ambiguity
+at ≥ 0.8 from 0.495 to 0.577; against the fixed 87 dim orientations of the production map it
+was unchanged (0.495 in both). So quote which set was used, and compare maps on one fixed set.
+Do not count every other grain-like orientation (mapped neighbours included) as a competitor:
+footprints span several grains, so that version reads 97 % of the disc at ≥ 0.8 and says
+nothing about dim grains.
+
+## 7.10 Seed completeness — a clean map is not a complete one
+
+Seeded PBP can only map orientations in its seed, and the seed is what survives
+process-grains' clustering of the merged-FF solutions (ma5608: 2 302 distinct at 1° →
+568 rows). Two measurements:
+
+- **Phantom, 20 grains removed from the seed:** a winner-completeness flag at the 1st
+  percentile recalled only **60 %** of their voxels; **54 %** of those voxels still showed a
+  winner at ≥ 0.8, 94 % of them a *neighbouring* grain's orientation. A missing grain does
+  not reliably show up as a hole.
+- **Real layer, dropped orientations added back:** 12 merged-FF orientations that the cut
+  discarded won **4 888** in-disc voxels by exact attribution; 1 688 matched ω-shuffled
+  merged-FF orientations won **0**, and so did the 12 rotated by 3°. The augmentation
+  finds orientations the seed lacks; it does **not** by itself say they are grains:
+  most of the voxels went to one orientation an independent indexer (ImageD11) does not
+  find, and three winners are 60°-about-c twin relations of their neighbours (corundum
+  twins share many reflections). Cross-check winners against an independent indexer and
+  against twin laws before calling them missed grains. (Lab Notebook §9.)
+
+**Recipe (a re-index, no re-prep).** Build two augmented seeds: the production seed plus
+the candidate orientations it lacks (merged-FF solutions > 1° from every seed row, one per
+1° cluster; or an independent indexer's list), and the production seed plus the same
+number drawn from the ω-shuffled merged-FF run. Index both with identical parameters and
+count the voxels won **exactly** by added rows (seeded PBP returns seed matrices
+unmodified — never attribute by tolerance). Added rows must also be checked not to be
+near-copies of seed rows taking over their own grain.
+
+**Tool:** `python -m midas_pipeline.seeding.augment` does this with the null built in.
+`shuffle <merged-FF layer> <dst>` writes the ω-shuffled inputs (index them with the same
+binary and parameters); `augment --real <IndexBest_all.bin> --null <shuffled IndexBest_all.bin>
+--grains Grains.csv --out Grains_aug.csv --sg <SG>` adds back the distinct (1°) orientations
+more than 1° from the seed whose completeness beats the **best** any shuffled orientation
+reaches. On ma5608: gate 0.841, 68 of 1 688 added, and the augmented seed recovered all
+4 888 voxels of the brute-force augmentation (same 12 crystals); no shuffled candidate passed.
+
+**In the pipeline:** `midas-pipeline run ... --seeding-mode ff --grains-file Grains.csv
+--seed-augment-ff-layer <merged-FF LayerNr_1> [--seed-augment-null-runs N]` builds the
+shuffled run(s) itself (copies the merged-FF layer's `paramstest_index_comp.txt`,
+rewrites its paths, re-bins with `midas_transforms.bin_data`, re-indexes with the same
+binary), gates, and hands the augmented `Grains.csv` to the seeding stage; work lands in
+`<layer>/seed_augment/`. Standalone: `augment from-ff <ff_layer> <work_dir> --sg <SG>`.
+
+**What the gate does and does not do (verify, 2026-09-27, PROVISIONAL).** The shuffle null
+screens generic noise only. 38 of the 68 orientations it admitted on ma5608 are 60°-about-c
+twin ghosts of seed or winner rows, which the shuffle cannot represent; they are harmless
+because they lose the PBP argmax to their parent, not because the gate stops them. The added
+count also depends on the null seed (68 / 94 / 119 across three shuffles; the 12 voxel
+winners were the same under all three). Treat the added count as a candidate list, the voxel
+winners as the result, and use more than one null run when the count matters.
+
+**Checked on known truth (phantom, 2026-09-27, PROVISIONAL).** On a spot-level phantom of this layer (163 in-field grains,
+1,952 outside the field): 20 large grains removed from the seed all came back (their voxels 0 % -> 86 % right). At the real-data
+gate 0.841 the gate admitted 29 out-of-field orientations, 14 twin ghosts and 6 matching nothing, and none of them won a voxel,
+also when a ghost's parent grain was removed and kept out (ghosts took 2 of 3,979 of its voxels; real neighbours took the rest).
+So it is PBP's winner selection that keeps junk out of the map. Two cautions: the phantom's own shuffled null is saturated
+(median completeness 0.92, gate 0.97), so a phantom gate is not the real-data gate; and small grains and a dim population were
+not tested.

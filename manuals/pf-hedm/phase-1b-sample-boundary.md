@@ -126,7 +126,7 @@ Downstream numbers computed against `y > 14.5` (the vacuum count, the completene
 the 1255 → 1012 shrink) are **approximately right, not invalid** — they would shift
 slightly if remasked at the 16 µm estimate.
 
-## 1b.6 OPEN — the two `s(ω)` conventions were never reconciled
+## 1b.6 The two `s(ω)` conventions — open since the 1-ID campaign, PINNED 2026-09-28 (below)
 
 This is the campaign's live bug and it must not be silently closed by a later session:
 
@@ -148,6 +148,18 @@ beat the two `x cos ω` forms (+0.074 / +0.068 against −0.007 / −0.000). Tha
 
 > Related: ImageD11 writes the same relation as `dty = y0 − sx·sin ω − sy·cos ω`. Useful
 > for cross-checking against an S3DXRD result, not as an authority for MIDAS's sign.
+
+**PINNED 2026-09-28 (20-ID-E Fe9Cr, Lab Notebook §10), sign included.** On real data, the find_grains
+sinogram columns are in **spatial (ascending) order** and follow `s = x sin ω + y cos ω` with
+`x = pos[row]`, `y = pos[col]` (the `Output/voxel_grid.csv` layout and the indexer's beam gate,
+`midas_index/compute/matching.py`; helper `find_grains._geom.scan_projection_um`): 18 in-field grains'
+row centres within 1.85 scans; the sign- and axis-flipped forms 12–31 scans off. Reading a spot-count
+sinogram in **file order** needs `s → −s` on descending positions — using file order with the
+spatial-order formula missed by 31 scans. Two modules ported from the C indexing-mode code used
+`x = pos[col], y = pos[row], s = −x cos + y sin` — y mirrored — and were fixed the same day
+(`find_grains/_sinogen_indexing.py`, `fuse.mask_sino_by_assignment`); every map path then placed
+grains against FF at the identity transform. The "completeness test" row above (`−x sin φ + y cos φ`)
+is x-mirrored relative to this and should be re-checked before its tilt or handedness is used.
 
 ## 1b.7 A separate hedge — `positions.csv` handedness was never measured here
 

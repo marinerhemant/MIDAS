@@ -87,7 +87,7 @@ number the run will report,** and getting it wrong is silent in exactly the way
 this doc set keeps warning about.
 
 The C refiner's strain comes from `StrainTensorKenesei`
-(`packages/midas_fit_grain/c_src/FitUnified.c:1061`), which fits six components
+(`packages/midas_fit_grain/c_src/FitUnified.c:1167`), which fits six components
 to `(dsObs − ds0)/ds0` where **`ds0` is the nominal d-spacing implied by
 `LatticeConstant`** — not by the refined cell. Its box is
 `MargStrain` (default **±0.01 = ±10000 µε**; it was a compiled-in constant before
