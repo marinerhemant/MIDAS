@@ -220,6 +220,24 @@ def fig_per_grain_residuals(C, S, outp):
     fig.tight_layout(); fig.savefig(outp, bbox_inches="tight"); plt.close(fig)
 
 
+def pick_residual_group(f):
+    """Which residual group of processgrains_diagnostics.h5 to read, and its label.
+
+    ``/residuals`` carrying a ``source`` attribute is POST-fit (FitBestFinal.bin,
+    midas-process-grains >= 0.13). A ``/residuals`` WITHOUT it was written by an
+    older release that decomposed the pre-fit FitBest.bin under that name, so it
+    is labelled pre-fit, as is ``/residuals_prefit``. Pre-fit residuals are
+    predicted at the reference lattice with no fitted strain: their radial terms
+    carry the reference-lattice mismatch and every grain's strain.
+    """
+    if "residuals" in f and "source" in f["residuals"].attrs:
+        return "residuals", "post-fit"
+    if "residuals_prefit" in f:
+        return "residuals_prefit", "PRE-fit"
+    if "residuals" in f:
+        return "residuals", "PRE-fit (legacy sidecar)"
+    return None, None
+
 def fig_residuals(D,S,outp):
     fig,ax=plt.subplots(2,3,figsize=(13,7.4))
     rn=D.get("ring_nr"); ppm=D.get("ring_drad_ppm"); rns=D.get("ring_n_spots")
@@ -251,7 +269,7 @@ def fig_residuals(D,S,outp):
     ax[1,1].set_title("Spot Δω (dome, °)",loc="left",weight="bold",fontsize=10.5);ax[1,1].set_xlabel("Δω (°)");ax[1,1].set_ylabel("spots")
     ax[1,2].set_title("Assigned spots per ring",loc="left",weight="bold",fontsize=10.5);ax[1,2].set_xlabel("ring #");ax[1,2].set_ylabel("spots")
     ns=S['drad_um'].shape[0] if S is not None else 0
-    fig.suptitle(f"Residual diagnostics — geometry & spot fit quality ({ns:,} spots)",x=0.02,ha="left",fontsize=12.5,weight="bold")
+    fig.suptitle(f"Residual diagnostics — geometry & spot fit quality ({ns:,} spots, {D.get('_resid_label') or 'no sidecar'} residuals)",x=0.02,ha="left",fontsize=12.5,weight="bold")
     fig.tight_layout(rect=[0,0,1,0.96]); fig.savefig(outp,bbox_inches="tight"); plt.close(fig)
 
 def fig_strain(C,nom_a,D,outp):
@@ -477,14 +495,15 @@ def main():
     if os.path.exists(dpath):
         import h5py
         with h5py.File(dpath, "r") as f:
-            for grp in ("residuals", "diagnostics"):
-                if grp in f:
+            rgrp, D["_resid_label"] = pick_residual_group(f)
+            for grp in (rgrp, "diagnostics"):
+                if grp and grp in f:
                     for k in f[grp]:
                         if k == "spot_table": continue
                         try: D[k] = f[f"{grp}/{k}"][()]
                         except Exception: pass
-            if "residuals/spot_table" in f:
-                st = f["residuals/spot_table"][()]
+            if rgrp and f"{rgrp}/spot_table" in f:
+                st = f[f"{rgrp}/spot_table"][()]
                 S = {n: st[:, i] for i, n in enumerate(SPOT_COLS)}
 
     d0 = None
