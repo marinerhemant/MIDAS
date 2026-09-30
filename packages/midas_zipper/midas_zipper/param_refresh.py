@@ -110,6 +110,8 @@ FORCE_INT_PARAMS = {
     # Opt-in local background subtraction in the peak search
     # (midas_peakfit.background). BgSubtract 0 = legacy/C behaviour.
     "BgSubtract", "BgNSectors",
+    # Saturated regions into the indexed spot list (midas_transforms.merge).
+    "IncludeSaturatedSpots",
 }
 FORCE_STRING_PARAMS = {
     "GapFile", "BadPxFile", "ResultFolder", "PanelShiftsFile", "MaskFile",
