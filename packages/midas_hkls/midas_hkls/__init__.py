@@ -49,6 +49,10 @@ from .phase_id import (
     PhaseCandidate, PhaseMatch, candidate_d_lines, worst_relative_residual,
     global_minimax_scale, chance_worst_residual, identify_phase,
 )
+from .feature_phase import (
+    allowed_d_lines, match_count, pixel_weighted_sampler, FeatureTestRow,
+    feature_phase_test, cell_scan, d_clusters, family_count,
+)
 from .ub_refine import (
     UBFit, refine_ub_from_gvectors, ub_to_cell, ub_to_u_b,
     cell_from_metric, drlv2,
@@ -85,7 +89,7 @@ from .niggli import NiggliCell, niggli_reduce, same_lattice
 from .space_group import SpaceGroup, list_space_groups, centring_allowed
 from .symops import SymOp
 
-__version__ = "0.15.0"
+__version__ = "0.16.0"
 
 __all__ = [
     "hkl_box_from_geometry", "distortion_rank", "distortion_condition",
@@ -111,6 +115,8 @@ __all__ = [
     "PhaseCandidate", "PhaseMatch", "candidate_d_lines",
     "worst_relative_residual", "global_minimax_scale",
     "chance_worst_residual", "identify_phase",
+    "allowed_d_lines", "match_count", "pixel_weighted_sampler", "FeatureTestRow",
+    "feature_phase_test", "cell_scan", "d_clusters", "family_count",
     "SubcellSetting", "supercell_to_subcell", "subcell_to_supercell",
     "supercell_hkl_to_subcell", "splits_under", "diagonal_B_can_express",
     "can_distinguish_modes",
