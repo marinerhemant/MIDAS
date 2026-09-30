@@ -16,11 +16,23 @@ from typing import Sequence
 import math
 import numpy as np
 
-__all__ = ["ipf_rgb", "ipf_rgb_from_matrix", "direction_rgb", "laue_class",
+__all__ = ["ipf_rgb", "ipf_rgb_from_matrix", "direction_rgb", "laue_class", "to_busing_levy",
+           "family_directions", "ipf_sector_coords",
+           "BUSING_LEVY", "A_ALONG_X",
            "sym_matrices", "sector_deg", "triangle_corners",
            "CUBIC", "HEXAGONAL", "TRIGONAL", "TETRAGONAL", "ORTHORHOMBIC"]
 
 CUBIC = "cubic"
+
+# Crystal Cartesian frames. Every colour ramp and triangle label here is written for
+# BUSING_LEVY: a* along x, c along z -- the frame MIDAS far-field builds its B matrix in
+# (midas_fit_grain/c_src/FitUnified.c, B[0][0] = a*). LaueMatching (laue_material._reciprocal_B)
+# and midas_hkls.Lattice use A_ALONG_X: real-space a along x, b in the xy plane. For cubic,
+# tetragonal and orthorhombic cells the two coincide; for hexagonal and trigonal cells they
+# differ by 30 deg about c, so an a-along-x orientation matrix coloured as Busing-Levy puts
+# [2-1-10] where the key says [10-10] (and breaks -3m symmetry invariance).
+BUSING_LEVY = "busing_levy"
+A_ALONG_X = "a_along_x"
 TETRAGONAL = "tetragonal"
 ORTHORHOMBIC = "orthorhombic"
 HEXAGONAL = "hexagonal"
@@ -224,8 +236,13 @@ def ipf_rgb_from_matrix(
     axis: Sequence[float] = (0.0, 0.0, 1.0),
     *,
     gamma: float = 0.5,
+    frame: str = BUSING_LEVY,
 ) -> np.ndarray:
     """RGB per orientation, from ``(N, 3, 3)`` orientation matrices.
+
+    ``frame`` names the crystal Cartesian frame the matrices map FROM:
+    ``BUSING_LEVY`` (MIDAS far-field, the default) or ``A_ALONG_X`` (LaueMatching).
+    Getting it wrong is silent for cubic and 30 deg off for hexagonal/trigonal.
 
     The same colouring as :func:`ipf_rgb`, entered from the matrix rather than
     from Euler angles. Far-field ``Grains.csv`` carries both (``O11..O33`` and
@@ -250,11 +267,31 @@ def ipf_rgb_from_matrix(
     # to store. Two grains agreeing to 0.5 deg came out 0.42 apart in RGB.
     # Fixed 2026-09-03; see tests::test_ipf_colour_is_symmetry_invariant.
     d = np.einsum("nji,j->ni", g, a)                 # crystal dir of the axis = g^T a
-    return direction_rgb(d, space_group, gamma=gamma)
+    return direction_rgb(d, space_group, gamma=gamma, frame=frame)
+
+
+def to_busing_levy(dirs: np.ndarray, space_group: int, frame: str = BUSING_LEVY) -> np.ndarray:
+    """Express crystal-frame directions in the Busing-Levy frame this module colours in.
+
+    ``frame=A_ALONG_X`` (LaueMatching, midas_hkls.Lattice): for hexagonal and trigonal
+    cells rotate by -30 deg about c, which takes a* (at +30 deg when a is along x) onto x.
+    Identity for every other family, and for ``frame=BUSING_LEVY``.
+    """
+    d = np.asarray(dirs, dtype=float).reshape(-1, 3)
+    if frame == BUSING_LEVY:
+        return d
+    if frame != A_ALONG_X:
+        raise ValueError(f"frame must be {BUSING_LEVY!r} or {A_ALONG_X!r}, got {frame!r}")
+    if laue_class(space_group) not in (HEXAGONAL, TRIGONAL):
+        return d
+    c, s = math.cos(math.radians(-30.0)), math.sin(math.radians(-30.0))
+    rot = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    return d @ rot.T
 
 
 def direction_rgb(
     dirs: np.ndarray, space_group: int = 225, *, gamma: float = 0.5,
+    frame: str = BUSING_LEVY,
 ) -> np.ndarray:
     """RGB for **crystal directions** -- the colouring core.
 
@@ -264,7 +301,7 @@ def direction_rgb(
     is guaranteed to match the colours in the map beside it. A legend computed
     by a separate copy of the triangle maths is a legend that eventually lies.
     """
-    d = np.asarray(dirs, dtype=float).reshape(-1, 3)
+    d = to_busing_levy(dirs, space_group, frame)
     if d.size == 0:
         return np.zeros((0, 3))
     nrm = np.linalg.norm(d, axis=1, keepdims=True)
@@ -344,3 +381,64 @@ def triangle_corners(space_group: int):
            HEXAGONAL:    ["[0001]", r"[10$\bar{1}$0]", r"[2$\bar{1}\bar{1}$0]"],
            TRIGONAL:     ["[0001]", r"[10$\bar{1}$0]", r"[01$\bar{1}$0]"]}[fam]
     return corners, lab
+
+
+# ---------------------------------------------------------------------------
+# crystal-direction families and inverse-pole-figure coordinates (hexagonal)
+# ---------------------------------------------------------------------------
+
+def _hex_family_bl(key: str) -> np.ndarray:
+    """Unit directions of a hexagonal family in the BUSING_LEVY frame (a* along x):
+    [10-10] at azimuth 0, [2-1-10] at 30 -- the same corners the triangle key uses.
+    One representative per +/- pair; pole figures fold +/- onto the upper hemisphere."""
+    def az(deg):
+        t = math.radians(deg)
+        return [math.cos(t), math.sin(t), 0.0]
+    fams = {"0001": [[0.0, 0.0, 1.0]],
+            "10-10": [az(0), az(60), az(120)],
+            "2-1-10": [az(30), az(90), az(150)]}
+    if key not in fams:
+        raise ValueError(f"unknown hexagonal family {key!r}; have {sorted(fams)}")
+    return np.array(fams[key])
+
+
+def family_directions(space_group: int, family: str, frame: str = BUSING_LEVY) -> np.ndarray:
+    """Cartesian crystal directions of a family, in the crystal frame ``frame``.
+
+    ``family`` is a Miller-Bravais direction such as ``"0001"``, ``"<2-1-10>"`` or
+    ``"[10-10]"`` (brackets ignored). Hexagonal and trigonal cells only for now.
+    Getting the frame wrong is silent and 30 deg off for the a- and m-axis families:
+    in A_ALONG_X (LaueMatching, midas_hkls.Lattice) [2-1-10] is along x; in
+    BUSING_LEVY (MIDAS far-field) [10-10] is.
+    """
+    if laue_class(space_group) not in (HEXAGONAL, TRIGONAL):
+        raise NotImplementedError("family_directions: hexagonal/trigonal families only")
+    key = family.strip().strip("<>[]").replace(" ", "")
+    d = _hex_family_bl(key)
+    if frame == BUSING_LEVY:
+        return d
+    if frame != A_ALONG_X:
+        raise ValueError(f"frame must be {BUSING_LEVY!r} or {A_ALONG_X!r}, got {frame!r}")
+    c, s = math.cos(math.radians(30.0)), math.sin(math.radians(30.0))   # inverse of to_busing_levy
+    rot = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    return d @ rot.T
+
+
+def ipf_sector_coords(orient_mat: np.ndarray, space_group: int, axis: Sequence[float],
+                      frame: str = BUSING_LEVY):
+    """Position of the sample ``axis`` in the hexagonal standard triangle, per orientation.
+
+    Returns ``(theta_deg, phi_deg)``: the angle from [0001], and the azimuth folded
+    into [0, 30] with 0 = [10-10] and 30 = [2-1-10] -- the triangle drawn by
+    :func:`midas_plotting.ff.ipf_legend`. Uses ``g^T axis`` (as :func:`ipf_rgb_from_matrix`).
+    """
+    if laue_class(space_group) != HEXAGONAL:
+        raise NotImplementedError("ipf_sector_coords: 6/mmm only for now")
+    g = np.asarray(orient_mat, float).reshape(-1, 3, 3)
+    a = np.asarray(axis, float); a = a / np.linalg.norm(a)
+    d = to_busing_levy(np.einsum("nji,j->ni", g, a), space_group, frame)
+    d = d / np.linalg.norm(d, axis=1, keepdims=True)
+    theta = np.degrees(np.arccos(np.clip(np.abs(d[:, 2]), 0.0, 1.0)))
+    phi = np.degrees(np.arctan2(np.abs(d[:, 1]), np.abs(d[:, 0]))) % 60.0
+    phi = np.minimum(phi, 60.0 - phi)
+    return theta, phi

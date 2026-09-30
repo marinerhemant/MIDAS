@@ -30,7 +30,8 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from .ipf import direction_rgb, laue_class, sym_matrices  # re-exported for tests/callers
+from .ipf import (A_ALONG_X, direction_rgb, ipf_rgb_from_matrix, ipf_sector_coords,  # re-exported
+                  laue_class, sym_matrices)
 from .solutions import COS45, LaueSolutions, LaueSpots
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "orientation_map", "pole_figure", "grain_size_distribution",
     "tilt_histogram", "random_tilt_fractions", "texture_strength",
     "tolerance_sweep", "spot_overlay", "occupancy_map", "summary",
+    "pole_density", "pole_figure_density", "ipf_scatter",
 ]
 
 #: Sample surface normal in the 34-ID-E sample frame, for a specimen mounted at
@@ -74,7 +76,9 @@ def _axis_dirs(om: np.ndarray, hkl=(0, 0, 1), *, normal=None, B=None):
     v = np.einsum("nij,j->ni", om if B is None else om @ np.asarray(B), h)
     v = v / np.linalg.norm(v, axis=1, keepdims=True)
     n = SURFACE_NORMAL_34IDE if normal is None else _unit(normal)
-    return v * np.sign(v @ n)[:, None]
+    # flip only the lower hemisphere: np.sign(0) = 0 would ZERO a pole lying exactly in the
+    # plane (v.n = 0), and a zero vector adds a uniform density everywhere.
+    return v * np.where(v @ n < 0, -1.0, 1.0)[:, None]
 
 
 def effective_n(sizes) -> float:
@@ -309,18 +313,118 @@ def _kernel_grid(normal, step_deg=4.0):
     return np.asarray(g), a, b
 
 
-def _mrd(dirs, grid, bandwidth_deg):
-    """Kernel density on the sphere, normalised so uniform -> 1."""
+def _mrd(dirs, grid, bandwidth_deg, weights=None):
+    """Kernel density on the sphere, normalised so uniform -> 1 (optionally weighted)."""
     if len(dirs) == 0:
         return 0.0
     k = 1.0 / np.radians(bandwidth_deg) ** 2
     w = np.exp(k * (np.abs(grid @ dirs.T) - 1.0))
+    if weights is not None:
+        w = w * np.asarray(weights, float)[None, :]
     d = w.sum(axis=1)
     return float((d / d.mean()).max())
 
 
+def _pole_dirs(om, directions, normal):
+    """Sample-frame unit vectors of every crystal direction in ``directions`` (k, 3),
+    for every orientation (n, 3, 3), folded to the upper hemisphere: shape (n, k, 3)."""
+    om = np.asarray(om, float).reshape(-1, 3, 3)
+    d = np.asarray(directions, float).reshape(-1, 3)
+    d = d / np.linalg.norm(d, axis=1, keepdims=True)
+    v = np.einsum("nij,kj->nki", om, d)
+    v = v / np.linalg.norm(v, axis=2, keepdims=True)
+    n = SURFACE_NORMAL_34IDE if normal is None else _unit(normal)
+    return v * np.where(np.einsum("nki,i->nk", v, n) < 0, -1.0, 1.0)[..., None]
+
+
+def _random_orientations(n, rng):
+    q = rng.normal(size=(int(n), 4)); q /= np.linalg.norm(q, axis=1, keepdims=True)
+    a, b, c, d = q.T
+    return np.stack([1 - 2 * (c * c + d * d), 2 * (b * c - a * d), 2 * (b * d + a * c),
+                     2 * (b * c + a * d), 1 - 2 * (b * b + d * d), 2 * (c * d - a * b),
+                     2 * (b * d - a * c), 2 * (c * d + a * b), 1 - 2 * (b * b + c * c)], 1).reshape(-1, 3, 3)
+
+
+def pole_density(om, directions, *, weights=None, normal=None, bandwidth_deg=7.5, grid_step_deg=2.0):
+    """Weighted pole density on the upper hemisphere, normalised so uniform -> 1 (MRD).
+
+    ``directions`` are CRYSTAL-frame Cartesian vectors, all symmetry-equivalents of a
+    family (e.g. :func:`midas_plotting.ipf.family_directions`); the frame must match
+    the one ``om`` maps from. ``weights`` (one per orientation) should be grain AREA
+    for a Laue map -- per-frame instance counts weight grains by residence and depth,
+    not by volume. Returns ``(grid, mrd)``; ``grid`` rows are sample-frame directions.
+    """
+    n = SURFACE_NORMAL_34IDE if normal is None else _unit(normal)
+    grid, _, _ = _kernel_grid(n, grid_step_deg)
+    v = _pole_dirs(om, directions, n)
+    w = np.ones(v.shape[0]) if weights is None else np.asarray(weights, float)
+    k = 1.0 / np.radians(bandwidth_deg) ** 2
+    dens = (np.exp(k * (np.abs(grid @ v.reshape(-1, 3).T) - 1.0)) * np.repeat(w, v.shape[1])).sum(1)
+    return grid, dens / dens.mean()
+
+
+def pole_figure_density(om, directions, ax=None, *, weights=None, normal=None, bandwidth_deg=7.5,
+                        n_null: int = 100, seed: int = 0, label: str = "", vmax=None):
+    """Contoured pole figure (centre = surface normal) with its chance level.
+
+    The null is random orientations with the SAME number of grains, the SAME weights
+    and the SAME kernel: a raw MRD maximum depends on grain count, weighting and
+    discretisation, so only ``max / null95`` is comparable between datasets.
+    Returns ``(ax, stats)`` with stats = max_mrd, null95_max, ratio, mrd_at_normal.
+    """
+    import matplotlib.pyplot as plt
+    n = SURFACE_NORMAL_34IDE if normal is None else _unit(normal)
+    grid, mrd = pole_density(om, directions, weights=weights, normal=n, bandwidth_deg=bandwidth_deg)
+    rng = np.random.default_rng(seed)
+    nn = np.asarray(om).reshape(-1, 3, 3).shape[0]
+    null = np.array([pole_density(_random_orientations(nn, rng), directions, weights=weights, normal=n,
+                                  bandwidth_deg=bandwidth_deg)[1].max() for _ in range(int(n_null))])
+    stats = dict(max_mrd=float(mrd.max()), null95_max=float(np.percentile(null, 95)),
+                 ratio=float(mrd.max() / np.percentile(null, 95)), mrd_at_normal=float(mrd[np.argmax(grid @ n)]))
+    _, a, b = _kernel_grid(n)
+    dec = np.arccos(np.clip(grid @ n, -1, 1)); az = np.arctan2(grid @ b, grid @ a); r = np.tan(dec / 2)
+    if ax is None:
+        _, ax = plt.subplots(figsize=(4.8, 4.4))
+    top = vmax if vmax is not None else max(4.0, float(np.percentile(mrd, 99.5)))
+    t = ax.tricontourf(r * np.cos(az), r * np.sin(az), mrd, levels=np.linspace(0, top, 13),
+                       cmap="magma_r", extend="max")
+    th = np.linspace(0, 2 * np.pi, 240)
+    for d in (30, 60, 90):
+        rr = np.tan(np.radians(d) / 2.0)
+        ax.plot(rr * np.cos(th), rr * np.sin(th), lw=0.5, color="#999")
+    ax.set_aspect("equal"); ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title(f"{label} pole figure: max {stats['max_mrd']:.1f} MRD (random 95% max "
+                 f"{stats['null95_max']:.1f})\ncentre = surface normal, rings 30/60/90°", fontsize=9)
+    plt.colorbar(t, ax=ax, fraction=0.046, label="MRD")
+    return ax, stats
+
+
+def ipf_scatter(om, space_group: int, ax=None, *, axis=None, weights=None, frame: str = A_ALONG_X):
+    """Inverse pole figure of a sample ``axis`` (default: the surface normal) in the
+    hexagonal standard triangle, marker area = weight. ``frame`` is the crystal frame
+    ``om`` maps from; LaueMatching orientation matrices are A_ALONG_X."""
+    import matplotlib.pyplot as plt
+    a = SURFACE_NORMAL_34IDE if axis is None else _unit(axis)
+    theta, phi = ipf_sector_coords(om, space_group, a, frame)
+    w = np.ones(len(theta)) if weights is None else np.asarray(weights, float)
+    r = np.tan(np.radians(theta) / 2.0)
+    if ax is None:
+        _, ax = plt.subplots(figsize=(5.0, 3.2))
+    ax.scatter(r * np.cos(np.radians(phi)), r * np.sin(np.radians(phi)), s=np.clip(w / w.max() * 150, 3, 150),
+               c=theta, cmap="viridis", vmin=0, vmax=90, alpha=0.6, edgecolors="none")
+    edge = np.tan(np.radians(45.0))
+    for p in (0.0, 30.0):
+        ax.plot([0, edge * np.cos(np.radians(p))], [0, edge * np.sin(np.radians(p))], color="0.4", lw=0.7)
+    arc = np.radians(np.linspace(0, 30, 50)); ax.plot(edge * np.cos(arc), edge * np.sin(arc), color="0.4", lw=0.7)
+    ax.text(0, -0.04, "[0001]", fontsize=8, ha="right")
+    ax.text(edge, -0.05, r"[10$\bar{1}$0]", fontsize=8)
+    ax.text(edge * np.cos(np.radians(30)), edge * np.sin(np.radians(30)) + 0.03, r"[2$\bar{1}\bar{1}$0]", fontsize=8)
+    ax.set_aspect("equal"); ax.set_xticks([]); ax.set_yticks([])
+    return ax
+
+
 def texture_strength(sol, *, hkl=(0, 0, 1), normal=None, bandwidth_deg=10.0,
-                     n_null: int = 200, seed: int = 0):
+                     n_null: int = 200, seed: int = 0, weights=None):
     """Peak pole density and the chance level for **this** number of grains.
 
     Returns ``(peak_mrd, chance_95, ratio)``.
@@ -333,20 +437,23 @@ def texture_strength(sol, *, hkl=(0, 0, 1), normal=None, bandwidth_deg=10.0,
     The null here is uniformly random orientations. If the indexing pipeline
     accepts some orientations more readily than others, an *indexability-matched*
     null is stricter and should be preferred; this one cannot see that bias.
+
+    ``weights`` (one per orientation, e.g. grain area) weight both the observed
+    density and the null, so the ratio stays commensurable; ``None`` is unweighted.
     """
     om = sol.orient_mat if isinstance(sol, LaueSolutions) else sol
     v = _axis_dirs(om, hkl, normal=normal)
     n = SURFACE_NORMAL_34IDE if normal is None else _unit(normal)
     grid, _, _ = _kernel_grid(n)
-    obs = _mrd(v, grid, bandwidth_deg)
+    obs = _mrd(v, grid, bandwidth_deg, weights)
 
     rng = np.random.default_rng(seed)
     null = np.empty(int(n_null))
     for i in range(int(n_null)):
         r = rng.normal(size=(len(v), 3))
         r /= np.linalg.norm(r, axis=1, keepdims=True)
-        r *= np.sign(r @ n)[:, None]
-        null[i] = _mrd(r, grid, bandwidth_deg)
+        r *= np.where(r @ n < 0, -1.0, 1.0)[:, None]
+        null[i] = _mrd(r, grid, bandwidth_deg, weights)
     c95 = float(np.percentile(null, 95))
     return obs, c95, (obs / c95 if c95 > 0 else np.nan)
 
@@ -396,8 +503,9 @@ def orientation_map(sol: LaueSolutions, ax=None, *, normal=None,
 
     ``color='azimuth'`` (default) sets hue from the rotation about the surface
     normal and paleness from alignment with it, so a single-coloured region is
-    one grain. ``color='ipf'`` uses the standard IPF triangle instead and needs
-    ``space_group``.
+    one grain. ``color='ipf'`` colours the crystal direction along the surface normal
+    (IPF-N) on the standard triangle; it needs ``space_group`` and assumes
+    LaueMatching's a-along-x crystal frame.
 
     Where several orientations share a position the strongest (most matched
     reflections) wins the pixel, which is stated rather than silent: a Laue
@@ -417,8 +525,11 @@ def orientation_map(sol: LaueSolutions, ax=None, *, normal=None,
         if space_group is None:
             raise ValueError("color='ipf' needs space_group")
         laue_class(space_group)                       # refuse unknown families
-        rgb = direction_rgb(np.einsum("nij,j->ni", sol.orient_mat, _unit(hkl)),
-                            space_group)
+        # IPF along the surface normal: the CRYSTAL direction parallel to n, i.e.
+        # g^T n, in LaueMatching's a-along-x frame. This used to colour OM.hkl --
+        # a crystal axis expressed in the LAB frame, fed to a crystal-frame
+        # triangle -- which is neither symmetry-invariant nor an IPF.
+        rgb = ipf_rgb_from_matrix(sol.orient_mat, space_group, n, frame=A_ALONG_X)
     elif color == "azimuth":
         _, a, b = _kernel_grid(n)
         dec = np.degrees(np.arccos(np.clip(v @ n, 0.0, 1.0)))
