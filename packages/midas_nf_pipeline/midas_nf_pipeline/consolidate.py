@@ -113,36 +113,39 @@ def read_grid(grid_path: str | Path) -> Optional[np.ndarray]:
 # ---------------------------------------------------------------------------
 
 def extract_nf_params(param_text: str) -> dict:
+    # Read only the leading value token(s) of each key, the same rule as
+    # params.parse_parameters, so a trailing comment ("GridSize 5 # demo")
+    # is ignored here too instead of reaching float() and crashing consolidate.
     raw: dict = {}
     for line in param_text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        parts = line.split()
-        if len(parts) < 2:
+        parts = [t.rstrip(";") for t in line.split()]
+        if len(parts) < 2 or not parts[1]:
             continue
-        raw[parts[0].rstrip(";")] = " ".join(parts[1:]).rstrip(";")
+        raw[parts[0]] = parts[1:]
 
     out: dict = {}
     for k in ("SpaceGroup", "SpaceGroupNr", "SGNr"):
         if k in raw:
-            out["SpaceGroupNr"] = int(raw[k])
+            out["SpaceGroupNr"] = int(raw[k][0])
             break
     if "LatticeConstant" in raw:
         out["LatticeConstant"] = np.array(
-            [float(x) for x in raw["LatticeConstant"].split()[:6]]
+            [float(x) for x in raw["LatticeConstant"][:6]]
         )
     for k in ("GridSize", "GridSizeGrid"):
         if k in raw:
-            out["GridSize"] = float(raw[k])
+            out["GridSize"] = float(raw[k][0])
             break
     if "GlobalPosition" in raw:
-        out["GlobalPosition"] = float(raw["GlobalPosition"])
+        out["GlobalPosition"] = float(raw["GlobalPosition"][0])
     if "GBAngle" in raw:
-        out["GBAngle"] = float(raw["GBAngle"])
+        out["GBAngle"] = float(raw["GBAngle"][0])
     for k in ("NumPhases", "PhaseNr", "nSaves"):
         if k in raw:
-            out[k] = int(raw[k])
+            out[k] = int(raw[k][0])
     return out
 
 

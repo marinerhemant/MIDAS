@@ -245,22 +245,28 @@ def run_seed_orientations_from_cache(p: Dict[str, Any], install_dir: Optional[st
     them rather than fail.
     """
     from midas_nf_preprocess.seed_orientations.from_cache import (
-        load_seeds_for_space_group, DEFAULT_SEED_DIR, SeedCacheNotFound,
-        space_group_to_lookup_type,
+        load_seeds_for_space_group, SeedCacheNotFound,
+        space_group_to_lookup_type, _candidate_seed_dirs,
     )
     from midas_nf_preprocess.seed_orientations.io import write_seeds_csv
 
     sg = int(p.get("SpaceGroup", p.get("SGNr", 225)))
-    seed_dir = DEFAULT_SEED_DIR
+    # None unless --install-dir really holds a cache: a non-None seed_dir makes
+    # from_cache search ONLY that directory, which used to hide
+    # $MIDAS_NF_SEED_DIR and the per-user cache (DEFAULT_SEED_DIR was always
+    # passed, so the env var was never read and every install without a source
+    # tree regenerated seeds from scratch).
+    seed_dir = None
     if install_dir:
         candidate = Path(install_dir) / "NF_HEDM" / "seedOrientations"
         if candidate.is_dir():
             seed_dir = candidate
+    searched = ", ".join(str(d) for d in _candidate_seed_dirs(seed_dir))
     out_path = p["SeedOrientations"]
 
     try:
         seeds = load_seeds_for_space_group(sg, seed_dir=seed_dir)
-        source = f"cache ({seed_dir})"
+        source = f"cache ({searched})"
     except (SeedCacheNotFound, FileNotFoundError, OSError):
         from midas_nf_preprocess.seed_orientations.from_scratch import (
             generate_uniform_seeds,
@@ -271,9 +277,9 @@ def run_seed_orientations_from_cache(p: Dict[str, Any], install_dir: Optional[st
             lookup = ""
         res = _scratch_resolution(lookup)
         logger.info(
-            "Seed cache not found at %s; generating seeds for SG %d from "
-            "scratch at %.2f deg resolution (this is a one-off, ~1 min)",
-            seed_dir, sg, res)
+            "Seed cache not found (searched: %s); generating seeds for SG %d "
+            "from scratch at %.2f deg resolution (this is a one-off, ~1 min)",
+            searched, sg, res)
         seeds = generate_uniform_seeds(sg, resolution_deg=res)
         source = f"generated, {res:g} deg"
 
@@ -458,6 +464,33 @@ def run_image_processing(p: Dict[str, Any], param_file: str | Path, *,
         all_layers=True, layer_nr=1, output=None,
     )
     proc_run(args)
+    _release_gpu_memory("after image processing")
+
+
+def _release_gpu_memory(where: str) -> None:
+    """Hand this process's cached CUDA memory back to the driver.
+
+    The reduction runs in-process, and torch's caching allocator keeps every
+    freed block reserved. Measured on a 2 x 102 GB 20-ID layer: the parent still
+    held 42.5 GB on GPU 0 when ``_fit_sharded`` started its workers, so the
+    GPU-0 worker died with CUDA OOM allocating its 7.9 GB observation volume
+    while the GPU-1 worker finished. Freed tensors are only released by
+    ``empty_cache``; a tensor still referenced is not, so the residue is logged.
+    """
+    try:
+        import torch
+    except ImportError:
+        return
+    if not torch.cuda.is_available():
+        return
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache()
+    for i in range(torch.cuda.device_count()):
+        held = torch.cuda.memory_reserved(i) / 2**30
+        if held > 1.0:
+            logger.warning(f"GPU {i}: this process still reserves {held:.1f} GiB "
+                           f"{where} (live tensors); sharded fit workers may OOM")
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +532,10 @@ def _fit_sharded(
         n_saves = int(_pp(str(param_file)).save_n_solutions)
     except Exception:
         n_saves = int(p.get("SaveNSolutions", 1))
+
+    # Workers are separate processes on the same GPUs: whatever this process
+    # still reserves (e.g. from an in-process reduction) is taken from them.
+    _release_gpu_memory("before sharded fit")
 
     MicWriter.allocate(mic_path, n_voxels=n_voxels, n_saves=n_saves)
     logger.info(
