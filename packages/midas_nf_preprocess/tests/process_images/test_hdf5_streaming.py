@@ -367,3 +367,18 @@ def test_params_parse_the_new_keys(tmp_path):
     assert p.median_frames == 60
     assert p.median_row_block == 460
     assert layer_file(p, 3).endswith("NF_Au_cube_0802_000710.h5")
+
+
+def test_check_pixel_scale_tolerates_stray_values_in_x64_data():
+    import warnings
+    """x64-stored frames with a handful of off-grid pixels must not warn.
+
+    Regression (LSHR5, bt_20id_jul26b): 8e-8 of pixels sat at 32 mod 64 and the
+    any-value test warned on a correctly declared PixelScale 64.
+    """
+    rng = np.random.default_rng(0)
+    scaled = (rng.integers(0, 1024, size=(200, 200)) * 64).astype(np.float64)
+    scaled[0, :3] = 32.0                                   # 3 strays in 40 000
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        check_pixel_scale(scaled, 64.0)

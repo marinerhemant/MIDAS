@@ -274,3 +274,62 @@ class SpotsBitMask:
     def buffer(self) -> np.ndarray:
         """Direct access to the underlying uint32 buffer (for parity tests)."""
         return self._buf
+
+
+class SparseGreyRecorder:
+    """Grey levels of every pixel that ``SpotsBitMask`` sets, in the SAME coordinates.
+
+    ``SpotsInfo.bin`` keeps one bit per pixel, so every NF fitter downstream compares
+    against a binarised image and the measured intensity is gone. This keeps it: for each
+    lit pixel ``(layer, frame, y, z, value)`` with ``y, z`` already in the C's flipped
+    convention (``y = NrPixelsY-1-y_raw``, ``z = NrPixelsZ-1-z_raw``, :func:`_flip_yz`), so
+    a row here and the matching bit in ``SpotsInfo.bin`` index the same detector pixel.
+
+    ``value`` is the frame's ``filtered`` image at that pixel: the median-corrected residual
+    after the blanket subtraction, the clamp and the spatial median (or, on the matched-filter
+    path, the untouched residual). The blanket actually applied is recorded per layer, so
+    ``value + blanket[layer]`` recovers the pre-blanket residual on the LoG / no-LoG paths.
+
+    Opt-in via ``WriteGreyResidual 1``; with it absent the reduction is unchanged.
+    """
+
+    def __init__(self, nr_pixels_y: int, nr_pixels_z: int, spot_detect: str = "log"):
+        self.nr_pixels_y = int(nr_pixels_y)
+        self.nr_pixels_z = int(nr_pixels_z)
+        self.spot_detect = str(spot_detect)
+        self._chunks: list = []
+        self.blanket: dict = {}
+
+    def add(self, layer: int, frame: int, labels: torch.Tensor,
+            values: torch.Tensor, blanket: float) -> int:
+        self.blanket[int(layer)] = float(blanket)
+        nz = (labels != 0).nonzero(as_tuple=False)            # (z_raw, y_raw)
+        if nz.numel() == 0:
+            return 0
+        z_raw, y_raw = nz[:, 0], nz[:, 1]
+        v = values.detach()[z_raw, y_raw].float().cpu().numpy()
+        y, z = _flip_yz(y_raw, z_raw, self.nr_pixels_y, self.nr_pixels_z)
+        n = int(v.size)
+        self._chunks.append((np.full(n, layer, np.uint8), np.full(n, frame, np.int32),
+                             y.cpu().numpy().astype(np.uint16), z.cpu().numpy().astype(np.uint16),
+                             v.astype(np.float32)))
+        return n
+
+    @property
+    def n_pixels(self) -> int:
+        return int(sum(c[0].size for c in self._chunks))
+
+    def write(self, path: Union[str, Path]) -> Path:
+        path = Path(path)
+        cols = [np.concatenate([c[i] for c in self._chunks]) if self._chunks
+                else np.zeros(0, dt) for i, dt in
+                enumerate((np.uint8, np.int32, np.uint16, np.uint16, np.float32))]
+        lay = np.array(sorted(self.blanket), np.int32)
+        np.savez_compressed(
+            path, layer=cols[0], frame=cols[1], y=cols[2], z=cols[3], value=cols[4],
+            blanket_layer=lay, blanket_value=np.array([self.blanket[k] for k in lay], np.float32),
+            nr_pixels_y=self.nr_pixels_y, nr_pixels_z=self.nr_pixels_z,
+            spot_detect=self.spot_detect,
+            convention="y=NrPixelsY-1-y_raw, z=NrPixelsZ-1-z_raw (same as SpotsInfo.bin)",
+            value_note="filtered image at lit pixel; + blanket[layer] = pre-blanket residual (LoG/no-LoG paths)")
+        return path

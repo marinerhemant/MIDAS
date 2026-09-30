@@ -127,8 +127,12 @@ def _predict_spots_chunk(
                   is inside *any* pair (matches MakeDiffrSpots.c L248-L259).
     exclude_pole_angle : skip spots whose ``|eta|`` is within this many degrees
                   of 0 or 180 (matches L245).
-    wedge_deg   : passed through to midas_diffract for the wedge-corrected
-                  Bragg solver. Default 0 matches the original C MakeDiffrSpots.
+    wedge_deg   : the Parameters-file ``Wedge`` (degrees), passed through to
+                  midas_diffract (``midas_diffract.forward`` "Wedge
+                  convention": rotation axis ``(-sin W, 0, cos W)``,
+                  orientations in the rotation-stage frame, the same frame
+                  as FF Grains.csv). ``DiffrSpotsPipeline`` reads it from the
+                  parameter file. 0 matches the original C MakeDiffrSpots.
 
     Returns
     -------
@@ -304,6 +308,47 @@ def predict_spots(
 # -----------------------------------------------------------------------------
 
 
+def resolve_hkls_csv(
+    params: DiffrSpotsParams,
+    *,
+    output_dir: Optional[Union[str, Path]] = None,
+) -> Path:
+    """Locate ``hkls.csv`` the way the rest of the NF pipeline does.
+
+    Every other NF stage writes and reads ``hkls.csv`` in the run/result
+    folder (``OutputDirectory``, falling back to ``DataDirectory`` --
+    ``midas_nf_pipeline.workflows`` sets ``resultFolder`` that way, and
+    ``midas_nf_fitorientation.io.read_hkls`` reads ``<out_dir>/hkls.csv``).
+    Search order, first existing file wins:
+
+    1. ``output_dir`` (the ``--output-dir`` override), if given;
+    2. ``params.output_directory`` (``OutputDirectory``);
+    3. ``params.data_directory`` (``DataDirectory``) -- last resort only,
+       because the raw-data folder often holds a stale ``hkls.csv``.
+
+    Raises ``FileNotFoundError`` naming every path searched if none exists.
+    """
+    candidates: list[Path] = []
+    for d in (output_dir, params.output_directory, params.data_directory):
+        if d:
+            c = Path(d) / "hkls.csv"
+            if c not in candidates:
+                candidates.append(c)
+    for i, c in enumerate(candidates):
+        if c.is_file():
+            if i > 0:
+                LOGGER.warning(
+                    "diffr_spots: hkls.csv not found in %s; falling back to %s",
+                    ", ".join(str(x.parent) for x in candidates[:i]), c,
+                )
+            return c
+    raise FileNotFoundError(
+        "hkls.csv not found; searched: "
+        + ", ".join(str(c) for c in candidates)
+        + ". Generate it in the output directory or pass --hkls-csv."
+    )
+
+
 class DiffrSpotsPipeline:
     """Orchestrator for the full ``MakeDiffrSpots`` workflow.
 
@@ -313,7 +358,9 @@ class DiffrSpotsPipeline:
     device, dtype : standard torch construction kwargs.
 
     Optional ``hkls_csv`` / ``seed_orientations_csv`` overrides bypass the
-    paths in ``params``.
+    paths in ``params``. Without ``hkls_csv`` the file is located by
+    :func:`resolve_hkls_csv` (output dir first, ``DataDirectory`` last);
+    ``output_dir`` is the same override later given to :meth:`run`.
     """
 
     def __init__(
@@ -324,6 +371,7 @@ class DiffrSpotsPipeline:
         *,
         hkls_csv: Optional[Union[str, Path]] = None,
         seed_orientations_csv: Optional[Union[str, Path]] = None,
+        output_dir: Optional[Union[str, Path]] = None,
     ):
         self.params = params
         self.device = resolve_device(device)
@@ -333,8 +381,9 @@ class DiffrSpotsPipeline:
         self._hkls_csv = (
             Path(hkls_csv)
             if hkls_csv is not None
-            else Path(params.data_directory) / "hkls.csv"
+            else resolve_hkls_csv(params, output_dir=output_dir)
         )
+        LOGGER.info("diffr_spots: reading hkls.csv from %s", self._hkls_csv)
         self._seeds_csv = (
             Path(seed_orientations_csv)
             if seed_orientations_csv is not None
@@ -353,6 +402,11 @@ class DiffrSpotsPipeline:
         ).to(device=self.device)
 
     @property
+    def hkls_csv_path(self) -> Path:
+        """The ``hkls.csv`` actually read."""
+        return self._hkls_csv
+
+    @property
     def n_hkls(self) -> int:
         return int(self.hkls.shape[0])
 
@@ -369,6 +423,10 @@ class DiffrSpotsPipeline:
             omega_ranges=self.params.omega_ranges,
             box_sizes=self.params.box_sizes,
             exclude_pole_angle=self.params.exclude_pole_angle,
+            # The spot list must be predicted with the same rotation axis the
+            # NF fit / screen use (they read the same Wedge); this was
+            # silently 0 -- the parameter was never parsed here.
+            wedge_deg=self.params.wedge,
         )
 
     def run(

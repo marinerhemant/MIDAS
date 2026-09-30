@@ -154,6 +154,7 @@ class ProcessParams:
     nlm_backend: str = "skimage"
     # --- spot DETECTION backend -------------------------------------------
     # "log"     : the historical multi-scale LoG path, mirroring the C.
+    # "poisson" : window sum vs a LOCAL Poisson background rate (see below).
     # "matched" : Gaussian matched filter on the median-corrected residual,
     #             used ONLY to build the mask -- intensities are then read from
     #             the UNTOUCHED residual, which is the point.  Measured 5.8-8.6x
@@ -169,11 +170,23 @@ class ProcessParams:
     matched_fp_budget: int = 5         # false positives allowed, per frame
     matched_min_px: int = 4            # blobs smaller than this are dropped
     matched_calib_frames: int = 3      # frames used for the one-off calibration
+    # "poisson": window-sum of the residual against a LOCAL Poisson background
+    # rate map, threshold set per pixel for a fixed false-alarm budget per frame
+    # (process_images/poisson_threshold.py). For sparse-count, dark-subtracted
+    # data whose background rate varies across the detector.
+    poisson_window: int = 3            # k for the k x k window sum
+    poisson_fp_per_frame: float = 5.0  # expected background false alarms per frame
+    poisson_rate_frames: int = 60      # evenly spaced frames for the rate map
+    poisson_rate_smooth: int = 9       # box smoothing of the mean/variance maps (px)
+    poisson_clip: float = 0.0          # per-pixel clip for the rate (0 = auto)
+    poisson_robust_var: int = 1        # 1 = MAD-based variance (recommended), 0 = plain variance
+    poisson_min_px: int = 4            # blobs smaller than this are dropped
     mean_filt_radius: int = 1  # spatial median radius (0=identity, 1=3x3, 2=5x5)
     do_log_filter: int = 1
     log_mask_radius: int = 4
     sigma: float = 1.0
     write_fin_image: int = 0
+    write_grey_residual: int = 0   # 1 = also write SpotsGrey.npz (grey level of every lit pixel)
     do_deblur: int = 0
     write_legacy_bin: int = 0
 
@@ -271,6 +284,13 @@ class ProcessParams:
             ("MatchedFPBudget", "matched_fp_budget", int),
             ("MatchedMinPx", "matched_min_px", int),
             ("MatchedCalibFrames", "matched_calib_frames", int),
+            ("PoissonWindow", "poisson_window", int),
+            ("PoissonFPPerFrame", "poisson_fp_per_frame", float),
+            ("PoissonRateFrames", "poisson_rate_frames", int),
+            ("PoissonRateSmooth", "poisson_rate_smooth", int),
+            ("PoissonClip", "poisson_clip", float),
+            ("PoissonRobustVar", "poisson_robust_var", int),
+            ("PoissonMinPx", "poisson_min_px", int),
             ("NLMPatchSize", "nlm_patch_size", int),
             ("NLMPatchDistance", "nlm_patch_distance", int),
             ("MedFiltRadius", "mean_filt_radius", int),
@@ -278,6 +298,7 @@ class ProcessParams:
             ("LoGMaskRadius", "log_mask_radius", int),
             ("GaussFiltRadius", "sigma", float),
             ("WriteFinImage", "write_fin_image", int),
+            ("WriteGreyResidual", "write_grey_residual", int),
             ("Deblur", "do_deblur", int),
             ("nDistances", "n_distances", int),
             ("WriteLegacyBin", "write_legacy_bin", int),

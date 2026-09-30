@@ -337,3 +337,82 @@ def test_write_all_roundtrip(tmp_path):
     assert int(key_back[2, 1]) == 8
     assert torch.equal(spots, spots_back)
     assert torch.equal(om, om_back)
+
+
+# -----------------------------------------------------------------------------
+# hkls.csv location (issue #3): the run/output dir wins over DataDirectory
+# -----------------------------------------------------------------------------
+
+
+def _hkls_resolution_setup(tmp_path):
+    data_dir = tmp_path / "raw"
+    out_dir = tmp_path / "run"
+    data_dir.mkdir()
+    out_dir.mkdir()
+    # Stale file in the raw-data folder: one reflection only.
+    _write_hkls_csv(data_dir / "hkls.csv", [(1, 0, 0, 1, 5.0)])
+    # Fresh file in the run folder: three reflections.
+    _write_hkls_csv(
+        out_dir / "hkls.csv",
+        [(1, 0, 0, 1, 5.0), (0, 1, 0, 1, 5.0), (1, 1, 0, 2, 7.0)],
+    )
+    seeds_path = tmp_path / "seeds.csv"
+    _write_seeds(seeds_path, [(1.0, 0.0, 0.0, 0.0)])
+    pf = tmp_path / "params.txt"
+    pf.write_text(
+        f"DataDirectory {data_dir}\n"
+        f"OutputDirectory {out_dir}\n"
+        f"SeedOrientations {seeds_path}\n"
+        f"NrOrientations 1\n"
+        f"Lsd 1000.0\n"
+        f"px 1.0\n"
+        f"OmegaRange -180 180\n"
+        f"BoxSize -1000 1000 -1000 1000\n"
+    )
+    return data_dir, out_dir, pf
+
+
+def test_hkls_csv_read_from_output_directory_not_data_directory(tmp_path):
+    data_dir, out_dir, pf = _hkls_resolution_setup(tmp_path)
+    pipe = DiffrSpotsPipeline(DiffrSpotsParams.from_paramfile(pf), device="cpu")
+    assert pipe.hkls_csv_path == out_dir / "hkls.csv"
+    assert pipe.n_hkls == 3  # not the stale 1-row file in DataDirectory
+
+
+def test_hkls_csv_cli_output_dir_override_wins(tmp_path):
+    from midas_nf_preprocess.diffr_spots import resolve_hkls_csv
+
+    data_dir, out_dir, pf = _hkls_resolution_setup(tmp_path)
+    other = tmp_path / "other"
+    other.mkdir()
+    _write_hkls_csv(other / "hkls.csv", [(1, 1, 0, 2, 7.0), (1, 0, 0, 1, 5.0)])
+    params = DiffrSpotsParams.from_paramfile(pf)
+    assert resolve_hkls_csv(params, output_dir=other) == other / "hkls.csv"
+    pipe = DiffrSpotsPipeline(params, device="cpu", output_dir=other)
+    assert pipe.n_hkls == 2
+
+
+def test_hkls_csv_falls_back_to_data_directory_with_warning(tmp_path, caplog):
+    data_dir, out_dir, pf = _hkls_resolution_setup(tmp_path)
+    (out_dir / "hkls.csv").unlink()
+    with caplog.at_level("WARNING"):
+        pipe = DiffrSpotsPipeline(DiffrSpotsParams.from_paramfile(pf), device="cpu")
+    assert pipe.hkls_csv_path == data_dir / "hkls.csv"
+    assert "falling back" in caplog.text
+
+
+def test_hkls_csv_missing_everywhere_names_searched_paths(tmp_path):
+    data_dir, out_dir, pf = _hkls_resolution_setup(tmp_path)
+    (out_dir / "hkls.csv").unlink()
+    (data_dir / "hkls.csv").unlink()
+    with pytest.raises(FileNotFoundError, match="searched") as ei:
+        DiffrSpotsPipeline(DiffrSpotsParams.from_paramfile(pf), device="cpu")
+    assert str(out_dir) in str(ei.value) and str(data_dir) in str(ei.value)
+
+
+def test_hkls_csv_cli_reports_path(tmp_path, capsys):
+    from midas_nf_preprocess.diffr_spots.cli import main
+
+    data_dir, out_dir, pf = _hkls_resolution_setup(tmp_path)
+    assert main([str(pf), "--device", "cpu"]) == 0
+    assert f"hkls.csv: {out_dir / 'hkls.csv'}" in capsys.readouterr().out

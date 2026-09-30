@@ -31,7 +31,7 @@ from .log_filter import build_log_kernel
 from .median import spatial_median, streaming_temporal_median, temporal_median
 from .params import ProcessParams
 from .peaks import PeakFindOutputs, find_peaks
-from .spots_io import SpotsBitMask
+from .spots_io import SparseGreyRecorder, SpotsBitMask
 
 LOGGER = logging.getLogger(__name__)
 
@@ -163,6 +163,24 @@ def _nlm_denoise_residual(
     )
     return torch.from_numpy(np.ascontiguousarray(out)).to(device=dev, dtype=dt)
 
+def _count_quantum(stack, max_samples: int = 1_000_000):
+    """Smallest step between distinct positive values in the middle frame.
+
+    ~0 for continuous data; 1 count for 10-bit x64 frames after PixelScale 64,
+    2 for 12-bit even-valued frames. None when it cannot be measured.
+    """
+    try:
+        frame = stack[int(stack.shape[0]) // 2]
+        v = np.asarray(frame.detach().cpu() if hasattr(frame, "detach") else frame,
+                       dtype=np.float64).ravel()[:max_samples]
+        u = np.unique(v[v > 0])
+        if u.size < 2:
+            return None
+        return float(np.min(np.diff(u)))
+    except Exception:
+        return None
+
+
 class ProcessImagesPipeline:
     """Orchestrator for the three-phase NF processing pipeline.
 
@@ -198,6 +216,18 @@ class ProcessImagesPipeline:
         # primary (LoGMaskRadius, sigma) + fallback (4, 1.0).
         self._log_kernels = self._build_log_kernels()
         self._log_kernel_cache: dict[tuple, list[torch.Tensor]] = {}
+
+        # Opt-in grey levels of every lit pixel (WriteGreyResidual 1), recorded in the
+        # parent alongside each bitmask write so the order matches SpotsInfo.bin.
+        self.grey = (SparseGreyRecorder(params.nr_pixels_y, params.nr_pixels_z,
+                                        str(getattr(params, "spot_detect", "log")))
+                     if int(getattr(params, "write_grey_residual", 0)) == 1 else None)
+
+    def _record_grey(self, layer_idx: int, frame: int, result: "FrameResult") -> None:
+        if self.grey is not None:
+            blanket = (self._blanket if getattr(self, "_blanket", None) is not None
+                       else self.params.blanket_subtraction)
+            self.grey.add(layer_idx, frame, result.labels, result.filtered, float(blanket))
 
     # ------------------------------------------------------------------
     # Setup
@@ -291,6 +321,33 @@ class ProcessImagesPipeline:
     def temporal_median(self, stack: torch.Tensor) -> torch.Tensor:
         return temporal_median(stack)
 
+    def _prepare_poisson(self, median: torch.Tensor, *, stack=None, source=None) -> None:
+        """Per-layer threshold map for ``SpotDetect poisson`` (no-op otherwise).
+
+        The window sum's local mean AND variance are measured from sampled frames
+        and the threshold is a negative-binomial upper quantile with those moments
+        (Poisson where var = mean): scintillator-coupled cameras are far from
+        Poisson in ADU (poisson_threshold.py docstring)."""
+        if str(getattr(self.params, "spot_detect", "log")) != "poisson":
+            self._poisson_thr = None
+            return
+        from .poisson_threshold import (local_moments_from_stack, streaming_local_moments,
+                                        threshold_map_nb)
+        w = int(self.params.poisson_window)
+        kw = dict(window=w, n_frames=int(self.params.poisson_rate_frames),
+                  clip=float(self.params.poisson_clip), smooth_px=int(self.params.poisson_rate_smooth),
+                  robust=bool(int(self.params.poisson_robust_var)))
+        mean, var = (local_moments_from_stack(stack, median, **kw) if stack is not None
+                     else streaming_local_moments(source, median, **kw))
+        thr = threshold_map_nb(mean, var, fp_per_frame=float(self.params.poisson_fp_per_frame))
+        self._poisson_mean, self._poisson_var = mean, var
+        self._poisson_thr = thr.to(median.device)
+        disp = (var / mean.clamp(min=1e-6))
+        LOGGER.info("poisson/NB detection: window-sum mean %.2f-%.2f, dispersion %.2f-%.2f "
+                    "(median %.2f), window %d, threshold %g-%g",
+                    float(mean.min()), float(mean.max()), float(disp.min()), float(disp.max()),
+                    float(disp.median()), w, float(thr.min()), float(thr.max()))
+
     # ------------------------------------------------------------------
     # Phase 3: per-frame processing
     # ------------------------------------------------------------------
@@ -383,6 +440,29 @@ class ProcessImagesPipeline:
         # are the original ones.  That separation is the whole point -- NLM
         # gets a lower threshold by rewriting every pixel, this gets one
         # without touching any (process_images/detect.py).
+        if str(getattr(self.params, "spot_detect", "log")) == "poisson":
+            from .peaks import auto_temperature
+            from .poisson_threshold import detect_labels_poisson
+
+            thr_map = getattr(self, "_poisson_thr", None)
+            if thr_map is None:
+                raise RuntimeError(
+                    "SpotDetect poisson needs the per-layer threshold map; call "
+                    "process_layer (or _prepare_poisson) before process_frame.")
+            # detection on the RAW residual: NLM smears sparse counts into clumps
+            labels, n, score = detect_labels_poisson(
+                frame - median, thr_map, window=int(self.params.poisson_window),
+                min_px=int(self.params.poisson_min_px))
+            t = self.params.soft_temperature
+            T = (auto_temperature(score) if (isinstance(t, str) and t == "auto")
+                 else float(t))
+            T = float(T if not torch.is_tensor(T) else T.item()) or 1.0
+            peaks = PeakFindOutputs(
+                log_response=score, spot_prob=torch.sigmoid(score / T), labels=labels,
+                n_components=n, temperature_img=T, temperature_log=T)
+            return FrameResult(frame_index=frame_idx, layer_nr=layer_nr,
+                               filtered=frame - median, peaks=peaks)
+
         if str(getattr(self.params, "spot_detect", "log")) == "matched":
             from .detect import detect_labels_torch
             from .peaks import auto_temperature
@@ -610,7 +690,17 @@ class ProcessImagesPipeline:
         in_sigma = absolute / sigma
         LOGGER.info("layer %d: BlanketSubtraction %.4g = %.2f sigma "
                     "(sigma_MAD %.4f, post-denoise)", layer_nr, absolute, in_sigma, sigma)
-        if not (2.0 <= in_sigma <= 5.0):
+        quantum = _count_quantum(stack)
+        if in_sigma > 5.0 and quantum and 3.5 * sigma < quantum:
+            # Quantised data (e.g. 10-bit stored x64 -> steps of 1 count after
+            # PixelScale): sigma_MAD is set by the few non-zero residual pixels
+            # and 3.5 sigma is a fraction of ONE count step, i.e. "any lit
+            # pixel". Recommending BlanketSigma here pointed at the noise floor
+            # (LSHR5, bt_20id_jul26b: 3.5 sigma = 0.03 counts against a 1-count step).
+            LOGGER.info("layer %d: sigma_MAD %.4f is below the data's count step "
+                        "%.4g; a sigma-based threshold does not apply, keeping "
+                        "BlanketSubtraction %g", layer_nr, sigma, quantum, absolute)
+        elif not (2.0 <= in_sigma <= 5.0):
             direction = ("far above the noise -- most real spots will be "
                          "discarded" if in_sigma > 5.0 else
                          "close to the noise -- expect many false detections")
@@ -703,6 +793,7 @@ class ProcessImagesPipeline:
                 dtype=self.dtype,
             )
 
+            self._prepare_poisson(median, source=src)
             n_workers, to_cpu = self._frame_worker_plan(self.device.type == "cuda")
             if to_cpu:
                 median = median.cpu()
@@ -742,6 +833,7 @@ class ProcessImagesPipeline:
                         ))
                     for j, result in zip(range(lo, hi), results):
                         bitmask.set_frame_from_labels(layer_idx, j, result.labels)
+                        self._record_grey(layer_idx, j, result)
                     self._accumulate_persistence([r.labels > 0 for r in results])
                     del block
             finally:
@@ -778,6 +870,7 @@ class ProcessImagesPipeline:
             stack = self.from_stack(stack)
         median = self.temporal_median(stack)
         self._blanket = self._resolve_threshold(stack, median, layer_nr)
+        self._prepare_poisson(median, stack=stack)
         self._reset_persistence()
 
         if bitmask is None:
@@ -808,6 +901,7 @@ class ProcessImagesPipeline:
             for j in range(n_files):
                 result = self.process_frame(j, stack[j], median, layer_nr)
                 bitmask.set_frame_from_labels(layer_idx, j, result.labels)
+                self._record_grey(layer_idx, j, result)
                 buf.append(result.labels > 0)
                 if len(buf) >= 32:
                     self._accumulate_persistence(buf)
@@ -828,6 +922,7 @@ class ProcessImagesPipeline:
                 ))
                 for j, result in zip(range(lo, hi), results):
                     bitmask.set_frame_from_labels(layer_idx, j, result.labels)
+                    self._record_grey(layer_idx, j, result)
                 # ex.map preserves order, so a batch IS a consecutive run.
                 self._accumulate_persistence([r.labels > 0 for r in results])
         self._log_sumframes_recommendation(layer_nr)

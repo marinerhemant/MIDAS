@@ -36,7 +36,9 @@ from .crystal import (
 )
 from .from_cache import (
     DEFAULT_SEED_DIR,
+    USER_SEED_DIR,
     SeedCacheNotFound,
+    build_seed_cache,
     load_seeds_for_space_group,
     load_seeds_for_lookup_type,
 )
@@ -66,7 +68,9 @@ __all__ = [
     "REPRESENTATIVE_SG",
     # Cache path
     "DEFAULT_SEED_DIR",
+    "USER_SEED_DIR",
     "SeedCacheNotFound",
+    "build_seed_cache",
     "load_seeds_for_space_group",
     "load_seeds_for_lookup_type",
     # From-scratch path

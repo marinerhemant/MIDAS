@@ -26,6 +26,7 @@ def generate_seeds(
     grains_file: Optional[Union[str, Path]] = None,
     device: Optional[Union[str, torch.device]] = None,
     dtype: Optional[Union[str, torch.dtype]] = None,
+    build_cache: bool = False,
 ) -> torch.Tensor:
     """One-stop API to produce NF seed quaternions.
 
@@ -33,6 +34,9 @@ def generate_seeds(
 
       - ``"cache"``       -- look up a cached file in ``seed_dir`` for the
                              requested space group. Default 1.5deg spacing.
+                             With ``build_cache=True`` a missing cache file is
+                             built deterministically first
+                             (:func:`~.from_cache.build_seed_cache`).
       - ``"from_scratch"`` -- generate uniform random quats at ``resolution_deg``
                               and reduce to the FZ.
       - ``"from_grains"``  -- parse an FF Grains.csv at ``grains_file``.
@@ -57,7 +61,8 @@ def generate_seeds(
 
     if method == "cache":
         return load_seeds_for_space_group(
-            sg, seed_dir=seed_dir, device=device, dtype=dtype
+            sg, seed_dir=seed_dir, device=device, dtype=dtype,
+            build_if_missing=build_cache,
         )
     if method == "from_scratch":
         return generate_uniform_seeds(

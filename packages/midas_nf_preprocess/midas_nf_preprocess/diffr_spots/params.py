@@ -37,6 +37,9 @@ class DiffrSpotsParams:
     rings_to_use: list[int] = field(default_factory=list)
     exclude_pole_angle: float = 0.0
     nr_orientations: int = 0          # NrOrientations
+    wedge: float = 0.0                # Wedge (deg), Parameters-file sign
+                                      # (midas_diffract.forward "Wedge
+                                      # convention"); same value NF fitting uses
 
     def __post_init__(self) -> None:
         if not self.output_directory:
@@ -88,6 +91,8 @@ class DiffrSpotsParams:
                     kwargs["space_group"] = int(vals[0])
                 elif key == "ExcludePoleAngle":
                     kwargs["exclude_pole_angle"] = float(vals[0])
+                elif key == "Wedge":
+                    kwargs["wedge"] = float(vals[0])
                 elif key in ("LatticeParameter", "LatticeConstant"):
                     if len(vals) >= 6:
                         latc = tuple(float(v) for v in vals[:6])

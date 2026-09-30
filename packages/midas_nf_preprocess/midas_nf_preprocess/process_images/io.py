@@ -143,7 +143,11 @@ def check_pixel_scale(block: np.ndarray, scale: float) -> None:
         return
     vmax = float(finite.max())
     nz = finite[finite > 0]
-    all_mult_64 = bool(nz.size) and bool(np.all(np.mod(nz, 64) == 0))
+    # A FRACTION, not "every value": x64-stored scans carry a few stray values
+    # (LSHR5 bt_20id_jul26b: 8e-8 of pixels at 32 mod 64), which made the any-value
+    # test warn on correctly-declared data. Unscaled 12-bit data puts only ~1/32
+    # of its non-zero values on multiples of 64, so 99.9 % separates cleanly.
+    all_mult_64 = bool(nz.size) and float(np.mean(np.mod(nz, 64) == 0)) >= 0.999
     if scale == 1.0 and all_mult_64 and vmax > 4095:
         warnings.warn(
             f"PixelScale is 1 but every non-zero value is a multiple of 64 and "

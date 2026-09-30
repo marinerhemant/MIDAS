@@ -23,7 +23,10 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--hkls-csv",
         default=None,
-        help="Override hkls.csv path (default: <DataDirectory>/hkls.csv).",
+        help=(
+            "Override hkls.csv path (default: <output dir>/hkls.csv, i.e. "
+            "--output-dir, then OutputDirectory; DataDirectory only if absent there)."
+        ),
     )
     parser.add_argument(
         "--seeds",
@@ -45,7 +48,9 @@ def run(args: argparse.Namespace) -> int:
         dtype=args.dtype,
         hkls_csv=args.hkls_csv,
         seed_orientations_csv=args.seeds,
+        output_dir=args.output_dir,
     )
+    print(f"hkls.csv: {pipe.hkls_csv_path}")
     result, paths = pipe.run(output_dir=args.output_dir)
     total = int(result.counts.sum().item())
     print(

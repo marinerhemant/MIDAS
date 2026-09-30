@@ -59,6 +59,9 @@ def run(args: argparse.Namespace) -> int:
     out = args.output or str(Path(params.output_directory) / "SpotsInfo.bin")
     bitmask.write(out)
     print(f"Wrote {out} ({bitmask.count_bits()} set bits, {bitmask.n_words} words)")
+    if pipe.grey is not None:
+        gpath = pipe.grey.write(Path(out).with_name("SpotsGrey.npz"))
+        print(f"Wrote {gpath} ({pipe.grey.n_pixels} grey pixels; must equal the set bits)")
     return 0
 
 

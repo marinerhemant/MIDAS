@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-nf-preprocess"
-version = "0.7.2"
+version = "0.8.0"
 description = "Differentiable PyTorch port of NF-HEDM preprocessing (CPU/CUDA/MPS): hex grid, tomo filter, diffraction-spot prediction, image processing"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -27,11 +27,12 @@ classifiers = [
 ]
 dependencies = [
     "hdf5plugin>=4.0",
-    "midas-params>=0.9.0",  # preflight: CLI errors + path checks
+    "midas-params>=0.13.0",  # preflight: CLI errors + path checks
     "numpy>=1.22",
     "torch>=2.1",
+    "scipy>=1.9",             # SpotDetect poisson (scipy.stats), no-LoG labelling, spot detection
     "tifffile>=2022.0",
-    "midas-diffract>=0.1.0",
+    "midas-diffract>=0.9.0",
     "midas-stress>=0.6.0",
 ]
 

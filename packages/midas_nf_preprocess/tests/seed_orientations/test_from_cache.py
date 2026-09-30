@@ -105,8 +105,70 @@ def test_missing_seed_dir_raises(tmp_path):
 
 
 def test_missing_files_in_seed_dir_raises(tmp_path):
-    with pytest.raises(SeedCacheNotFound, match="Run NF_HEDM"):
+    with pytest.raises(SeedCacheNotFound, match="--build-cache"):
         load_seeds_for_lookup_type("cubic_high", seed_dir=tmp_path)
+
+
+# ----- Clean checkout: no cache anywhere (issue #2) --------------------------
+
+
+@pytest.fixture
+def clean_install(tmp_path, monkeypatch):
+    """No NF_HEDM/seedOrientations, no user cache, no MIDAS_NF_SEED_DIR."""
+    from midas_nf_preprocess.seed_orientations import from_cache
+
+    monkeypatch.delenv("MIDAS_NF_SEED_DIR", raising=False)
+    monkeypatch.setattr(from_cache, "DEFAULT_SEED_DIR", tmp_path / "repo_missing")
+    monkeypatch.setattr(from_cache, "USER_SEED_DIR", tmp_path / "user_cache")
+    # Coarse grid keeps the tests fast; the real default is density-matched.
+    monkeypatch.setitem(from_cache.CACHE_EQUIVALENT_RESOLUTION_DEG, "cubic", 12.0)
+    return from_cache
+
+
+def test_clean_install_error_names_file_and_command(clean_install, tmp_path):
+    with pytest.raises(SeedCacheNotFound) as ei:
+        load_seeds_for_space_group(225)
+    msg = str(ei.value)
+    assert "seed_cubic_high.csv" in msg
+    assert str(tmp_path / "repo_missing") in msg
+    assert str(tmp_path / "user_cache") in msg
+    assert ("midas-nf-preprocess seed-orientations --method cache "
+            "--space-group 225 --build-cache") in msg
+
+
+def test_build_seed_cache_is_deterministic(clean_install, tmp_path):
+    a = clean_install.build_seed_cache("cubic_high", seed_dir=tmp_path / "a")
+    b = clean_install.build_seed_cache("cubic_high", seed_dir=tmp_path / "b")
+    assert a.name == "seed_cubic_high.csv"
+    assert a.read_bytes() == b.read_bytes()
+    q = load_seeds_for_lookup_type("cubic_high", seed_dir=tmp_path / "a")
+    assert q.shape[0] > 100 and q.shape[1] == 4
+    assert torch.allclose(q.norm(dim=1), torch.ones(q.shape[0], dtype=q.dtype), atol=1e-6)
+
+
+def test_build_if_missing_writes_user_cache_then_reuses_it(clean_install, tmp_path):
+    q1 = load_seeds_for_space_group(225, build_if_missing=True)
+    csv = tmp_path / "user_cache" / "seed_cubic_high.csv"
+    assert csv.is_file()
+    mtime = csv.stat().st_mtime_ns
+    q2 = load_seeds_for_space_group(225)  # found now, no rebuild
+    assert torch.equal(q1, q2)
+    assert csv.stat().st_mtime_ns == mtime
+
+
+def test_cli_cache_clean_install_fails_cleanly_then_builds(clean_install, tmp_path):
+    from midas_nf_preprocess.seed_orientations.cli import main
+
+    out = tmp_path / "seeds.csv"
+    base = ["--method", "cache", "--space-group", "225", "--output", str(out)]
+    with pytest.raises(SystemExit) as ei:
+        main(base)
+    assert "--build-cache" in str(ei.value.code)
+    assert not out.exists()
+
+    assert main(base + ["--build-cache", "--device", "cpu"]) == 0
+    assert out.is_file()
+    assert (tmp_path / "user_cache" / "seed_cubic_high.csv").is_file()
 
 
 def test_env_var_seed_dir(tmp_path, monkeypatch):

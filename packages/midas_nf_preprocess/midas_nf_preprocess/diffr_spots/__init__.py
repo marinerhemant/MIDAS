@@ -44,6 +44,7 @@ from .geometry import (
 )
 from .pipeline import (
     DiffrSpotsPipeline,
+    resolve_hkls_csv,
     DiffrSpotsResult,
     predict_spots,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "calc_spot_position",
     "rotate_around_z",
     "DiffrSpotsPipeline",
+    "resolve_hkls_csv",
     "DiffrSpotsResult",
     "predict_spots",
     "write_diffr_spots_bin",

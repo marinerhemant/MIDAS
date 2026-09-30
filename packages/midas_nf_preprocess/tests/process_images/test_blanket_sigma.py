@@ -130,3 +130,24 @@ class warnings_as_errors:
 
     def __exit__(self, *a):
         return self._ctx.__exit__(*a)
+
+
+def test_no_sigma_advice_on_quantised_data():
+    """10-bit x64 data after PixelScale: whole-count steps.
+
+    Integer frames against a median carrying tiny float noise give a sigma_MAD
+    that is small but non-zero (past the <1e-6 degenerate guard), so the old
+    code warned '400 sigma, set BlanketSigma 3.5' -- i.e. a threshold of a few
+    hundredths of ONE count step (LSHR5, bt_20id_jul26b: 228 sigma, 0.03 counts).
+    """
+    import torch
+    g = torch.Generator().manual_seed(0)
+    n, h, w = 6, 64, 64
+    stack = torch.ones((n, h, w))                                   # background = 1 count
+    hot = torch.rand((n, h, w), generator=g) < 0.05
+    stack[hot] = torch.randint(2, 6, (int(hot.sum()),), generator=g).float()
+    median = 1.0 + 0.005 * torch.randn((h, w), generator=g)         # sigma_MAD ~ 0.005
+    pipe = ProcessImagesPipeline(_params(blanket_subtraction=2.0), device="cpu")
+    assert 1e-6 < pipe.measure_threshold_sigma(stack, median) < 0.02
+    with warnings_as_errors():
+        assert pipe._resolve_threshold(stack, median, 1) == 2.0

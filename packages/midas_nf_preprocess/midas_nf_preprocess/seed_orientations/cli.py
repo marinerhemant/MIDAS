@@ -4,6 +4,8 @@ Three methods, selected with ``--method``:
 
   - ``cache``       : use the pre-computed lookup files in
                       ``NF_HEDM/seedOrientations/`` (or ``--seed-dir``).
+                      Those files are not in git; ``--build-cache`` builds a
+                      missing one deterministically.
   - ``from-scratch`` : sample uniformly at ``--resolution-deg`` (default 1.5)
                        and reduce to the FZ.
   - ``from-grains`` : parse an FF-HEDM ``Grains.csv``.
@@ -16,6 +18,7 @@ import sys
 from pathlib import Path
 
 from .dispatch import generate_seeds
+from .from_cache import SeedCacheNotFound
 from .from_grains import read_grains_orientations
 from .io import write_seeds_csv, write_seeds_with_lattice_csv
 
@@ -61,8 +64,18 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--seed-dir",
         default=None,
-        help="Override the cache directory (used by --method=cache). Defaults "
-             "to NF_HEDM/seedOrientations/ relative to the MIDAS install.",
+        help="Override the cache directory (used by --method=cache). Default: "
+             "$MIDAS_NF_SEED_DIR, else NF_HEDM/seedOrientations/ in the source "
+             "tree and then ~/.cache/midas/nf_seed_orientations.",
+    )
+    parser.add_argument(
+        "--build-cache",
+        action="store_true",
+        help="With --method=cache: if the cache file for this symmetry is "
+             "missing (a clean checkout has none -- they are not in git), build "
+             "it deterministically (legacy-cache density, seed 42) into "
+             "--seed-dir, else "
+             "$MIDAS_NF_SEED_DIR, else ~/.cache/midas/nf_seed_orientations.",
     )
     parser.add_argument(
         "--grains-file",
@@ -120,18 +133,22 @@ def run(args: argparse.Namespace) -> int:
             "--method={cache,from-scratch} requires --space-group or --crystal-system"
         )
 
-    seeds = generate_seeds(
-        method=method,
-        space_group=args.space_group,
-        crystal_system=args.crystal_system,
-        resolution_deg=args.resolution_deg,
-        n_master=args.n_master,
-        seed=args.seed,
-        deduplicate=not args.no_deduplicate,
-        seed_dir=args.seed_dir,
-        device=args.device,
-        dtype=args.dtype,
-    )
+    try:
+        seeds = generate_seeds(
+            method=method,
+            space_group=args.space_group,
+            crystal_system=args.crystal_system,
+            resolution_deg=args.resolution_deg,
+            n_master=args.n_master,
+            seed=args.seed,
+            deduplicate=not args.no_deduplicate,
+            seed_dir=args.seed_dir,
+            device=args.device,
+            dtype=args.dtype,
+            build_cache=getattr(args, "build_cache", False),
+        )
+    except SeedCacheNotFound as exc:
+        raise SystemExit(f"error: {exc}")
     write_seeds_csv(seeds, args.output)
     print(f"Wrote {args.output} ({seeds.shape[0]} orientations)")
     return 0
