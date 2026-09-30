@@ -21,11 +21,19 @@ Convention notes
 Edge handling
 -------------
 
-K-, L-, M-edges have discontinuities in μ.  The shipped grid includes points
-at ``E_edge ± 0.1%`` for the major K-edges (Z=14 through Z=92 covering all
-HEDM-relevant elements).  Interpolation across an edge is therefore well-
-behaved.  For sub-keV applications, query with caution — the table starts at
-1 keV.
+K-, L-, M-edges have discontinuities in μ.  The shipped grid brackets EVERY K, L1-L3
+and M1-M5 edge of Z = 1-92 inside 1-1000 keV: the jump is located in xraylib's
+CS_Total itself (the tabulated EdgeEnergy can sit >0.1% from it) and two points are
+placed at jump·(1 ∓ 1e-5); the grid is then refined adaptively until log-log
+interpolation matches CS_Total to 0.5% at every interval midpoint, for every element.
+Checked on 1.84 M random energies (20,000 per element, 1-800 keV): p99.9 relative
+error 0.095%, 4 points above 10% (all inside a ±1e-5 edge bracket).  Generator and
+check: ``scripts/make_nist_mac.py``.
+
+(Before 2026-09-27 the grid bracketed only a few K edges; 158 edges were not bracketed,
+so μ within a few percent of those edges was wrong by up to the whole jump -- p99
+17%, worst 5.6x.  The Zn K edge at 9.659 keV was interpolated between 9.44 and
+10.0 keV.)  For sub-keV applications, query with caution — the table starts at 1 keV.
 
 Public API::
 

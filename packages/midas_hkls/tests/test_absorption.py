@@ -183,3 +183,28 @@ def test_mu_batched_wavelength():
     # for Ti (K-edge at 4966 eV ≈ 2.5 Å) — values at 0.1, 0.173, 0.5 Å are
     # all above the K-edge, so μ should increase with λ.
     assert float(mu[0]) < float(mu[1]) < float(mu[2])
+
+
+def test_every_absorption_edge_is_bracketed_in_the_grid():
+    """No jump in mu/rho (> 1.8x between consecutive grid points) spans more than 0.002% in energy: every K, L, M edge
+    in 1-1000 keV is bracketed. Before 2026-09-27, 158 edges were not (gaps up to 5.9%), which put mu wrong by up to the
+    whole jump near them (scripts/make_nist_mac.py)."""
+    import numpy as np
+    from midas_hkls import absorption as A
+    E = A._nist_energies_keV()
+    wide = []
+    for el in A.available_elements_absorption():
+        m = A._mu_rho_grid(el)
+        for i in range(1, len(E)):
+            if m[i - 1] > 0 and m[i] / m[i - 1] > 1.8 and (E[i] - E[i - 1]) / E[i - 1] > 2e-5:
+                wide.append((el, float(E[i - 1]), float(E[i])))
+    assert not wide, wide[:5]
+
+
+def test_zn_k_edge_is_sharp():
+    """Zn K edge 9.659 keV: mu jumps ~7x across it (it used to be smeared from 9.44 to 10.0 keV)."""
+    from midas_hkls.absorption import linear_absorption_coefficient
+    hc = 12.398419739
+    below = linear_absorption_coefficient("Zn", wavelength_A=hc / 9.65)
+    above = linear_absorption_coefficient("Zn", wavelength_A=hc / 9.67)
+    assert 230 < below < 270 and 1700 < above < 1900 and above / below > 6
