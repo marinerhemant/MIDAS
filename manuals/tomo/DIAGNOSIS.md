@@ -139,6 +139,16 @@ vertex **−12.96** (integer shifts) and **−12.79** (half-integer), against va
 Confirm by eye on a **specimen corner**, where a mis-centring shows as a doubled edge and a
 dark halo.
 
+**Half-scan agreement is not infallible.** On 20-ID-D nf_sampleD (specimen wider than the field
+of view, strong rings, agreement scored over the whole field because there is no specimen
+support inside it) it picked −1.43…−2.00 on four of six rows where the axis is 5.9 — edges
+visibly doubled — and ~6 on the two rows where the field is nearly all metal. Cause not
+established; the whole-field scoring and the truncation are the first suspects
+(`LAB_NOTEBOOK.md` §3.13). What worked there: the 99.5th percentile of gradient magnitude
+in an **annulus 0.35–0.85 R that excludes the ring centre**, fitted per interpolation class
+(5.38–6.47 over six rows, median 5.9), agreeing with the eye and with an independent tomopy
+reconstruction to 0.1 px. Whichever lever you use, the eye check is not optional.
+
 ---
 
 ## A shift sweep oscillates with period 1 px, minima at half-integers
@@ -171,7 +181,7 @@ the axis — a "vertex −12.50" from such a fit was discarded for exactly this 
 
 symptom: scale.inflated
 
-**Test.** `recon_xdim = next_power_of_2(det_xdim)` (`midas_tomo/config.py:198`), so a
+**Test.** `recon_xdim = next_power_of_2(det_xdim)` (`midas_tomo/config.py:197`), so a
 1365-wide detector reconstructs onto a 2048 grid and a third of every slice is padding no
 ray ever sampled. Count occupied voxels outside the disc of radius `det_xdim/2` about the
 rotation axis. It must be exactly zero — the readers in

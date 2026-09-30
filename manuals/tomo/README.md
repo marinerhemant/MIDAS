@@ -72,7 +72,8 @@ proceed. Finish everything not blocked by it first.
    reads as a smooth, plausible plateau of partial attenuation.
 3. **Never default the pixel size, the rotation-axis position, or the in-plane
    handedness.** `midas_stress.frames.tomo_grid_to_midas` refuses all three for this
-   reason. `n/2` is a guess, not an axis.
+   reason. `n/2` is a guess, not an axis — and midas_tomo does not put the axis there
+   either (`COORDINATES.md` §3 gives where it does).
 4. **Registration to a diffraction scan is a read, not a fit** — the sample-stage
    vertical (APS y = MIDAS z). See `COORDINATES.md` §4.
 5. **Check μ·D before promising an absorption correction.** Below ~0.1 the correction

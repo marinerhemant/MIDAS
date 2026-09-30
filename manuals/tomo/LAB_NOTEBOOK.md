@@ -232,7 +232,7 @@ of centroids. It tests the *shape* of the registration, never its origin.
 
 ### 3.3 The reconstruction pad
 
-`recon_xdim = next_power_of_2(det_xdim)` (`midas_tomo/config.py:198`): a 1365-wide detector
+`recon_xdim = next_power_of_2(det_xdim)` (`midas_tomo/config.py:197`): a 1365-wide detector
 gives a 2048 grid, so a third of every slice is padding no ray sampled. Pass `det_xdim`;
 without it the check falls back to the grid's own inscribed circle, which is weaker, and the
 provenance says which one ran.
@@ -407,6 +407,64 @@ A sharp peak at **−13** with **3.3× dynamic range**, agreeing with the half-s
 vertex of −12.96 and resolving −13 over −14. Its area above half-max collapses
 from 1656 px to 860 px between −13 and 0. **If the specimen contains any dense
 compact inclusion, centre on that and skip the sharpness proxies entirely.**
+
+### 3.13 20-ID-D gh1s, nf_sampleD: centring, axis convention, and the frame (2026-09-27)
+
+First 20-ID-D tomogram through midas_tomo. `bt_20id_jul26b`, `gh1s/6061_tomo_3/6061_tomo_3_000137.h5`,
+3601 projections −180…+180° at 0.1°, `samD_ry`, taken immediately before FF scan `6061_tomo_3_ff`
+without remounting. Specimen: a ~1.0 × 1.4 mm bar with a rough notch/fracture face, **wider than
+the ~1.1 mm field of view** (truncated). Scripts and logs: `$ANALYSIS/bt_20id_jul26b_survey/nf_sampleD/tomo_dev/`; tested recipe in the student
+kit `$ANALYSIS/bt_20id_jul26b/nf_sampleD_kit/tomo/`.
+
+**File facts (measured, `frame_means.py`).** `data_dark` 10 frames ≈ 3862; `data_white` 20 frames
+15448 → 15323 (−0.8 % over the block); **`data_white_post` = 0.0, a placeholder**. Lit region from the
+flat: rows 191–1451, columns 227–1837 of 1600 × 2048. Pixel size and objective: not in the file or
+any log; `tomocupy_args.yml` is the stale `mpe_jan25` template (1.17 µm). midas_tomo's `read_exchange`
+cannot open this layout (it wants `dark`/`bright` + `analysis_parameters`); `tomo_recon.py` does
+flat/dark/−log and calls `run_tomo_from_sinos`.
+
+**Centring (`recon_s8.log`, `center_fine.py`, `center_look2.png`).**
+
+| criterion | pick(s) |
+|---|---|
+| consensus, variance (rows 209–281) | 5.0, 5.0, 5.0, 5.0 |
+| consensus, TV (same rows) | 6.5, 7.5, 1.5, 1.5 → refuses |
+| half-scan agreement, rows 193/441/697/945/1201/1449, integer class | −1.72, −1.43, −1.50, −1.88, 6.46, edge |
+| same, half-integer class | −1.91, −1.94, −1.99, −2.00, 5.81, 6.71 |
+| edge-strength, annulus 0.35–0.85 R, rows 257…1401, integer / half | median 5.86 / 5.88, all 5.38–6.47, dynamic range 1.12–1.30 |
+| by eye, stripe removal on (`center_look2.png`) | doubled edges at −4…0, single and sharpest +4…+6, doubling again by +8 |
+| beamline tomopy (`tomo_rec/6061_tomo_3/recon.txt`, `rot_axis 1.2` on roi [220,220,1610,1200]) | axis column 1026.2 |
+
+Chosen 5.9 → axis column **1026.1**, 0.1 px from the independent tomopy value. **Half-scan
+agreement was wrong on the four rows with a large air region in the notch and right on the two
+that are nearly all metal**; it was scored over the whole field (no specimen support exists inside
+a truncated field). That the truncation or the whole-field scoring is the cause is a hypothesis,
+not tested. The §3.12 "closed" verdict stands for 1-ID `datasetH_dmi_sam5`; it does not generalise
+unconditionally.
+
+**midas_tomo conventions (synthetic point on the axis, `shift_sign_test.py`, `axis_grid_test2.py`,
+local build and shared 0.2.1 agree).** shift = (width/2) − (axis column). Output axis at
+`(N/2 − 1, N/2 − 1 − round(shift))` with `AutoCentering 1`, `(N/2 − 1, N/2 − 1)` with 0 — never N/2.
+Documented in the C/Python comments and pinned by `tests/test_axis_position.py`. Shared-env 0.2.1
+also requires an even shift count.
+
+**Frame against FF (`PREREGISTER_tomo_handedness.md`, `reg_s8/`, `reg_v2/`, `grains_in_air.txt`).**
+All 8 `in_plane` maps × slice direction fitted to FF layers 1, 3, 5, 7 and scored on 2, 4, 6, 8 and the
+NF map at y = 2.853 mm. Winner every time: **`x-y`, s = +1** (larger detector row = larger samY),
+theta as logged.
+
+| read | winner held-out FF / NF | best y-mirror (`xy`) | registered margin | verdict |
+|---|---|---|---|---|
+| v1: metal IoU, t and dφ free | 0.813 / 0.735 (t ≈ (3, 6) µm, dφ −0.29°) | 0.738 / 0.680 (dφ −9.1° at bound, t 81 µm) | 0.10 | **INCONCLUSIVE** |
+| v2: air IoU, t = dφ = 0 | 0.624 / 0.594 | 0.500 / 0.564 | 0.15 | **INCONCLUSIVE** |
+
+Every other map was ≥ 0.135 behind. The y-mirror survives because the notch runs roughly along
+MIDAS y and the field never reaches the bar's y faces, so a y-flip is nearly a symmetry of what the
+tomogram sees (the `DIAGNOSIS.md` mirrored-mask check: a nearly symmetric section has little power).
+**Post hoc, not registered:** FF centroids landing in tomo air, layers 1–3: 12/1316 for `x-y`,
+189/1365 for `xy`; layer 8 is 11.6 % for `x-y`, unexplained. Handedness **PROVISIONAL**; the chain
+was stopped after two INCONCLUSIVE reads. Fitted, not read: pixel 0.679 (v1) / 0.700 µm (v2), 5×
+objective predicts 0.690; samY of detector row 800 = 2.97 mm.
 
 ### 3.7 Paganin, and a RETRACTION about the threshold diagnostic
 
@@ -824,3 +882,9 @@ concerned the projections rather than the shape.
 | strongest row-mean attenuation | −0.0005 (drift-dominated) | `shift_gate2.log` |
 | μ(Ce) at 95 keV | 18.94 cm⁻¹ | `midas_hkls.absorption` (NIST), ρ = 6.77 g/cm³ |
 | μ(NMC811) at 51.9 keV | 6.53 cm⁻¹ | `midas_hkls.absorption`, ρ = 4.8 g/cm³ assumed |
+| nf_sampleD 20-ID-D rotation axis | shift 5.9 px = detector column 1026.1 (tomopy 1026.2) | `$ANALYSIS/bt_20id_jul26b_survey/nf_sampleD/tomo_dev/center_fine.py` (edge sweep), `recon.txt` of the beamline recon |
+| nf_sampleD half-scan agreement pick | −1.4…−2.0 (4 rows), ~6 (2 rows); true 5.9 | `$ANALYSIS/bt_20id_jul26b_survey/nf_sampleD/tomo_dev/recon_s8.log` (first run, half-scan fallback) |
+| midas_tomo output axis | (N/2−1, N/2−1−round(shift)) AC=1; (N/2−1, N/2−1) AC=0 | `$ANALYSIS/bt_20id_jul26b_survey/nf_sampleD/tomo_dev/axis_grid_test2.py`; `packages/midas_tomo/tests/test_axis_position.py` |
+| nf_sampleD tomo→FF frame | `x-y`, s=+1, PROVISIONAL (v1, v2 INCONCLUSIVE) | `$ANALYSIS/bt_20id_jul26b_survey/nf_sampleD/tomo_dev/PREREGISTER_tomo_handedness.md`, `reg_s8/`, `reg_v2/` |
+| nf_sampleD gh1s pixel size (fitted to FF) | 0.679 / 0.700 µm | `$ANALYSIS/bt_20id_jul26b_survey/nf_sampleD/tomo_dev/reg_s8/register_summary.txt`, `reg_v2/reg_v2.log` |
+| nf_sampleD FF grains in tomo air, L1–3 | 12/1316 (`x-y`) vs 189/1365 (`xy`), post hoc | `$ANALYSIS/bt_20id_jul26b_survey/nf_sampleD/tomo_dev/grains_in_air.txt`, `grains_in_air.py` |

@@ -1,6 +1,7 @@
 # Tomography — measurement envelope
 
-**Instrument:** APS 1-ID, parallel beam, `tomoC` camera
+**Instrument:** APS 1-ID, parallel beam, `tomoC` camera. 20-ID-D `gh1s` (DXchange): one sample, 2026-09-27,
+by a recipe outside this repo (`midas_tomo`'s own reader cannot open that layout) -- see `LAB_NOTEBOOK.md` §3.13
 **Last checked:** 2026-08-23 · **Owner:** Hemant Sharma (hsharma@anl.gov)
 
 > Part of the **tomo doc set**. Spine: [`README.md`](README.md). Frames:

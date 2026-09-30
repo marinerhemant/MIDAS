@@ -5,7 +5,7 @@
 > lives here because tomography is the modality that forced it to be written
 > down — it is the one that has to register against all the others.
 
-**Last checked:** 2026-08-23
+**Last checked:** 2026-09-27
 
 The single source of truth in code is
 [`midas_stress/frames.py`](../../packages/midas_stress/midas_stress/frames.py)
@@ -91,17 +91,17 @@ One slice per detector row, so **`slice` is the vertical axis**:
 slice  ->  MIDAS z  =  APS y
 ```
 
-`packages/midas_stress/midas_stress/frames.py:384` `tomo_grid_to_midas` converts
+`packages/midas_stress/midas_stress/frames.py:444` `tomo_grid_to_midas` converts
 voxel indices to MIDAS lab µm. It requires, and **will not default**:
 
 | input | why it cannot be guessed |
 |---|---|
 | `pixel_size_um` | recorded in the acquisition config, never in the reconstruction file. `midas_tomo` writes the cube shape into the *filename* and nothing else. It scales every path length and the illuminated volume. |
-| `rot_axis_ix`, `rot_axis_iy` | an **output** of the reconstruction — the shift sweep finds it. `n/2` is a guess. A wrong axis translates the whole sample. |
+| `rot_axis_ix`, `rot_axis_iy` | an **output** of the reconstruction — the shift sweep finds it. `n/2` is a guess, and for midas_tomo it is also **wrong**: the axis (detector column `det_xdim/2 − shift`) lands at `(iy, ix) = (N/2 − 1, N/2 − 1 − round(shift))` with `AutoCentering 1` (the default; the slice is translated by `round(shift)` columns) and at `(N/2 − 1, N/2 − 1)` with `AutoCentering 0`, N = the output grid. Pinned by `packages/midas_tomo/tests/test_axis_position.py`. Divide by any binning you apply afterwards (`(i + 0.5)/b − 0.5`). A wrong axis translates the whole sample. |
 | `in_plane` | the in-plane handedness depends on projection ordering, rotation direction, and whether the reconstructor flips its output. A wrong choice **mirrors** the sample. |
 | `slice_pitch_um` | equals `pixel_size_um` only for an isotropic reconstruction; vertical detector binning breaks that. |
 
-The eight legal `in_plane` values are in `packages/midas_stress/midas_stress/frames.py:372`; each is a signed axis
+The eight legal `in_plane` values are in `packages/midas_stress/midas_stress/frames.py:432`; each is a signed axis
 assignment and each is asserted orthonormal, so a choice can mirror or rotate
 the reconstruction but never shear it.
 
@@ -114,7 +114,7 @@ not fitted.**
 
 Every scan carries the stage vertical (APS y = MIDAS z) in its metadata. A
 tomogram's slice 0 sits at some `slice0_z_um`; an FF or NF layer sits at its own
-measured z. `packages/midas_stress/midas_stress/frames.py:449` `tomo_slice_for_z` turns the
+measured z. `packages/midas_stress/midas_stress/frames.py:553` `tomo_slice_for_z` turns the
 second into the first.
 
 That this is a *read* and not a *fit* is the whole point. Fitting a registration
@@ -198,7 +198,7 @@ Distinct from all of the above, and the source of a recurring confusion.
   −0.0126°, displacing the outermost ring by ~0.28 px.
 * **Masks are stored `[Z, Y]`** — first axis Z — per
   `packages/midas_peakfit/midas_peakfit/preprocess.py:132`, indexed at
-  `packages/midas_peakfit/midas_peakfit/seeds.py:171`, which square-pads into
+  `packages/midas_peakfit/midas_peakfit/seeds.py:139`, which square-pads into
   `(NrPixels, NrPixels)` with the `[:Z, :Y]` block populated.
 
 ---

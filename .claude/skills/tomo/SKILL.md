@@ -1,7 +1,9 @@
 ---
 name: tomo
 description: >-
-  Take an APS 1-ID tomography dataset from raw projections to a sample shape
+  Take an APS 1-ID tomography dataset (20-ID-D gh1s DXchange: one sample only, by a recipe
+  outside this repo, since midas_tomo's own reader cannot open that layout) from raw
+  projections to a sample shape
   registered into the MIDAS lab frame: read the scan's own record for geometry
   and frame layout, ingest the TIFFs, measure transmission and mu*D before
   reconstructing, find the rotation-axis shift automatically, optionally
@@ -67,7 +69,7 @@ error is 4.5× in every volume.** Same class of trap as the stale `exp_setup.yml
 against the recorded first/last image numbers, refusing when they disagree — an
 off-by-one boundary averages projections into the flat field, silently.
 
-## Six things to know before you start
+## Seven things to know before you start
 
 1. **The un-illuminated detector does not read as zero.** Outside the beam
    `white − dark ≈ 0`, so the transmission ratio is noise and a clip floor turns it
@@ -111,6 +113,16 @@ off-by-one boundary averages projections into the flat field, silently.
    `radius_spread` at exactly `100**(1/3) = 4.642` whatever the input. `manuals/tomo/`
    records which check is powerless on which sample.
 
+7. **An in-situ (load-frame) tomogram: average before you threshold, and know what a mask
+   cannot tell you.** On 20-ID-E Fe9Cr every slice carried vertical streak noise from the
+   frame's shadows; per-slice Otsu marked 4.28 mm² against a 0.60 mm² bar and `from_array`
+   refused it. The mean of 52 slices of the constant cross-section gave 0.602 mm². A
+   **rectangular** specimen makes the in-plane handedness unidentifiable (four variants tie,
+   IoU 0.860–0.866; the V2 meta-null is NO_POWER), and a pf-grid mask
+   (`python -m midas_pipeline.recon.sample_mask`) is only as good as the pixel size (from the
+   optics record, not a config file) and the tomo↔diffraction height. Without them, do not
+   use the mask to judge edge voxels (`manuals/pf-hedm/LAB_NOTEBOOK.md` §10).
+
 ## Finding the centre and the tilt
 
 * **Rotation-axis shift** — `midas_tomo.center.find_center_consensus` scores two
@@ -120,8 +132,9 @@ off-by-one boundary averages projections into the flat field, silently.
 
   **When it refuses, read the two per-criterion picks before doing anything else.**
   If they straddle the answer by ~1.5 px with **total variation low**, that is the
-  documented TV bias, not your data — variance has been right on both datasets where
-  this was checked. If instead the score is *flat* ("best within 1 % of the median"),
+  documented TV bias, not your data — variance has been right on both 1-ID datasets where
+  this was checked, and within 1 px on 20-ID-D nf_sampleD (5.0 against 5.9, TV scattered
+  1.5–7.5; `LAB_NOTEBOOK.md` §3.13). If instead the score is *flat* ("best within 1 % of the median"),
   the criterion separated nothing and `argmax` returned a number regardless; strong
   ring artefacts do this, being concentric about the axis by construction.
   `LAB_NOTEBOOK.md` §3.5 and §3.12, `DIAGNOSIS.md`.
@@ -135,7 +148,15 @@ off-by-one boundary averages projections into the flat field, silently.
   2. **180° half-scan agreement**, for a 360° scan: reconstruct the first and second
      halves separately and minimise `RMS(A−B)/RMS(A)` over the specimen support. Both
      halves image the same object, so they coincide only at the true axis, and rings —
-     common to both — largely cancel.
+     common to both — largely cancel. **It has failed once:** on 20-ID-D nf_sampleD, a
+     specimen wider than the field of view, it picked −1.9 on four of six rows where the
+     axis is 5.9 and every edge is visibly doubled; cause not established (§3.13). There,
+     an **edge-strength sweep in an annulus that excludes the ring centre** worked, and
+     agreed with the eye and with the beamline's own reconstruction.
+
+  **Whatever picked the shift, look at it:** render a strong edge away from the centre
+  across shifts. A wrong axis on a 360° scan doubles every edge. No criterion here has
+  been right on every dataset; the eye has.
 
   **Compare only shifts within one interpolation class.** A fractional shift resamples
   the sinogram, and that low-pass improves any agreement or smoothness metric whether
@@ -186,6 +207,40 @@ reconstruction's **Z spread is its Z error**, otherwise unmeasurable.
 
 **The omega sign:** on the aero stage the recorded SPEC angles run opposite to the
 sample rotation. `TomoScan.thetas()` negates them and records that it did.
+
+**20-ID-E (HEXM) tomography is outside the verified scope.** It uses the `pg6`
+camera writing DXchange HDF5 (`/exchange/data`, `data_white`, `data_dark`,
+`theta`), not a 1-ID `_TomoFastScan.dat` record, so `midas-tomo-reconstruct`
+has no scan record to read. The rotation there is **ω positive as logged**,
+the same stage sense as FF/PF at E. Take pixel size and geometry from the h5
+itself, never from `tomocupy_args.yml` (it is a stale template: `mpe_jan25`,
+1.17 µm).
+
+**20-ID-D (HT-HEDM) tomography — one sample done, nf_sampleD of `bt_20id_jul26b` (2026-09-27).**
+Worked, tested recipe: the student kit `…/bt_20id_jul26b/analysis/nf_sampleD_kit/tomo/`
+(`tomo_recon.py`, `overlay_ff.py`); evidence in `LAB_NOTEBOOK.md` §3.13.
+* **File.** Camera `gh1s` (Grasshopper3 GS3-U3-89S6M, 3.45 µm native), DXchange HDF5:
+  `/exchange/data`, `data_dark`, `data_white`, `data_white_post`, `theta` (degrees, as
+  logged by `samD_ry`). No `_TomoFastScan.dat`, and midas_tomo's own `/exchange` reader
+  wants `dark`/`bright` + `analysis_parameters`, so it cannot open this file: do
+  flat/dark/−log yourself and call `midas_tomo.api.run_tomo_from_sinos(..., do_log=False)`.
+* **`data_white_post` is all zeros** — a placeholder, not a flat. Use the pre-scan whites.
+* **The beam does not fill the camera** (nf_sampleD: rows 191–1451, columns 227–1837 of
+  1600 × 2048). Crop to the lit region **found from the flat**.
+* **Pixel size is not recorded anywhere** — no scan record, the objective is not logged,
+  and `tomocupy_args.yml` is the same stale 1.17 µm template. On nf_sampleD it was fitted to FF:
+  0.70 µm (a 5× objective would give 0.69). This is the README halt row; say it is fitted.
+* **Tomo stage height is not logged** (bluesky logs only `samD_x` for the brights), so
+  vertical registration to FF/NF is a fit, not a read. Tomo and FF of one sample are
+  taken back to back without remounting (`tomoscan_hw` then `hedmscan_hw` in the ipython
+  log), which is what makes the fit meaningful.
+* **Frame (PROVISIONAL):** with theta **as logged** and midas_tomo, the slice maps to
+  MIDAS with `in_plane="x-y"` and larger detector row = larger samY: shown with
+  `imshow`, x is to the right and y is up, like an FF/NF `scatter(X, Y)`. Two
+  preregistered overlap tests were INCONCLUSIVE against the y-mirror (the nf_sampleD notch
+  runs along y); a post-hoc grains-in-air count strongly favours `x-y`. Re-check on every
+  new sample with an FF-centroid overlay, both maps side by side.
+* **Axis position in the output** is not N/2: see `COORDINATES.md` §3.
 
 ## When something looks wrong
 
