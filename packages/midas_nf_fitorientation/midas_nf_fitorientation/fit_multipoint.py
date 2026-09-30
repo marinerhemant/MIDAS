@@ -25,10 +25,11 @@ Three-phase schedule per multi-start trial:
 """
 from __future__ import annotations
 
+import json
 import math
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 import numpy as np
 import torch
@@ -46,6 +47,125 @@ from .soft_overlap import (
     soft_overlap,
     soft_overlap_loss,
 )
+
+
+#: File names written next to each other by both multipoint drivers.
+RESULT_JSON_NAME = "multipoint_result.json"
+REFINED_PARAMS_NAME = "params_refined.txt"
+
+#: The hard objective is a mean of fractions in [0, 1]; within this of 1.0
+#: every predicted spot of every chosen voxel is already inside an observed
+#: spot, and the objective is flat.
+SATURATION_EPS = 1e-9
+
+
+def _resolve_result_dir(p: FitParams, result_dir: Optional[str]) -> Path:
+    """Where the multipoint result goes: explicit arg, else the paramfile's
+    ``OutputDirectory``, else the current working directory."""
+    if result_dir:
+        d = Path(result_dir)
+    elif p.output_dir:
+        d = Path(p.output_dir)
+    else:
+        d = Path.cwd()
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def refined_paramfile_text(
+    text: str,
+    *,
+    Lsd: Sequence[float],
+    y_BC: Sequence[float],
+    z_BC: Sequence[float],
+    tilts: Sequence[float],
+    wedge: Optional[float] = None,
+    header: str = "",
+) -> str:
+    """Return ``text`` (a paramfile) with its geometry lines replaced.
+
+    ``Lsd`` and ``BC`` are per distance and are replaced IN ORDER (the i-th
+    ``Lsd`` line gets ``Lsd[i]``), which is how the parser assigns them.
+    ``tx``/``ty``/``tz`` and, when ``wedge`` is given, ``Wedge`` are replaced
+    in place; a key that is absent is appended. Every other line -- comments,
+    tolerances, ``LsdTol``/``BCTol`` (keys are matched on the whole first
+    token, never as a prefix) -- is kept verbatim.
+    """
+    lines = text.splitlines()
+    out: List[str] = []
+    i_lsd = i_bc = 0
+    seen = set()
+    scalars = {"tx": tilts[0], "ty": tilts[1], "tz": tilts[2]}
+    if wedge is not None:
+        scalars["Wedge"] = wedge
+    for line in lines:
+        tok = line.split()
+        key = tok[0] if tok else ""
+        if key == "Lsd" and i_lsd < len(Lsd):
+            out.append(f"Lsd {Lsd[i_lsd]:.6f}")
+            i_lsd += 1
+        elif key == "BC" and i_bc < len(y_BC):
+            out.append(f"BC {y_BC[i_bc]:.6f} {z_BC[i_bc]:.6f}")
+            i_bc += 1
+        elif key in scalars:
+            out.append(f"{key} {scalars[key]:.8f}")
+            seen.add(key)
+        else:
+            out.append(line)
+    for key, val in scalars.items():
+        if key not in seen:
+            out.append(f"{key} {val:.8f}")
+    body = "\n".join(out) + "\n"
+    return (header + body) if header else body
+
+
+def write_multipoint_outputs(
+    paramfile: str,
+    p: FitParams,
+    result: dict,
+    result_dir: Optional[str] = None,
+) -> dict:
+    """Write ``multipoint_result.json`` and ``params_refined.txt``.
+
+    Before this existed the refined geometry was only PRINTED, and only under
+    ``--verbose``, so a production run left nothing on disk to adopt. The
+    refined paramfile is the input paramfile with only Lsd / BC / tx / ty /
+    tz (and Wedge when it was refined) replaced, so it can be fed straight
+    back to the reconstruction. Returns the two paths as strings.
+    """
+    d = _resolve_result_dir(p, result_dir)
+    json_path = d / RESULT_JSON_NAME
+    par_path = d / REFINED_PARAMS_NAME
+    tilts = result["tilts"]
+    header = (
+        f"# Refined by midas-nf-fit-multipoint ({result.get('objective')}) "
+        f"from {Path(paramfile).resolve()}\n"
+        f"# objective {result.get('seed_frac_overlap')} -> "
+        f"{result.get('final_frac_overlap')}; see {RESULT_JSON_NAME}\n"
+    )
+    if result.get("under_determined"):
+        header += ("# WARNING: geometry UNDER-DETERMINED (objective "
+                   "saturated / flat); do not adopt without a check.\n")
+    if result.get("multimodal"):
+        header += ("# WARNING: geometry NOT UNIQUELY DETERMINED: "
+                   f"{result.get('n_competitive_basins')} distinct basins "
+                   "score within the multimodal margin of the best (in: "
+                   f"{', '.join(result.get('ambiguous_params') or [])}); "
+                   "see geometry_trials / basins in the json.\n")
+    text = refined_paramfile_text(
+        Path(paramfile).read_text(),
+        Lsd=result["Lsd"], y_BC=result["y_BC"], z_BC=result["z_BC"],
+        tilts=tilts,
+        wedge=result["wedge"] if result.get("wedge_refined") else None,
+        header=header,
+    )
+    par_path.write_text(text)
+    paths = dict(result_json=str(json_path), params_refined=str(par_path))
+    payload = dict(result)
+    payload.update(paramfile=str(Path(paramfile).resolve()), **paths)
+    with open(json_path, "w") as f:
+        json.dump(payload, f, indent=2)
+    return paths
 
 
 def _multipoint_loss(
@@ -461,6 +581,8 @@ def fit_multipoint_hard_run(
     seed: int = 0,
     max_iter: int = 20000,
     global_iters: int = 40,
+    result_dir: Optional[str] = None,
+    compile_model: bool = True,
 ) -> dict:
     """Joint multi-voxel calibration against the HARD FracOverlap.
 
@@ -601,23 +723,68 @@ def fit_multipoint_hard_run(
     if str(device) == "cpu" or torch_device.type == "cpu":
         torch.set_num_threads(1)
 
-    # torch.compile fuses the op storm: forward 1.499 -> 0.316 ms (4.7x),
-    # verified identical (frame_nr / y_pixel / valid all equal).  Guarded --
-    # if compilation is unavailable or the result differs, fall back silently.
-    _model_fast = model
-    try:
-        _cand = torch.compile(model, dynamic=False)
-        with torch.no_grad():
-            _se = torch.tensor(seed_eulers_np, device=torch_device, dtype=dtype)
-            _a = model(_se, positions_um)
-            _b = _cand(_se, positions_um)
-        if (torch.allclose(_a.frame_nr, _b.frame_nr)
-                and torch.allclose(_a.y_pixel, _b.y_pixel)
-                and torch.allclose(_a.z_pixel, _b.z_pixel)
-                and torch.equal(_a.valid, _b.valid)):
-            _model_fast = _cand
-    except Exception:
-        pass
+    # Forward call with the geometry as EXPLICIT inputs. The overrides are
+    # applied INSIDE the (possibly compiled) function.
+    #
+    # This used to be `torch.compile(model)` called inside
+    # `with overrides(model, geom_ov)`. overrides() swaps the geometry by
+    # object.__setattr__ on the module, which a compiled nn.Module does NOT
+    # see: the compiled graph keeps reading the registered tilts / Lsd / BC
+    # / wedge, i.e. the SEED geometry, for every call. Measured with torch
+    # 2.9.1 (backend aot_eager): a BC + tilt override moved eager spots by
+    # 13.0 px and the compiled ones by 0.0 px. Wherever inductor works
+    # (Linux; it fails on the Mac and fell back to eager there, hiding it)
+    # the hard objective was therefore BLIND to every geometry parameter:
+    # geometry starts scored exactly the seed value and never moved, and
+    # only the Eulers were refined. The parity gate did not catch it
+    # because it compared compiled vs eager at the seed only, with no
+    # override -- the one point where ignoring the override is harmless.
+    def _fwd(eul, Lsd, ybc, zbc, tilts, wedge):
+        with overrides(model, GeometryOverrides(
+                Lsd=Lsd, y_BC=ybc, z_BC=zbc, tilts=tilts, wedge=wedge)):
+            return model(eul, positions_um)
+
+    def _fwd_args(eul, geom_ov):
+        return (eul, geom_ov.Lsd, geom_ov.y_BC, geom_ov.z_BC, geom_ov.tilts,
+                geom_ov.wedge)
+
+    # Parity gate, at the seed AND at a probe geometry with EVERY refined
+    # geometry coordinate moved by half its tolerance: a compiled forward
+    # that ignored the geometry would pass the first and fail the second.
+    # torch.compile fuses the op storm (forward 1.499 -> 0.316 ms, 4.7x);
+    # if it is unavailable or fails either check, the eager forward is used.
+    _fwd_fast = _fwd
+    compiled_forward = False
+    compile_note = "disabled by caller"
+    if compile_model:
+        try:
+            _cand = torch.compile(_fwd, dynamic=False)
+            x_probe = x0.copy()
+            x_probe[:n_geom] = np.clip(
+                x0[:n_geom] + 0.25 * (hi[:n_geom] - lo[:n_geom]),
+                lo[:n_geom], hi[:n_geom])
+            ok = True
+            with torch.no_grad():
+                for _x in (x0, x_probe):
+                    _g, _e = unpack(_x)
+                    _a = _fwd(*_fwd_args(_e, _g))
+                    _b = _cand(*_fwd_args(_e, _g))
+                    ok = ok and bool(
+                        torch.allclose(_a.frame_nr, _b.frame_nr)
+                        and torch.allclose(_a.y_pixel, _b.y_pixel)
+                        and torch.allclose(_a.z_pixel, _b.z_pixel)
+                        and torch.equal(_a.valid, _b.valid))
+            if ok:
+                _fwd_fast, compiled_forward = _cand, True
+                compile_note = "compiled; parity verified at seed and probe"
+            else:
+                compile_note = ("compiled forward FAILED parity at seed/probe "
+                                "geometry; using eager")
+        except Exception as exc:              # compiler unavailable etc.
+            compile_note = f"compile unavailable ({type(exc).__name__})"
+    if verbose or (compile_model and not compiled_forward
+                   and "FAILED" in compile_note):
+        print(f"  forward: {compile_note}", flush=True)
 
     def _fractions_loop(eul, geom_ov):
         """Per-voxel loop. Reference implementation; parity target."""
@@ -648,8 +815,8 @@ def fit_multipoint_hard_run(
         Verified elementwise against ``_fractions_loop``: max|diff| = 0.0,
         7.7x faster on CPU (18.55 -> 2.42 ms/eval for 12 voxels x 3 distances).
         """
-        with torch.no_grad(), overrides(model, geom_ov):
-            sp = _model_fast(eul, positions_um)
+        with torch.no_grad():
+            sp = _fwd_fast(*_fwd_args(eul, geom_ov))
             NK, M = sp.frame_nr.shape
             if NK % n_spots:
                 return None                      # unexpected layout; caller falls back
@@ -690,11 +857,10 @@ def fit_multipoint_hard_run(
         return 1.0 - total / n_spots
 
     seed_val = objective(x0)
-    if verbose:
-        print(f"Multipoint (HARD FracOverlap, C-equivalent): "
-              f"{n_spots} voxels, {nL} distances", flush=True)
-        print(f"  Original val: {1.0 - seed_val:.10f}   "
-              f"(this is the C's 'Original val')", flush=True)
+    print(f"Multipoint (HARD FracOverlap, C-equivalent): "
+          f"{n_spots} voxels, {nL} distances", flush=True)
+    print(f"  Original val: {1.0 - seed_val:.10f}   "
+          f"(this is the C's 'Original val')", flush=True)
 
     # Local -> GLOBAL -> local ladder, repeated NumIterations times.
     #
@@ -810,22 +976,26 @@ def fit_multipoint_hard_run(
     secs = time.perf_counter() - t0
 
     best_val = 1.0 - float(res.fun)
-    if verbose:
-        print(f"  Final value:  {best_val:.10f}   "
-              f"({n_eval[0]} evals, {secs:.1f} s)")
-        print(f"  improvement:  {best_val - (1.0 - seed_val):+.10f}")
+    print(f"  Final value:  {best_val:.10f}   "
+          f"({n_eval[0]} evals, {secs:.1f} s)")
+    print(f"  improvement:  {best_val - (1.0 - seed_val):+.10f}")
 
     geom_ov, eul = unpack(res.x)
     lsd_out = geom_ov.Lsd.tolist()
-    if verbose:
-        for d in range(nL):
-            print(f"Layer {d}: Lsd={lsd_out[d]:.4f}, "
-                  f"BC=({float(geom_ov.y_BC[d]):.4f}, "
-                  f"{float(geom_ov.z_BC[d]):.4f})")
-        print(f"Tilts (shared): tx={res.x[0]:.4f}, ty={res.x[1]:.4f}, "
-              f"tz={res.x[2]:.4f}")
+    for d in range(nL):
+        print(f"Layer {d}: Lsd={lsd_out[d]:.4f}, "
+              f"BC=({float(geom_ov.y_BC[d]):.4f}, "
+              f"{float(geom_ov.z_BC[d]):.4f})")
+    print(f"Tilts (shared): tx={res.x[0]:.4f}, ty={res.x[1]:.4f}, "
+          f"tz={res.x[2]:.4f}")
+    print(f"Wedge: {float(p.wedge):.4f} (fixed)")
 
-    return dict(
+    result = dict(
+        objective="hard",
+        wedge=float(p.wedge),
+        wedge_refined=False,
+        n_voxels=n_spots,
+        compiled_forward=compiled_forward,
         seed_frac_overlap=1.0 - seed_val,
         final_frac_overlap=best_val,
         Lsd=lsd_out,
@@ -836,3 +1006,8 @@ def fit_multipoint_hard_run(
         n_evals=n_eval[0],
         seconds=secs,
     )
+    paths = write_multipoint_outputs(paramfile, p, result, result_dir)
+    print(f"Wrote {paths['result_json']}")
+    print(f"Wrote {paths['params_refined']}", flush=True)
+    result.update(paths)
+    return result

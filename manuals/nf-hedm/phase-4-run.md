@@ -519,15 +519,20 @@ packed costs one **bit** per pixel, i.e. 32× less.
 |---|---|---|
 | `midas-nf-fit-orientation` | **True** (v0.4 default) | `fit_orientation.py:284-292` |
 | `midas-nf-fit-parameters` | `False` — dense | `fit_parameters.py:85-92` |
-| `midas-nf-fit-multipoint` (**always** soft) | `False` — dense | `fit_multipoint.py:138-145` |
-| `midas-nf-pipeline refine-params --multi-point --objective hard` | **True**, uint8 | `fit_multipoint.py:519-525` |
+| `midas-nf-fit-multipoint --objective soft` | `False` — dense | `fit_multipoint.py:259-265` |
+| `midas-nf-fit-multipoint` (default `--objective hard`) and `midas-nf-pipeline refine-params --multi-point --objective hard` | **True**, uint8 | `fit_multipoint.py:641-646` |
 
-> **`midas-nf-fit-multipoint` has NO `--objective` flag.** Its CLI takes only
-> `params.txt [nCPUs]` and unconditionally calls `fit_multipoint_run`, the **soft, dense**
-> path (`cli.py:159-186`). The hard/packed path is reachable **only** through the pipeline:
-> `midas-nf-pipeline refine-params --multi-point --objective hard`
-> (`midas_nf_pipeline/cli.py:207-217`, where `hard` is the default). Reaching for the
-> obvious-looking console script gets you the one that cannot run on a large detector.
+> **`midas-nf-fit-multipoint` has `--objective {hard,soft}` from 0.9.3, default `hard`.** Before
+> 0.9.3 it had no such flag and unconditionally ran `fit_multipoint_run`, the **soft, dense** path,
+> which cannot run on a large detector (393 GiB requested on a 47 GiB GPU at 20-ID). `hard` is the
+> packed, C-equivalent objective and is also what `midas-nf-pipeline refine-params --multi-point
+> --objective hard` runs. **0.9.3 ran the hard objective but printed nothing and wrote nothing
+> unless `--verbose` was given; use 0.9.4 or later**, which always prints the summary and writes
+> `multipoint_result.json` and a ready-to-use `params_refined.txt` (the input paramfile with only
+> Lsd / BC / tx / ty / tz replaced). 0.9.3 also had a second defect on Linux: the compiled forward
+> ignored the geometry overrides, so the hard objective could not move any geometry parameter (it
+> refined only the Euler angles); fixed in 0.9.4. `--objective soft` still prints only under
+> `--verbose` and writes no file.
 
 At 1-ID (2 × 1440 × 2048²) dense is ~56 GiB — painful but survivable on a big node, which
 is why this went unnoticed. On the 20-ID Oryx (3 × 1440 × 5320 × 4600) dense is **423 GB**
