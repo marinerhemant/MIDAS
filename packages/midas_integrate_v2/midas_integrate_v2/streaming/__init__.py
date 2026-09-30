@@ -32,6 +32,13 @@ from .outlier import (
 from .integrate_stream import integrate_stream
 from .multi_detector import integrate_multi_detector
 from .quality import compute_quality_flags
+from .snapshot_profile import (
+    ring_profile,
+    fit_matrix_scale,
+    sharp_peaks,
+    band_excess,
+    windows_from_trace,
+)
 
 __all__ = [
     "FrameSource",
@@ -49,4 +56,9 @@ __all__ = [
     "integrate_stream",
     "integrate_multi_detector",
     "compute_quality_flags",
+    "ring_profile",
+    "fit_matrix_scale",
+    "sharp_peaks",
+    "band_excess",
+    "windows_from_trace",
 ]
