@@ -1,22 +1,13 @@
-"""MLEM / OS-EM sinogram reconstruction (port of utils/mlem_recon.py).
+"""MLEM / OS-EM sinogram reconstruction for pf-HEDM.
 
-Same numerical recipe as the legacy ``utils/mlem_recon.py`` (the
-original file stays in place untouched), with one structural upgrade:
-the forward/back projector and the iterative loop are dispatched on
-input type. Tensor inputs flow through torch with autograd intact and
-run on CUDA / MPS / CPU according to the input device; ndarray inputs
-use the legacy NumPy path verbatim.
+``forward_project`` / ``back_project`` are the projectors ported from
+``utils/mlem_recon.py`` (numpy and torch, dispatched on input type).
 
-The dispatch follows the canonical pattern in
-``midas_stress.orientation`` / ``midas_stress.diffraction``:
-
-    if isinstance(x, torch.Tensor): torch path
-    else:                            numpy path
-
-Both paths share the same iteration math; only the array library
-differs. The torch path is correct for autograd because every
-operation is differentiable (no boolean indexing on the output, no
-in-place updates on parameters, no ``.detach()``).
+``mlem_recon`` / ``osem_recon`` are NOT the legacy recipe any more: they use
+measured zeros, a padded reconstruction grid (interior tomography) and an
+exact adjoint projector pair. See the block comment above ``_ray_weights``
+for what changed and the measurements behind it. They run in torch on the
+input's device; ndarray input runs on CPU and returns an ndarray.
 """
 
 from __future__ import annotations
@@ -231,105 +222,145 @@ def back_project(sinogram: ArrayLike, angles_deg: ArrayLike, N: int) -> ArrayLik
     return _back_project_np(np.asarray(sinogram), np.asarray(angles_deg), N)
 
 
-# ----- NumPy MLEM/OSEM (verbatim copy of utils/mlem_recon.py logic) ---------
+# ----- MLEM / OS-EM ---------------------------------------------------------
+#
+# What changed from the utils/mlem_recon.py port, and why (ESRF ma5608, 2026-09):
+#
+# 1. Measured zeros are data. The port built its sensitivity and its update
+#    from the NON-ZERO cells only, so "this grain is not on this ray" never
+#    constrained the image: 0.150 / 0.053 accuracy on a Voronoi phantom where
+#    FBP scored 0.946 / 0.788. Rows with no signal at all are still dropped:
+#    those are reflections not recorded at any scan position (a gap, a missed
+#    peak), i.e. unmeasured, not measured-zero.
+# 2. The image is reconstructed on a grid wider than the scanned field and
+#    cropped back. Scanning 3DXRD is interior tomography: material outside the
+#    scanned field still crosses the beam at some omega, so the sinogram holds
+#    mass an image the width of the scan cannot represent. With the unpadded
+#    grid, standard MLEM pumped that mass into the edge pixels and diverged to
+#    inf on sinograms made by an independent projector (skimage radon); the
+#    port's [0.1, 10] update clip only hid it.
+# 3. The back-projector is the exact adjoint of the forward projector
+#    (scatter-add of the same bilinear weights), which MLEM's fixed point
+#    assumes. The public back_project() is a pixel-driven approximation.
+# 4. The support threshold is relative to the peak sensitivity, not 1e-10.
+#
+# Which is better on real data DEPENDS ON THE DATA. On ESRF ma5608 alumina (dense,
+# 180 deg, 0.3 um beam; Amendment 28, run once) phantoms favoured this MLEM over FBP
+# (0.961 vs 0.936; 0.898 vs 0.734, three seeds each), but on the real layer its
+# half-split was 0.789 vs FBP 0.864 and 17/204 grains kept most of their mass on
+# the image border (FBP: 0); a per-row background term changed neither. On 20-ID-E
+# Fe9Cr (sparse, 360 deg with a 16-deg missing wedge, 10 um beam; 2026-09-28) it is
+# the reverse: half-split on the sample 0.771 vs FBP 0.559 and 0.731 vs 0.570,
+# agreement with the per-voxel map 0.766 vs 0.669 and 0.762 vs 0.692. Run
+# reconstruct with method="all" and read Recons/ReconQuality.json; see
+# manuals/pf-hedm/phase-6-reconstruction.md.
 
 
-def _mlem_np(
-    sinogram: np.ndarray,
-    angles_deg: np.ndarray,
-    n_iter: int,
-    init: Optional[np.ndarray],
-    mask: Optional[np.ndarray],
-    eps: float,
-) -> np.ndarray:
-    n_thetas, M = sinogram.shape
-    N = M
-    if mask is None:
-        row_has_data = np.any(sinogram > 0, axis=1)
-    else:
-        row_has_data = np.any(mask, axis=1)
-    valid_idx = np.where(row_has_data)[0]
-    sino_valid = sinogram[valid_idx]
-    angles_valid = angles_deg[valid_idx]
-    if len(valid_idx) == 0:
-        return np.zeros((N, N))
+def _ray_weights(N: int, M: int, angles_deg: "torch.Tensor"):
+    """Bilinear ray weights for an N x N image and M detector bins.
 
-    mask_sino = (sino_valid > 0).astype(np.float64)
-    sensitivity = _back_project_np(mask_sino, angles_valid, N)
-    image_support = sensitivity > eps
-    sensitivity = np.maximum(sensitivity, eps)
-
-    if init is not None:
-        estimate = init.astype(np.float64).copy()
-    else:
-        estimate = np.ones((N, N), dtype=np.float64)
-    estimate = np.where(image_support, estimate, 0.0)
-
-    sino_scale = float(sino_valid.max()) if sino_valid.size else 1.0
-    proj_floor = max(eps, 1e-6 * sino_scale)
-    UPD_LO, UPD_HI = 0.1, 10.0
-    for _ in range(n_iter):
-        proj = _forward_project_np(estimate, angles_valid)
-        proj = np.maximum(proj, proj_floor)
-        ratio = np.where(mask_sino > 0, sino_valid / proj, 0.0)
-        correction = _back_project_np(ratio, angles_valid, N)
-        update = correction / sensitivity
-        update = np.clip(update, UPD_LO, UPD_HI)
-        estimate = np.where(image_support, estimate * update, 0.0)
-    return np.nan_to_num(estimate, nan=0.0, posinf=0.0, neginf=0.0)
-
-
-def _mlem_torch(
-    sinogram: "torch.Tensor",
-    angles_deg: "torch.Tensor",
-    n_iter: int,
-    init: Optional["torch.Tensor"],
-    eps: float,
-) -> "torch.Tensor":
-    """Differentiable, multi-device MLEM.
-
-    The estimate stays a Tensor on the sinogram's device the entire
-    way through; every step is differentiable so the chain rule
-    follows the iteration count. No ``.cpu().numpy()`` round-trips.
+    Same geometry as ``forward_project`` (which is the N == M case): detector
+    bin t and ray sample s map to image column ``t cos - s sin`` and row
+    ``t sin + s cos`` about the image centre. Returns 4 flat index tensors and
+    4 weight tensors, each (T, M, N), with out-of-image samples weighted 0.
     """
-    dtype = sinogram.dtype
-    device = sinogram.device
-    n_thetas, M = sinogram.shape
-    N = M
+    dtype, device = angles_deg.dtype, angles_deg.device
+    c_img, c_det = (N - 1) / 2.0, (M - 1) / 2.0
+    t = (torch.arange(M, dtype=dtype, device=device) - c_det).view(1, -1, 1)
+    s = (torch.arange(N, dtype=dtype, device=device) - c_img).view(1, 1, -1)
+    a = torch.deg2rad(angles_deg)
+    ca, sa = torch.cos(a).view(-1, 1, 1), torch.sin(a).view(-1, 1, 1)
+    rx = t * ca - s * sa + c_img
+    ry = t * sa + s * ca + c_img
+    ix0, iy0 = torch.floor(rx).long(), torch.floor(ry).long()
+    fx, fy = rx - ix0.to(dtype), ry - iy0.to(dtype)
+    inb = ((ix0 >= 0) & (ix0 < N - 1) & (iy0 >= 0) & (iy0 < N - 1)).to(dtype)
+    ix, iy = ix0.clamp(0, N - 2), iy0.clamp(0, N - 2)
+    idx = (iy * N + ix, iy * N + ix + 1, (iy + 1) * N + ix, (iy + 1) * N + ix + 1)
+    w = ((1 - fx) * (1 - fy) * inb, fx * (1 - fy) * inb,
+         (1 - fx) * fy * inb, fx * fy * inb)
+    return idx, w
+
+
+class _Projector:
+    """Matched forward / adjoint pair for one angle set, N x N image, M bins.
+    Weights are built once per chunk of angles and reused every iteration."""
+
+    def __init__(self, angles_deg, N, M, chunk_elems=2e7):
+        self.N, self.M = N, M
+        per_angle = M * N
+        step = max(1, int(chunk_elems // per_angle))
+        self.chunks = []
+        for i in range(0, angles_deg.shape[0], step):
+            self.chunks.append((i, _ray_weights(N, M, angles_deg[i:i + step])))
+
+    def forward(self, x):
+        flat = x.reshape(-1)
+        out = []
+        for _, (idx, w) in self.chunks:
+            out.append(sum(wk * flat[ik] for ik, wk in zip(idx, w)).sum(-1))
+        return torch.cat(out, 0)
+
+    def adjoint(self, r):
+        img = torch.zeros(self.N * self.N, dtype=r.dtype, device=r.device)
+        for i0, (idx, w) in self.chunks:
+            rr = r[i0:i0 + idx[0].shape[0]].unsqueeze(-1)
+            for ik, wk in zip(idx, w):
+                img = img.index_add(0, ik.reshape(-1), (wk * rr).reshape(-1))
+        return img.reshape(self.N, self.N)
+
+
+def _em(sinogram, angles_deg, n_iter, n_subsets, init, pad, support_rel):
+    """Shared MLEM (n_subsets == 1) / OS-EM core, torch in and out."""
+    dtype, device = sinogram.dtype, sinogram.device
+    T, M = sinogram.shape
     angles_deg = angles_deg.to(device=device, dtype=dtype)
-
-    # Row mask: any cell > 0 in that row.
-    row_has_data = (sinogram > 0).any(dim=1)
-    if not row_has_data.any():
-        return torch.zeros((N, N), dtype=dtype, device=device)
-    valid_idx = torch.nonzero(row_has_data, as_tuple=False).reshape(-1)
-    sino_valid = sinogram.index_select(0, valid_idx)
-    angles_valid = angles_deg.index_select(0, valid_idx)
-
-    mask_sino = (sino_valid > 0).to(dtype)
-    sensitivity = _back_project_torch(mask_sino, angles_valid, N)
-    image_support = sensitivity > eps
-    sensitivity = torch.clamp(sensitivity, min=eps)
-
+    p = int(round(max(pad, 0.0) * M / 2.0))
+    N = M + 2 * p
+    measured = torch.nonzero((sinogram > 0).any(dim=1), as_tuple=False).reshape(-1)
+    if measured.numel() == 0:
+        return torch.zeros((M, M), dtype=dtype, device=device)
+    y = sinogram.index_select(0, measured)
+    ang = angles_deg.index_select(0, measured)
+    subsets = [torch.arange(i, y.shape[0], n_subsets, device=device)
+               for i in range(min(n_subsets, y.shape[0]))]
+    projs = [_Projector(ang.index_select(0, s), N, M) for s in subsets]
+    sens = [P.adjoint(torch.ones((s.numel(), M), dtype=dtype, device=device))
+            for P, s in zip(projs, subsets)]
+    total = sum(sens)
+    support = total > support_rel * total.max()
+    sens = [torch.where(support, sk.clamp_min(1e-12 * float(total.max())),
+                        torch.ones_like(sk)) for sk in sens]
     if init is None:
-        estimate = torch.ones((N, N), dtype=dtype, device=device)
+        x = torch.ones((N, N), dtype=dtype, device=device)
     else:
-        estimate = init.to(device=device, dtype=dtype).clone()
-    estimate = torch.where(image_support, estimate, torch.zeros_like(estimate))
-
-    sino_scale = float(sino_valid.max().item()) if sino_valid.numel() else 1.0
-    proj_floor = max(eps, 1e-6 * sino_scale)
-    UPD_LO, UPD_HI = 0.1, 10.0
+        x = torch.zeros((N, N), dtype=dtype, device=device)
+        x = x.index_put((torch.arange(p, p + M, device=device).view(-1, 1),
+                         torch.arange(p, p + M, device=device).view(1, -1)),
+                        init.to(device=device, dtype=dtype))
+        x = torch.where(x > 0, x, torch.full_like(x, 1e-6))
+    x = torch.where(support, x, torch.zeros_like(x))
+    floor = 1e-9 * float(y.max())
+    ys = [y.index_select(0, s) for s in subsets]
     for _ in range(n_iter):
-        proj = _forward_project_torch(estimate, angles_valid)
-        proj = torch.clamp(proj, min=proj_floor)
-        ratio = torch.where(mask_sino > 0, sino_valid / proj, torch.zeros_like(sino_valid))
-        correction = _back_project_torch(ratio, angles_valid, N)
-        update = correction / sensitivity
-        update = torch.clamp(update, UPD_LO, UPD_HI)
-        estimate = torch.where(image_support, estimate * update, torch.zeros_like(estimate))
-    estimate = torch.nan_to_num(estimate, nan=0.0, posinf=0.0, neginf=0.0)
-    return estimate
+        for P, yk, sk in zip(projs, ys, sens):
+            ratio = yk / P.forward(x).clamp_min(floor)
+            x = torch.where(support, x * P.adjoint(ratio) / sk, torch.zeros_like(x))
+    x = torch.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+    return x[p:p + M, p:p + M]
+
+
+def _run_em(sinogram, angles_deg, n_iter, n_subsets, init, pad, support_rel):
+    if _TORCH_AVAILABLE and isinstance(sinogram, torch.Tensor):
+        a = (angles_deg if isinstance(angles_deg, torch.Tensor)
+             else torch.as_tensor(angles_deg, dtype=sinogram.dtype, device=sinogram.device))
+        i = (init if init is None or isinstance(init, torch.Tensor)
+             else torch.as_tensor(init, dtype=sinogram.dtype, device=sinogram.device))
+        return _em(sinogram, a, n_iter, n_subsets, i, pad, support_rel)
+    s = torch.as_tensor(np.asarray(sinogram, dtype=np.float64))
+    a = torch.as_tensor(np.asarray(angles_deg, dtype=np.float64))
+    i = None if init is None else torch.as_tensor(np.asarray(init, dtype=np.float64))
+    return _em(s, a, n_iter, n_subsets, i, pad, support_rel).numpy()
 
 
 def mlem_recon(
@@ -340,144 +371,34 @@ def mlem_recon(
     init: Optional[ArrayLike] = None,
     mask: Optional[np.ndarray] = None,
     eps: float = 1e-10,
+    pad: float = 0.5,
+    support_rel: float = 1e-3,
 ) -> ArrayLike:
-    """Maximum Likelihood Expectation Maximization reconstruction.
-
-    Same recipe as the legacy ``utils/mlem_recon.py``. Tensor input
-    flows through the torch path with autograd intact on the input's
-    device; ndarray input runs the legacy NumPy path.
+    """MLEM reconstruction of one grain's sinogram.
 
     Parameters
     ----------
-    sinogram : ndarray (T, M) or torch.Tensor (T, M)
-    angles_deg : ndarray (T,) or torch.Tensor (T,)
-    n_iter : int
-    init : optional initial estimate (M, M); same type as ``sinogram``.
-    mask : numpy bool array; numpy path only (ignored on torch path,
-        whose mask is derived from ``sinogram > 0``).
-    eps : small positive constant.
+    sinogram : ndarray or torch.Tensor (T, M)
+        Rows are reflections (omega), columns scan positions. A row that is
+        zero everywhere is treated as unmeasured and dropped; zeros inside a
+        measured row are data.
+    angles_deg : (T,) omega per row.
+    n_iter : iterations (early stopping is the only regulariser).
+    init : optional (M, M) start image, same type as ``sinogram``.
+    mask, eps : accepted for backward compatibility and ignored.
+    pad : the image is reconstructed on an (M + 2p) grid, p = round(pad*M/2),
+        and cropped to the central M x M. 0 disables padding (and reintroduces
+        the interior-tomography divergence when material lies outside the
+        scanned field).
+    support_rel : pixels with sensitivity below this fraction of the peak are
+        held at 0.
 
     Returns
     -------
-    Same array type as the input ``sinogram``.
+    (M, M), same array type (and, for tensors, device) as ``sinogram``.
+    Tensor inputs stay differentiable.
     """
-    if _TORCH_AVAILABLE and isinstance(sinogram, torch.Tensor):
-        angles_t = (
-            angles_deg
-            if isinstance(angles_deg, torch.Tensor)
-            else torch.as_tensor(angles_deg, dtype=sinogram.dtype, device=sinogram.device)
-        )
-        init_t = (
-            init
-            if init is None or isinstance(init, torch.Tensor)
-            else torch.as_tensor(init, dtype=sinogram.dtype, device=sinogram.device)
-        )
-        return _mlem_torch(sinogram, angles_t, n_iter, init_t, eps)
-    return _mlem_np(
-        np.asarray(sinogram, dtype=np.float64),
-        np.asarray(angles_deg, dtype=np.float64),
-        n_iter,
-        None if init is None else np.asarray(init, dtype=np.float64),
-        mask,
-        eps,
-    )
-
-
-def _osem_np(
-    sinogram: np.ndarray,
-    angles_deg: np.ndarray,
-    n_iter: int,
-    n_subsets: int,
-    init: Optional[np.ndarray],
-    eps: float,
-) -> np.ndarray:
-    n_thetas, M = sinogram.shape
-    N = M
-    row_has_data = np.any(sinogram > 0, axis=1)
-    valid_idx = np.where(row_has_data)[0]
-    if len(valid_idx) == 0:
-        return np.zeros((N, N))
-    subsets = [valid_idx[i::n_subsets] for i in range(n_subsets)]
-    if init is not None:
-        estimate = init.astype(np.float64).copy()
-    else:
-        estimate = np.ones((N, N), dtype=np.float64)
-    full_mask = (sinogram[valid_idx] > 0).astype(np.float64)
-    full_sensitivity = _back_project_np(full_mask, angles_deg[valid_idx], N)
-    image_support = full_sensitivity > eps
-    estimate = np.where(image_support, estimate, 0.0)
-    sino_scale = float(sinogram[valid_idx].max()) if len(valid_idx) else 1.0
-    proj_floor = max(eps, 1e-6 * sino_scale)
-    UPD_LO, UPD_HI = 0.1, 10.0
-    for _ in range(n_iter):
-        for subset_idx in subsets:
-            sino_sub = sinogram[subset_idx]
-            angles_sub = angles_deg[subset_idx]
-            mask_sub = (sino_sub > 0).astype(np.float64)
-            sensitivity = _back_project_np(mask_sub, angles_sub, N)
-            sensitivity = np.maximum(sensitivity, eps)
-            proj = _forward_project_np(estimate, angles_sub)
-            proj = np.maximum(proj, proj_floor)
-            ratio = np.where(mask_sub > 0, sino_sub / proj, 0.0)
-            correction = _back_project_np(ratio, angles_sub, N)
-            update = correction / sensitivity
-            update = np.clip(update, UPD_LO, UPD_HI)
-            estimate = np.where(image_support, estimate * update, 0.0)
-    return np.nan_to_num(estimate, nan=0.0, posinf=0.0, neginf=0.0)
-
-
-def _osem_torch(
-    sinogram: "torch.Tensor",
-    angles_deg: "torch.Tensor",
-    n_iter: int,
-    n_subsets: int,
-    init: Optional["torch.Tensor"],
-    eps: float,
-) -> "torch.Tensor":
-    dtype = sinogram.dtype
-    device = sinogram.device
-    n_thetas, M = sinogram.shape
-    N = M
-    angles_deg = angles_deg.to(device=device, dtype=dtype)
-
-    row_has_data = (sinogram > 0).any(dim=1)
-    if not row_has_data.any():
-        return torch.zeros((N, N), dtype=dtype, device=device)
-    valid_idx = torch.nonzero(row_has_data, as_tuple=False).reshape(-1)
-    full_mask = (sinogram.index_select(0, valid_idx) > 0).to(dtype)
-    full_sensitivity = _back_project_torch(
-        full_mask, angles_deg.index_select(0, valid_idx), N
-    )
-    image_support = full_sensitivity > eps
-
-    if init is None:
-        estimate = torch.ones((N, N), dtype=dtype, device=device)
-    else:
-        estimate = init.to(device=device, dtype=dtype).clone()
-    estimate = torch.where(image_support, estimate, torch.zeros_like(estimate))
-    sino_scale = float(sinogram.index_select(0, valid_idx).max().item()) if valid_idx.numel() else 1.0
-    proj_floor = max(eps, 1e-6 * sino_scale)
-    UPD_LO, UPD_HI = 0.1, 10.0
-
-    # interleaved subsets
-    subsets = [valid_idx[i::n_subsets] for i in range(n_subsets)]
-    for _ in range(n_iter):
-        for subset_idx in subsets:
-            if subset_idx.numel() == 0:
-                continue
-            sino_sub = sinogram.index_select(0, subset_idx)
-            angles_sub = angles_deg.index_select(0, subset_idx)
-            mask_sub = (sino_sub > 0).to(dtype)
-            sensitivity = _back_project_torch(mask_sub, angles_sub, N)
-            sensitivity = torch.clamp(sensitivity, min=eps)
-            proj = _forward_project_torch(estimate, angles_sub)
-            proj = torch.clamp(proj, min=proj_floor)
-            ratio = torch.where(mask_sub > 0, sino_sub / proj, torch.zeros_like(sino_sub))
-            correction = _back_project_torch(ratio, angles_sub, N)
-            update = correction / sensitivity
-            update = torch.clamp(update, UPD_LO, UPD_HI)
-            estimate = torch.where(image_support, estimate * update, torch.zeros_like(estimate))
-    return torch.nan_to_num(estimate, nan=0.0, posinf=0.0, neginf=0.0)
+    return _run_em(sinogram, angles_deg, n_iter, 1, init, pad, support_rel)
 
 
 def osem_recon(
@@ -488,32 +409,14 @@ def osem_recon(
     n_subsets: int = 4,
     init: Optional[ArrayLike] = None,
     eps: float = 1e-10,
+    pad: float = 0.5,
+    support_rel: float = 1e-3,
 ) -> ArrayLike:
-    """Ordered Subsets Expectation Maximization (accelerated MLEM).
-
-    Tensor in → Tensor out (autograd intact, multi-device). ndarray
-    in → ndarray out via the legacy NumPy path.
-    """
-    if _TORCH_AVAILABLE and isinstance(sinogram, torch.Tensor):
-        angles_t = (
-            angles_deg
-            if isinstance(angles_deg, torch.Tensor)
-            else torch.as_tensor(angles_deg, dtype=sinogram.dtype, device=sinogram.device)
-        )
-        init_t = (
-            init
-            if init is None or isinstance(init, torch.Tensor)
-            else torch.as_tensor(init, dtype=sinogram.dtype, device=sinogram.device)
-        )
-        return _osem_torch(sinogram, angles_t, n_iter, n_subsets, init_t, eps)
-    return _osem_np(
-        np.asarray(sinogram, dtype=np.float64),
-        np.asarray(angles_deg, dtype=np.float64),
-        n_iter,
-        n_subsets,
-        None if init is None else np.asarray(init, dtype=np.float64),
-        eps,
-    )
+    """Ordered-subsets EM: MLEM with the rows split into ``n_subsets``
+    interleaved subsets, one multiplicative update per subset. Same
+    conventions and parameters as :func:`mlem_recon`."""
+    return _run_em(sinogram, angles_deg, n_iter, max(1, int(n_subsets)), init, pad,
+                   support_rel)
 
 
 # Back-compat aliases (mirrors legacy ``mlem_recon.mlem`` / ``.osem``)

@@ -17,10 +17,12 @@ Three backend families:
 from __future__ import annotations
 
 from .fbp import fbp_recon, fbp_recon_per_grain
+# NOT re-exported: the legacy alias ``mlem`` (= mlem_recon). A package attribute named ``mlem`` shadows
+# the ``recon.mlem`` submodule, so ``import midas_pipeline.recon.mlem as M`` bound the FUNCTION and
+# ``M.mlem_recon`` raised. The alias still lives in the module: ``from midas_pipeline.recon.mlem import mlem``.
 from .mlem import (
     back_project,
     forward_project,
-    mlem,
     mlem_recon,
     osem,
     osem_recon,
@@ -32,7 +34,6 @@ __all__ = [
     "fbp_recon_per_grain",
     "mlem_recon",
     "osem_recon",
-    "mlem",         # legacy alias
     "osem",         # legacy alias
     "forward_project",
     "back_project",

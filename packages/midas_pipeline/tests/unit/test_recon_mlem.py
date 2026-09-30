@@ -213,3 +213,66 @@ def test_osem_runs_on_mps():
     sino = forward_project(phantom, angles)
     recon = osem_recon(sino, angles, n_iter=2, n_subsets=2)
     assert recon.device.type == "mps"
+
+
+# ---------------------------------------------------------------------------
+# The 2026-09 rewrite: exact adjoint, measured zeros, padded grid (ESRF ma5608)
+# ---------------------------------------------------------------------------
+
+
+def test_padded_projector_is_the_exact_adjoint():
+    import importlib
+    M = importlib.import_module("midas_pipeline.recon.mlem")
+    g = torch.Generator().manual_seed(0)
+    ang = torch.linspace(-80, 85, 17, dtype=torch.float64)
+    for N, Mb, chunk in ((41, 29, 2e7), (29, 29, 2e7), (41, 29, 500)):
+        P = M._Projector(ang, N, Mb, chunk_elems=chunk)
+        x = torch.rand(N, N, dtype=torch.float64, generator=g)
+        r = torch.rand(17, Mb, dtype=torch.float64, generator=g)
+        lhs, rhs = float((P.forward(x) * r).sum()), float((x * P.adjoint(r)).sum())
+        assert abs(lhs - rhs) <= 1e-12 * abs(lhs)
+
+
+def test_padded_projector_matches_forward_project_at_pad_zero():
+    import importlib
+    M = importlib.import_module("midas_pipeline.recon.mlem")
+    img = _disk_phantom(33, radius=0.4)
+    ang = _angles(20)
+    P = M._Projector(torch.as_tensor(ang), 33, 33)
+    np.testing.assert_allclose(P.forward(torch.as_tensor(img)).numpy(),
+                               forward_project(img, ang), atol=1e-9)
+
+
+def test_measured_zeros_constrain_an_off_centre_grain():
+    """The old recipe dropped zero cells from sensitivity and update, so the
+    image was unconstrained wherever the grain is absent (0.15 accuracy on a
+    Voronoi phantom). An off-centre disc must come back where it is, and
+    nowhere else."""
+    N = 41
+    yy, xx = np.mgrid[0:N, 0:N]
+    truth = ((yy - 12) ** 2 + (xx - 27) ** 2 < 25).astype(float)
+    ang = np.sort(np.random.default_rng(1).uniform(-90, 90, 60))
+    rec = mlem_recon(forward_project(truth, ang), ang, n_iter=60)
+    m = rec > 0.5 * rec.max()
+    iou = (m & (truth > 0)).sum() / (m | (truth > 0)).sum()
+    assert iou > 0.85
+    assert rec[truth == 0].sum() < 0.1 * rec[truth > 0].sum()
+
+
+def test_sample_wider_than_the_field_stays_finite():
+    """Interior tomography: material outside the scanned field still crosses
+    the beam. The reconstruction must stay finite and put the in-field grain
+    where it is."""
+    Nf, pad = 41, 20
+    Nb = Nf + 2 * pad
+    yy, xx = np.mgrid[0:Nb, 0:Nb]
+    outside = ((yy - 8) ** 2 + (xx - Nb // 2) ** 2 < 36).astype(float)   # beyond the field
+    grain = ((yy - pad - 20) ** 2 + (xx - pad - 14) ** 2 < 36).astype(float)
+    assert outside[pad:pad + Nf, pad:pad + Nf].sum() == 0
+    ang = np.sort(np.random.default_rng(2).uniform(-90, 90, 60))
+    full = forward_project(grain + outside, ang)
+    sino = full[:, pad:pad + Nf]                        # detector sees only the field
+    rec = mlem_recon(sino, ang, n_iter=50, pad=1.0)
+    assert np.isfinite(rec).all()
+    t = grain[pad:pad + Nf, pad:pad + Nf] > 0
+    assert rec[t].mean() > 3 * rec[~t].mean()
