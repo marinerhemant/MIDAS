@@ -1034,7 +1034,7 @@ is the observable; width is one step removed and much noisier.
 ### 11d. `forward_batched_grains` returns (frame_nr, valid, y_pixel, z_pixel)
 
 `frame_nr`/`valid` are `(B,K,M)`; `y_pixel`/`z_pixel` are `(D,B,K,M)` -- exactly as
-documented (`soft_overlap.py:407`). An earlier note here and in the checkpoint claimed
+documented (`soft_overlap.py:412`). An earlier note here and in the checkpoint claimed
 `valid` came back `(D,B,K,M)` "not as documented". **That was wrong**: it came from
 unpacking the return as `(frame, y, z, valid)`, which silently puts `valid` in `y` and
 `z` in `valid`. Production code and the repo test unpack correctly; only analysis
@@ -1365,7 +1365,7 @@ back into assumptions, and so a later session can tell a *confirmed* value from 
 
 | date | quantity | value | source | what it closed |
 |---|---|---|---|---|
-| 2026-08-28 | 20-ID HT-HEDM ω sign | stage is `aero`; **ω_MIDAS = −ω_aero** | instrument scientist (Hemant Sharma) | The mirror-ambiguity label on every 20-ID orientation map. Handbook §2a, hard rule 1 |
+| 2026-08-28 | 20-ID-D HT-HEDM ω sign (not 20-ID-E: ω positive there, ff-hedm Lab Notebook §12) | stage is `aero`; **ω_MIDAS = −ω_aero** | instrument scientist (Hemant Sharma) | The mirror-ambiguity label on every 20-ID orientation map. Handbook §2a, hard rule 1 |
 | 2026-08-28 | Beam energy, `nfdev_jul26` + `bt_20id_jul26b` | **63.314 keV** (Lu K-edge), λ 0.195824 Å | instrument scientist | The "inferred from a filename" caveat on both beamtimes. Handbook §3h |
 
 ### 12a. Why the ω determination did not invalidate anything
@@ -1507,3 +1507,103 @@ regardless of grain count. Do not re-attempt "more voxels" or "more grains" for 
 that lever has now been tried and it does not move the needle. A different objective
 (soft/differentiable, which was never actually tested for `ty` sensitivity) or a
 different kind of measurement is the next thing to try, not more of the same.
+
+## 14. `bt_20id_sep26` gold — no DetZBeamPos, beam blocked, and a scatter band taken for the beam (2026-09-28)
+
+Handbook phase-3 §6i-quater is the procedure; this is the record behind it.
+
+### 14a. What failed, and the one input every failure shared
+
+Gold calibrant at `nfz` 7/9/11/13 mm (ΔD 2000 µm, from the operator), 71.676 keV (Re K edge),
+721 frames θ 0→180 (`exchange/theta`), 12-bit unscaled, DAQ-dark-subtracted. No DetZBeamPos
+scan was taken. **47 gold reconstructions** sat at noise (max C 0.06–0.20): three ΔD
+hypotheses, two triangulated geometries, six ω-sign / pixel-size / mirror variants, a 24-cell
+Lsd (5600–6300) × ybc scan and a preregistered 12-cell scan with per-distance ybc drift.
+Every one used **zbc ≈ 237**, taken with `find_stripe` from a band at rows 4320–4400 that
+reads **~2.2 counts** over a ~1.4 floor; below row ~4410 the median frame is **0.02 counts**.
+Nobody (this author included) checked that the "stripe" was bright enough to be the beam.
+
+### 14b. The raw look that turned it round
+
+max − median over frames 100–119 at all four distances: one reflection at frame 106 in every
+file, centroids **collinear to 0.2 px**, steps **436.6 px** per 2 mm. Gold (220) predicts
+440.2 px (the only ring within 15 %). The full blob scan (thr 300 counts, ≥ 150 px):
+177/174/161/143 blobs per distance, **125 four-distance chains** vs **0–1** frame-shuffled.
+
+The first ray-based L₁ (5483 µm, median over chains) was **biased** because each ray was
+pinned to the wrong beam row. It is recorded here because it looked like a measurement.
+
+### 14c. Results (all from spots; px 0.548 carried from `nfdev_jul26`)
+
+| quantity | value | method |
+|---|---|---|
+| BC drift per 2 mm step | +6.3 col, +0.07 row px (raw) | `|v − w| = ΔD tan2θ/px`, residual 3.76 → 0.72 px rms |
+| beam row (thin-beam intercept) | 4500 (zbc ≈ 99), L₁ 6130 µm (6109–6141) | `a_k = zbc_row + b_k·L₁`; resid 2.8 px vs 360–490 px shuffled |
+| bundle adjustment (29 merged reflections, 5→2 grains) | L₁ 6157.8 ± 3.6 µm; ybc(7 mm) 2646.2; zbc 94.1; drift MIDAS (−6.32, −1.21) px/step; ΔD scale 1.004 | median residual 1.3 px |
+| grain positions from rays | (11, −5), (−275, −423) µm | FF gold: (18, 8) and (−272, −413) |
+
+July's calibrated L₁ on this detector at the same `nfz` was 6138.7 µm (handbook §6i-bis worked
+reference); the difference is within what a remounted sample moves δ.
+
+### 14d. Validation — one reconstruction at that geometry, tilts 0
+
+`Rsample 550`, `GridSize 20`, same `SpotsInfo.bin` as all 47 failures: **30 voxels C ≥ 0.5,
+13 ≥ 0.8, max 0.86**. Neighbour misorientation < 5° for **30/30** pairs (median 0.27°).
+Against FF gold (`midas_stress`, crystal side): **30/30 voxels within 1° of an FF grain**,
+random-orientation chance **0/2000**; the two NF clusters sit **9–33 µm** from the FF grain
+positions. FF grains 3/4/7 and 2/5 are duplicates of two orientations (0.29–0.82° apart) —
+an FF de-duplication issue, not an NF one. Tilts not yet refined (§7c is next).
+
+Scorer bug found on the way: `score_mic.py`'s neighbour test set its distance from
+`TriEdgeSize` (1 µm with `EdgeLength 1`), so on a 20 µm grid it found **0** neighbour pairs
+and reported "too few". Fixed to use the measured voxel spacing.
+
+### 14e. The single-parameter control
+
+Same parameter file, same `SpotsInfo.bin`, same grid, only zbc restored to the scatter-band
+values (237.03 / 237.74 / 238.42 / 238.95): **max C 0.10, 0 voxels ≥ 0.5** (859 written vs
+2789). zbc alone separates noise from a reconstruction that matches FF. Everything else in
+the 47 failed runs was secondary to it.
+
+
+### 14f. Sample layers, per-sample refinement, and the threshold (2026-09-28/29)
+
+First pass (20 µm grid, gold-refined geometry): H5 #213 and PUR #255 voxels at C >= 0.5 match
+their own FF grains within 1° at 96.6 % and 97.1 % (chance 1.4-1.8 %; grain level 94.7 / 97.9 %;
+a cross-sample null is at chance; four independent checks survived). HAO #342 is at chance.
+
+**Per-sample 12-voxel refinements overfit** (see hard rule 26): PUR at its own refined geometry
+gave 291 / 8 voxels (>= 0.5 / >= 0.8) against 593 / 99 at the gold-refined geometry. Gold showed the
+same (18 vs 30).
+
+**Threshold.** Halving the gold-tuned spot threshold (8 -> 4 counts, NLM h 4) on PUR gave 2574 vs 593
+voxels at C >= 0.5 at the same geometry and grid, FF match unchanged (97.1 %; the NEW voxels alone
+97.2 %, 840 vs 242 distinct FF grains matched). A fourth check showed t4 also admits ~23 % of new
+blobs that are peakless and omega-fixed, so "a reduction limit, not deformation" is NOT supported.
+Cause found afterwards (dispersion test, `s55_static_bg.py`): ~90 % of pixels have a temporal median
+of 0, so the median removes none of a static pattern of 0.10 (quiet band) to 0.45 (busy band)
+counts/px at the 9-px scale.
+
+**Also measured:** the 3x3 window-sum background has var/mean ~ 2.7 (MAD-based) in both a quiet and a
+busy band; the plain variance read 22.8 in the busy band because of the few windows on real spots.
+An earlier version of the docstring said 20x; that was the contaminated estimate.
+
+**HAO.** `midas_stress.find_frame_rotation` finds no significant rotation mapping HAO NF #342 onto
+FF #422 or #423 (best 7.4 % / 6.4 % against nulls of 8.4 % / 6.9 %); the H5 control returns the
+identity at 94 %. HAO NF is not a rotated remount of those FF layers; different region or layer is
+the remaining reading (unconfirmed).
+
+### 14g. `SpotDetect poisson`: what the detector comparison showed (2026-09-29)
+
+Cause of the threshold-4 background found first (`s55_static_bg.py`, `s54_dispersion.py`); the mode was then built as
+`process_images/poisson_threshold.py`. Frame-level comparison on PUR #255 (`s56`, `s57`; three frames and their omega+180
+partners; static = share of lit pixels also lit 180 deg away): threshold 8: 469 blobs, static 2.6 %; threshold 4: 766 blobs,
+4.6 %; poisson with the plain variance: recall of the threshold-8 spot area only 26-28 %; poisson with the robust variance:
+98-100 % recall, static 2.7 % (budget 5) to 4.0 % (budget 50000). 9 px and 32 px smoothing gave the same numbers.
+Budget on PUR (20 um, gold-refined geometry): voxels at C >= 0.5 / 0.8 = 798 / 124 (budget 5), 1408 / 282 (500), 1889 / 462 (5000),
+2475 / 727 (50000), against 593 / 99 (threshold 8) and 2574 / 903 (threshold 4); FF match 96-98 % throughout.
+Held-out (frozen 50000): H5 3950 / 2269 (thr 8: 2464 / 960; thr 4: 4078 / 2479), FF 95.8 %, static 3.31 % (thr 4: 3.37 %);
+HAO 3496 / 1702 (thr 8: 1626 / 500; thr 4: 3560 / 1759), neighbours 0.65, static 1.81 % (thr 4: 1.80 %).
+Reading: at 50000 the mode is a faster (~9 vs ~45 min per layer), principled equivalent of threshold 4, not a cleaner one; its
+distinctive use is the budget as an explicit dial. Earlier text in this section quoting "20x dispersion in the busy band" was a
+spot-contaminated variance; the robust figure is ~2.7 in both bands.

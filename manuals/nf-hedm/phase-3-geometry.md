@@ -55,9 +55,9 @@ Provenance, in order of strength:
 because `BCTol` in `ps_au.txt` is 0.2 px in z.
 
 MIDAS consumes these as one entry per distance: `ybc`/`zbc` are lists and
-`midas_nf_fitorientation/params.py:357` raises if `len(ybc) != n_distances`. The forward
+`midas_nf_fitorientation/params.py:377` raises if `len(ybc) != n_distances`. The forward
 model is `y_pixel = yBC + ydet/px`, `z_pixel = zBC + zdet/px`
-(`midas_diffract/forward.py:1283-1284`, NF runs `flip_y=False`), and the image stack is
+(`midas_diffract/forward.py:1307-1308`, NF runs `flip_y=False`), and the image stack is
 `[N, Z, Y]`, so **zbc pairs with the row axis and ybc with the column axis** in the reversed
 frame above.
 
@@ -417,6 +417,70 @@ Two further cautions from `nf_sampleD`:
   along the beam, so a remounted sample legitimately changes it. Comparing δ across
   campaigns tests the mounting as much as the detector. What transfers is the *method*,
   not the number.
+
+#### 6i-quater. No DetZBeamPos AND no direct beam on the detector — the ray bundle
+
+`bt_20id_sep26` (20-ID-D, 2026-09-25) had **no DetZBeamPos scan** and the direct beam
+was **blocked**: the per-pixel median of the gold scan is ~0.02 counts below row ~4410.
+§6d then has nothing to measure, and §6i-bis cannot start. What it had was a gold
+calibrant at four distances (`nfz` 7/9/11/13 mm, ΔD 2000 µm). That turned out to be
+enough to recover **Lsd, zbc, ybc and the per-distance BC drift from the spots alone**,
+because on a calibrant 2θ is **known** for every spot, which §6i's model leaves free.
+
+**First, the trap that cost two days.** A faint horizontal band (~2 counts over a ~1.4
+floor, rows 4320–4400) sat just above the dark region. `find_stripe` on the temporal median
+returns it happily, and it was used as "the beam stripe" (zbc 237). It was a scatter band
+at the beamstop edge, **138 px (76 µm) above the real beam height**. Every one of 47 gold
+reconstructions (three ΔD hypotheses, two triangulated geometries, six convention variants,
+a 24-cell and a 12-cell Lsd × ybc scan) sat at noise (max C ≤ 0.2) with it. **A beam stripe is thousands of counts, not two.**
+Before §6d, print the row profile of the median frame: if the "stripe" is within a few
+counts of the floor, it is not the beam — halt and use this section.
+
+The method, all from the raw frames (scripts `s25`–`s34` in the `bt_20id_sep26` analysis):
+
+1. **Look.** max − median over a 20-frame ω window, the four distance files side by side.
+   A real reflection sits at the **same frame** in every file and walks radially outward
+   in equal steps. If you cannot see one, stop — nothing below will work either.
+2. **Blobs, then chains.** Blobs per frame against a per-pixel median background (full
+   resolution, > 300 counts, ≥ 150 px). A chain = one blob per distance at the same frame
+   (±1), the four centroids **collinear** (≤ 3 px) with **equal steps** (≤ 3 %). Run a
+   frame-shuffled null: 125 chains real vs **0–1** shuffled.
+3. **hkl from the step, not the radius.** `step = ΔD·tan 2θ_hkl / px` depends on neither
+   BC nor Lsd, so each chain names its own reflection (116/125 within 2 %). The median
+   `step/predicted` is a free check of `px × ΔD` (1.0019).
+4. **Per-distance BC drift (β) — recoverable here, contrary to §6i.** If the detector
+   translation is not parallel to the beam, every ray's step vector gains the same
+   constant `w` px/step. With 2θ known, solve `|v_k − w| = step_pred(hkl_k)` over all
+   chains: `w_col` = +6.3 px/step, residual 3.76 → 0.72 px rms. §6i's "β is absorbed,
+   structurally" holds only when 2θ is unknown (a sample, not a calibrant).
+5. **zbc AND Lsd from the thin beam.** Every diffracting grain sits at the beam height, so
+   every ray, extrapolated upstream to the sample plane, passes through **one row**. Per
+   ray fit `row_i = a + b·D_i`; then `a_k = zbc_row + b_k·L₁` is **linear in (zbc_row, L₁)**
+   across rays with different vertical slopes. Result: row 4500 (zbc ≈ 99), L₁ = 6130 µm,
+   median residual 2.8 px vs **360–490 px** with slopes shuffled. It needs neither ybc nor
+   the beam on the detector.
+6. **ybc from grain positions.** Intersect each ray with the beam plane → the grain's lab
+   (x, y). Rotating back by ω, reflections of one grain must land on one sample-frame point;
+   scan the axis column for coincidences (both mirror classes; ω-shuffled null). Weak on
+   its own (27 vs 21 null here) — **cross-check the recovered grain positions against FF**
+   of the same calibrant: here (11, −5) and (−275, −423) µm vs FF (18, 8) and
+   (−253…−298, −382…−434). That match is the real evidence.
+7. **Bundle adjustment.** Fit all 8 coordinates of every merged reflection at once: L₁,
+   axis column, beam row, `w_col`, `w_row`, ΔD scale, grain (X, Y) per grain, η per ray.
+   `bt_20id_sep26`: L₁ = 6158 ± 4 µm, ybc(7 mm) 2646.2, zbc 94.1, drift (−6.32, −1.21)
+   px/step in MIDAS (y, z), ΔD scale 1.004, median residual 1.3 px. Emit Lsd, ybc, zbc
+   **per distance** from it; tilts start at 0 and are refined afterwards (§7c).
+
+Two things this does **not** give: absolute `px` (it is degenerate with L and ΔD as a
+common scale — carry px from a campaign that measured it) and the detector tilts (fit
+them in §7c on voxels this geometry reconstructs).
+
+**Validated once, on `bt_20id_sep26` (2026-09-28), tilts still 0.** At the bundle geometry the
+gold reconstructed: 30 voxels C ≥ 0.5 (max 0.86), neighbour misorientation median 0.27°,
+**30/30 voxels within 1° of the FF gold orientations** (random chance 0/2000), at the FF grain
+positions to 9–33 µm. The **single-parameter control** — identical run with only zbc put back
+to the scatter band's 237 — returned max C **0.10, zero voxels ≥ 0.5**. One campaign, one
+calibrant; treat the method as working, not as characterised. Lab Notebook §14.
 
 ---
 

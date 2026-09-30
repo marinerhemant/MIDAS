@@ -17,16 +17,16 @@ One whitespace-delimited `Key Value [Value…]` per line; `#` comments; blanks s
   (`midas_nf_pipeline/params.py:51-100`); `collect_multiline()` gets *all*
   (`:103-127`). `midas_nf_fitorientation` and `diffr_spots` instead **accumulate** `Lsd`,
   `BC`, `OmegaRange`, `BoxSize`, `RingsToUse` into per-distance lists
-  (`fitorientation/params.py:221-226`, `diffr_spots/params.py:75-109`). The pipeline's HKL
+  (`fitorientation/params.py:241-246`, `diffr_spots/params.py:78-114`). The pipeline's HKL
   stage deliberately uses the **last** `Lsd` line (`stages.py:30-40`).
 - **Multi-value keys** get a fixed float count and raise if short: `LatticeParameter`(6),
   `GridMask`(4), `BC`(2), `OmegaRange`(2), `BoxSize`(4), `BCTol`(2), `GridPoints`(12),
   `GridRefactor`(3) (`midas_nf_pipeline/params.py:32-41`).
 - **Everything else is stored as the first token only, as a string**
   (`midas_nf_pipeline/params.py:98-99`). `midas_nf_fitorientation` **silently skips
-  malformed lines** (`fitorientation/params.py:343-346`).
+  malformed lines** (`fitorientation/params.py:363-366`).
 - **Cheapest sanity check:** the fitorientation parser asserts `len(Lsd) == nDistances` and
-  `len(BC) == nDistances` and raises otherwise (`fitorientation/params.py:352-361`).
+  `len(BC) == nDistances` and raises otherwise (`fitorientation/params.py:372-381`).
 
 Annotated reference file: `NF_HEDM/Example/ps_au.txt` (2 distances, `Lsd 8289.154576` /
 `10290.724494`, `BC 985.415831 17.510494` / `985.161497 24.511210`, `px 1.48`,
@@ -38,7 +38,7 @@ Annotated reference file: `NF_HEDM/Example/ps_au.txt` (2 distances, `Lsd 8289.15
 | Key | Values / units | Read by |
 |---|---|---|
 | `LatticeParameter` | `a b c α β γ` — Å, deg | pipeline (`params.py:33`); HKL gen (`stages.py:175-178`); fitorientation (`params.py:265`); diffr-spots (`params.py:91`); mic2grains (`mic2grains.py:65-68`) |
-| `LatticeConstant` | alias | **only** fitorientation, diffr-spots and the H5 consolidator (`consolidate.py:130-134`). **Use `LatticeParameter`.** The pipeline's multi-value list contains `LatticeParameter` only (`params.py:33`), so writing `LatticeConstant` leaves `p["LatticeParameter"]` absent and the HKL stage raises `KeyError` (`stages.py:123`). Cost of using `LatticeParameter`: the consolidator greps for `LatticeConstant` only, so `/parameters/` carries no lattice. Cosmetic. |
+| `LatticeConstant` | alias | **only** fitorientation, diffr-spots and the H5 consolidator (`consolidate.py:133-137`). **Use `LatticeParameter`.** The pipeline's multi-value list contains `LatticeParameter` only (`params.py:33`), so writing `LatticeConstant` leaves `p["LatticeParameter"]` absent and the HKL stage raises `KeyError` (`stages.py:123`). Cost of using `LatticeParameter`: the consolidator greps for `LatticeConstant` only, so `/parameters/` carries no lattice. Cosmetic. |
 | `Wavelength` | Å | HKL gen, diffr-spots, fitorientation |
 | `SpaceGroup` | 1–230 | HKL gen, seed cache, `ParseMic`, mic2grains, diffr-spots, fitorientation |
 | `SGNr` | fallback alias | pipeline stages only (`stages.py:175, 264, 638`) |
@@ -65,7 +65,7 @@ Annotated reference file: `NF_HEDM/Example/ps_au.txt` (2 distances, `Lsd 8289.15
 | `OmegaStart` | deg — ω of the first frame. **See §2 for the sign.** | fitorientation |
 | `OmegaStep` | deg between **RAW** images (negative = CW). Not multiplied by `SumFrames` — the fit does that (§8j). **See §2.** | fitorientation |
 | `OmegaRange` | `min max` deg — one line per distance | fitorientation (list), diffr-spots (list), pipeline |
-| `StartNr` `EndNr` | frame numbers. **`EndNr` is OPTIONAL for NF** and derived as `StartNr + NrFilesPerDistance − 1`; the fitter takes frames/distance from `NrFilesPerDistance`, not from `EndNr−StartNr+1` (`fitorientation/params.py:204-221`, commit `60dcc94c`). Supply it by hand only if you want the inconsistency check. FF/PF still require it. | fitorientation |
+| `StartNr` `EndNr` | frame numbers. **`EndNr` is OPTIONAL for NF** and derived as `StartNr + NrFilesPerDistance − 1`; the fitter takes frames/distance from `NrFilesPerDistance`, not from `EndNr−StartNr+1` (`fitorientation/params.py:224-241`, commit `60dcc94c`). Supply it by hand only if you want the inconsistency check. FF/PF still require it. | fitorientation |
 | `NrFilesPerDistance` | **RAW** image count per distance — the one source of truth for frames/distance. Not divided by `SumFrames` (§8j). | image processing, pipeline, multi-layer offset, fitorientation |
 | `WFImages` | wide-field frames per layer, **excluded** from `NrFilesPerDistance` (`process_images/io.py:31-33`) | image processing |
 | `RawStartNr` | first raw file number; rewritten per sample layer | image processing, pipeline |
@@ -81,9 +81,9 @@ Arithmetic consistency check (derived from the example, **not enforced by code**
 | `GridSize` | µm — the hex **triangle edge**, NOT the voxel spacing. Nearest-neighbour pitch is **`GridSize/√3`** (measured: `GridSize 10` → 5.7735 µm; `GridSize 20` → 11.547 µm). Treating it as the pitch overstates areas by 3× and diameters by **1.73×**. Get the cell area from the grid itself (`hull area / n_voxels`), never from `GridSize²`. **Overwritten on disk each multi-resolution loop** (`workflows.py:373-376`) — `EdgeLength` is NOT, and stays 1 (verified: `grid.txt` col 5 = 0.5000 exactly, `%TriEdgeSize 1.000000` in the loop `.mic`) | hex grid; fitorientation (multipoint only) |
 | `EdgeLength` | µm — probe-triangle edge; `0`/absent ⇒ equals `GridSize` (`hex_grid/params.py:25-26`). **An independent knob — see below.** | hex grid |
 | `GridFileName` | default `grid.txt` | hex grid, fitorientation |
-| `GridMask` | 4 floats. The code filters grid columns 2 and 3, i.e. **x and y in µm** (`stages.py:345-370`). `ps_au.txt:89` labels them `ymin ymax zmin zmax`; **the code's meaning wins.** | pipeline `run_grid_mask` |
+| `GridMask` | 4 floats. The code filters grid columns 2 and 3, i.e. **x and y in µm** (`stages.py:351-376`). `ps_au.txt:89` labels them `ymin ymax zmin zmax`; **the code's meaning wins.** | pipeline `run_grid_mask` |
 | `GlobalPosition` | µm — written into the `.mic` header | `ParseMic`, consolidator |
-| `TomoImage` | path to a **square `uint8`** mask; side inferred from file size (`tomo_filter/filter.py:33-52`) | pipeline `run_tomo_filter` — **fixed**; the old path-vs-tensor defect is documented in `stages.py:327-331`. The `tomo-filter` CLI (§8b step 3) remains the way to re-run it standalone |
+| `TomoImage` | path to a **square `uint8`** mask; side inferred from file size (`tomo_filter/filter.py:33-52`) | pipeline `run_tomo_filter` — **fixed**; the old path-vs-tensor defect is documented in `stages.py:333-337`. The `tomo-filter` CLI (§8b step 3) remains the way to re-run it standalone |
 | `TomoPixelSize` | µm per tomo pixel | as above |
 
 #### Building a SYNTHETIC tomo mask (no tomography required)
@@ -198,13 +198,13 @@ allocation, with the triangle *count* unchanged (lab notebook R2).
 
 What it **does** change is everything downstream that reads `TriEdgeSize`, since
 the fitter writes `2·edge_half` into `.mic` column 5
-(`fit_orientation.py:524-526`):
+(`fit_orientation.py:532-534`):
 
 | consumer | uses `TriEdgeSize` as | effect when `EdgeLength` ≪ `GridSize` |
 |---|---|---|
 | `mic2grains` grain radius | `area = TriEdgeSize²·√3/4` (`mic2grains.py:294`) | the area of the *probe*, not of the lattice cell — smaller by `(GridSize/EdgeLength)²` |
 | `mic2grains` spatial merge (`doNeighborSearch 1`) | bins of side `1.01·TriEdgeSize`, edge added when `dist² < (2·TriEdgeSize)²` (`mic2grains.py:198-222`) | lattice neighbours are `GridSize/2`–`GridSize` apart, so `EdgeLength 1` on `GridSize 10` gives a 2 µm threshold that connects **nothing** — every voxel becomes its own grain. **Read from the code, not measured (§11).** |
-| soft-overlap splat σ, per-voxel path | `auto_sigma_px(edge_half, px)` (`fit_orientation.py:527`) | none in practice — `auto_sigma_px` clamps at 1.0 px (`soft_overlap.py:425`) and NF values sit below the clamp either way |
+| soft-overlap splat σ, per-voxel path | `auto_sigma_px(edge_half, px)` (`fit_orientation.py:535`) | none in practice — `auto_sigma_px` clamps at 1.0 px (`soft_overlap.py:430`) and NF values sit below the clamp either way |
 
 So: a small `EdgeLength` is the right choice when you want a sparse probe, and
 then `mic2grains` output describes the probe rather than the volume — read grain
@@ -220,9 +220,9 @@ edge track `GridSize` at every level.
 
 **Inconsistency between the two fit paths**, worth knowing before debugging a σ:
 the per-voxel path takes the splat σ from `grid.txt` column 5
-(`fit_orientation.py:527`), whereas `fit_multipoint` takes it from the paramfile
+(`fit_orientation.py:535`), whereas `fit_multipoint` takes it from the paramfile
 `GridSize` and never reads `edge_half` at all
-(`fit_multipoint.py:165`: `auto_sigma_px(p.grid_size_um/2.0, p.px, …)`). Set the
+(`fit_multipoint.py:174`: `auto_sigma_px(p.grid_size_um/2.0, p.px, …)`). Set the
 two keys differently and the paths disagree by construction; both clamp to 1.0 px
 at typical NF values, so it has not bitten yet.
 
@@ -236,16 +236,20 @@ head -2 grid.txt | tail -1 | awk '{print "edge_half =", $5}'
 
 ### 10f. Image processing
 
-All read by `midas_nf_preprocess.process_images` (`process_images/params.py:243-285`).
+All read by `midas_nf_preprocess.process_images` (`process_images/params.py:256-306`).
 
 | Key | Units | Meaning |
 |---|---|---|
-| `BlanketSubtraction` | counts (**float** since `4e90be80`; was int) | flat offset subtracted **after** the temporal median, then clamped at 0 (`process_images/pipeline.py:165-166`). An absolute count does not transfer between reductions — prefer `BlanketSigma` |
+| `BlanketSubtraction` | counts (**float** since `4e90be80`; was int) | flat offset subtracted **after** the temporal median, then clamped at 0 (`process_images/pipeline.py:165-184`). An absolute count does not transfer between reductions — prefer `BlanketSigma` |
 | `BlanketSigma` | multiples of σ | **the transferable threshold.** `threshold = BlanketSigma × σ_MAD` of the POST-denoise residual, measured **per layer**; overrides `BlanketSubtraction` when set (`4e90be80`, §8k). ~3.5σ was optimal across a 14-configuration catalog however it was reached |
-| `MedFiltRadius` | px | spatial median radius: `0` = identity, `1` = 3×3, `2` = 5×5 (`process_images/params.py:276`) |
+| `SpotDetect` | `log` \| `matched` \| `poisson` | detection backend, default `log`. `poisson` window-sums the UNTOUCHED residual against a per-pixel threshold from the LOCAL mean and robust (MAD) variance of that sum (negative binomial), for a fixed expected number of background false alarms per frame; no NLM. For sparse-count, dark-subtracted data (20-ID Oryx). Lab notebook §14g |
+| `PoissonFPPerFrame` | pixels/frame | expected background false-alarm pixels per frame (default `5`, strict). On PUR #255 the budget trades gain for cleanliness: `5` gives 1.3x the threshold-8 voxels at C ≥ 0.8, `50000` gives 7.3x (81 % of threshold-4's gain; 92-97 % on two held-out layers) with static overlap 3.3 % (H5) / 1.8 % (HAO) |
+| `PoissonWindow`, `PoissonMinPx` | px | window edge of the sum (`3`) and the smallest kept blob (`4`) |
+| `PoissonRateFrames`, `PoissonRateSmooth`, `PoissonClip`, `PoissonRobustVar` | frames, px, counts/px, 0/1 | frames sampled for the mean/variance maps (`60`), their box smoothing (`9`; 9 vs 32 made no difference to detection on PUR), per-pixel clip for the estimate (`0` = auto), and MAD-based variance (`1`, recommended: the plain variance read 22.8 var/mean in a busy band against 2.7 robust) |
+| `MedFiltRadius` | px | spatial median radius: `0` = identity, `1` = 3×3, `2` = 5×5 (`process_images/params.py:296`) |
 | `GaussFiltRadius` | px | maps to the LoG `sigma` field — the *name* is `GaussFiltRadius`, the field is `sigma` |
 | `LoGMaskRadius` | px | LoG kernel half-width |
-| `DoLoGFilter` | 0/1 | `0` labels connected components of `img > 0` directly (`pipeline.py:180-195`). **Not a simple "always 1"** — LoG can suppress genuine weak peaks, so weak-signal samples are run with `0` and tolerate the cosmics. See the decision table in §5b. Changing it requires regenerating `SpotsInfo.bin`. |
+| `DoLoGFilter` | 0/1 | `0` labels connected components of `img > 0` directly (the `do_log_filter` branch, `midas_nf_preprocess/process_images/pipeline.py:503-511`). **Not a simple "always 1"** — LoG can suppress genuine weak peaks, so weak-signal samples are run with `0` and tolerate the cosmics. See the decision table in §5b. Changing it requires regenerating `SpotsInfo.bin`. |
 | `OrigFileName` / `ReducedFileName` | stem | input / reduced stems |
 | `extOrig` / `extReduced` | e.g. `tif` / `bin` | extensions. **`extOrig` also selects the reader**: `tif`/`tiff` = one file per FRAME (1-ID); `h5`/`hdf5`/`hdf`/`nxs` = one file per DETECTOR DISTANCE, all frames inside (20-ID) — see below |
 | `DataLoc` | HDF5 path | dataset holding the frames; default `exchange/data` (DXchange). Ignored for TIFF |
@@ -299,7 +303,7 @@ pixel count up 0.1–3.8 %.
 That is one row band of one distance of one scan, and a median biased high suppresses weak
 spots **silently**. Hence the default stays at all frames. Provenance:
 `$ANALYSIS/nfdev_jul26_20id/validate_h5_reader.py`.
-| `WriteFinImage` | 0/1 | forced to 1 when `Deblur != 0` (`process_images/params.py:229`) |
+| `WriteFinImage` | 0/1 | forced to 1 when `Deblur != 0` (`process_images/params.py:242`) |
 | `Deblur`, `WriteLegacyBin` | 0/1 | |
 | `SoftTemperature` | float or `auto` | **Python extension, not in the C** — sigmoid temperature for the differentiable spot-probability surrogate (`params.py:14-18`) |
 | `NLMDenoise` | 0/1 | NLM on the median-corrected residual, before `BlanketSubtraction` (§8f) |
@@ -312,11 +316,11 @@ spots **silently**. Hence the default stays at all frames. Provenance:
 | Key | Values / units | Read by |
 |---|---|---|
 | `MinFracAccept` | 0–1 | phase-1 screen threshold; also a `MinConfidence` fallback in `mic2grains` (`mic2grains.py:80-83`). `ps_au.txt:124` suggests **0.1 seeded / 0.04 unseeded / 0.01 deformed** |
-| `OrientTol` | deg | phase-2 search box per seed (`fit_orientation.py:466-470`). Default 1.0 |
+| `OrientTol` | deg | phase-2 search box per seed (`fit_orientation.py:474-478`). Default 1.0 |
 | `ExcludePoleAngle` | deg | diffr-spots, fitorientation |
 | `BoxSize` | 4 floats µm, relative to beam centre — one line per distance | diffr-spots (list), fitorientation (list) |
 | `MinConfidence` | 0–1 | `mic2grains`; fitorientation; the multi-resolution bad-voxel filter `_filter_bad_voxels` (`workflows.py:145-170`) |
-| `NrOrientations` | count | diffr-spots. **The pipeline overwrites it** from the seed-file line count (`stages.py:256-262`). Cubic-high cache = 243129 lines, matching `ps_au.txt:140` |
+| `NrOrientations` | count | diffr-spots. **The pipeline overwrites it** from the seed-file line count (`stages.py:261-268`). Cubic-high cache = 243129 lines, matching `ps_au.txt:140` |
 | `SeedOrientations` | path to the comma-separated `w,x,y,z` CSV (`seed_orientations/io.py:24-38`) | diffr-spots, pipeline |
 | `SeedOrientationsAll` | path — the full unseeded library. **Required for multi-resolution** (`workflows.py:360-364`) | pipeline |
 | `GrainsFile` | FF `Grains.csv`; rewritten per refinement loop | pipeline FF-seed stage |
@@ -342,7 +346,7 @@ plane 5), `MicFileBinary` (filename), `MicFileText` (see below).
 > `[Microstructure, Microstructure.AllMatches, Microstructure.map, …]`.
 
 Calibration tolerances, all read by `midas_nf_fitorientation`
-(`fitorientation/params.py:276-289, 328-340`). Each becomes an
+(`fitorientation/params.py:296-309, 328-340`). Each becomes an
 `x = x0 + tol*tanh(u)` box so the refined value cannot leave the box
 (`packages/midas_nf_fitorientation/README.md:40-42`):
 
@@ -404,7 +408,7 @@ Verified by grepping every `.py` under `packages/midas_nf_*` and `packages/midas
 read. `PrecomputedSpotsInfo` (added by the fitorientation integration test's patched
 paramfile, `tests/integration/test_vs_c_fit_orientation.py:119`) is likewise unread.
 `Ice9Input` is explicitly **deprecated and silently ignored**
-(`fitorientation/params.py:319-322`). Leaving them in is harmless; expecting them to do
+(`fitorientation/params.py:339-342`). Leaving them in is harmless; expecting them to do
 anything is not.
 
 ---

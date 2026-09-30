@@ -8,7 +8,7 @@ exonerate the cause it names does not belong here — it turns the report into a
 confirming whatever its author already believed. Where an entry's alternative is another
 entry, it says which.
 
-Twelve entries; entries 6–12 (seven of twelve) came out of the three 20-ID HT-HEDM
+Thirteen entries; entries 6–13 (eight of thirteen) came out of the 20-ID HT-HEDM
 campaigns and are marked **[20-ID]**. This grows the day someone works out what a strange
 plot meant, written the same day (`beamreport` SPEC §6).
 
@@ -152,6 +152,31 @@ which sits above the pedestal, so the pedestal itself is admitted as signal.
 **Lever.** Set `PixelScale` and let the reader divide — never divide in an analysis
 script, or the paramfile and the plots disagree about what a count is. Never inherit the
 value from another scan. §3h, §5d, §10f, Lab Notebook §8b.
+
+## Every geometry you try on the calibrant sits at the same noise floor **[20-ID]**
+
+symptom: geometry.all_noise
+
+**Test.** Two raw checks, both able to exonerate the geometry:
+
+1. **Is the zbc you used actually the beam?** Print the row profile of the per-pixel median
+   frame. A direct-beam stripe is thousands of counts. A band a few counts above the floor,
+   with ~0 counts below it, is scatter at a beamstop edge and the beam itself is hidden.
+   If the stripe is strong, this entry does not apply.
+2. **Do real rays exist?** max − median over ~20 frames, all distance files side by side.
+   If a reflection sits at the same frame in every file and walks outward in equal steps,
+   the data are fine and the geometry is wrong. If nothing walks, suspect the reduction or
+   the scan, not the geometry (see "The background reads as signal").
+
+**Cause.** A zbc taken from something other than the beam. On `bt_20id_sep26` a 2-count
+band gave zbc 237 against a true ~94 (138 px); every gold reconstruction (47 of them:
+distance hypotheses, triangulations, convention variants, two grid scans) returned max C
+0.06–0.20 because all of them shared that zbc. Scanning Lsd and ybc cannot fix a wrong zbc,
+and a triangulation seeded on it inherits the bias (Lsd 5480 instead of 6130–6158 µm).
+
+**Lever.** Get zbc, Lsd and per-distance BC from the calibrant's own rays (phase-3 §6i-quater):
+the thin beam puts every grain at one height, so all rays share one sample-plane row.
+Do NOT extend the grid scan. Phase-3 §6i-quater; hard rule 13.
 
 ## A fitted `Lsd` or lattice parameter disagrees wildly with the other distances **[20-ID]**
 

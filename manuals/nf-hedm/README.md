@@ -16,7 +16,7 @@ failure mode.
 **Scope.** The metadata recipes (§3a–§3g) assume **1-ID**. 20-ID-D HT-HEDM is a different
 acquisition, detector and file format, and has its own route in §3h — the reduction runs
 on its HDF5 directly (`extOrig h5`), so the two blockers that used to close that door are
-gone. **The ω sign at 20-ID is now settled too** — `aero`, negated, the same convention as
+gone. **The ω sign at 20-ID-D is now settled too** — `aero`, negated, the same convention as
 1-ID, determined by the instrument scientist on 2026-08-28 (§2a). The mirror-ambiguity
 label that every 20-ID map used to carry is **retired**; do not re-apply it. Both 1-ID and
 20-ID-D are in scope end to end.
@@ -110,11 +110,12 @@ seems wrong:**
 
 | Condition | Why you cannot decide it yourself |
 |---|---|
-| par field 9 is **not** `aero` | no other value's ω sign has ever been established here (§2, §11) |
+| par field 9 is **neither** `aero` **nor** `ramsrot` | no other value's ω sign has ever been established here (§2, §11). `aero` is negated; `ramsrot` (RAMS-III load frame) is counterclockwise and used as logged (§2b) |
 | no folder with `FileCount.txt` + `fastsweep_Emon.txt` + `*_SequenceOfEvents.log` | you cannot write a paramfile at all (§3a) |
 | the data is 20-ID and `np.unique` on a frame was **not** run | `PixelScale` is per SCAN and is never inferred. Unchecked, the threshold is 64× wrong and the pedestal reads as signal (§3h, §5d, §10f) |
 | any beamline **other than 1-ID or 20-ID** | the `2047 − index` BC convention encodes *this* detector; getting it wrong mirrors the microstructure invisibly. Re-derive it the way §3h did — both masks from one reduction — rather than inheriting it |
 | any package **below floor** after §1 | `SumFrames` units inverted; a mixed resolve is silently wrong (§1, §8j) |
+| no DetZBeamPos scan **and** the "beam stripe" is within a few counts of the floor | it is not the beam. A 2-count scatter band at a beamstop edge was used as zbc on `bt_20id_sep26`: 138 px off, 47 gold reconstructions at noise. Get zbc, Lsd and per-distance BC from the calibrant's own rays instead (§6i-quater) |
 | `fit_axis(...).is_reliable` is **False** | the shadow tracker refused — branch on it, do not override (§6e) |
 | both ybc routes fail | ybc is **not measurable from this scan**; inheriting it is a decision, not a default (§6e) |
 | the specimen is extended / irregular and you need a particle position | `position_candidates_um` and `triangulate` both assume compact; mask the annulus instead (§6e, §6i) |
@@ -131,6 +132,9 @@ proceed. Everything not blocked by it should still be finished first.
    is `aero`, then **ω_MIDAS = −ω_aero** and the paramfile needs the *negated* sweep. Get
    this wrong and the reconstruction is **mirrored**, which is **not detectable from the
    `.mic` alone**. This is step 1 of every new dataset, no exceptions.
+   **`ramsrot`** (the RAMS-III load-frame stage) is the opposite case: it turns
+   **counterclockwise**, so ω is used **as logged, not negated** — determined 2026-09-21 by
+   the instrument scientist (§2b).
 
    > **At 20-ID there is no `.par` file, and the sign was settled by the beamline instead
    > (§2a).** Determined 2026-08-28, instrument scientist: the stage is `aero` and the sign
@@ -165,7 +169,7 @@ proceed. Everything not blocked by it should still be finished first.
    that made it unusable are fixed. Pass `--fit-gpus 0,1` or the fit uses one GPU while
    the rest idle. (Older notes saying "do not use it" are stale; lab notebook §2.)
 6. **`--all-layers` is mandatory** on `process-images`; without it only the last detector
-   distance's bits survive (`process_images/pipeline.py:229-243`,
+   distance's bits survive (`process_images/pipeline.py:259-273`,
    `process_images/cli.py:57-60`).
 7. **Read `TriEdgeSize` from column 5 of a data row, never from the `%TriEdgeSize` header**
    (§9a).
@@ -181,7 +185,11 @@ proceed. Everything not blocked by it should still be finished first.
 12. **Never borrow the beam tilt β between beamtimes (§6f).** Measure it from that
     beamtime's own DetZBeamPos scan. Borrowing it was wrong by 62× in y.
 13. **BC comes from DetZBeamPos; Lsd comes from spots (§6a).** Neither measurement can give
-    the other's quantity. Run DetZBeamPos first.
+    the other's quantity. Run DetZBeamPos first. **If there is no DetZBeamPos scan and the
+    direct beam is not on the detector, a calibrant measured at ≥ 3 distances gives both from
+    its rays (§6i-quater)** — zbc from the thin-beam common intercept, BC drift from the
+    known-2θ step lengths. Never take zbc from a stripe you have not checked is thousands of
+    counts.
 14. **Confidence 1.0 does NOT mean the geometry is right (§7b).** It is a *plateau*: on real
     Au data, `ty` seeds 2 deg apart all reach exactly 1.0000. Never close out a calibration
     on the confidence number alone.
@@ -235,6 +243,18 @@ distrusting your own run, and they are the ones a context-free session skips:
     this distinguished `tx`/`tz` (real, sharp constraint, genuine zero) from `ty` (the
     objective is ~26× less sensitive to it — the seed value means nothing) even with both
     grains sampled and the correct hard objective. Diagnosis reference, lab notebook §13.
+
+26. **Accept a geometry refinement only if the FULL MAP at a fixed grid gets better.** A
+    multi-point fit on ~10 voxels raised its own overlap (0.737 -> 0.755 on gold, 0.947 ->
+    0.955 on one sample) while the full map got worse both times (gold: 30 -> 18 voxels at
+    C >= 0.5; sample: 593 -> 291 at C >= 0.5, 99 -> 8 at C >= 0.8). The fit tunes to its voxels.
+    Compare voxel counts at C >= 0.5 and 0.8 at one grid size, plus the FF or neighbour
+    check, before adopting any refined Lsd / BC / tilts. Lab notebook §14.
+27. **Median subtraction does not remove the static background of sparse-count data.** On
+    dark-subtracted 20-ID frames ~90 % of pixels have a temporal median of 0, so a static
+    pattern (0.1-0.45 counts/px at the 9-px scale, up to ~25 % of the local mean) survives
+    the median and shows up as peakless, omega-fixed blobs once the threshold drops. Check
+    with the omega+180 overlap of the detected mask (real spots do not return). Lab notebook §14.
 
 ### Traps that silently corrupt results
 
@@ -296,7 +316,7 @@ reconstruction were launched before the geometry existed (lab notebook §7f, F0)
 
 | # | Step | Where | Notes |
 |---|---|---|---|
-| 0 | **BC per distance.** Use a separate `DetZBeamPos` scan if one exists; otherwise use the direct beam on the detector. Also: use the sample **shadow** to establish how many particles there are, and get the initial `tx` guess. | §6a-§6f, §3h | zbc from the beam stripe; **ybc needs the shadow** — the beam's horizontal width is slit-defined (§6e) |
+| 0 | **BC per distance.** Use a separate `DetZBeamPos` scan if one exists; otherwise use the direct beam on the detector; if neither (beam blocked), the calibrant ray bundle (§6i-quater). Also: use the sample **shadow** to establish how many particles there are, and get the initial `tx` guess. | §6a-§6f, §3h | zbc from the beam stripe; **ybc needs the shadow** — the beam's horizontal width is slit-defined (§6e) |
 | 1 | **Distance triangulation.** The only external input needed is **ΔD, the change in distance between successive positions.** | §6i / §6i-bis | Absolute `Lsd` is NEVER taken from the DetZ readback (hard rule 10) |
 | 2 | **Process all images → `SpotsInfo.bin`.** | §8b step 5, §3h | **Geometry-independent** (§8e), so it can run in parallel with steps 0-1 |
 | 3 | **Parameter optimisation on ONE voxel** known to be inside the sample (from the shadow). | §7c, §7d | See the two hard rules below |

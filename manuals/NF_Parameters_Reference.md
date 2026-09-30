@@ -79,7 +79,7 @@ Data between executables flows through **binary files** (`SpotsInfo.bin`,
 | `tx`        | double     | deg    | 0       | yes      | Detector rotation about beam axis. Shared across distances. |
 | `ty`        | double     | deg    | 0       | yes      | Detector rotation about horizontal axis. |
 | `tz`        | double     | deg    | 0       | yes      | Detector rotation about vertical axis. |
-| `Wedge`     | double     | deg    | 0       | no       | Wedge angle. |
+| `Wedge`     | double     | deg    | 0       | no       | Rotation-axis wedge angle — the SAME parameter, sign and sample frame as FF (see `Wedge` in [FF_Parameters_Reference.md](FF_Parameters_Reference.md)): axis = (−sin W, 0, cos W), G_lab = R_y(−W)·R_z(ω)·O·g, so a `.mic` orientation equals the FF `Grains.csv` matrix of the same crystal. Also read by `midas-nf-preprocess` diffr_spots (it was ignored there before 2026-09). |
 | `px`        | double     | µm     | —       | yes      | Pixel size (square). |
 | `NrPixels`  | int        | pixels | 2048    | yes      | Square detector shortcut: sets both `NrPixelsY` and `NrPixelsZ`. |
 | `NrPixelsY` | int        | pixels | `NrPixels` | no   | Detector Y pixel count. |

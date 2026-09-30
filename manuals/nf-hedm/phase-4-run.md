@@ -30,12 +30,15 @@ zeroes the whole file on open (lab notebook §3c).
 
 **Three things that bite on first invocation** (all hit on `bt_20id_jul26b`, 2026-08-01):
 
-1. **`export MIDAS_NF_SEED_DIR=<…>/NF_HEDM/seedOrientations`.** The seed stage re-derives
-   the cache path from the *install* directory (`from_cache.py:106`), which in a conda env
-   resolves to `…/lib/python3.11/../NF_HEDM/seedOrientations` and does not exist. It dies
-   with `SeedCacheNotFound` **after** writing `hkls.csv`, so the run looks like it started
-   fine. Passing `--seed-dir` to the standalone `seed-orientations` command does *not* help
-   — the orchestrator calls the loader itself.
+1. **`export MIDAS_NF_SEED_DIR=<…>/NF_HEDM/seedOrientations`** (or build a per-user cache; see
+   `phase-0-setup.md` "Seed cache"). The seed stage searches `--install-dir`, the env var, the
+   source-tree cache and `~/.cache/midas/nf_seed_orientations`
+   (`midas_nf_preprocess/seed_orientations/from_cache.py:79-86`), and if none exists it
+   generates seeds from scratch: the run proceeds, but with a different seed count than the
+   cache (cubic 251 545 against 243 129). Before midas-nf-pipeline 0.7.1 the orchestrator never
+   read the env var or the user cache. Passing `--seed-dir` to the standalone
+   `seed-orientations` command does *not* change what the orchestrator uses; the orchestrator
+   calls the loader itself.
 2. **The driver works inside `<OutputDirectory>/LayerNr_<N>/`, not `OutputDirectory`.**
    With `--no-image-processing` you must put `SpotsInfo.bin` (or a symlink) *there*, not in
    the parent. `rf=…/LayerNr_1` appears in the first few log lines — read it.
@@ -127,10 +130,10 @@ midas-nf-pipeline consolidate out.mic --paramFN params.txt --output out_consolid
 ```
 
 Seed cache: `NF_HEDM/seedOrientations/`, overridable with `$MIDAS_NF_SEED_DIR` or
-`--seed-dir` (`from_cache.py:36-49`). Fully populated in this checkout:
+`--seed-dir` (`from_cache.py:79-86`). Fully populated in this checkout:
 `seed_cubic_high.csv` 243129 rows, `seed_hexagonal_high.csv` 486755 rows. The
 `orientations_master.bin` + `lookup_<type>.bin` fallback is present too
-(`from_cache.py:64-82`).
+(`from_cache.py:134-145`).
 
 Fit-orientation flags (`midas_nf_fitorientation/cli.py:33-63`): `--device {auto,cpu,cuda}`,
 `--fp32`, `--screen-only`, `--verbose`, `--lbfgs-max-outer N` (20), `--lbfgs-max-iter N`
@@ -140,7 +143,7 @@ knob).
 
 `nm-triton` is **not** a CLI choice (`midas_nf_fitorientation/cli.py:47-48`). It is
 auto-selected when `--refine nm-batched` **and** device is CUDA **and** Triton is
-importable **and** the obs volume is bit-packed (`fit_orientation.py:370-377`).
+importable **and** the obs volume is bit-packed (`fit_orientation.py:378-385`).
 
 Manual sharding: block *b* of *nBlocks* covers voxels
 `[ceil(N/nBlocks)*b, min(ceil(N/nBlocks)*(b+1), N-1)]` (`io.py:236-245`). **Multi-process
@@ -199,7 +202,7 @@ Everything is **flat** in `OutputDirectory` (fallback `DataDirectory`, then cwd 
 | `SpotsInfo.bin` | image processing | bit-packed int32 spot mask (`process_images/spots_io.py:90-96`: sized `nDistances * NrFilesPerDistance * NrPixelsY * NrPixelsZ` bits) |
 | `<MicFileBinary>` | fitting | 11 f64/voxel at offset `voxel_idx*88` (`fitorientation/output.py:32-56`) |
 | `<MicFileBinary>.AllMatches` | fitting | `7 + 4*SaveNSolutions` f64/voxel (`output.py:92`, `parse_mic.py:585`) |
-| `screen_cpu.csv` | fitting with `--screen-only` | phase-1 dump (`fit_orientation.py:310`) |
+| `screen_cpu.csv` | fitting with `--screen-only` | phase-1 dump (`fit_orientation.py:316`) |
 | `<MicFileText>` (**no suffix added**) + `<MicFileText>.AllMatches` `.map` `.map.kam` `.map.grainId` `.map.grod` | `ParseMic` | §9 |
 | `<base>_pipeline.h5` | `PipelineH5` | provenance + completed stages |
 | `<base>_consolidated.h5` | consolidator | §9c |
@@ -211,7 +214,7 @@ friends (`workflows.py:81-97`), `<MicFileBinary>.seeded_backup`, `.unseeded_back
 ### 8e. Multi-phase samples — reduce ONCE, fit once per phase
 
 **The NF path fits one phase per run.** `NumPhases` and `PhaseNr` are forwarded
-only to `parse_mic` (`stages.py:618-626`); `diffr-spots` and `fit-orientation`
+only to `parse_mic` (`stages.py:655-663`); `diffr-spots` and `fit-orientation`
 each read a single `LatticeParameter`/`SpaceGroup`. A two-phase sample therefore
 needs two paramfiles and two runs.
 
@@ -404,9 +407,9 @@ OmegaStep -0.1                  # RAW step  — NOT multiplied by SumFrames
 
 The code derives the rest at the single place that needs it: the fit uses
 `omega_step_raw × SumFrames` and `NrFilesPerDistance // SumFrames`
-(`midas_nf_fitorientation/params.py:186-221`), and the reduction reads
+(`midas_nf_fitorientation/params.py:206-241`), and the reduction reads
 `NrFilesPerDistance` raw files per distance on a stride independent of `SumFrames`
-(`process_images/io.py:29-35`, `process_images/params.py:152-166`). `SumFrames` must
+(`process_images/io.py:29-35`, `process_images/params.py:152-167`). `SumFrames` must
 divide `NrFilesPerDistance`, enforced with a named error (`params.py:167-175`).
 
 > **This convention INVERTED on 2026-08-04** (`a7c50926`, `60dcc94c`). It used to be the
@@ -420,7 +423,7 @@ divide `NrFilesPerDistance`, enforced with a named error (`params.py:167-175`).
 > `midas_nf_preprocess/tests/process_images/test_sum_frames_internal.py`.
 
 `process-images` measures the ω width itself and logs the `SumFrames` it implies
-(`process_images/pipeline.py:471-506`) — read that line rather than guessing N.
+(`process_images/pipeline.py:551-586`) — read that line rather than guessing N.
 
 ### 8k. How low can `BlanketSubtraction` go — measure, do not guess
 
@@ -517,10 +520,10 @@ packed costs one **bit** per pixel, i.e. 32× less.
 
 | entry point | `packed` | source |
 |---|---|---|
-| `midas-nf-fit-orientation` | **True** (v0.4 default) | `fit_orientation.py:284-292` |
+| `midas-nf-fit-orientation` | **True** (v0.4 default) | `fit_orientation.py:290-298` |
 | `midas-nf-fit-parameters` | `False` — dense | `fit_parameters.py:85-92` |
-| `midas-nf-fit-multipoint --objective soft` | `False` — dense | `fit_multipoint.py:259-265` |
-| `midas-nf-fit-multipoint` (default `--objective hard`) and `midas-nf-pipeline refine-params --multi-point --objective hard` | **True**, uint8 | `fit_multipoint.py:641-646` |
+| `midas-nf-fit-multipoint --objective soft` | `False` — dense | `fit_multipoint.py:274-280` |
+| `midas-nf-fit-multipoint` (default `--objective hard`) and `midas-nf-pipeline refine-params --multi-point --objective hard` | **True**, uint8 | `fit_multipoint.py:789-794` |
 
 > **`midas-nf-fit-multipoint` has `--objective {hard,soft}` from 0.9.3, default `hard`.** Before
 > 0.9.3 it had no such flag and unconditionally ran `fit_multipoint_run`, the **soft, dense** path,

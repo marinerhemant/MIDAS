@@ -186,10 +186,18 @@ package reads `NrFilesPerDistance`/`OmegaStep` as raw and another as post-sum �
 Then **run the floor gate above** and read its output. It is the check that catches this;
 do not infer a good install from `pip install` exiting 0.
 
-**Seed cache.** The orchestrator re-derives the cache path from the *install* directory
-(`from_cache.py:106`), which in a conda env resolves to a `NF_HEDM/seedOrientations` that
-does not exist — it then dies with `SeedCacheNotFound` **after** writing `hkls.csv`, so the
-run looks like it started fine (§8a). Set it explicitly:
+**Seed cache.** The seed stage searches, in order: the `--install-dir` cache (only if
+`<install>/NF_HEDM/seedOrientations` exists), `$MIDAS_NF_SEED_DIR`, the source-tree
+`NF_HEDM/seedOrientations`, and the per-user cache `~/.cache/midas/nf_seed_orientations`
+(`midas_nf_preprocess/seed_orientations/from_cache.py:79-86`), and logs every directory it
+searched. If none holds a cache it **generates seeds from scratch** (about a minute, and a
+slightly different count from the cache: cubic 251 545 against the cache's 243 129), so a run
+still starts but with different seeds. Before midas-nf-pipeline 0.7.1 the orchestrator never
+read the env var or the user cache (a non-None `seed_dir` made the loader search only that
+directory), so every pip-only install regenerated its seeds. Build a cache once with
+`midas-nf-preprocess seed-orientations --method cache --space-group <SG> --build-cache
+--output seeds.csv` (`build_seed_cache`, `midas_nf_preprocess/seed_orientations/from_cache.py:146`).
+To reproduce an earlier run exactly, point the stage at the same cache. Set it explicitly:
 
 ```bash
 export MIDAS_NF_SEED_DIR=<path-to-MIDAS-checkout>/NF_HEDM/seedOrientations

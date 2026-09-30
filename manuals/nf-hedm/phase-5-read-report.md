@@ -60,7 +60,7 @@ Unassigned pixels: `-15` in `.map` (`parse_mic.py:306`), `0` in the single-plane
 
 ### 9c. The consolidated HDF5 — and its four mislabelled datasets
 
-Written by `generate_consolidated_hdf5` (`consolidate.py:185`) on `PipelineH5`
+Written by `generate_consolidated_hdf5` (`consolidate.py:188`) on `PipelineH5`
 (`state.py:71`); arrays gzip-4 (`state.py:33`).
 
 ```
@@ -89,7 +89,7 @@ Written by `generate_consolidated_hdf5` (`consolidate.py:185`) on `PipelineH5`
 
 Resolution labels: `loop_0_unseeded`, `loop_<k>_{seeded,unseeded,merged}`
 (`workflows.py:348-352, 424-428, 509-514, 534-540`). `/grains/`, `/all_matches/`, `/grid/`
-are written **only for the root pass** (`consolidate.py:253, 276, 283`).
+are written **only for the root pass** (`consolidate.py:256, 276, 283`).
 
 **`/raw_data_ref/` does not exist here — and as of 2026-09-01 it is not written
 anywhere in the tree.** `packages/midas_nf_pipeline/USAGE.md:197-204` still advertises
@@ -100,7 +100,7 @@ no-op (FF consolidation runs upstream through `midas-process-grains`), so a grep
 `packages/` for `raw_data_ref` now returns nothing. Treat the USAGE.md paragraph as
 stale documentation, not as a group you should expect to find.
 
-**The four mislabelled datasets** (`consolidate.py:238-250`, repeated at `:330-340`):
+**The four mislabelled datasets** (`consolidate.py:241-253`, repeated at `:330-340`):
 
 | dataset name | column written | what that column actually is |
 |---|---|---|
@@ -116,7 +116,7 @@ dataset back into the column index it came from, so the viewer round-trips
 self-consistently. Any other consumer that trusts the names reads the wrong quantity.
 
 **`/grains/` is not grains — re-verified 2026-07-29.** `aggregate_grains`
-(`consolidate.py:153-176`):
+(`consolidate.py:156-179`):
 
 ```python
 valid = mic_data[:, 10] > 0          # consolidate.py:157   confidence filter
@@ -274,7 +274,7 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
    (`mic2grains.py:365-373, 294`); the downstream effect was not measured on a real run.
 6. **Whether the C `ProcessImagesCombined` behaved differently when invoked per distance**
    — the C was not read. The `--all-layers` rule (hard rule 6) is established from the
-   Python (`process_images/pipeline.py:229-243`, `cli.py:57-60`) only.
+   Python (`process_images/pipeline.py:259-273`, `cli.py:57-60`) only.
 7. **`FileCount.txt` fields 13, 14 and 18–23** were not identified. f13 = 0.02, f14 = 735.42,
    f18 ≈ image count offset, f22/f23 = 721 for Au4. Only f10, f11, f12, f15, f16, f17 are
    established.
@@ -296,7 +296,7 @@ unless `MIDAS_RUN_INTEGRATION=1`; `test_mic2grains` also skips if the C binary i
     grid produced 5012 text rows; the drop rule is documented (§9a) but the specific
     count was not reconciled against the writer.
 15. **The `EdgeLength` ≪ `GridSize` consequences in §10e** were read out of
-    `mic2grains.py:198-222, 294` and `fit_orientation.py:524-527`, **not measured on a
+    `mic2grains.py:198-222, 294` and `fit_orientation.py:532-535`, **not measured on a
     run.** That `EdgeLength` cannot move the voxel count or positions *is* solid — it
     follows directly from `hex_grid/grid.py:97-153`, where the lattice terms contain
     `grid_size` only. The specific claim that a 2 µm merge threshold connects nothing on a

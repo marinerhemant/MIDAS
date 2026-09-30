@@ -21,8 +21,9 @@ Decision:
 | field 9 reads | meaning | action |
 |---|---|---|
 | `aero` / `Aero` | **recorded ω is opposite to MIDAS convention: ω_MIDAS = −ω_aero** | negate both `OmegaStart` and `OmegaStep` relative to the log |
+| `ramsrot` | RAMS-III load-frame stage; turns **counterclockwise**, same sense as MIDAS: **ω_MIDAS = +ω_logged** | use `OmegaStart` / `OmegaStep` **as logged, not negated** (§2b) |
 | anything else | not established by this session | **stop and ask.** Do not assume it matches MIDAS |
-| **no `.par` file exists** | you are not at 1-ID | 20-ID: **§2a** — settled, `aero`, negated. Any other beamline: **stop and ask** |
+| **no `.par` file exists** | you are not at 1-ID | 20-ID-D (the only NF station at 20-ID): **§2a** — settled, `aero`, negated. Any other beamline: **stop and ask** |
 
 Worked example, verified (`bt_1id_jun25`, copland):
 
@@ -49,6 +50,12 @@ OmegaStep -0.25
 **Corroboration inside the repo:** the bundled reference paramfile already carries exactly
 this pair — `ps_au.txt:65` `OmegaStart 180`, `ps_au.txt:66` `OmegaStep -0.25` — for a
 360° Au scan (1440 frames × 0.25°, `ps_au.txt:70-74`).
+
+### 2b. `ramsrot` (1-ID RAMS-III load frame) — counterclockwise, not negated
+
+Determined 2026-09-21, instrument scientist (H. Sharma): the 1-ID RAMS-III load-frame stage `ramsrot` always turns **counterclockwise**, the MIDAS sense, so ω is used **as logged**. First applied to `datasetI` (NF and FF), whose 2021 paramfiles already carried the un-negated sweep.
+
+Example, `datasetI` s6 NF: the macro logs `sweep stage -90 -30 240 0.6` … `30 90`, so the paramfile takes `OmegaStart -90` / `OmegaStep 0.25` (§8j: first frame actually used). The same beamtime's FF sweep −180 → +180 at +0.25 is likewise used as logged. **Do not negate `ramsrot` by analogy with `aero`.** Read field 9 **per scan prefix**, not per beamtime: if a calibrant was ever logged on `aero` and the sample on `ramsrot`, their two paramfiles need **opposite** signs. (In `datasetI` every row, Au included, is `ramsrot`.)
 
 ### 2a. At 20-ID-D there is no `.par` file — the sign came from the beamline
 
@@ -231,8 +238,8 @@ idx = RawStartNr + (L-1)*WFImages + (L-1)*NrFilesPerDistance + j     j in [0, Nr
 
 **Trap: in `process_images`, "layer" means DETECTOR DISTANCE, not sample layer.** The
 argument is spelled `layer_nr`/`LayerNr` throughout, but `process_all` defaults it to
-`range(1, n_distances+1)` (`process_images/pipeline.py:259-260`) and `layer_nr-1` indexes
-the *distance* axis of the bitmask (`process_images/pipeline.py:237-238`). Sample layers
+`range(1, n_distances+1)` (`process_images/pipeline.py:289-290`) and `layer_nr-1` indexes
+the *distance* axis of the bitmask (`process_images/pipeline.py:267-268`). Sample layers
 are handled entirely by rewriting `RawStartNr` (§8c).
 
 ### 3e. Folder-name conventions

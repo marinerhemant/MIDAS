@@ -24,7 +24,7 @@ loaded: scope gate, install gate, the order of operations (confirmed with the in
 scientist), the hard rules, and the halt conditions. It carries an index saying which file
 holds which section; open those as you reach them.
 
-## Five things to know before you start
+## Nine things to know before you start
 
 1. **Run the floor gate first** (spine §1). `SumFrames` **inverted** its unit convention:
    `NrFilesPerDistance` and `OmegaStep` are now RAW, and a mix of package versions reads
@@ -49,17 +49,49 @@ holds which section; open those as you reach them.
 4. **The order matters and was confirmed with the instrument scientist.** BC comes from
    `DetZBeamPos`; `Lsd` comes from spots; neither measurement can give the other's
    quantity. Getting the order wrong is itself a documented failure mode.
+   With an alternating-distance file series (`z7and11`), **measure which file is which**
+   from the spot radii (their ratio follows the distance ratio); on one beamtime the FIRST
+   file of each pair was the short distance, and "even = short" was wrong for two samples.
 
 5. **On weak signal, fix the reduction before the geometry.** Denoising and dropping the
    threshold was worth 3.6× the voxels at C ≥ 0.9; a converged geometry refinement was
    worth +0.005 FracOverlap. Set that threshold with `BlanketSigma`, not
    `BlanketSubtraction` — the latter was an int and could not express a sub-σ step.
 
+6. **No DetZBeamPos scan and no beam on the detector? Check the "stripe" before using it.**
+   A beam stripe is thousands of counts. A band a few counts above the floor is scatter,
+   and one such band (zbc off by 138 px) made 47 gold reconstructions sit at noise. A
+   calibrant measured at three or more distances gives Lsd, zbc and the per-distance BC
+   drift from its own rays (spine hard rule 13; handbook §6i-quater; DIAGNOSIS "every
+   geometry sits at the same noise floor"). Do not extend a grid scan over Lsd and ybc
+   with a wrong zbc: it cannot help.
+
+7. **Accept a geometry refinement only if the FULL MAP gets better** (hard rule 26). A
+   multi-point fit on ~10 voxels raised its own overlap twice while the full map got
+   worse (30 → 18 and 593 → 291 voxels at C ≥ 0.5). Compare voxel counts at one grid, plus
+   the FF or neighbour check, before adopting refined Lsd / BC / tilts.
+
+8. **Sparse dark-subtracted frames keep their static background** (hard rule 27): ~90 %
+   of pixels have a temporal median of 0, so median subtraction removes nothing of a static
+   pattern, and a low threshold lets it through as peakless, ω-fixed blobs. Test a
+   detector by the overlap of its mask with the mask 180° away (real spots do not
+   return). `SpotDetect poisson` sets a per-pixel threshold from the local mean and
+   **robust** variance for a stated false-alarm budget; the budget is a dial (5 = strict,
+   50000 = as many voxels as threshold 4 in a fifth of the time). The plain variance is
+   hijacked by spots (22.8 against 2.7).
+
+9. **The independent accuracy check is the FF of the same sample.** Match NF voxels to FF
+   grains on orientation alone, crystal-side symmetry (`midas_stress`), print the chance
+   rate, count per grain as well as per voxel, and run a cross-sample null. If a sample
+   fails while the map looks good, it may be a different layer or region or a remount;
+   `midas_stress.find_frame_rotation` searches for one rotation between the two grain
+   sets (limits in its docstring: it is fooled by two unrelated sets with the same texture).
+
 ## When something looks wrong
 
 Go to **`manuals/nf-hedm/DIAGNOSIS.md`** — symptom → discriminating test → cause → lever,
-indexed by symptom rather than by step. Ten entries, each carrying a test that can come
-back the other way; five of them are 20-ID specific.
+indexed by symptom rather than by step. Thirteen entries, each carrying a test that can come
+back the other way; eight of them are 20-ID specific.
 
 Before re-investigating anything, read **`manuals/nf-hedm/LAB_NOTEBOOK.md`** — several
 attractive hypotheses are recorded there as *refuted*, with the measurement that killed
@@ -72,7 +104,8 @@ sector 20 is at **station D**; FF and PF run at both D and E, and everything rec
 so far is D data. 20-ID-D runs through the pipeline natively — set `extOrig h5` and the
 reduction reads the HDF5 directly, streaming so a layer need not fit in RAM (§3h). The two code blockers that used
 to close that door, and the ω-sign gate that outlived them, are all **closed**; the ω sign
-at 20-ID is `aero`, negated, the same convention as 1-ID (hard rule 1).
+at 20-ID-D is `aero`, negated, the same convention as 1-ID (hard rule 1). At 1-ID the RAMS-III
+load-frame stage `ramsrot` is the exception: **counterclockwise, used as logged, never negated**.
 
 **On any other beamline, stop and ask rather than adapting a recipe.** The array→lab
 mapping must be re-derived, not inherited — getting it wrong **mirrors the microstructure
