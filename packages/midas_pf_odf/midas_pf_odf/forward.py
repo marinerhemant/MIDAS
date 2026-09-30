@@ -39,6 +39,7 @@ def soft_beam_gate(
     beam_positions: torch.Tensor,
     beam_size_um: float,
     tau_um: float = 0.5,
+    model: Optional[HEDMForwardModel] = None,
 ) -> torch.Tensor:
     """Differentiable beam-membership gate.
 
@@ -50,6 +51,10 @@ def soft_beam_gate(
 
     Convention matches ``HEDMForwardModel.filter_by_scan``:
         y_rot = px sin(ω) + py cos(ω)
+    for every Wedge: the voxel moves as ``pos_lab = R_y(-W) R_z(ω) pos``
+    (``midas_diffract.forward`` "Wedge convention", the same map applied to
+    G), and a tilt about lab y leaves the lab-y component unchanged. ``model``
+    is accepted for API compatibility and no longer consulted.
 
     Parameters
     ----------
@@ -58,6 +63,7 @@ def soft_beam_gate(
     beam_positions : Tensor (Σ,)
     beam_size_um   : float
     tau_um         : float                — transition width in µm
+    model          : HEDMForwardModel, optional — unused (see above)
 
     Returns
     -------
@@ -173,7 +179,7 @@ def joint_grain_forward(
         gate = soft_beam_gate(
             voxel_pos.to(dtype), sw,
             sc.beam_positions.to(device).to(dtype),
-            float(sc.beam_size), float(gate_tau_um),
+            float(sc.beam_size), float(gate_tau_um), model=model,
         )                                                          # (G, S, Σ)
 
     Sigma = n_scans

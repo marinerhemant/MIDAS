@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pf-odf"
-version = "0.1.1"
+version = "0.1.2"
 description = "Joint per-grain peak-shape inversion of pf-HEDM data; per-voxel orientation/strain (and Phase 2: per-voxel ODF)"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -22,7 +22,7 @@ dependencies = [
     "numpy>=1.20",
     "torch>=2.0",
     "h5py>=3.0",
-    "midas-diffract>=0.1",
+    "midas-diffract>=0.9.0",
     "midas-stress>=0.1",
     "midas-grain-odf>=0.1",
 ]

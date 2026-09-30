@@ -383,16 +383,17 @@ def _simulate_grain_patches_no_grad(
     sv = spots.valid.reshape(G, S).to(dtype)
     sw = spots.omega.reshape(G, S)                               # (G, S)
 
-    # Soft beam gate per (V, s, σ): sigmoid((BeamSize/2 − |y_rot − pos[σ]|) / τ)
-    # y_rot = px·sin(ω) + py·cos(ω) per filter_by_scan convention.
-    px = plant.voxel_pos[:, 0:1].expand(G, S)                    # (G, S)
-    py = plant.voxel_pos[:, 1:2].expand(G, S)
-    y_rot = px * torch.sin(sw) + py * torch.cos(sw)              # (G, S)
+    # Soft beam gate per (V, s, σ): sigmoid((BeamSize/2 − |y_rot − pos[σ]|) / τ).
+    # Same function the inverter uses (forward.soft_beam_gate), so the plant
+    # and the fit gate identically (wedge-free in lab y by construction; see
+    # forward.soft_beam_gate).
+    from .forward import soft_beam_gate
     sc = model.scan_config
     beam_y = sc.beam_positions.to(device).to(dtype)              # (Σ,)
-    half = float(sc.beam_size) / 2.0
-    diff = y_rot.unsqueeze(-1) - beam_y                          # (G, S, Σ)
-    gate = torch.sigmoid((half - diff.abs()) / max(gate_tau_um, 1e-6))   # (G, S, Σ)
+    gate = soft_beam_gate(
+        plant.voxel_pos, sw, beam_y, float(sc.beam_size),
+        float(gate_tau_um), model=model,
+    )                                                            # (G, S, Σ)
 
     # Anchor each (s, σ) cell at the voxel-mean predicted (y, z, f).
     # In the pristine plant case anchors come from the planted truth; with

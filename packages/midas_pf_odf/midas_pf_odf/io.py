@@ -127,7 +127,9 @@ def geometry_from_paramstest(
 
     Maps the MIDAS keys: ``Distance``/``LsdFit`` → Lsd, ``YBCFit`` → y_BC,
     ``ZBCFit`` → z_BC, ``OmegaRange`` → omega_start, ``tyFit``/``tzFit`` →
-    ty/tz tilts (tx assumed 0), ``Wedge`` → wedge. ``flip_y=True`` (FF/pf
+    ty/tz tilts (tx assumed 0), ``Wedge`` → wedge (same sign and stage frame
+    as FF Grains.csv; ``midas_diffract.forward`` "Wedge convention").
+    ``flip_y=True`` (FF/pf
     DetCor convention). Detector pixel dimensions must be supplied by the
     caller (paramstest does not record them).
 

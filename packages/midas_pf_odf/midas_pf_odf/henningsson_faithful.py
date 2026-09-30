@@ -155,7 +155,7 @@ def fit_grain_scr_henningsson2020(
                 gate = soft_beam_gate(
                     voxel_pos_use, sw,
                     sc.beam_positions.to(device).to(dtype),
-                    float(sc.beam_size), float(gate_tau_um))
+                    float(sc.beam_size), float(gate_tau_um), model=model)
             # (S, Σ) cell-mask: any voxel contributes with gate > threshold
             cell_active = (gate > per_voxel_gate_threshold).any(dim=0).to(dtype)
             per_voxel_mask = cell_active                          # (S, Σ)

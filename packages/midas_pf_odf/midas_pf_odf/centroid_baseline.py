@@ -138,7 +138,7 @@ def predicted_centroids(
         gate = soft_beam_gate(
             voxel_pos.to(dtype), sw,
             sc.beam_positions.to(device).to(dtype),
-            float(sc.beam_size), float(gate_tau_um),
+            float(sc.beam_size), float(gate_tau_um), model=model,
         )                                                        # (G, S, Σ)
 
     weight = gate * sv.unsqueeze(-1)                             # (G, S, Σ)
