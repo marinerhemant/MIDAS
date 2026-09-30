@@ -42,7 +42,7 @@ from .io_binary import (
     write_process_key_row,
 )
 from .matching import MatchResult
-from .observations import ObservedSpots
+from .observations import ObservedSpots, fit_frame_columns
 from .refine_block import BlockFitResult, refine_block
 
 LOG = logging.getLogger(__name__)
@@ -262,6 +262,14 @@ def _build_model(cfg: FitConfig, *,
         min_eta=cfg.MinEta,
         wavelength=cfg.Wavelength,
         flip_y=True,
+        # The physical rotation-axis tilt, Parameters-file sign
+        # (midas_diffract.forward "Wedge convention"). With W != 0 the
+        # observations MUST be the raw pre-wedge columns -- build them with
+        # observations.fit_frame_columns(block, cfg.Wedge) /
+        # ObservedSpots.from_extra_info(..., wedge_deg=cfg.Wedge). This was
+        # wedge=0 against wedge-corrected spots, which is exact only for a
+        # grain on the rotation axis.
+        wedge=float(getattr(cfg, "Wedge", 0.0) or 0.0),
     )
     model = HEDMForwardModel(
         torch.from_numpy(hkls_cart_np),
@@ -522,6 +530,8 @@ def _refine_block_from_disk_retired(
     #
     # Net effect on park22 (218 s seed loading) is targeted to ~10–20 s.
     grains_obs: list[ObservedSpots] = []
+    wedge_deg = float(getattr(cfg, "Wedge", 0.0) or 0.0)
+    corr_cols: list[np.ndarray] = []   # per grain (S, 3) YLab/ZLab/Omega; W != 0 only
     grain_rows: list[int] = []        # rowNr (= offset into Key/OrientPosFit)
     init_pos_list: list[np.ndarray] = []
     init_om_list: list[np.ndarray] = []   # 3×3 orient matrices, vectorised → euler later
@@ -577,14 +587,19 @@ def _refine_block_from_disk_retired(
         # Build a CPU-tensor ObservedSpots. The big CPU→GPU transfer
         # happens in refine_block via ``ObservedBatch.pack``, which packs
         # all grains into one tensor and copies it across once.
+        y_fit, z_fit, ome_fit, eta_fit, tth_fit = fit_frame_columns(
+            block, wedge_deg)
+        if wedge_deg != 0.0:
+            # FitBest / SpotsComp report the wedge-corrected columns.
+            corr_cols.append(np.ascontiguousarray(block[:, 0:3]))
         obs = ObservedSpots(
             spot_id=torch.as_tensor(block[:, 4].astype(np.int64), dtype=torch.int64),
             ring_nr=torch.as_tensor(block[:, 5].astype(np.int64), dtype=torch.int64),
-            y_lab=torch.as_tensor(block[:, 0], dtype=dtype),
-            z_lab=torch.as_tensor(block[:, 1], dtype=dtype),
-            omega=torch.as_tensor(block[:, 2] * DEG2RAD, dtype=dtype),
-            eta=torch.as_tensor(block[:, 6] * DEG2RAD, dtype=dtype),
-            two_theta=torch.as_tensor(block[:, 7] * DEG2RAD, dtype=dtype),
+            y_lab=torch.as_tensor(y_fit, dtype=dtype),
+            z_lab=torch.as_tensor(z_fit, dtype=dtype),
+            omega=torch.as_tensor(ome_fit * DEG2RAD, dtype=dtype),
+            eta=torch.as_tensor(eta_fit * DEG2RAD, dtype=dtype),
+            two_theta=torch.as_tensor(tth_fit * DEG2RAD, dtype=dtype),
             grain_radius=torch.as_tensor(block[:, 3], dtype=dtype),
             fit_rmse=torch.as_tensor(block[:, 15], dtype=dtype),
             y_orig=torch.as_tensor(block[:, 9], dtype=dtype),
@@ -707,14 +722,19 @@ def _refine_block_from_disk_retired(
 
     n_grains_written = 0
     n_no_expected = 0
-    for g, row_nr, sid, n_exp, obs in zip(block.grains, grain_rows, seed_ids,
-                                          seed_n_expected, grains_obs):
+    for gi, (g, row_nr, sid, n_exp, obs) in enumerate(zip(
+            block.grains, grain_rows, seed_ids, seed_n_expected, grains_obs)):
         # Build the C-style spotsYZO (S, 10) view from obs.
         S = int(obs.n_spots)
         spots_yzo = np.zeros((S, 10), dtype=np.float64)
-        spots_yzo[:, 0] = obs.y_lab.cpu().numpy()
-        spots_yzo[:, 1] = obs.z_lab.cpu().numpy()
-        spots_yzo[:, 2] = obs.omega.cpu().numpy() * RAD2DEG
+        if wedge_deg != 0.0:
+            # obs carries the raw fit frame; SpotsComp cols 13-15 are the
+            # wedge-corrected YLab/ZLab/Omega, as in the C refiner.
+            spots_yzo[:, 0:3] = corr_cols[gi]
+        else:
+            spots_yzo[:, 0] = obs.y_lab.cpu().numpy()
+            spots_yzo[:, 1] = obs.z_lab.cpu().numpy()
+            spots_yzo[:, 2] = obs.omega.cpu().numpy() * RAD2DEG
         spots_yzo[:, 3] = obs.spot_id.cpu().numpy()
         spots_yzo[:, 4] = obs.omega_ini.cpu().numpy() * RAD2DEG
         spots_yzo[:, 5] = obs.y_orig.cpu().numpy()

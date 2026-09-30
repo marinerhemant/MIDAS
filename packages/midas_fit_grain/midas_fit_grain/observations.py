@@ -19,6 +19,36 @@ import torch
 from .io_binary import EXTRA_INFO_NCOLS
 
 DEG2RAD = math.pi / 180.0
+RAD2DEG = 180.0 / math.pi
+
+
+def fit_frame_columns(block: np.ndarray, wedge_deg: float = 0.0):
+    """ExtraInfo columns the torch refiner fits against, for one Wedge.
+
+    Returns ``(y_um, z_um, omega_deg, eta_deg, two_theta_deg)``.
+
+    * ``Wedge == 0``: cols 0, 1, 2, 6, 7 (YLab, ZLab, Omega, Eta, Ttheta),
+      exactly as before -- the wedge-corrected and raw columns coincide.
+    * ``Wedge != 0``: the RAW (pre-wedge, detector-corrected) observation,
+      cols 9, 10, 8 (YOrig, ZOrig, OmegaIni) with eta recomputed from them.
+      The model is then built with the same Wedge (``driver._build_model``),
+      so the fit compares a physical wedge forward
+      (``midas_diffract.forward`` "Wedge convention") with the raw spot. The
+      wedge-corrected columns are exact only for a grain at the rotation
+      axis: the grain-position displacement they still contain was never
+      rotated about the tilted axis, so a wedge-free model fitted to them
+      carries a position error that grows with W and with the grain's
+      distance from the axis. 2theta is wedge-invariant (col 7).
+    """
+    if float(wedge_deg) == 0.0:
+        return block[:, 0], block[:, 1], block[:, 2], block[:, 6], block[:, 7]
+    y = block[:, 9]
+    z = block[:, 10]
+    r = np.sqrt(y * y + z * z)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        eta = RAD2DEG * np.arccos(np.clip(z / np.where(r > 0, r, 1.0), -1.0, 1.0))
+    eta = np.where(y > 0, -eta, eta)      # C CalcEtaAngle sign convention
+    return y, z, block[:, 8], eta, block[:, 7]
 
 
 @dataclass
@@ -30,7 +60,9 @@ class ObservedSpots:
     """
     spot_id: torch.Tensor          # (S,) int64
     ring_nr: torch.Tensor          # (S,) int64
-    y_lab: torch.Tensor            # (S,) um, wedge+det-corrected lab Y
+    y_lab: torch.Tensor            # (S,) um, lab Y in the fit frame
+                                   # (fit_frame_columns: wedge-corrected at
+                                   # W = 0, raw YOrig when W != 0)
     z_lab: torch.Tensor            # (S,) um
     omega: torch.Tensor            # (S,) rad
     eta: torch.Tensor              # (S,) rad
@@ -58,10 +90,13 @@ class ObservedSpots:
         *,
         device: torch.device,
         dtype: torch.dtype,
+        wedge_deg: float = 0.0,
     ) -> "ObservedSpots":
         """Pull the rows whose SpotID is in ``spot_ids`` and pack into tensors.
 
         ``spot_ids`` order is preserved.  Missing IDs raise ``KeyError``.
+        ``wedge_deg`` selects the fit frame (:func:`fit_frame_columns`); pass
+        the same Wedge the forward model was built with.
         """
         if extra_info.ndim != 2 or extra_info.shape[1] != EXTRA_INFO_NCOLS:
             raise ValueError(
@@ -91,14 +126,16 @@ class ObservedSpots:
         def _t(arr, dt=dtype):
             return torch.as_tensor(arr, dtype=dt, device=device)
 
+        y_fit, z_fit, ome_fit, eta_fit, tth_fit = fit_frame_columns(
+            block, wedge_deg)
         return cls(
             spot_id=_t(block[:, 4], torch.int64),
             ring_nr=_t(block[:, 5], torch.int64),
-            y_lab=_t(block[:, 0]),
-            z_lab=_t(block[:, 1]),
-            omega=_t(block[:, 2] * DEG2RAD),
-            eta=_t(block[:, 6] * DEG2RAD),
-            two_theta=_t(block[:, 7] * DEG2RAD),
+            y_lab=_t(y_fit),
+            z_lab=_t(z_fit),
+            omega=_t(ome_fit * DEG2RAD),
+            eta=_t(eta_fit * DEG2RAD),
+            two_theta=_t(tth_fit * DEG2RAD),
             grain_radius=_t(block[:, 3]),
             fit_rmse=_t(block[:, 15]),
             y_orig=_t(block[:, 9]),

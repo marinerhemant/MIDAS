@@ -212,6 +212,11 @@ typedef struct {
   int    DebugMode;
   double OmeBinSize;
   double WeightMask, WeightFitRMSE;
+  double SpotWeightsDirectional; /* > 0: per-spot (w_rad, w_tan, w_ome) from SpotWeights.bin
+                                    weight the radial / along-ring / omega misses separately;
+                                    with RelFitRMSEWeightR0 too: strain stage only */
+  double RelFitRMSEWeightR0; /* > 0: weight each spot 1/(1 + RelFitRMSE/r0) in the
+                                refiner's stage objectives (RelFitRMSE.bin); 0 = off */
   int    DoDynamicReassignment;
   int    FitAllAtOnce;
 

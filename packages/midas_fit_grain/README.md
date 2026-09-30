@@ -47,6 +47,23 @@ For each grain in `SpotsToIndex.csv`:
 - `all_at_once`: 12 params jointly, association computed once at entry, no
   mid-fit re-match.
 
+## Spot weights (c-omp refiner)
+
+Two opt-in weights on each matched spot's contribution to the stage objectives, both off by default and bit-identical
+to the unweighted refiner when off (verified on LSHR, bt_20id_sep26b and datasetH):
+
+* `RelFitRMSEWeightR0 r0` — scalar weight `1/(1 + rel/r0)`, `rel` = the merged spot's peak-fit `FitRMSE/IMax`, read
+  from `RelFitRMSE.bin` (one float64 per `ExtraInfo.bin` row; the pipeline's refinement stage writes it when the key
+  is set). `r0 = 0.69` improves grain positions against EBSD (LSHR layer 1, ESTABLISHED 2026-09-28); it does not
+  reduce strain noise.
+* `SpotWeightsDirectional 1` — experimental radial / along-ring / omega weights from `SpotWeights.bin`
+  (3 float64 per row, `midas_transforms.io.csv.write_spot_weights_bin`). Combined with `RelFitRMSEWeightR0` the
+  orientation and position stages stay scalar and only the strain stage is directional.
+
+A set option with a missing, short or invalid file stops the refiner with a message rather than running unweighted.
+Reported errors (`FitBest*`, `DiffPos`, `DiffOme`) stay unweighted. Measurements and preregistrations: ff-hedm
+`LAB_NOTEBOOK.md` §14.
+
 ## Backends
 
 `MIDAS_FIT_GRAIN_DEVICE` and `MIDAS_FIT_GRAIN_DTYPE` follow the same precedence

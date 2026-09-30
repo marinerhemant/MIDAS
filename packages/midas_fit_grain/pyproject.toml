@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "midas-fit-grain"
-version = "0.10.0"
+version = "0.11.0"
 description = "PyTorch single/multi-grain refiner (drop-in replacement for FitPosOrStrainsOMP / FitPosOrStrainsGPU) + bundled c-omp C refiner"
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -27,8 +27,8 @@ dependencies = [
     "numpy>=1.22",
     "torch>=2.0",
     "scipy>=1.10",
-    "midas-diffract>=0.1.0",
-    "midas-params>=0.11.0",  # MarginOmega alias for MarginOme
+    "midas-diffract>=0.9.0",
+    "midas-params>=0.13.0",  # MarginOmega alias for MarginOme
 ]
 
 [project.optional-dependencies]

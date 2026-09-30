@@ -191,11 +191,26 @@ def _correct_for_ome(
     else:
         omg1 = RAD2DEG * math.atan2(sin1, cos2)
         omg2 = RAD2DEG * math.atan2(sin2, cos1)
-    if abs(omg1 - omega_ini_deg) < abs(omg2 - omega_ini_deg):
+    d1 = abs(omg1 - omega_ini_deg)
+    d2 = abs(omg2 - omega_ini_deg)
+    if wedge_deg != 0.0:
+        # On the circle (FitUnified.c CorrectForOme): near +-180 the
+        # corrected root can sit across the seam from omega_ini.
+        d1 = 360.0 - d1 if d1 > 180.0 else d1
+        d2 = 360.0 - d2 if d2 > 180.0 else d2
+    if d1 < d2:
         omega_corr = omg1
     else:
         omega_corr = omg2
-    eta_out = _eta(k2, k3)
+    if wedge_deg != 0.0:
+        # Eta of the wedge-free G, R_z(omega_corr) g (FitUnified.c
+        # CorrectForOme, 2026-09 fix): keeping the observed eta biased grain
+        # positions by ~440 um at Wedge = 2 deg. W == 0 keeps the old line.
+        s_oc = math.sin(DEG2RAD * omega_corr)
+        c_oc = math.cos(DEG2RAD * omega_corr)
+        eta_out = _eta(g1 * s_oc + g2 * c_oc, g3)
+    else:
+        eta_out = _eta(k2, k3)
     s_eta_o = math.sin(DEG2RAD * eta_out)
     c_eta_o = math.cos(DEG2RAD * eta_out)
     ys_out = -rrad * s_eta_o

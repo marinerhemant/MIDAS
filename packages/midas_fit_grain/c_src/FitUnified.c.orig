@@ -2644,10 +2644,7 @@ int main(int argc, char *argv[]) {
     {
       FILE *outF = fopen(outFN, "w");
       if (outF == NULL) {
-        /* stderr, not stdout: stdout is a pipe and stays buffered, so a
-         * printf here was lost whenever the process later died. */
-        fprintf(stderr, "Could not open output file for writing: %s (%s)\n",
-                outFN, strerror(errno));
+        printf("Could not open output file for writing: %s\n", outFN);
       } else {
         /* The six new columns go at the END (39-44), NOT at OutMatr's 27-32.
          * In this CSV the strain tensor and Euler angles follow Completeness,
@@ -2694,11 +2691,8 @@ int main(int argc, char *argv[]) {
           }
           fprintf(outF, "\n");
         }
-        /* Inside the else: fclose(NULL) is a SIGSEGV in glibc. A transient
-         * fopen failure (EACCES on a network filesystem, 2026-09-27) used to kill the
-         * whole refiner with exit -11 here. */
-        fclose(outF);
       }
+      fclose(outF);
     }
     /* Consolidated FitBest.bin (read_fit_best layout): pwrite this seed's
      * nSpotsComp matched-spot rows (SpotsOut cols 0..21 = SpotID, obs y/z µm,

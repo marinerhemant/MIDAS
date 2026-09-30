@@ -413,6 +413,8 @@ int midas_parse_params(const char *filename, MIDASConfig *cfg) {
     if (param_double(aline, "OmeBinSize", &cfg->OmeBinSize)) continue;
     if (param_double(aline, "WeightMask", &cfg->WeightMask)) continue;
     if (param_double(aline, "WeightFitRMSE", &cfg->WeightFitRMSE)) continue;
+    if (param_double(aline, "RelFitRMSEWeightR0", &cfg->RelFitRMSEWeightR0)) continue;
+    if (param_double(aline, "SpotWeightsDirectional", &cfg->SpotWeightsDirectional)) continue;
     if (param_int(aline, "DoDynamicReassignment", &cfg->DoDynamicReassignment)) continue;
     if (param_int(aline, "FitAllAtOnce", &cfg->FitAllAtOnce)) continue;
 
