@@ -103,16 +103,43 @@ def build_forward_model(crystal, geom: Geometry, *,
         wavelength_A=geom.wavelength_A,
         two_theta_max_deg=two_theta_max_deg, d_min=d_min)
 
+    # Three conventions this call must translate (each measured 2026-09-27 against
+    # midas_defect.raster.predict_reflections, the path checked against real DAC data):
+    # * omega: midas_defect's omega_first_deg is the CENTRE of frame 0; HEDMForwardModel's
+    #   omega_start is the frame's LEADING EDGE (it keeps frame_nr >= 0). Passing the centre
+    #   silently dropped every reflection in the first half of frame 0.
+    # * tilts: the calibrated tilts mean what midas_transforms.apply_tilt_distortion (and
+    #   peakfit's compute_rt_eta) mean. HEDMForwardModel applies that FF convention only in
+    #   multi_mode="panel"; the default "layered" mode applies the NF ray-plane intersection,
+    #   which put spots a median 7.6 px off at tilts (0.3, 0.15, 0.37) deg.
+    # * distortion: the 15-term p_coeffs were not passed at all. They are LEGACY paramstest
+    #   p0..p14 applied raw -> ideal by midas_transforms; HEDMForwardModel applies the
+    #   midas_distortion v2 layout ideal -> raw. The bridge is v1_to_v2_coeffs (a reindex) with
+    #   the AMPLITUDES negated and the phases kept: the first-order inverse of D = 1 + delta,
+    #   leaving an O(delta^2) residual (~2e-3 px for realistic coefficients).
+    # With all three, the two predictors agree to <1e-2 px (tests/test_indexing_forward_conventions.py).
+    omega_edge = geom.omega_first_deg - 0.5 * geom.omega_step_deg
+    has_dist = any(abs(float(p)) > 0 for p in geom.p_coeffs)
+    p_ideal_to_raw = None
+    if has_dist:
+        import midas_distortion as md
+        v2 = np.asarray(md.v1_to_v2_coeffs(np.asarray(geom.p_coeffs, float)), float)
+        amp = np.array([not n.startswith("phi") for n in md.P_COEF_NAMES])
+        p_ideal_to_raw = np.where(amp, -v2, v2).tolist()
     hgeom = HEDMGeometry(
         Lsd=geom.lsd_um, y_BC=geom.bcy_px, z_BC=geom.bcz_px, px=geom.px_um,
-        omega_start=geom.omega_first_deg, omega_step=geom.omega_step_deg,
+        omega_start=omega_edge, omega_step=geom.omega_step_deg,
         n_frames=geom.n_frames, n_pixels_y=geom.n_pix_y, n_pixels_z=geom.n_pix_z,
         min_eta=min_eta_deg, wavelength=geom.wavelength_A,
         tx=geom.tx_deg, ty=geom.ty_deg, tz=geom.tz_deg,
-        wedge=geom.wedge_deg, apply_tilts=bool(apply_tilts))
+        wedge=geom.wedge_deg, apply_tilts=bool(apply_tilts),
+        multi_mode="panel" if apply_tilts else "layered",
+        apply_distortion=has_dist, p_distortion=p_ideal_to_raw,
+        rho_d=geom.rho_d_um if has_dist else None)
 
     model = HEDMForwardModel(hkls_cart, thetas, hgeom, hkls_int=hkls_int,
                              device=torch.device(device))
+    model.omega_edge_deg = omega_edge      # frame_nr is measured from here: omega = omega_edge + step * frame_nr
     return model, hkls_int.detach().cpu().numpy().astype(int), bool(apply_tilts)
 
 
@@ -379,7 +406,7 @@ def index_from_cloud(q_sample: np.ndarray, intensity: np.ndarray,
     ok = spots.valid.reshape(-1).detach().cpu().numpy() > 0.5
 
     hkl_flat = np.tile(hkls_int, (y.size // M, 1))
-    pred_ome = geom.omega_first_deg + geom.omega_step_deg * fr
+    pred_ome = model.omega_edge_deg + geom.omega_step_deg * fr        # frame_nr is edge-referenced (build_forward_model)
 
     assigned = [tuple(int(v) for v in hkl_flat[i]) for i in pred_idx]
     r_px = [float(np.hypot(row[o] - z[p], col[o] - y[p]))
