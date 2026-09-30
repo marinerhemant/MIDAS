@@ -110,6 +110,7 @@ def synthetic_position_frames(
     B = _b_matrix(a, b, c)
     hkl_all = _hkl_candidates(hmax, kmax, lmax, space_group_number)
     labels = list(domain_labels) if domain_labels is not None else [f"domain{i}" for i in range(len(U_list))]
+    wedge_rad = math.radians(geom.wedge_deg)
 
     clean = np.full((n_frames, H, W), float(pedestal), dtype=np.float64)
     reflections: List[PlantedReflection] = []
@@ -122,7 +123,7 @@ def synthetic_position_frames(
         for idx in np.flatnonzero(keep_q):
             hkl = hkl_all[idx]
             q_s = q_sample_all[idx]
-            omegas = ewald_crossing_omegas(q_s, geom.wavelength_A)
+            omegas = ewald_crossing_omegas(q_s, geom.wavelength_A, wedge_rad)
             for w in omegas:
                 w = float(w)
                 # unwrap into whichever branch of (-pi, pi] + 2*pi*n falls in the swept range
@@ -130,7 +131,7 @@ def synthetic_position_frames(
                     ww = w + 2 * math.pi * n
                     if not (omega_lo <= ww <= omega_hi):
                         continue
-                    qlab = qsample_to_qlab(torch.as_tensor(q_s, dtype=torch.float64), ww)
+                    qlab = qsample_to_qlab(torch.as_tensor(q_s, dtype=torch.float64), ww, wedge_rad)
                     try:
                         row, col = qlab_to_pixel(qlab.reshape(1, 3), geom, device="cpu")
                     except RuntimeError:

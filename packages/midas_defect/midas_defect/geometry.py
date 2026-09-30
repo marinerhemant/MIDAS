@@ -449,35 +449,78 @@ def qlab_to_pixel(
 def qlab_to_qsample(
     qlab: torch.Tensor,
     omega_rad: "torch.Tensor | float",
+    wedge_rad: "torch.Tensor | float" = 0.0,
 ) -> torch.Tensor:
-    """Rotate `qlab` (..., 3) into the sample frame.
+    """Rotate `qlab` (..., 3) into the sample (rotation-stage) frame.
 
-    Convention (matches MIDAS `_spot_to_gv`): the ω-rotation axis is the lab +Z
-    (vertical) — the rotation-stage axis — so `q_sample = R_z(-ω) @ q_lab`. This
-    leaves the vertical (z) component invariant and mixes the beam (x) and
-    horizontal (y) components, exactly as the FF indexer does. Differentiable
-    through ω.
+    Convention (matches ``midas_diffract.forward``'s "Wedge convention", the
+    map shared by FF, NF and PF, and by the FF C refiner): with ``W`` the
+    Parameters-file ``Wedge``,
+
+        q_lab(ω) = R_y(-W) @ R_z(ω) @ q_sample
+
+    (the rotation axis in the lab is ``R_y(-W) e_z = (-sin W, 0, cos W)``, and
+    ``q_sample`` is the crystal-fixed vector expressed in the rotation-stage
+    frame, the frame that coincides with the lab at ω=0). Inverting that
+    product (``(AB)^-1 = B^-1 A^-1``, and rotations invert by negating the
+    angle) gives
+
+        q_sample = R_z(-ω) @ R_y(W) @ q_lab.
+
+    At ``wedge_rad=0`` this reduces to the original ``R_z(-ω)`` map (bit-
+    identical to the pre-wedge code — the old ω-only formula was never wrong,
+    just missing the ``W`` term every other MIDAS geometry consumer has had
+    since 2026-09). Verified numerically against
+    ``midas_diffract.forward.HEDMForwardModel._rotate_positions`` (the same
+    map applied to positions/G by the eager forward model): round-trips
+    ``qsample_to_qlab`` to machine precision and the forward map agrees with
+    the model's own rotation to 1e-9 (see
+    ``test_qsample_to_qlab_matches_midas_diffract_internal_rotation`` in this
+    package's own ``tests/test_geometry.py``). Differentiable through ω and W.
     """
     omega_t = torch.as_tensor(omega_rad, dtype=qlab.dtype, device=qlab.device)
+    wedge_t = torch.as_tensor(wedge_rad, dtype=qlab.dtype, device=qlab.device)
+    cW = torch.cos(wedge_t)
+    sW = torch.sin(wedge_t)
+    # m = R_y(W) @ q_lab
+    mx = cW * qlab[..., 0] + sW * qlab[..., 2]
+    my = qlab[..., 1]
+    mz = -sW * qlab[..., 0] + cW * qlab[..., 2]
+    # q_sample = R_z(-ω) @ m
     c = torch.cos(-omega_t)
     s = torch.sin(-omega_t)
-    qx = c * qlab[..., 0] - s * qlab[..., 1]
-    qy = s * qlab[..., 0] + c * qlab[..., 1]
-    qz = qlab[..., 2]
+    qx = c * mx - s * my
+    qy = s * mx + c * my
+    qz = mz
     return torch.stack([qx, qy, qz], dim=-1)
 
 
 def qsample_to_qlab(
     qsample: torch.Tensor,
     omega_rad: "torch.Tensor | float",
+    wedge_rad: "torch.Tensor | float" = 0.0,
 ) -> torch.Tensor:
-    """Inverse of `qlab_to_qsample`: q_lab = R_z(+ω) @ q_sample."""
+    """Inverse of `qlab_to_qsample`: ``q_lab = R_y(-W) @ R_z(ω) @ q_sample``.
+
+    Same "Wedge convention" as ``midas_diffract.forward`` (module doc); see
+    :func:`qlab_to_qsample` for the derivation and its numerical
+    cross-check. At ``wedge_rad=0`` this is the original ``R_z(+ω)`` map,
+    bit-identical to the pre-wedge code.
+    """
     omega_t = torch.as_tensor(omega_rad, dtype=qsample.dtype, device=qsample.device)
+    wedge_t = torch.as_tensor(wedge_rad, dtype=qsample.dtype, device=qsample.device)
+    # m = R_z(ω) @ q_sample
     c = torch.cos(omega_t)
     s = torch.sin(omega_t)
-    qx = c * qsample[..., 0] - s * qsample[..., 1]
-    qy = s * qsample[..., 0] + c * qsample[..., 1]
-    qz = qsample[..., 2]
+    mx = c * qsample[..., 0] - s * qsample[..., 1]
+    my = s * qsample[..., 0] + c * qsample[..., 1]
+    mz = qsample[..., 2]
+    # q_lab = R_y(-W) @ m
+    cW = torch.cos(wedge_t)
+    sW = torch.sin(wedge_t)
+    qx = cW * mx - sW * mz
+    qy = my
+    qz = sW * mx + cW * mz
     return torch.stack([qx, qy, qz], dim=-1)
 
 
@@ -489,21 +532,27 @@ def qsample_to_qlab(
 def ewald_crossing_omegas(
     q_sample: "np.ndarray | Sequence[float]",
     wavelength_A: float,
+    wedge_rad: float = 0.0,
 ) -> "np.ndarray":
     """The two ω (radians) at which a sample-fixed reflection crosses the Ewald sphere.
 
     A reciprocal-lattice vector fixed to the crystal (``q_sample``, 1/Å) is carried
-    through the lab by the rotation ``q_lab(ω) = R_z(+ω) @ q_sample`` (see
-    :func:`qsample_to_qlab`). It diffracts when the elastic condition holds, which
-    with the beam along +X and ``k0 = 2π/λ`` reduces to
+    through the lab by ``q_lab(ω) = R_y(-W) @ R_z(ω) @ q_sample`` (see
+    :func:`qsample_to_qlab`; ``W`` is the Parameters-file Wedge, ``wedge_rad``
+    here). It diffracts when the elastic condition holds, which with the beam
+    along +X and ``k0 = 2π/λ`` reduces to
 
         q_lab_x(ω) = -|q|^2 / (2 k0).
 
-    Writing ``q_lab_x = qx cos ω - qy sin ω`` this is ``A cos ω + B sin ω = C`` with
-    ``A = qx``, ``B = -qy``, ``C = -|q|^2/(2 k0)`` -- generally **two** solutions ω,
-    the reflection's two Ewald crossings per 360° turn. Both carry the *same* ``q``
-    (hence the same ``|F|^2`` and, provably, the same Lorentz-polarization factor),
-    so a kinematic intensity is equal at the two crossings.
+    Expanding ``q_lab_x`` through the wedge rotation, ``q_lab_x(ω) = cos(W) (qx
+    cos ω - qy sin ω) - sin(W) qz``. Moving the ω-independent ``-sin(W) qz`` term
+    to the right gives ``A cos ω + B sin ω = C`` with ``A = qx cos(W)``,
+    ``B = -qy cos(W)``, ``C = -|q|^2/(2 k0) + sin(W) qz`` -- generally **two**
+    solutions ω, the reflection's two Ewald crossings per 360° turn. Both carry
+    the *same* ``q`` (hence the same ``|F|^2`` and, provably, the same
+    Lorentz-polarization factor), so a kinematic intensity is equal at the two
+    crossings. At ``wedge_rad=0`` this is exactly the original ``A=qx, B=-qy,
+    C=-|q|^2/(2k0)`` formula (bit-identical).
 
     Returns a length-2 array of ω in radians in ``(-π, π]``, sorted ascending. If
     the reflection never satisfies the condition (``|C| > sqrt(A^2+B^2)`` -- it lies
@@ -515,9 +564,11 @@ def ewald_crossing_omegas(
     if qmag == 0.0:
         return np.empty(0, dtype=np.float64)
     k0 = 2.0 * math.pi / wavelength_A
-    A = q[0]
-    B = -q[1]
-    C = -(qmag * qmag) / (2.0 * k0)
+    cW = math.cos(wedge_rad)
+    sW = math.sin(wedge_rad)
+    A = q[0] * cW
+    B = -q[1] * cW
+    C = -(qmag * qmag) / (2.0 * k0) + sW * q[2]
     R = math.hypot(A, B)
     if R == 0.0 or abs(C) > R * (1.0 + 1e-12):
         return np.empty(0, dtype=np.float64)
@@ -531,20 +582,27 @@ def ewald_crossing_omegas(
 def ewald_crossings(
     q_sample: "np.ndarray | Sequence[float]",
     wavelength_A: float,
+    wedge_rad: float = 0.0,
 ) -> list[dict]:
     """Both Ewald crossings of ``q_sample`` with their lab-frame q-vectors.
 
     Returns one dict per crossing with keys ``omega_rad``, ``omega_deg``, and
-    ``q_lab`` (the ``(3,)`` diffracting lab vector ``R_z(+ω) @ q_sample``). Empty
-    list if the reflection never diffracts. Useful for matching predicted crossing
+    ``q_lab`` (the ``(3,)`` diffracting lab vector
+    ``R_y(-W) @ R_z(ω) @ q_sample``, see :func:`qsample_to_qlab`). Empty list
+    if the reflection never diffracts. Useful for matching predicted crossing
     ω / detector side against observed satellite pairs (the two-crossing model that
     underlies the unified satellite indexing).
     """
     q = np.asarray(q_sample, dtype=np.float64).reshape(3)
+    cW = math.cos(wedge_rad)
+    sW = math.sin(wedge_rad)
     out = []
-    for w in ewald_crossing_omegas(q, wavelength_A):
+    for w in ewald_crossing_omegas(q, wavelength_A, wedge_rad):
         c, s = math.cos(w), math.sin(w)
-        q_lab = np.array([c * q[0] - s * q[1], s * q[0] + c * q[1], q[2]])
+        mx = c * q[0] - s * q[1]
+        my = s * q[0] + c * q[1]
+        mz = q[2]
+        q_lab = np.array([cW * mx - sW * mz, my, sW * mx + cW * mz])
         out.append({
             "omega_rad": float(w),
             "omega_deg": float(math.degrees(w)),

@@ -481,3 +481,168 @@ def test_qlab_to_pixel_still_honours_an_explicit_tolerance():
     q = pixel_to_qlab(np.array([600.]), np.array([700.]), g, device="cpu")
     with pytest.raises(RuntimeError, match="did not converge"):
         qlab_to_pixel(q, g, tol_px=1e-12, max_iter=3, device="cpu")
+
+
+# ---------------------------------------------------------------------------
+# Issue #22: qlab_to_qsample / qsample_to_qlab / ewald_crossing_* wedge term
+# ---------------------------------------------------------------------------
+#
+# Convention (matches midas_diffract.forward's "Wedge convention", the map
+# shared by FF, NF and PF, and the FF C refiner):
+#
+#     q_lab(omega) = R_y(-W) @ R_z(omega) @ q_sample
+#
+# with W the Parameters-file Wedge. Inverting: q_sample = R_z(-omega) @
+# R_y(W) @ q_lab. At W=0 both reduce to the original omega-only R_z map.
+
+_WEDGE_DEG_CASES = (0.0, 0.5, -2.0)
+_OMEGA_DEG_CASES = (-179.9, -123.4, -45.0, 0.0, 37.0, 90.3, 179.9)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("wedge_deg", _WEDGE_DEG_CASES)
+def test_qsample_qlab_roundtrip_with_wedge(wedge_deg):
+    """qsample_to_qlab(qlab_to_qsample(q, omega, wedge), omega, wedge) == q."""
+    q = torch.tensor([0.7, -0.4, 0.25], dtype=torch.float64)
+    wedge_rad = torch.deg2rad(torch.tensor(wedge_deg, dtype=torch.float64))
+    for omega_deg in _OMEGA_DEG_CASES:
+        omega_rad = torch.deg2rad(torch.tensor(omega_deg, dtype=torch.float64))
+        qs = qlab_to_qsample(q, omega_rad, wedge_rad)
+        back = qsample_to_qlab(qs, omega_rad, wedge_rad)
+        assert torch.allclose(q, back, atol=1e-12), (wedge_deg, omega_deg, back)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("wedge_deg", _WEDGE_DEG_CASES)
+def test_qlab_qsample_roundtrip_pixel_derived_with_wedge(wedge_deg):
+    """Same round-trip, but starting from real pixel-derived qlab (not a hand-picked q)."""
+    g = demk_default_geometry()
+    rows = torch.tensor([100.0, 500.0, 1000.0], dtype=torch.float64)
+    cols = torch.tensor([100.0, 500.0, 1000.0], dtype=torch.float64)
+    qlab = pixel_to_qlab(rows, cols, g)
+    wedge_rad = torch.deg2rad(torch.tensor(wedge_deg, dtype=torch.float64))
+    for omega_deg in (-180.0, -45.0, 0.0, 30.0, 179.5):
+        omega_rad = torch.deg2rad(torch.tensor(omega_deg, dtype=torch.float64))
+        qs = qlab_to_qsample(qlab, omega_rad, wedge_rad)
+        ql = qsample_to_qlab(qs, omega_rad, wedge_rad)
+        assert torch.allclose(qlab, ql, atol=1e-11)
+
+
+@pytest.mark.unit
+def test_wedge_default_is_bit_identical_to_no_wedge_code():
+    """wedge_rad defaults to 0.0 -- the pre-#22 code took no wedge argument at
+    all, so calling with and without the new parameter (explicit 0.0) must
+    give bit-identical results, not just approximately-equal ones."""
+    g = demk_default_geometry()
+    rows = torch.tensor([300.0, 700.0, 1200.0], dtype=torch.float64)
+    cols = torch.tensor([400.0, 900.0, 1300.0], dtype=torch.float64)
+    qlab = pixel_to_qlab(rows, cols, g)
+    for omega_deg in (-180.0, -45.0, 0.0, 30.0, 179.5):
+        omega_rad = torch.deg2rad(torch.tensor(omega_deg, dtype=torch.float64))
+        qs_default = qlab_to_qsample(qlab, omega_rad)
+        qs_explicit = qlab_to_qsample(qlab, omega_rad, 0.0)
+        assert torch.equal(qs_default, qs_explicit)
+        ql_default = qsample_to_qlab(qs_default, omega_rad)
+        ql_explicit = qsample_to_qlab(qs_explicit, omega_rad, 0.0)
+        assert torch.equal(ql_default, ql_explicit)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("wedge_deg", _WEDGE_DEG_CASES)
+@pytest.mark.parametrize("omega_deg", (-123.4, 0.0, 37.0))
+def test_qsample_to_qlab_matches_midas_diffract_internal_rotation(wedge_deg, omega_deg):
+    """Cross-check against `midas_diffract.forward.HEDMForwardModel`'s OWN
+    ``_rotate_positions`` -- the exact map ``calc_bragg_geometry`` applies to
+    G and ``project_to_detector`` applies to grain positions -- not a
+    re-derivation of the same algebra. Must agree to 1e-9.
+    """
+    hedm_forward = pytest.importorskip("midas_diffract.forward")
+
+    hkls = torch.tensor([[1.0, 0.0, 0.0]], dtype=torch.float64)
+    thetas = torch.tensor([0.1], dtype=torch.float64)
+    geom = hedm_forward.HEDMGeometry(
+        Lsd=5000.0, y_BC=1024.0, z_BC=1024.0, px=1.5,
+        omega_start=-180.0, omega_step=0.25, n_frames=1440,
+        n_pixels_y=2048, n_pixels_z=2048, min_eta=6.0, wavelength=0.17,
+        wedge=wedge_deg,
+    )
+    model = hedm_forward.HEDMForwardModel(hkls, thetas, geom)
+
+    q = (0.7, -0.4, 0.25)
+    omega_rad = math.radians(omega_deg)
+    px = torch.tensor(q[0], dtype=torch.float64)
+    py = torch.tensor(q[1], dtype=torch.float64)
+    pz = torch.tensor(q[2], dtype=torch.float64)
+    cw = torch.tensor(math.cos(omega_rad), dtype=torch.float64)
+    sw = torch.tensor(math.sin(omega_rad), dtype=torch.float64)
+    x, y, z = model._rotate_positions(px, py, pz, cw, sw)
+    internal = torch.stack([x, y, z])
+
+    ours = qsample_to_qlab(
+        torch.tensor(q, dtype=torch.float64),
+        torch.tensor(omega_rad, dtype=torch.float64),
+        torch.tensor(math.radians(wedge_deg), dtype=torch.float64),
+    )
+    assert torch.allclose(internal, ours, atol=1e-9), (wedge_deg, omega_deg, internal, ours)
+
+    # And qlab_to_qsample must invert midas_diffract's own forward rotation.
+    back = qlab_to_qsample(
+        internal,
+        torch.tensor(omega_rad, dtype=torch.float64),
+        torch.tensor(math.radians(wedge_deg), dtype=torch.float64),
+    )
+    assert torch.allclose(back, torch.tensor(q, dtype=torch.float64), atol=1e-9)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("wedge_deg", _WEDGE_DEG_CASES)
+def test_ewald_crossing_omegas_wedge_satisfies_elastic_condition(wedge_deg):
+    """Every returned omega must put q_lab_x at the elastic-condition value
+    -|q|^2/(2 k0), independent of wedge -- this is what the crossing solves for."""
+    from midas_defect.geometry import ewald_crossing_omegas
+
+    q_sample = np.array([0.5, -0.3, 0.9])
+    wavelength_A = 0.17
+    wedge_rad = math.radians(wedge_deg)
+    k0 = 2.0 * math.pi / wavelength_A
+    target = -float(np.dot(q_sample, q_sample)) / (2.0 * k0)
+
+    omegas = ewald_crossing_omegas(q_sample, wavelength_A, wedge_rad)
+    assert len(omegas) == 2
+    for om in omegas:
+        qlab = qsample_to_qlab(
+            torch.tensor(q_sample, dtype=torch.float64),
+            torch.tensor(float(om), dtype=torch.float64),
+            torch.tensor(wedge_rad, dtype=torch.float64),
+        )
+        assert float(qlab[0]) == pytest.approx(target, abs=1e-9)
+
+
+@pytest.mark.unit
+def test_ewald_crossing_omegas_wedge_default_matches_no_wedge():
+    """wedge_rad=0.0 default reproduces the pre-#22 two-solution formula bit-identically."""
+    from midas_defect.geometry import ewald_crossing_omegas
+
+    q_sample = np.array([0.5, -0.3, 0.9])
+    wavelength_A = 0.17
+    om_default = ewald_crossing_omegas(q_sample, wavelength_A)
+    om_explicit = ewald_crossing_omegas(q_sample, wavelength_A, 0.0)
+    np.testing.assert_array_equal(om_default, om_explicit)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("wedge_deg", _WEDGE_DEG_CASES)
+def test_ewald_crossings_q_lab_matches_qsample_to_qlab(wedge_deg):
+    """ewald_crossings' reported q_lab must be exactly qsample_to_qlab(q, omega, wedge)."""
+    from midas_defect.geometry import ewald_crossings
+
+    q_sample = np.array([0.5, -0.3, 0.9])
+    wavelength_A = 0.17
+    wedge_rad = math.radians(wedge_deg)
+    for entry in ewald_crossings(q_sample, wavelength_A, wedge_rad):
+        expected = qsample_to_qlab(
+            torch.tensor(q_sample, dtype=torch.float64),
+            torch.tensor(entry["omega_rad"], dtype=torch.float64),
+            torch.tensor(wedge_rad, dtype=torch.float64),
+        ).numpy()
+        assert np.allclose(entry["q_lab"], expected, atol=1e-12)

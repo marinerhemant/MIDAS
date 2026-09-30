@@ -503,4 +503,5 @@ def spots_to_qsample(spots: pd.DataFrame, geom, omega_sign: int = 1) -> np.ndarr
     qlab = pixel_to_qlab(spots["row"].values.astype(float), spots["col"].values.astype(float),
                          geom, device="cpu")
     omega_rad = torch.deg2rad(torch.as_tensor(omega_sign * omega_deg, dtype=qlab.dtype))
-    return qlab_to_qsample(qlab, omega_rad).detach().cpu().numpy()
+    wedge_rad = torch.deg2rad(torch.as_tensor(geom.wedge_deg, dtype=qlab.dtype))
+    return qlab_to_qsample(qlab, omega_rad, wedge_rad).detach().cpu().numpy()

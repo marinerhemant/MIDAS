@@ -64,9 +64,11 @@ if TYPE_CHECKING:
     from .geometry import Geometry
 
 __all__ = [
-    "RodPath", "RodProfile", "WidthResult",
+    "RodPath", "LauePath", "RodProfile", "WidthResult",
     "rod_path", "matched_control_path", "profile_along",
     "rod_path_geometry", "matched_control_path_geometry",
+    "rod_path_laue", "matched_control_path_laue", "profile_along_laue",
+    "laue_predict_hkl", "rod_collisions",
     "rod_significance", "ring_L_marks", "transverse_width",
     "centred_L_nodes", "diffuse_to_bragg",
 ]
@@ -75,6 +77,12 @@ __all__ = [
 DROP_NO_OMEGA = "no_omega_solution"
 DROP_OFF_DETECTOR = "off_detector"
 DROP_MASKED = "masked"
+DROP_NO_ENERGY = "no_energy_solution"
+
+#: hc in keV*Angstrom (E = hc / lambda). Local to this module: the rest of
+#: midas_defect.geometry is wavelength-in, never energy-out, because every
+#: existing consumer is monochromatic.
+_HC_KEV_A = 12.39842
 
 
 @dataclass
@@ -202,6 +210,313 @@ def matched_control_path(U, B, h: float, k: float, L_values, **kw) -> RodPath:
     return rod_path(U, B, h + 0.5, k + 0.5, L_values, **kw)
 
 
+@dataclass
+class LauePath:
+    """The detector image of a reciprocal-space rod, walked by ENERGY not ω.
+
+    :func:`rod_path` walks a rod at fixed wavelength, solving for the ω that
+    puts each L on the Ewald sphere. A stationary (Laue) crystal has no ω to
+    solve for -- instead each L has, at most, ONE wavelength that satisfies
+    Bragg for that fixed orientation, from the same equation with the roles
+    reversed. ``LauePath`` is the energy-sweep analogue of :class:`RodPath`:
+    same idea (walk the rod where it is straight, in (h, k, L), and project
+    each point through its OWN diffraction condition), different free
+    variable, so it is a new dataclass rather than a strained reuse of
+    ``RodPath.omega_deg``.
+    """
+    L: np.ndarray
+    row: np.ndarray
+    col: np.ndarray
+    energy_keV: np.ndarray
+    q_mag: np.ndarray
+    hk: Tuple[float, float]
+    dropped: Dict[str, int] = field(default_factory=dict)
+
+    def __len__(self) -> int:
+        return len(self.L)
+
+    def __str__(self) -> str:
+        d = ", ".join(f"{k} {v}" for k, v in sorted(self.dropped.items())) or "none"
+        return (f"Laue rod (h,k) = {self.hk}: {len(self)} points, "
+                f"L {self.L.min():+.2f}..{self.L.max():+.2f}; dropped: {d}")
+
+
+def _laue_solve_point(g_s: np.ndarray, *,
+                      bragg_scale: float, lsd_um: float, pixel_um: float,
+                      bc_row: float, bc_col: float, n_rows: int, n_cols: int,
+                      E_lo_keV: float, E_hi_keV: float,
+                      q_convention: str) -> Tuple[float, float, float, float, Optional[str]]:
+    """One stationary-crystal Bragg solve: sample-frame vector -> (row, col, energy, |g|, reason).
+
+    ``reason`` is ``None`` on success, else :data:`DROP_NO_ENERGY` or
+    :data:`DROP_OFF_DETECTOR` -- the geometric-infeasibility vs
+    detector-footprint distinction :func:`rod_path_laue` already tracks (see
+    its docstring for why a backscattering ``kf_x <= 0`` counts as the
+    former, not the latter). On failure the numeric fields are NaN, never a
+    fabricated value.
+
+    Shared by :func:`rod_path_laue` (sweeps one (h, k) row over continuous L)
+    and :func:`laue_predict_hkl` (evaluates an arbitrary list of hkl) so the
+    energy-solve algebra exists in exactly one place.
+    """
+    nan4 = (float("nan"),) * 4
+    gn = float(np.linalg.norm(g_s))
+    if gn < 1e-12 or g_s[0] >= 0:
+        return (*nan4, DROP_NO_ENERGY)
+    wavelength_A = -g_s[0] / (bragg_scale * gn * gn)
+    energy = _HC_KEV_A / wavelength_A
+    if not (E_lo_keV <= energy <= E_hi_keV):
+        return (*nan4, DROP_NO_ENERGY)
+    k_i = (1.0 / wavelength_A if q_convention == "1/d"
+           else 2.0 * math.pi / wavelength_A)
+    kf = np.array([k_i, 0.0, 0.0]) + g_s  # omega = 0: g_lab == g_s
+    if kf[0] <= 0:
+        return (*nan4, DROP_NO_ENERGY)
+    t = lsd_um / kf[0]
+    r_p = bc_row + kf[2] * t / pixel_um
+    c_p = bc_col - kf[1] * t / pixel_um
+    if not (0 <= r_p < n_rows and 0 <= c_p < n_cols):
+        return (r_p, c_p, energy, gn, DROP_OFF_DETECTOR)
+    return (r_p, c_p, energy, gn, None)
+
+
+def laue_predict_hkl(U: np.ndarray, B: np.ndarray, hkl: np.ndarray, *,
+                     lsd_um: float, pixel_um: float,
+                     bc_row: float, bc_col: float, n_rows: int, n_cols: int,
+                     E_lo_keV: float, E_hi_keV: float,
+                     q_convention: str = "1/d") -> dict:
+    """Stationary-crystal Laue prediction for an arbitrary list of hkl.
+
+    The non-swept counterpart of :func:`rod_path_laue`: instead of one fixed
+    (h, k) row over continuous L, this takes an ``(N, 3)`` array of discrete
+    reflections (e.g. every F-centred hkl in a resolution box) and predicts
+    which ones are observable. Built for :func:`rod_collisions` -- checking
+    whether some OTHER reflection's predicted spot lands on top of a rod's --
+    but is a standalone utility (a one-shot Laue pattern predictor) in its
+    own right.
+
+    Returns a dict of equal-length arrays for the accessible subset only:
+    ``hkl`` (N, 3), ``row``, ``col``, ``energy_keV``, ``q_mag``. Uses the
+    SAME per-point solve as :func:`rod_path_laue` (see :func:`_laue_solve_point`),
+    not a separate re-derivation.
+    """
+    if q_convention not in ("1/d", "2pi/d"):
+        raise ValueError("q_convention must be '1/d' or '2pi/d'")
+    bragg_scale = (0.5 if q_convention == "1/d" else 1.0 / (4.0 * math.pi))
+    U = np.asarray(U, float)
+    B = np.asarray(B, float)
+    hkl = np.asarray(hkl, float)
+    if hkl.ndim != 2 or hkl.shape[1] != 3:
+        raise ValueError(f"hkl must be (N, 3), got {hkl.shape}")
+
+    kw = dict(bragg_scale=bragg_scale, lsd_um=lsd_um, pixel_um=pixel_um,
+              bc_row=bc_row, bc_col=bc_col, n_rows=n_rows, n_cols=n_cols,
+              E_lo_keV=E_lo_keV, E_hi_keV=E_hi_keV, q_convention=q_convention)
+    out_hkl, out_r, out_c, out_e, out_q = [], [], [], [], []
+    for row in hkl:
+        g_s = U @ (B @ row)
+        r_p, c_p, energy, gn, reason = _laue_solve_point(g_s, **kw)
+        if reason is not None:
+            continue
+        out_hkl.append(row); out_r.append(r_p); out_c.append(c_p)
+        out_e.append(energy); out_q.append(gn)
+
+    return {
+        "hkl": np.asarray(out_hkl).reshape(-1, 3),
+        "row": np.asarray(out_r), "col": np.asarray(out_c),
+        "energy_keV": np.asarray(out_e), "q_mag": np.asarray(out_q),
+    }
+
+
+def rod_collisions(path: LauePath, U: np.ndarray, B: np.ndarray,
+                   hkl_candidates: np.ndarray, *,
+                   tol_px: float = 5.0,
+                   exclude_own_row: bool = True,
+                   **laue_predict_kw) -> dict:
+    """Which points on a Laue rod share a pixel with a DIFFERENT reflection.
+
+    A Pilatus (or any energy-integrating detector) cannot separate two
+    reflections that diffract at different energies but land on the same
+    pixel -- the harmonic-collision problem this whole module chain exists to
+    answer. For every point on ``path``, this checks ``hkl_candidates``
+    (typically every F-centred hkl in a resolution box, from the SAME
+    orientation and cell) for the nearest OTHER accessible reflection, and
+    reports a collision if one lands within ``tol_px``.
+
+    Candidates whose (h, k) matches ``path.hk`` exactly are the rod's own
+    integer members, not contamination -- excluded whenever
+    ``exclude_own_row`` (default) regardless of which L, otherwise a
+    candidate box that happens to include the rod's own reflections would
+    have them flag each other (two genuine points on the SAME rod are not a
+    collision between DIFFERENT reflections, even when their pixels happen
+    to be close).
+
+    Returns a dict with per-path-point arrays ``collided`` (bool),
+    ``nearest_hkl`` (N, 3; NaN row where no candidate was ever evaluated),
+    and ``nearest_dist_px`` (inf where none). Does not know about any OTHER
+    phase (e.g. diamond anvils) -- pass their own hkl list (predicted with
+    THEIR OWN U, B) through the same candidates array to include them.
+    """
+    if len(path) == 0:
+        return {"collided": np.zeros(0, bool),
+                "nearest_hkl": np.zeros((0, 3)),
+                "nearest_dist_px": np.zeros(0)}
+
+    pred = laue_predict_hkl(U, B, hkl_candidates, **laue_predict_kw)
+    if len(pred["row"]) == 0:
+        return {"collided": np.zeros(len(path), bool),
+                "nearest_hkl": np.full((len(path), 3), np.nan),
+                "nearest_dist_px": np.full(len(path), np.inf)}
+
+    own_h, own_k = path.hk
+    if exclude_own_row:
+        keep_mask = ~(np.isclose(pred["hkl"][:, 0], own_h)
+                      & np.isclose(pred["hkl"][:, 1], own_k))
+    else:
+        keep_mask = np.ones(len(pred["row"]), bool)
+
+    collided = np.zeros(len(path), bool)
+    nearest_hkl = np.full((len(path), 3), np.nan)
+    nearest_dist = np.full(len(path), np.inf)
+
+    for i in range(len(path)):
+        keep = keep_mask
+        if not keep.any():
+            continue
+        d = np.hypot(pred["row"][keep] - path.row[i], pred["col"][keep] - path.col[i])
+        j = int(np.argmin(d))
+        nearest_dist[i] = d[j]
+        nearest_hkl[i] = pred["hkl"][keep][j]
+        collided[i] = d[j] <= tol_px
+
+    return {"collided": collided, "nearest_hkl": nearest_hkl, "nearest_dist_px": nearest_dist}
+
+
+def rod_path_laue(U: np.ndarray, B: np.ndarray, h: float, k: float,
+                  L_values: Sequence[float], *,
+                  lsd_um: float, pixel_um: float,
+                  bc_row: float, bc_col: float, n_rows: int, n_cols: int,
+                  E_lo_keV: float, E_hi_keV: float,
+                  q_convention: str = "1/d") -> LauePath:
+    """Walk ``(h, k, L)`` through q-space, solving ENERGY, and project to pixels.
+
+    The stationary-crystal (Laue) analogue of :func:`rod_path`: ω is fixed at
+    0 (the crystal does not rotate), and the free variable per point is the
+    diffracting energy. For a fixed orientation, a reciprocal-lattice
+    direction has at most one energy that satisfies Bragg -- unlike
+    :func:`rod_path`'s two ω roots -- because there is no second sense of
+    rotation to try.
+
+    Same conventions and same caveats as :func:`rod_path`, which this
+    duplicates on purpose rather than sharing a code path with (the omega
+    solve and the energy solve are different enough algebraically that
+    forcing one implementation to cover both would obscure both): ``B`` in
+    ``q_convention`` ("1/d" default, or "2pi/d"); **the detector is FLAT**
+    (no tilt, no distortion -- see :func:`rod_path`'s docstring for the
+    ``~lsd*tan(tilt)/pixel`` error this costs); row/col signs match
+    :func:`midas_defect.geometry.pixel_to_qlab`.
+
+    ``E_lo_keV``/``E_hi_keV`` is the usable energy band (source spectrum and/or
+    detector response), the direct analogue of ``rod_path``'s
+    ``[omega_lo_deg, omega_hi_deg]`` window.
+
+    Points that cannot be observed are counted under
+    :data:`DROP_NO_ENERGY` (no forward-scattering solution, OR a solution
+    outside the energy band -- ``rod_path`` does not separate its two
+    equivalent failure modes either) and :data:`DROP_OFF_DETECTOR`, never
+    fabricated.
+    """
+    if q_convention not in ("1/d", "2pi/d"):
+        raise ValueError("q_convention must be '1/d' or '2pi/d'")
+    bragg_scale = (0.5 if q_convention == "1/d" else 1.0 / (4.0 * math.pi))
+    U = np.asarray(U, float)
+    B = np.asarray(B, float)
+    out_L, out_r, out_c, out_e, out_q = [], [], [], [], []
+    dropped = {DROP_NO_ENERGY: 0, DROP_OFF_DETECTOR: 0}
+    kw = dict(bragg_scale=bragg_scale, lsd_um=lsd_um, pixel_um=pixel_um,
+              bc_row=bc_row, bc_col=bc_col, n_rows=n_rows, n_cols=n_cols,
+              E_lo_keV=E_lo_keV, E_hi_keV=E_hi_keV, q_convention=q_convention)
+
+    for Lc in np.asarray(L_values, float):
+        g_s = U @ (B @ np.array([h, k, Lc], float))
+        r_p, c_p, energy, gn, reason = _laue_solve_point(g_s, **kw)
+        if reason is not None:
+            dropped[reason] += 1
+            continue
+        out_L.append(Lc); out_r.append(r_p); out_c.append(c_p)
+        out_e.append(energy); out_q.append(gn)
+
+    return LauePath(L=np.asarray(out_L), row=np.asarray(out_r),
+                    col=np.asarray(out_c), energy_keV=np.asarray(out_e),
+                    q_mag=np.asarray(out_q), hk=(h, k), dropped=dropped)
+
+
+def matched_control_path_laue(U, B, h: float, k: float, L_values, **kw) -> LauePath:
+    """:func:`matched_control_path`'s energy-sweep analogue -- see its docstring
+    for what "matched" means and why the control must be able to fail."""
+    return rod_path_laue(U, B, h + 0.5, k + 0.5, L_values, **kw)
+
+
+def profile_along_laue(image: np.ndarray, mask: np.ndarray, path: LauePath, *,
+                       half_width_px: float = 6.0,
+                       min_valid_fraction: float = 0.5,
+                       reducer: str = "mean") -> RodProfile:
+    """Transverse-slice intensity along ``path``, from ONE Laue image.
+
+    The single-frame analogue of :func:`profile_along`: a Laue exposure is
+    stationary, so there is no per-point frame to select (every point on the
+    rod is read from the same image) -- the only difference from
+    ``profile_along`` beyond that. Returns the SAME :class:`RodProfile` used
+    by the rotation-series path, so :func:`rod_significance` and
+    :func:`transverse_width` are unmodified and reused, not duplicated.
+
+    ``RodProfile.omega_deg`` is filled with NaN: a Laue profile has no omega
+    per point, and nothing downstream (:func:`rod_significance`,
+    :func:`transverse_width`) reads that field. The path's own
+    ``energy_keV`` is not carried through -- keep ``path`` if you need it.
+    """
+    image = np.asarray(image)
+    mask = np.asarray(mask, bool)
+    if image.ndim != 2:
+        raise ValueError(f"image must be (rows, cols), got {image.shape}")
+    if reducer not in ("mean", "max"):
+        raise ValueError("reducer must be 'mean' or 'max'")
+    n_r, n_c = image.shape
+
+    if len(path) < 3:
+        raise ValueError("path too short to define a tangent")
+    dr = np.gradient(path.row)
+    dc = np.gradient(path.col)
+    norm = np.hypot(dr, dc)
+    norm[norm == 0] = 1.0
+    pr, pc = -dc / norm, dr / norm
+    offs = np.arange(-half_width_px, half_width_px + 1e-9, 1.0)
+
+    inten = np.full(len(path), np.nan)
+    nvalid = np.zeros(len(path), int)
+    dropped = dict(path.dropped)
+    dropped.setdefault(DROP_MASKED, 0)
+
+    for i in range(len(path)):
+        rr = np.round(path.row[i] + offs * pr[i]).astype(int)
+        cc = np.round(path.col[i] + offs * pc[i]).astype(int)
+        inside = (rr >= 0) & (rr < n_r) & (cc >= 0) & (cc < n_c)
+        if not inside.any():
+            dropped[DROP_OFF_DETECTOR] = dropped.get(DROP_OFF_DETECTOR, 0) + 1
+            continue
+        rr, cc = rr[inside], cc[inside]
+        good = ~mask[rr, cc]
+        nvalid[i] = int(good.sum())
+        if good.sum() < min_valid_fraction * len(offs):
+            dropped[DROP_MASKED] += 1
+            continue
+        vals = image[rr[good], cc[good]]
+        inten[i] = float(vals.mean() if reducer == "mean" else vals.max())
+
+    return RodProfile(L=path.L, intensity=inten, n_valid_px=nvalid,
+                      omega_deg=np.full(len(path), np.nan), dropped=dropped)
+
+
 def rod_path_geometry(U: np.ndarray, B: np.ndarray, h: float, k: float,
                       L_values: Sequence[float], geom: "Geometry", *,
                       omega_sign: int = 1,
@@ -280,6 +595,7 @@ def rod_path_geometry(U: np.ndarray, B: np.ndarray, h: float, k: float,
 
     kept_L, kept_w, kept_qmag, qlab_batch = [], [], [], []
     dropped = {DROP_NO_OMEGA: 0, DROP_OFF_DETECTOR: 0}
+    wedge_rad = math.radians(geom.wedge_deg)
 
     for Lc in np.asarray(L_values, float):
         g_s = U @ (B @ np.array([h, k, Lc], float))
@@ -288,7 +604,7 @@ def rod_path_geometry(U: np.ndarray, B: np.ndarray, h: float, k: float,
             dropped[DROP_NO_OMEGA] += 1
             continue
         chosen = None
-        for w in ewald_crossing_omegas(g_s, geom.wavelength_A):
+        for w in ewald_crossing_omegas(g_s, geom.wavelength_A, wedge_rad):
             for n in (-1, 0, 1):
                 ww = w + 2.0 * math.pi * n
                 w_reported = omega_sign * ww
@@ -300,7 +616,7 @@ def rod_path_geometry(U: np.ndarray, B: np.ndarray, h: float, k: float,
         if chosen is None:
             dropped[DROP_NO_OMEGA] += 1
             continue
-        q_lab = qsample_to_qlab(torch.as_tensor(g_s, dtype=torch.float64), chosen)
+        q_lab = qsample_to_qlab(torch.as_tensor(g_s, dtype=torch.float64), chosen, wedge_rad)
         kept_L.append(Lc); kept_w.append(omega_sign * chosen)
         kept_qmag.append(qmag); qlab_batch.append(q_lab)
 

@@ -93,7 +93,8 @@ def _B(a, b, c, alpha, beta, gamma):
 def _q_sample(geom, d, omega_sign):
     ql = pixel_to_qlab(np.asarray(d.row, float), np.asarray(d.col, float), geom, device="cpu", dtype="float64")
     w = torch.deg2rad(torch.as_tensor(omega_sign * np.asarray(d.omega_deg, float), dtype=ql.dtype))
-    return qlab_to_qsample(ql, w).detach().cpu().numpy().astype(np.float64)
+    wedge = torch.deg2rad(torch.as_tensor(geom.wedge_deg, dtype=ql.dtype))
+    return qlab_to_qsample(ql, w, wedge).detach().cpu().numpy().astype(np.float64)
 
 
 def selfcalibrate_from_crystals(domains: Sequence[CrystalSpots], geom: Geometry, *,

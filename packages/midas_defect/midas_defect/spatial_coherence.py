@@ -306,7 +306,8 @@ def _pass1_one_position(p: int, loader: Callable[[int], np.ndarray], geom: Geome
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         save_position_hdf5(cache_path, bundle=bundle, res=res, save_dense=save_dense)
     q_all = qlab_to_qsample(qlab, torch.deg2rad(torch.as_tensor(
-        res.omega_sign.chosen_sign * omega_deg, dtype=qlab.dtype))).detach().cpu().numpy()
+        res.omega_sign.chosen_sign * omega_deg, dtype=qlab.dtype)),
+        torch.deg2rad(torch.as_tensor(geom.wedge_deg, dtype=qlab.dtype))).detach().cpu().numpy()
     candidate_entries = [dict(point=p, dom_idx=i, U=np.asarray(dom.U, float), n=dom.n,
                              branch=dom.branch)
                         for i, dom in enumerate(res.domains.domains)]

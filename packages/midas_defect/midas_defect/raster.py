@@ -155,20 +155,25 @@ def omega_sign_check(qlab: np.ndarray, omega_deg: np.ndarray, intensity: np.ndar
                      seedable: Optional[np.ndarray] = None,
                      live: Optional[np.ndarray] = None,
                      omega_signs: Sequence[int] = (1, -1),
+                     wedge_deg: float = 0.0,
                      **find_domains_kwargs) -> OmegaSignCheck:
     """Try both ω signs and see which one :func:`find_domains` actually explains more of.
 
     ``qlab``/``omega_deg`` are the pixel-derived lab-frame q and the (unsigned) omega reading
     for every spot; the sign multiplies ``omega_deg`` before rotating into the sample frame
-    (``qlab_to_qsample`` convention: ``q_sample = R_z(-sign*omega) @ q_lab``). Feed it
-    **seedable** spots only (non-powder, non-stationary) -- gasket and anvil reflections can
-    out-vote the crystal's own (measured on a real La3Ni2O7 position: -1 at 4:1 from stationary
-    spots, +1 at 38:0 from the crystal's own).
+    (``qlab_to_qsample`` convention: ``q_sample = R_z(-sign*omega) @ R_y(W) @ q_lab`` with ``W``
+    the wedge angle in radians). ``wedge_deg`` is the geometry's ``Wedge`` (degrees); the caller
+    passes it explicitly because this function takes raw arrays, not a ``Geometry``. Feed it
+    **seedable** spots only (non-powder,
+    non-stationary) -- gasket and anvil reflections can out-vote the crystal's own (measured on a
+    real La3Ni2O7 position: -1 at 4:1 from stationary spots, +1 at 38:0 from the crystal's own).
     """
+    wedge_rad = math.radians(wedge_deg)
     n_explained: Dict[int, int] = {}
     for sign in omega_signs:
         q = qlab_to_qsample(torch.as_tensor(qlab, dtype=torch.float64),
-                            torch.deg2rad(torch.as_tensor(sign * np.asarray(omega_deg), dtype=torch.float64))
+                            torch.deg2rad(torch.as_tensor(sign * np.asarray(omega_deg), dtype=torch.float64)),
+                            wedge_rad
                             ).detach().cpu().numpy()
         res = find_domains(q, intensity, row, col, frame, a=a, c=c,
                            space_group_number=space_group_number,
@@ -382,19 +387,20 @@ def predict_reflections(U: np.ndarray, B: np.ndarray, hkl: np.ndarray, geom: Geo
     omega_hi = math.radians(geom.omega_first_deg + (geom.n_frames - 0.5) * geom.omega_step_deg)
     if omega_lo > omega_hi:
         omega_lo, omega_hi = omega_hi, omega_lo
+    wedge_rad = math.radians(geom.wedge_deg)
 
     rows, cols, omegas, kept = [], [], [], []
     for i in range(len(hkl)):
         qs = q_sample[i]
         if np.linalg.norm(qs) < 1e-9:
             continue
-        for w in ewald_crossing_omegas(qs, geom.wavelength_A):
+        for w in ewald_crossing_omegas(qs, geom.wavelength_A, wedge_rad):
             for n in (-1, 0, 1):
                 ww = w + 2 * math.pi * n
                 w_reported = omega_sign * ww
                 if not (omega_lo <= w_reported <= omega_hi):
                     continue
-                qlab = qsample_to_qlab(torch.as_tensor(qs, dtype=torch.float64), ww)
+                qlab = qsample_to_qlab(torch.as_tensor(qs, dtype=torch.float64), ww, wedge_rad)
                 try:
                     row, col = qlab_to_pixel(qlab.reshape(1, 3), geom, device="cpu")
                 except RuntimeError:
@@ -661,7 +667,7 @@ def reduce_one_position(
     sign = omega_sign_check(qlab.detach().cpu().numpy(), omega_deg, intensity,
                             spots.row.values, spots.col.values, spots.frame.values,
                             a=a, c=c, space_group_number=space_group_number,
-                            seedable=seedable, live=live,
+                            seedable=seedable, live=live, wedge_deg=geom.wedge_deg,
                             sigma_rtn=sigma_rtn, seed_from_nominal=seed_from_nominal, **fk)
     if not sign.decisive:
         notes.append(f"omega-sign check NOT decisive ({sign}); proceeding with "
@@ -669,7 +675,8 @@ def reduce_one_position(
                     "this position's answer on that basis alone")
 
     q = qlab_to_qsample(qlab, torch.deg2rad(torch.as_tensor(
-        sign.chosen_sign * omega_deg, dtype=qlab.dtype))).detach().cpu().numpy()
+        sign.chosen_sign * omega_deg, dtype=qlab.dtype)),
+        torch.deg2rad(torch.as_tensor(geom.wedge_deg, dtype=qlab.dtype))).detach().cpu().numpy()
 
     domains = find_domains(q, intensity, spots.row.values,
                            spots.col.values, spots.frame.values, a=a, c=c,
