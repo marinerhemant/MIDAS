@@ -12,9 +12,11 @@ none of the mistakes raise:
   ``--image`` loader in this CLI takes an HDF5 file's first top-level key,
   which on a ``.vrx.h5`` is the ``WM`` metadata *group*. Point
   ``data_group``/``dark_group`` at the real datasets instead.
-* **The dark is not always in the obvious place.** On the 20-ID Varex the dark
-  sits in ``/exchange/bright`` while ``/exchange/dark`` exists and is all
-  zeros. Subtracting the zeros leaves a ~1500-count pedestal.
+* **The dark is not always in the obvious place.** Its location varies per
+  scan: ``/exchange/dark``, ``/exchange/bright`` and ``/exchange/data_dark``
+  have all been used, and any of them can be all zeros. Subtracting zeros
+  leaves the detector pedestal (~1500 counts on a Varex) in the image, so
+  check which dataset holds the real dark before passing ``--dark-group``.
 * **Never invent a beam centre.** :func:`~midas_calibrate_v2.calibrate`
   auto-seeds it; passing a guess overrides the seeder and the fit then cannot
   travel far enough to recover.
@@ -144,7 +146,8 @@ def load_calibrant_frame(
             raise ValueError(
                 f"{dark_group!r} in {path} is all zeros, so subtracting it "
                 "does nothing and the detector pedestal stays in the image. "
-                "On 20-ID Varex the dark is in '/exchange/bright'.")
+                "Check the file for the dataset that holds the real dark "
+                "(e.g. /exchange/bright or /exchange/data_dark).")
         img = img - fn(dark, axis=0)
     return np.clip(img, 0.0, None)
 
@@ -307,7 +310,10 @@ FF_DEFAULTS: Dict[str, str] = {
     "Rsample": "1000", "Hbeam": "1000", "BeamThickness": "1000",
     "Vsample": "50000000", "GlobalPosition": "0",
     "NumPhases": "1", "PhaseNr": "1",
-    "Completeness": "0.4", "MinNrSpots": "2",
+    # MinNrSpots: an orientation has 3 DOF, so a 2-spot "grain" is
+    # under-determined and survives every downstream filter as a false grain.
+    # 3 is the floor on a full rotation; only a truncated sweep may use 2.
+    "Completeness": "0.4", "MinNrSpots": "3",
     "MarginEta": "500", "MarginOme": "0.2",
     "MarginRadial": "1000", "MarginRadius": "1000",
     "MargABC": "2.5", "MargABG": "2.5",

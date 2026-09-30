@@ -172,3 +172,20 @@ def test_write_ff_paramstest_no_spline(tmp_path):
     assert ptest.exists()
     assert not (tmp_path / "residual_corr.bin").exists()
     assert "ResidualCorrectionMap" not in ptest.read_text()
+
+
+def test_synthesized_template_minnrspots_floor(tmp_path):
+    """A from-scratch FF file must not default to an under-determined MinNrSpots.
+
+    An orientation has three degrees of freedom; MinNrSpots 2 on a full 360 deg
+    sweep admits under-determined two-spot grains as real rows.
+    """
+    from midas_calibrate_v2.pipelines.ff_calibrate import FF_DEFAULTS, synthesize_template
+    assert int(FF_DEFAULTS["MinNrSpots"]) >= 3
+    out = synthesize_template(
+        tmp_path / "ps.txt", wavelength_A=0.173, px_um=150.0, n_pixels=2880,
+        im_trans=[1], lattice=[3.59, 3.59, 3.59, 90, 90, 90], space_group=225,
+        raw_folder=str(tmp_path), file_stem="x", start_file_nr=1, ext=".h5",
+        omega_start=-179.75, omega_step=0.2505, ring_thresh=[(1, 100)])
+    lines = [ln.split() for ln in out.read_text().splitlines() if ln.startswith("MinNrSpots")]
+    assert lines and int(lines[0][1]) >= 3

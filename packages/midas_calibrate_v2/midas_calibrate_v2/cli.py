@@ -126,8 +126,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     ff.add_argument("--image-group", default="exchange/data",
                     help="HDF5 dataset holding the calibrant frames")
     ff.add_argument("--dark-group", default=None,
-                    help="HDF5 dataset holding the dark. NB 20-ID Varex keeps "
-                         "it in /exchange/bright; /exchange/dark is all zeros")
+                    help="HDF5 dataset holding the dark. It varies PER SCAN, not "
+                         "per beamline: 20-ID files have used /exchange/dark, "
+                         "/exchange/bright and /exchange/data_dark, and a group "
+                         "can be all zeros. Check its mean before trusting it")
     ff.add_argument("--reduce", choices=("median", "mean"), default="median")
     ff.add_argument("--wavelength", type=float, default=None,
                     help="Angstrom; defaults to the template's value")
