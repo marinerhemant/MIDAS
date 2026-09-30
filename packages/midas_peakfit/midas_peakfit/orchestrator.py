@@ -32,9 +32,10 @@ from midas_peakfit.panels import generate_panels, load_panel_shifts
 from midas_peakfit.params import ZarrParams, resolve_do_peak_fit, resolve_result_folder
 from midas_peakfit.pool import RegionPool
 from midas_peakfit.preprocess import (
-    apply_threshold, correct_frame, prepare_dark, prepare_flood, prepare_mask,
+    apply_threshold, correct_frame, mask_touch_map, prepare_dark, prepare_flood, prepare_mask,
 )
-from midas_peakfit.seeds import seed_region
+from midas_peakfit.postfit import build_saturated_rows
+from midas_peakfit.seeds import saturated_region, seed_region
 from midas_peakfit.zarr_io import frame_omega, load_corrections, parse_zarr_params, read_frame
 
 
@@ -191,6 +192,21 @@ def _build_panels(p: ZarrParams):
     return panels
 
 
+def _require_ring_radii(p, ring_rads) -> None:
+    """Refuse to run a ring-banded peak search with no ring radii.
+
+    Without them every goodCoords pixel is 0, every frame has 0 regions, and the
+    run "succeeds" with an empty AllPeaks_PS.bin (seen on ma5608 when the result
+    folder had no hkls.csv).
+    """
+    if ring_rads is None and p.nRingsThresh > 0 and p.DoFullImage != 1:
+        raise FileNotFoundError(
+            f"RingThresh is set for {p.nRingsThresh} ring(s) but there is no "
+            f"hkls.csv in the result folder {p.ResultFolder!r}; the peak search "
+            "would find nothing. Write hkls.csv there (the hkl stage does) or "
+            "point --result-folder at a folder that has it.")
+
+
 def run(
     data_file: str,
     block_nr: int,
@@ -225,6 +241,7 @@ def run(
     panels = _build_panels(p)
     load_corrections(data_file, p)
     ring_rads = load_ring_radii(p, p.ResultFolder)
+    _require_ring_radii(p, ring_rads)
     good_coords = compute_good_coords(p, panels, ring_rads)
 
     # Opt-in local background subtraction (BgSubtract 1). None => legacy/C path.
@@ -258,6 +275,11 @@ def run(
     dark = prepare_dark(p.dark, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
     flood = prepare_flood(p.flood, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
     mask = prepare_mask(p.mask, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
+    # Masked pixels are zeroed in correct_frame; maskTouched then means "touches
+    # the mask's one-pixel rim" (a peak cut by a gap), see preprocess.mask_touch_map.
+    mask_touch = mask_touch_map(mask)
+    if mask.any():
+        print(f"Detector mask: {int((mask > 0).sum())} pixels zeroed before the peak search")
 
     # ── 2. Block frame range ──────────────────────────────────────────
     # Two sharding modes:
@@ -353,16 +375,13 @@ def run(
         """CPU-side worker: decompress + preprocess + CC + seed for one frame.
 
         ``frame_nr`` is the absolute frame index (post-block-sharding).
-        Returns ``(frame_nr, omega, n_regions_total, seeded_list, n_saturated)``
-        or an empty result on read failure. ``n_saturated`` is the number of
-        regions discarded whole for containing a pixel over ``IntSat``.
+        Returns ``(frame_nr, omega, n_regions_total, seeded_list, n_saturated,
+        sat_list)`` or an empty result on read failure. ``sat_list`` holds the
+        regions with a pixel over ``IntSat``: not fitted, but written to
+        ``AllPeaks_PS_sat.bin`` so the merge can flag what they touch.
         """
         omega_local = frame_omega(p, frame_nr + p.skipFrame)
-        try:
-            raw = read_frame(data_file, frame_nr + p.skipFrame)
-        except Exception as e:
-            print(f"Frame {frame_nr}: failed to read ({e}); skipping")
-            return frame_nr, omega_local, 0, [], 0
+        raw = read_frame(data_file, frame_nr + p.skipFrame)   # raises FrameReadError after retries
         corrected = correct_frame(
             raw,
             NrPixels=p.NrPixels,
@@ -376,6 +395,7 @@ def run(
             bad_px_intensity=p.BadPxIntensity,
             make_map=p.makeMap,
             bg_bins=bg_bins,
+            mask=mask,
         )
         img_corr = apply_threshold(corrected, good_coords)
         regions_all = find_regions(img_corr, good_coords)
@@ -389,10 +409,11 @@ def run(
             regions, _ = filter_regions_by_snr(
                 regions, corrected, snr_bins, min_peak_snr)
         seeded_list = []
+        sat_list = []
         n_saturated = 0
         for reg in regions:
             sr = seed_region(
-                reg, img_corr, mask,
+                reg, img_corr, mask_touch,
                 Ycen=p.Ycen, Zcen=p.Zcen,
                 int_sat=p.IntSat, max_n_peaks=p.maxNPeaks,
                 panels=panels,
@@ -401,14 +422,17 @@ def run(
             if sr is not None:
                 seeded_list.append(sr)
             else:
-                # Saturation is the only None case (seeds.seed_region), and it
-                # silently deletes a STRONG reflection. Count it so the loss
-                # reaches the log instead of vanishing into the gap between
-                # `NrOfRegions` and `Filtered regions`, which also contains
-                # the size and SNR cuts.
+                # mask_touch, not mask: masked pixels are zeroed before the
+                # region search, so only the mask's rim can be touched.
+                sat_list.append(saturated_region(
+                    reg, img_corr, mask_touch, Ycen=p.Ycen, Zcen=p.Zcen,
+                    panels=panels))
+                # Saturation is the only None case (seeds.seed_region). The
+                # region is kept out of the fit (so the fit batches, and every
+                # unsaturated peak, are exactly as before) but recorded.
                 n_saturated += 1
         return (frame_nr, omega_local, len(regions_all), seeded_list,
-                n_saturated)
+                n_saturated, sat_list)
 
     n_workers = max(1, num_procs)
 
@@ -460,8 +484,23 @@ def run(
     n_regions_per_frame = [0] * n_frames_total
     n_filtered_per_frame = [0] * n_frames_total
     n_saturated_per_frame = [0] * n_frames_total
+    sat_per_frame: dict = {}          # f_local -> [SaturatedRegion]
 
     completed = 0
+
+    def _abort_producer(ex) -> None:
+        """A frame failed (e.g. FrameReadError): stop everything and let the
+        caller's exception propagate. Queued frames are cancelled and the GPU
+        consumer is discarded rather than drained, and NO peak file is
+        written -- a partial AllPeaks_PS.bin would be picked up as finished by
+        midas_pipeline's "already exists; skip" cache."""
+        print("[orch] ERROR: a frame could not be processed; aborting the "
+              "peak search without writing output.", flush=True)
+        ex.shutdown(wait=False, cancel_futures=True)
+        try:
+            pool.abort()
+        except Exception:
+            pass
 
     def _ingest(result):
         """Common collector: scatter result into per-frame metadata + push
@@ -478,14 +517,23 @@ def run(
         # loses a log line, while raising loses the layer. midas_pipeline logs
         # a failed scan as a WARNING and finishes from whatever survived, so
         # the failure would be near-invisible.
+        # The 6th element (the saturated regions themselves) is tolerated
+        # missing for the same reason: an old worker degrades to "counted but
+        # not recorded", never to a lost layer.
         frame_nr, omega, n_regs, seeded_list, *_sat = result
         n_sat = _sat[0] if _sat else 0
+        sat_list = _sat[1] if len(_sat) > 1 else []
         f_local = abs_to_local.get(frame_nr, -1)
         if 0 <= f_local < n_frames_total:
             omega_per_frame[f_local] = omega
             n_regions_per_frame[f_local] = n_regs
             n_filtered_per_frame[f_local] = len(seeded_list)
             n_saturated_per_frame[f_local] = n_sat
+            if sat_list:
+                sat_per_frame[f_local] = sat_list
+            # Saturated regions never enter the pool: the fit batches (and so
+            # every fitted number, see pool.py REPRODUCIBILITY CONTRACT) are
+            # exactly what they were before saturation was recorded.
             pool.add_frame(f_local, omega, seeded_list)
         completed += 1
         # Every 10 frames, not 100: on a slow dataset 100 frames can be
@@ -534,30 +582,37 @@ def run(
                 good_coords, panels_pickle, compute_moments, bg_bins, snr_bins,
             ),
         ) as ex:
-            for result in ex.map(
-                process_frame_in_worker, zarr_indices, chunksize=4,
-            ):
-                zarr_idx, _omega_unused, n_regs, seeded_list, *_sat = result
-                n_sat = _sat[0] if _sat else 0   # 4-tuple tolerated: see _ingest
-                abs_frame = zarr_idx - skip  # back to "absolute frame number"
-                omega = frame_omega(p, zarr_idx)
-                _ingest((abs_frame, omega, n_regs, seeded_list, n_sat))
-                nr_files_done += 1
+            try:
+                for result in ex.map(
+                    process_frame_in_worker, zarr_indices, chunksize=4,
+                ):
+                    zarr_idx, _omega_unused, n_regs, seeded_list, *_sat = result
+                    abs_frame = zarr_idx - skip  # back to "absolute frame number"
+                    omega = frame_omega(p, zarr_idx)
+                    # 4/5-tuple tolerated: see _ingest
+                    _ingest((abs_frame, omega, n_regs, seeded_list, *_sat))
+                    nr_files_done += 1
+            except BaseException:
+                _abort_producer(ex)
+                raise
     else:
         # Threaded producer: lower startup cost, but may be GIL-limited.
         # Iterate over the absolute frames this block owns (handles both
         # contiguous and interleaved sharding identically).
         with ThreadPoolExecutor(max_workers=n_workers) as ex:
-            for result in ex.map(
-                _process_frame, block_frames, chunksize=8
-            ):
-                # _process_frame returns
-                # (local_idx, omega, n_regs, seeded_list, n_saturated) where
-                # local_idx is whatever was passed in (here: absolute frame).
-                local_idx, omega, n_regs, seeded_list, *_sat = result
-                n_sat = _sat[0] if _sat else 0   # 4-tuple tolerated: see _ingest
-                _ingest((local_idx, omega, n_regs, seeded_list, n_sat))
-                nr_files_done += 1
+            try:
+                for result in ex.map(
+                    _process_frame, block_frames, chunksize=8
+                ):
+                    # _process_frame returns
+                    # (local_idx, omega, n_regs, seeded_list, n_saturated,
+                    # sat_list) where local_idx is whatever was passed in (here:
+                    # absolute frame).
+                    _ingest(result)
+                    nr_files_done += 1
+            except BaseException:
+                _abort_producer(ex)
+                raise
 
     print(f"[orch] CPU stage done in {time.time() - cpu_t0:.1f}s; "
           f"signaling consumer end-of-stream and waiting for drain…")
@@ -577,24 +632,44 @@ def run(
                 f"FrameNr: {start_frame + f_local}, "
                 f"NrOfRegions: {n_regions_per_frame[f_local] if f_local < len(n_regions_per_frame) else 0}, "
                 f"Filtered regions: {n_filtered_per_frame[f_local] if f_local < len(n_filtered_per_frame) else 0}, "
-                f"Saturated (dropped): {n_saturated_per_frame[f_local] if f_local < len(n_saturated_per_frame) else 0}, "
+                f"Saturated (not fitted): {n_saturated_per_frame[f_local] if f_local < len(n_saturated_per_frame) else 0}, "
                 f"Number of peaks: {acc.n_peaks}"
             )
 
-    # Saturation deletes whole regions, and a saturated reflection is a strong
-    # one — so the loss shows up downstream as incompleteness AND as an
-    # inflated grain size (it was the brightest contributor to that ring's
-    # powder normalisation). Neither is attributable without this line.
+    # Saturated regions are not fitted and are NOT in AllPeaks_PS.bin (which is
+    # therefore unchanged). They go to the AllPeaks_PS_sat.bin sibling below,
+    # one centroid row each with returnCode = -2, so the merge can flag every
+    # spot that contains or touches one (see midas_transforms.merge).
     n_sat_total = sum(n_saturated_per_frame)
     if n_sat_total:
         n_reg_total = sum(n_regions_per_frame)
         print(
-            f"[orch] Saturated regions dropped: {n_sat_total} of "
+            f"[orch] Saturated regions: {n_sat_total} of "
             f"{n_reg_total} ({100.0 * n_sat_total / max(n_reg_total, 1):.2f}%), "
-            f"IntSat={p.IntSat:g}. These emit NO peaks and carry no flag; "
-            f"raise UpperBoundThreshold or attenuate if this fraction is "
+            f"IntSat={p.IntSat:g}. Not fitted; recorded in "
+            f"Temp/AllPeaks_PS_sat.bin (returnCode -2) and flagged at merge. "
+            f"Raise UpperBoundThreshold or attenuate if this fraction is "
             f"large."
         )
+
+    # Saturated rows: SpotIDs continue after the frame's fitted peaks, so
+    # (frame, SpotID) stays unique across AllPeaks_PS.bin and its _sat sibling.
+    sat_accumulators: List[FrameAccumulator] = []
+    for f_local in range(n_frames_total):
+        sacc = FrameAccumulator()
+        sats = sat_per_frame.get(f_local, [])
+        if sats:
+            rows = build_saturated_rows(
+                sats, omega=omega_per_frame[f_local], Ycen=p.Ycen, Zcen=p.Zcen,
+                spot_id_start=accumulators[f_local].n_peaks + 1,
+            )
+            for k, s in enumerate(sats):
+                sacc.add(FitOutput(
+                    region_id=s.region_id, rows=rows[k:k + 1],
+                    pixel_y=s.pixels_y.astype(np.int16),
+                    pixel_z=s.pixels_z.astype(np.int16),
+                ))
+        sat_accumulators.append(sacc)
 
     # ── 5. Write consolidated outputs ─────────────────────────────────
     out_temp = Path(p.ResultFolder) / "Temp"
@@ -608,6 +683,18 @@ def run(
         out_folder=out_temp,
         abs_frames=block_frames,
     )
+    # Always written (possibly with zero rows): its presence tells the merge
+    # that saturation was recorded, so "no file" still means "legacy peakfit".
+    sat_ps_path, _sat_px_path = write_consolidated_peak_files(
+        sat_accumulators,
+        n_total_frames=p.nFrames,
+        start_frame=start_frame,
+        end_frame=end_frame,
+        nr_pixels=p.NrPixels,
+        out_folder=out_temp,
+        abs_frames=block_frames,
+        suffix="_sat",
+    )
 
     total_time = time.time() - t0
     print(
@@ -618,6 +705,8 @@ def run(
     return {
         "ps_path": str(ps_path),
         "px_path": str(px_path),
+        "sat_ps_path": str(sat_ps_path),
+        "n_saturated": int(n_sat_total),
         "n_frames_done": nr_files_done,
         "total_time": total_time,
     }

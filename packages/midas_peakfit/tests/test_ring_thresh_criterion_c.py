@@ -99,3 +99,68 @@ def test_c_can_only_raise_a_recommendation_never_lower_it():
         rec = RingRecommendation(ring_nr=1, radius_px=1.0,
                                  thresh_snr=a, thresh_fp=b, thresh_merge=c)
         assert rec.recommended >= two
+
+
+# --- C railed at the sweep ceiling (bt_20id_sep26, 2026-09-29) --------------------------------------
+from midas_peakfit.ring_thresh import _merge_floor, format_recommendations
+
+SWEEP = (5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500)
+
+
+def _railed_sweep():
+    """p99 peaks per region stays above the limit at EVERY threshold up to 300 and is clean only at 500."""
+    return [_pt(t, 40 if t < 500 else 1, n_resolved={30: 20.0, 50: 60.0, 75: 40.0}.get(t, 5.0)) for t in SWEEP]
+
+
+def test_floor_supported_only_by_the_last_point_is_a_rail_not_a_floor():
+    assert _merge_floor(_railed_sweep(), DEFAULT_P99_PEAKS_MAX) == (None, "railed")
+    assert _pick_merge(_railed_sweep(), DEFAULT_P99_PEAKS_MAX) is None
+
+
+def test_a_confirmed_floor_next_to_the_ceiling_is_still_a_floor():
+    """Clean from 300 up (300 AND 500): the tail confirms 300, so it is a real floor."""
+    sweep = [_pt(t, 40 if t < 300 else 1) for t in SWEEP]
+    assert _merge_floor(sweep, DEFAULT_P99_PEAKS_MAX) == (300.0, "floor")
+
+
+def test_status_of_the_other_cases_is_unchanged():
+    assert _merge_floor([_pt(t, 1) for t in SWEEP], DEFAULT_P99_PEAKS_MAX) == (None, "none")
+    assert _merge_floor([_pt(t, 200) for t in SWEEP], DEFAULT_P99_PEAKS_MAX) == (None, "never_clean")
+    assert _merge_floor([_pt(t, p) for t, p in [(20, 390), (30, 120), (50, 8), (75, 2), (100, 1)]],
+                        DEFAULT_P99_PEAKS_MAX) == (75.0, "floor")
+
+
+def test_railed_recommendation_uses_best_resolved_never_the_ceiling():
+    """The H5 50 um ring 2 case: A = B = 30, C railed at 500, best resolved 50 -> 50, not 500."""
+    rec = RingRecommendation(ring_nr=2, radius_px=1.0, sweep=_railed_sweep(),
+                             thresh_snr=30.0, thresh_fp=30.0, thresh_merge=None,
+                             thresh_best_resolved=50.0, merge_railed=True)
+    assert rec.recommended == 50.0
+
+
+def test_railed_never_lowers_a_stricter_a_or_b():
+    rec = RingRecommendation(ring_nr=2, radius_px=1.0, sweep=_railed_sweep(),
+                             thresh_snr=100.0, thresh_fp=30.0, thresh_best_resolved=50.0, merge_railed=True)
+    assert rec.recommended == 100.0
+
+
+def test_railed_without_a_resolved_optimum_falls_back_to_a_and_b():
+    rec = RingRecommendation(ring_nr=2, radius_px=1.0, sweep=_railed_sweep(),
+                             thresh_snr=30.0, thresh_fp=20.0, thresh_best_resolved=None, merge_railed=True)
+    assert rec.recommended == 30.0
+
+
+def test_paste_block_says_railed_and_does_not_print_the_ceiling():
+    rec = RingRecommendation(ring_nr=2, radius_px=1.0, sweep=_railed_sweep(),
+                             thresh_snr=30.0, thresh_fp=30.0, thresh_best_resolved=50.0, merge_railed=True)
+    text = format_recommendations([rec])
+    assert "RAILED" in text
+    paste = text.split("Paste into the parameter file:")[1]
+    assert "RingThresh 2 50" in paste and "RingThresh 2 500" not in paste
+    assert "railed" in paste.lower()
+
+
+def test_unrailed_recommendation_is_untouched_by_the_flag():
+    rec = RingRecommendation(ring_nr=1, radius_px=1.0, thresh_snr=30.0, thresh_fp=20.0,
+                             thresh_merge=75.0, thresh_best_resolved=50.0, merge_railed=False)
+    assert rec.recommended == 75.0

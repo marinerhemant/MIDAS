@@ -97,4 +97,53 @@ def build_peak_rows(
     return rows
 
 
-__all__ = ["N_PEAK_COLS", "build_peak_rows"]
+def build_saturated_rows(
+    sat_regions,
+    *,
+    omega: float,
+    Ycen: float,
+    Zcen: float,
+    spot_id_start: int,
+) -> np.ndarray:
+    """29-col rows for saturated (unfitted) regions, one row per region.
+
+    Same column layout as :func:`build_peak_rows` so every reader works, with:
+    ``IntegratedIntensity`` = ``RawSumIntensity`` = summed clipped pixels (a
+    LOWER BOUND), ``IMax`` = brightest pixel, position = intensity-weighted
+    centroid, ``SigmaR``/``SigmaEta`` = RMS extents, ``returnCode`` =
+    ``SATURATED_RETURN_CODE`` (-2), fit-only fields (BG, Mu, split sigmas,
+    FitRMSE) = 0.
+    """
+    from midas_peakfit.seeds import SATURATED_RETURN_CODE
+
+    rows = np.zeros((len(sat_regions), N_PEAK_COLS), dtype=np.float64)
+    for i, s in enumerate(sat_regions):
+        yArr, zArr = yz_from_r_eta(np.array([s.R]), np.array([s.Eta]))
+        y_out = float(-yArr[0] + Ycen)
+        z_out = float(zArr[0] + Zcen)
+        r = rows[i]
+        r[0] = spot_id_start + i
+        r[1] = s.raw_sum
+        r[2] = omega
+        r[3] = y_out
+        r[4] = z_out
+        r[5] = s.max_value
+        r[6] = s.R
+        r[7] = s.Eta
+        r[8] = s.sigma_R
+        r[9] = s.sigma_Eta
+        r[10] = float(s.n_pixels)
+        r[11] = float(s.n_pixels)
+        r[12] = 1.0
+        r[13] = float(s.maxY)
+        r[14] = float(s.maxZ)
+        r[15] = float(s.maxY) - y_out
+        r[16] = float(s.maxZ) - z_out
+        r[17] = s.max_value
+        r[18] = float(SATURATED_RETURN_CODE)
+        r[26] = s.raw_sum
+        r[27] = float(s.mask_touched)
+    return rows
+
+
+__all__ = ["N_PEAK_COLS", "build_peak_rows", "build_saturated_rows"]

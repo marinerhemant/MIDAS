@@ -111,12 +111,17 @@ def write_consolidated_peak_files(
     nr_pixels: int,
     out_folder: str | Path,
     abs_frames: list[int] | None = None,
+    suffix: str = "",
 ) -> tuple[Path, Path]:
-    """Write ``AllPeaks_PS.bin`` and ``AllPeaks_PX.bin`` to ``out_folder``.
+    """Write ``AllPeaks_PS{suffix}.bin`` and ``AllPeaks_PX{suffix}.bin``.
 
     ``accumulators[i]`` is the data for block-local position i. The absolute
     frame number for that position is ``abs_frames[i]`` if provided, else
     ``start_frame + i`` (contiguous mode).
+
+    ``suffix="_sat"`` writes the saturated-region siblings
+    (``AllPeaks_PS_sat.bin`` / ``AllPeaks_PX_sat.bin``) in the identical
+    layout; readers of the main files never see them.
     """
     if abs_frames is None:
         abs_frames = list(range(start_frame, end_frame))
@@ -125,8 +130,8 @@ def write_consolidated_peak_files(
     )
     out_folder = Path(out_folder)
     out_folder.mkdir(parents=True, exist_ok=True)
-    ps_path = out_folder / "AllPeaks_PS.bin"
-    px_path = out_folder / "AllPeaks_PX.bin"
+    ps_path = out_folder / f"AllPeaks_PS{suffix}.bin"
+    px_path = out_folder / f"AllPeaks_PX{suffix}.bin"
 
     # Per-frame peak counts (full length, zero outside this block)
     n_peaks_arr = np.zeros(n_total_frames, dtype=np.int32)

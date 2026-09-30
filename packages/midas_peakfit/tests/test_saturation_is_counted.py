@@ -1,9 +1,11 @@
-"""A saturated region is deleted whole. That has to at least be countable.
+"""A saturated region is taken out of the fit whole. It must be counted and recorded.
 
 ``find_regional_maxima`` returns ``None`` for any region containing a pixel
 above ``IntSat`` (``UpperBoundThreshold``), so the entire region -- every peak
-in it -- disappears. There is no flag column, and until 2026-08-22 no count
-either, which makes the loss invisible in two directions at once:
+in it -- is not fitted. Until 2026-08-22 it was not even counted, and until
+2026-09-22 it was not recorded anywhere (it is now: ``saturated_region`` ->
+``AllPeaks_PS_sat.bin``; see test_saturated_regions_recorded.py). Unrecorded,
+the loss is invisible in two directions at once:
 
 * a saturated reflection is a STRONG one, so its absence is later scored as
   incompleteness; the grain is penalised for having produced too much signal;
@@ -109,15 +111,24 @@ def test_consumer_tolerates_a_four_tuple_from_an_older_producer():
         f"strict 5-tuple unpack(s) remain, which will raise against an older "
         f"_producer_worker.py: {strict}"
     )
-    assert src.count("seeded_list, *_sat = result") == 3, (
-        "expected all three unpack sites (ingest, process pool, threaded) to "
-        "tolerate both arities"
+    # Unpack sites: _ingest (which the threaded producer now calls with the
+    # raw result) and the process-pool loop (which re-packs with *_sat).
+    assert src.count("seeded_list, *_sat = result") == 2, (
+        "expected both unpack sites (ingest, process pool) to tolerate every "
+        "arity"
     )
+    assert "_ingest((abs_frame, omega, n_regs, seeded_list, *_sat))" in src
 
-    # And the tolerant form actually behaves: simulate both shapes.
-    for result, want in ((("f", 0.0, 7, [], 4), 4), (("f", 0.0, 7, []), 0)):
+    # And the tolerant form actually behaves: simulate all three shapes
+    # (6 = count + saturated regions, 5 = count only, 4 = neither).
+    for result, want_n, want_list in (
+        (("f", 0.0, 7, [], 1, ["sat"]), 1, ["sat"]),
+        (("f", 0.0, 7, [], 4), 4, []),
+        (("f", 0.0, 7, []), 0, []),
+    ):
         frame_nr, omega, n_regs, seeded_list, *_sat = result
-        assert (_sat[0] if _sat else 0) == want
+        assert (_sat[0] if _sat else 0) == want_n
+        assert (_sat[1] if len(_sat) > 1 else []) == want_list
 
 
 @pytest.mark.parametrize(
@@ -153,4 +164,6 @@ def test_every_producer_return_path_has_the_count_slot(func_name, module_name):
                 depth -= 1
             elif ch == "," and depth == 0:
                 commas += 1
-        assert commas == 4, f"{r!r} returns {commas + 1} values, expected 5"
+        # 5 (error path: count, no regions) or 6 (count + saturated regions);
+        # the consumer tolerates both, never fewer than the count slot.
+        assert commas in (4, 5), f"{r!r} returns {commas + 1} values, expected 5 or 6"

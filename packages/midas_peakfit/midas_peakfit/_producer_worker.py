@@ -22,9 +22,9 @@ import numpy as np
 import zarr
 
 from midas_peakfit.connected import find_regions, filter_regions_by_size
-from midas_peakfit.preprocess import apply_threshold, correct_frame
-from midas_peakfit.seeds import SeededRegion, seed_region
-from midas_peakfit.zarr_io import frame_omega
+from midas_peakfit.preprocess import apply_threshold, correct_frame, mask_touch_map
+from midas_peakfit.seeds import SeededRegion, saturated_region, seed_region
+from midas_peakfit.zarr_io import frame_omega, read_with_retry
 
 # Workers each cache the Zarr handle once. Per-worker decompression
 # overlaps with CC + seed and beats a bulk-read in main on this hardware
@@ -70,6 +70,7 @@ def init_worker(
         dark=dark,
         flood=flood,
         mask=mask,
+        mask_touch=mask_touch_map(mask),
         good_coords=good_coords,
         panels=panels,
         store=store,
@@ -82,6 +83,19 @@ def init_worker(
         # BgSubtract is off, in which case bg_bins is None.
         snr_bins=snr_bins,
     )
+
+
+def _reopen_store() -> None:
+    """Replace this worker's cached ZipStore/data handle with a fresh one."""
+    old = _state.get("store")
+    try:
+        if old is not None:
+            old.close()
+    except Exception:
+        pass
+    store = zarr.ZipStore(_state["zarr_path"], mode="r")
+    _state["store"] = store
+    _state["data"] = zarr.open_group(store=store, mode="r")["exchange/data"]
 
 
 def process_frame_in_worker(
@@ -100,14 +114,17 @@ def process_frame_in_worker(
     mask = _state["mask"]
     good_coords = _state["good_coords"]
     panels = _state["panels"]
-    data = _state["data"]
     compute_moments = _state.get("compute_moments", False)
     bg_bins = _state.get("bg_bins")
 
-    try:
-        raw = np.asarray(data[local_idx], dtype=np.float64)
-    except Exception:
-        return local_idx, 0.0, 0, [], 0
+    # No fallback to an empty frame: an unreadable frame raises
+    # FrameReadError, which the pool re-raises in the parent and fails the
+    # run. On retry the cached store is reopened in case the handle is stale.
+    raw = read_with_retry(
+        lambda: np.asarray(_state["data"][local_idx], dtype=np.float64),
+        f"Frame (zarr index) {local_idx} of {_state['zarr_path']}",
+        on_retry=_reopen_store,
+    )
 
     corrected = correct_frame(
         raw,
@@ -122,6 +139,7 @@ def process_frame_in_worker(
         bad_px_intensity=p.BadPxIntensity,
         make_map=p.makeMap,
         bg_bins=bg_bins,
+        mask=mask,
     )
     img_corr = apply_threshold(corrected, good_coords)
     regions_all = find_regions(img_corr, good_coords)
@@ -134,10 +152,10 @@ def process_frame_in_worker(
         regions, _ = filter_regions_by_snr(
             regions, corrected, snr_bins, min_peak_snr)
     seeded_list: List[SeededRegion] = []
-    n_saturated = 0
+    sat_list = []
     for reg in regions:
         sr = seed_region(
-            reg, img_corr, mask,
+            reg, img_corr, _state["mask_touch"],
             Ycen=p.Ycen, Zcen=p.Zcen,
             int_sat=p.IntSat, max_n_peaks=p.maxNPeaks,
             panels=panels,
@@ -146,8 +164,13 @@ def process_frame_in_worker(
         if sr is not None:
             seeded_list.append(sr)
         else:
-            n_saturated += 1   # saturation is the only None case
-    return local_idx, 0.0, len(regions_all), seeded_list, n_saturated
+            # Saturation is the only None case: record it, don't drop it.
+            # mask_touch, not mask: correct_frame zeroed the masked pixels, so a
+            # region can only touch the mask's one-pixel rim (maskTouched).
+            sat_list.append(saturated_region(
+                reg, img_corr, _state["mask_touch"], Ycen=p.Ycen, Zcen=p.Zcen,
+                panels=panels))
+    return local_idx, 0.0, len(regions_all), seeded_list, len(sat_list), sat_list
 
 
 __all__ = ["init_worker", "process_frame_in_worker"]

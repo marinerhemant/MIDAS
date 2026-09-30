@@ -125,6 +125,7 @@ class RingRecommendation:
     thresh_fp: Optional[float] = None
     thresh_merge: Optional[float] = None    # criterion C: segmentation floor
     thresh_best_resolved: Optional[float] = None   # argmax n_resolved
+    merge_railed: bool = False   # criterion C clean ONLY at the sweep ceiling: no confirmed floor
     noise_sigma: float = 0.0
     bg_spread: float = 0.0
     warnings: List[str] = field(default_factory=list)
@@ -144,6 +145,12 @@ class RingRecommendation:
         """
         vals = [v for v in (self.thresh_snr, self.thresh_fp, self.thresh_merge)
                 if v is not None]
+        # C RAILED (clean only at the sweep ceiling): the ceiling is not a floor, it is
+        # the edge of what was swept, and pasting it (500) discards most real spots on
+        # weak rings. Substitute the most cleanly-resolved threshold, the interior
+        # operating point of n_resolved, and never let the ceiling through.
+        if self.merge_railed and self.thresh_best_resolved is not None:
+            vals.append(self.thresh_best_resolved)
         return max(vals) if vals else None
 
     @property
@@ -253,6 +260,34 @@ def _pick_snr(sweep: Sequence[RingSweepPoint], frac: float) -> Optional[float]:
     return None
 
 
+def _merge_floor(sweep: Sequence[RingSweepPoint], p99_max: float):
+    """``(floor, status)`` for criterion C.
+
+    ``status`` is one of
+      ``"none"``         no merging anywhere: C does not bind (floor ``None``);
+      ``"floor"``        a floor confirmed by at least one HIGHER clean sweep point;
+      ``"railed"``       clean ONLY at the last sweep point. That point has no upper
+                         tail to confirm it, so it is the edge of the sweep, not a
+                         floor (floor ``None``). On bt_20id_sep26 this printed
+                         ``RingThresh 500`` for three weak rings whose spots peak
+                         far below 500;
+      ``"never_clean"``  peaks-per-region stay above the limit at every threshold, the
+                         highest included (floor ``None``, as before): thresholding cannot
+                         separate them, which on a dense polycrystal is ordinary spot
+                         overlap (p99 = 4-8 on healthy rings of bt_20id_sep26), so this is
+                         reported as before, silently, and C does not bind.
+    """
+    n = len(sweep)
+    for i in range(n):
+        if all(sweep[j].p99_peaks <= p99_max for j in range(i, n)):
+            if i == 0:
+                return None, "none"
+            if i == n - 1:
+                return None, "railed"
+            return float(sweep[i].threshold), "floor"
+    return None, "never_clean"
+
+
 def _pick_merge(sweep: Sequence[RingSweepPoint], p99_max: float) -> Optional[float]:
     """Segmentation floor: lowest threshold whose regions are still resolvable.
 
@@ -260,14 +295,10 @@ def _pick_merge(sweep: Sequence[RingSweepPoint], p99_max: float) -> Optional[flo
     acceptable set is an upper tail: return the first threshold from which
     p99 peaks-per-region stays at or below ``p99_max`` for every higher
     threshold too. Requiring the whole tail (not just the first crossing) stops
-    a single noisy sweep point from being read as the floor.
+    a single noisy sweep point from being read as the floor. A floor supported
+    only by the LAST sweep point is a rail, not a floor: see :func:`_merge_floor`.
     """
-    n = len(sweep)
-    for i in range(n):
-        if all(sweep[j].p99_peaks <= p99_max for j in range(i, n)):
-            # Nothing merged anywhere: the floor does not bind.
-            return None if i == 0 else float(sweep[i].threshold)
-    return None
+    return _merge_floor(sweep, p99_max)[0]
 
 
 def _pick_best_resolved(sweep: Sequence[RingSweepPoint]) -> Optional[float]:
@@ -313,7 +344,11 @@ def format_recommendations(recs: Sequence[RingRecommendation]) -> str:
         b = "n/a" if rec.thresh_fp is None else f"{rec.thresh_fp:.0f}"
         out.append(f"  criterion A (blob SNR)          -> {a}")
         out.append(f"  criterion B (expected false +)  -> {b}")
-        c = "does not bind" if rec.thresh_merge is None else f"{rec.thresh_merge:.0f}"
+        if rec.merge_railed:
+            c = (f"RAILED (clean only at the sweep ceiling {rec.sweep[-1].threshold:.0f}; "
+                 f"not a floor, not used)")
+        else:
+            c = "does not bind" if rec.thresh_merge is None else f"{rec.thresh_merge:.0f}"
         out.append(f"  criterion C (peak resolvability) -> {c}")
         if rec.thresh_best_resolved is not None:
             out.append(f"      (most cleanly-resolved spots at threshold "
@@ -333,10 +368,13 @@ def format_recommendations(recs: Sequence[RingRecommendation]) -> str:
     out.append("Paste into the parameter file:")
     for rec in recs:
         v = rec.recommended
+        note = ""
+        if v is None:
+            note = "   # NO SAFE VALUE FOUND — see warnings"
+        elif rec.merge_railed:
+            note = "   # C railed at the sweep ceiling; most cleanly-resolved threshold used, see warnings"
         out.append(f"RingThresh {rec.ring_nr} "
-                   f"{'??' if v is None else f'{v:.0f}'}"
-                   + ("" if v is not None else
-                      "   # NO SAFE VALUE FOUND — see warnings"))
+                   f"{'??' if v is None else f'{v:.0f}'}" + note)
     return "\n".join(out)
 
 
@@ -376,7 +414,7 @@ def analyze(
     from midas_peakfit.geometry import compute_good_coords, compute_rt_eta, load_ring_radii
     from midas_peakfit.orchestrator import _build_panels
     from midas_peakfit.preprocess import (
-        apply_threshold, correct_frame, prepare_dark, prepare_flood, prepare_mask,
+        apply_threshold, correct_frame, mask_touch_map, prepare_dark, prepare_flood, prepare_mask,
     )
     from midas_peakfit.zarr_io import load_corrections, parse_zarr_params, read_frame
 
@@ -427,6 +465,7 @@ def analyze(
     # seeder (find_regional_maxima) exactly as the fitter does.
     mask_prepared = prepare_mask(
         p.mask, p.NrPixels, p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
+    mask_touch = mask_touch_map(mask_prepared)   # as the fitter seeds (orchestrator)
 
     n_take = max(1, min(int(n_frames), int(p.nFrames)))
     idxs = np.unique(np.linspace(0, p.nFrames - 1, n_take).astype(int))
@@ -453,6 +492,7 @@ def analyze(
             raw, NrPixels=p.NrPixels, NrPixelsY=p.NrPixelsY, NrPixelsZ=p.NrPixelsZ,
             transform_options=p.TransOpt, dark=dark, flood=flood, good_coords=gc0,
             bc=p.bc, bad_px_intensity=p.BadPxIntensity, make_map=p.makeMap,
+            mask=mask_prepared,
         )
         for raw in raws
     ]
@@ -466,6 +506,7 @@ def analyze(
             transform_options=p.TransOpt, dark=dark, flood=flood,
             good_coords=gc_full, bc=p.bc,
             bad_px_intensity=p.BadPxIntensity, make_map=p.makeMap,
+            mask=mask_prepared,
         )
         for raw in raws
     ]
@@ -529,7 +570,7 @@ def analyze(
                 # region? Same call, same image, same caps as the production
                 # seeder, so the number here IS the fitter's n_peaks.
                 fm = find_regional_maxima(
-                    reg, img, mask_prepared, p.IntSat, p.maxNPeaks)
+                    reg, img, mask_touch, p.IntSat, p.maxNPeaks)
                 if fm is not None:
                     n_pk = int(len(fm[0]))
                     per[r]["pk"].append(n_pk)
@@ -582,10 +623,18 @@ def analyze(
     for rec in recs:
         rec.thresh_snr = _pick_snr(rec.sweep, snr_clean_frac)
         rec.thresh_fp = _pick_fp(rec.sweep, max_false_positives)
-        rec.thresh_merge = _pick_merge(rec.sweep, p99_peaks_max)
+        rec.thresh_merge, merge_status = _merge_floor(rec.sweep, p99_peaks_max)
+        rec.merge_railed = merge_status == "railed"
         rec.thresh_best_resolved = _pick_best_resolved(rec.sweep)
 
         counts = [pt.n_kept for pt in rec.sweep]
+        if rec.merge_railed:
+            rec.warnings.append(
+                f"criterion C is clean only at the sweep ceiling "
+                f"({rec.sweep[-1].threshold:.0f}): no floor is confirmed below it, so the "
+                f"ceiling is NOT used. The recommendation uses the most cleanly-resolved "
+                f"threshold ({rec.thresh_best_resolved}) with A and B. Inspect the ring's "
+                f"regions; a sweep that reaches higher would test it.")
         if len(set(counts)) == 1 and counts[0] > 0:
             rec.warnings.append(
                 "blob count is INVARIANT to threshold -- this is the signature "

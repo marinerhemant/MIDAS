@@ -144,13 +144,19 @@ class ZarrParams:
 
         Replicates the tail of ``parseZarrMetadata`` in the C code:
         - ``NrPixels = max(NrPixelsY, NrPixelsZ)``
-        - subtract ``skipFrame`` from ``nFrames`` and ``nDarks``
+        - subtract ``skipFrame`` from ``nFrames``, and from ``nDarks`` only
+          when the dark stack has MORE than ``skipFrame`` frames (the same
+          rule ``zarr_io.load_corrections`` applies to the array). A dark
+          of <= ``skipFrame`` frames is kept whole: zeroing ``nDarks`` here
+          used to make ``load_corrections`` replace an existing dark with
+          zeros, silently leaving the detector pedestal in every frame.
         - convert ``Width`` from µm to pixels (``Width /= px``)
         """
         self.NrPixels = max(self.NrPixelsY, self.NrPixelsZ)
         if self.skipFrame > 0:
             self.nFrames -= self.skipFrame
-            self.nDarks = max(0, self.nDarks - self.skipFrame)
+            if self.nDarks > self.skipFrame:
+                self.nDarks -= self.skipFrame
         self.Width = self.Width / self.px
 
     def block_frame_range(self, blockNr: int, nBlocks: int) -> tuple[int, int]:

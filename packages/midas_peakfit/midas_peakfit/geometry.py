@@ -224,6 +224,12 @@ def load_ring_radii(p: ZarrParams, result_folder: str) -> Optional[np.ndarray]:
     # hkls.csv stores radius in microns; the C tool divides by px to get pixels
     # (PeaksFittingOMPZarrRefactor.c:2550). Match that here.
     out = np.zeros(p.nRingsThresh, dtype=np.float64)
+    missing = [rn for rn in p.RingNrs if rn not in radii_by_ring]
+    if missing:
+        # A radius of 0 puts that ring's band at the beam centre: no peaks from it.
+        import warnings
+        warnings.warn(f"RingThresh ring(s) {missing} are not in {fn}; "
+                      "no peaks will be searched on them", stacklevel=2)
     for i, rn in enumerate(p.RingNrs):
         out[i] = radii_by_ring.get(rn, 0.0) / p.px
     return out

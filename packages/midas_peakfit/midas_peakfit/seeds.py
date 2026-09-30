@@ -119,6 +119,102 @@ def _per_pixel_r_eta(
     return Rs, Etas
 
 
+# ReturnCode written for a saturated region, and (by midas_transforms.merge) for
+# every merged spot that contains or touches one. Distinct from 0 (fit OK), the
+# positive LM codes and -1 (Adam fallback / unknown). The spot's intensity is a
+# LOWER BOUND (clipped pixels); its position is an intensity-weighted centroid.
+SATURATED_RETURN_CODE = -2
+
+
+def _mask_touched(Y: np.ndarray, Z: np.ndarray, mask, nrPixels: int) -> int:
+    """Mask-touch flag: mask is (NrPixels, NrPixels) in (Z, Y) layout.
+
+    See PeaksFittingOMPZarrRefactor.c:659 — mask access is mask[col*N + row]
+    i.e. mask[Z, Y]. We mirror that here: index (Z[i], Y[i]).
+    """
+    if mask is None or mask.size == 0:
+        return 0
+    in_bounds = (Z >= 0) & (Z < nrPixels) & (Y >= 0) & (Y < nrPixels)
+    if in_bounds.any():
+        mvals = mask[Z[in_bounds], Y[in_bounds]]
+        if (mvals == 1).any():
+            return 1
+    return 0
+
+
+@dataclass
+class SaturatedRegion:
+    """A region with at least one pixel over ``IntSat``: not fitted, but kept.
+
+    Carries what is trustworthy about a clipped reflection -- where it is and
+    which pixels it covers -- plus its summed intensity, which is a lower bound.
+    """
+
+    region_id: int
+    n_pixels: int
+    raw_sum: float           # sum of (clipped) pixel values: a LOWER BOUND
+    max_value: float
+    mask_touched: int
+    maxY: int                # brightest pixel (row = Y)
+    maxZ: int
+    R: float                 # intensity-weighted centroid (px)
+    Eta: float               # degrees
+    sigma_R: float           # intensity-weighted RMS extent (px)
+    sigma_Eta: float         # intensity-weighted RMS extent (degrees)
+    pixels_y: np.ndarray     # int32
+    pixels_z: np.ndarray     # int32
+
+
+def saturated_region(
+    region: Region,
+    img_corr: np.ndarray,
+    mask: np.ndarray,
+    *,
+    Ycen: float,
+    Zcen: float,
+    panels: List[Panel],
+) -> SaturatedRegion:
+    """Describe a saturated region without fitting it.
+
+    Position is the intensity-weighted centroid of the (panel-corrected) pixel
+    positions, averaged as (y, z) vectors so it is wrap-safe in Eta.
+    """
+    z = region.intensities.astype(np.float64)
+    Y = region.pixel_rows.astype(np.int64)
+    Z = region.pixel_cols.astype(np.int64)
+    Rs, Etas = _per_pixel_r_eta(region, Ycen, Zcen, panels)
+    eta_r = np.deg2rad(Etas)
+    dy = Rs * np.sin(eta_r)          # == corrected row - Ycen
+    dz = Rs * np.cos(eta_r)          # == corrected col - Zcen
+    w = np.clip(z, 0.0, None)
+    wsum = float(w.sum())
+    if wsum <= 0.0:
+        w = np.ones_like(z)
+        wsum = float(w.size)
+    cy = float((w * dy).sum() / wsum)
+    cz = float((w * dz).sum() / wsum)
+    R = float(math.hypot(cy, cz))
+    Eta = float(calc_eta_angle(-cy, cz))
+    dR = Rs - R
+    dE = (Etas - Eta + 180.0) % 360.0 - 180.0
+    k = int(np.argmax(z))
+    return SaturatedRegion(
+        region_id=region.id,
+        n_pixels=int(region.n_pixels),
+        raw_sum=float(region.raw_sum),
+        max_value=float(z[k]),
+        mask_touched=_mask_touched(Y, Z, mask, img_corr.shape[0]),
+        maxY=int(Y[k]),
+        maxZ=int(Z[k]),
+        R=R,
+        Eta=Eta,
+        sigma_R=float(np.sqrt((w * dR * dR).sum() / wsum)),
+        sigma_Eta=float(np.sqrt((w * dE * dE).sum() / wsum)),
+        pixels_y=region.pixel_rows.astype(np.int32),
+        pixels_z=region.pixel_cols.astype(np.int32),
+    )
+
+
 def find_regional_maxima(
     region: Region,
     img_corr: np.ndarray,
@@ -135,42 +231,31 @@ def find_regional_maxima(
     fallback to the middle pixel when no local maxima are found, and the
     cap at ``max_n_peaks`` (greedy by intensity).
 
-    **Saturation discards the WHOLE region, and nothing records it.** One pixel
-    over ``IntSat`` (from ``UpperBoundThreshold``) drops every peak in the
-    region, with no flag column and, until 2026-08-22, no count either. That
-    cuts two ways and both are invisible downstream:
+    **Saturation takes the region out of the FIT, not out of the record.** One
+    pixel over ``IntSat`` (from ``UpperBoundThreshold``) and this returns
+    ``None``: a pseudo-Voigt fit to a clipped profile is meaningless. Callers
+    then describe the region with :func:`saturated_region` and the orchestrator
+    writes it to the sibling ``AllPeaks_PS_sat.bin`` (``AllPeaks_PS.bin`` itself
+    is byte-identical to before). ``midas_transforms.merge`` reads that file and
+    flags every merged spot that contains or touches a saturated region with
+    ``ReturnCode = SATURATED_RETURN_CODE`` (-2).
 
-    * a saturated reflection is a *strong* one, so its absence is scored as
-      incompleteness -- the grain is penalised for having produced too much
-      signal;
-    * it is also the brightest contributor to that ring's ``powder_int``
-      normalisation (``midas_transforms/radius/core.py:153``), so removing it
-      biases every grain volume on the ring upward.
-
-    Callers now count these (``sr is None`` is the saturation case and the only
-    one) and the per-frame total is reported. Emitting the peaks *with* a
-    saturated flag instead of dropping them would be the fuller fix, but it
-    changes spot counts on every existing dataset and needs its own decision.
+    Why the record matters (AlON 1-ID, 2026-09-22): when the saturated core
+    frames of a bright multi-frame reflection were dropped silently, its faint
+    edge pixels in the adjacent frames survived as tiny UNFLAGGED spots that
+    grain matching accepted -- ~30x too faint and preferentially at high
+    Lorentz factor. 4.5 % of large-grain spots did that, and alone produced a
+    -0.4 slope of log(I/LP) vs log L (-0.04 without them).
     """
     z = region.intensities
     if (z > int_sat).any():
-        return None  # saturated → 0 peaks
+        return None  # saturated → not fitted; see saturated_region()
 
     Y = region.pixel_rows.astype(np.int64)
     Z = region.pixel_cols.astype(np.int64)
     n = z.size
     nrPixels = img_corr.shape[0]
-
-    # Mask-touch flag: mask is (NrPixels, NrPixels) in (Z, Y) layout.
-    # See PeaksFittingOMPZarrRefactor.c:659 — mask access is mask[col*N + row]
-    # i.e. mask[Z, Y]. We mirror that here: index (Z[i], Y[i]).
-    mask_touched = 0
-    if mask is not None and mask.size > 0:
-        in_bounds = (Z >= 0) & (Z < nrPixels) & (Y >= 0) & (Y < nrPixels)
-        if in_bounds.any():
-            mvals = mask[Z[in_bounds], Y[in_bounds]]
-            if (mvals == 1).any():
-                mask_touched = 1
+    mask_touched = _mask_touched(Y, Z, mask, nrPixels)
 
     # 8-neighbor regional-max test using img_corr direct lookup.
     # A pixel is a local max iff for every in-bounds neighbor with
@@ -223,9 +308,9 @@ def seed_region(
     """Build a fully-seeded ``SeededRegion`` ready for batched LM fitting.
 
     Returns ``None`` if the region should be skipped. Saturation is the **only**
-    reason this returns ``None``, which is what lets callers count saturated
-    regions without re-testing — see :func:`find_regional_maxima` for why that
-    loss is worth counting.
+    reason this returns ``None``, which is what lets callers route saturated
+    regions to :func:`saturated_region` without re-testing — see
+    :func:`find_regional_maxima` for why they must be recorded, not dropped.
 
     ``compute_moments``: if True, additionally populate ``peak_M2_R``,
     ``peak_M2_Eta``, ``peak_M4_R``, ``peak_M4_Eta`` on the returned region
@@ -403,4 +488,7 @@ def seed_region(
     )
 
 
-__all__ = ["SeededRegion", "find_regional_maxima", "seed_region"]
+__all__ = [
+    "SATURATED_RETURN_CODE", "SaturatedRegion", "SeededRegion",
+    "find_regional_maxima", "saturated_region", "seed_region",
+]

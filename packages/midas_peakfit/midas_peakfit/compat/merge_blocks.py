@@ -86,15 +86,27 @@ def merge_block_outputs(
 
     Block frames are partitioned (each frame is owned by exactly one
     block); we just pick the owner for each frame.
+
+    The saturated-region siblings (``AllPeaks_{PS,PX}_sat.bin``) are merged
+    the same way when every block has them.
     """
+    out = _merge_block_files(block_dirs, out_folder, "")
+    if all((Path(d) / "Temp" / "AllPeaks_PS_sat.bin").exists()
+           and (Path(d) / "Temp" / "AllPeaks_PX_sat.bin").exists()
+           for d in block_dirs):
+        _merge_block_files(block_dirs, out_folder, "_sat")
+    return out
+
+
+def _merge_block_files(block_dirs, out_folder, suffix: str) -> tuple[Path, Path]:
     out_dir = Path(out_folder) / "Temp"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_ps = out_dir / "AllPeaks_PS.bin"
-    out_px = out_dir / "AllPeaks_PX.bin"
+    out_ps = out_dir / f"AllPeaks_PS{suffix}.bin"
+    out_px = out_dir / f"AllPeaks_PX{suffix}.bin"
 
     # ── Parse all block headers ────────────────────────────────────
-    ps_paths = [Path(d) / "Temp" / "AllPeaks_PS.bin" for d in block_dirs]
-    px_paths = [Path(d) / "Temp" / "AllPeaks_PX.bin" for d in block_dirs]
+    ps_paths = [Path(d) / "Temp" / f"AllPeaks_PS{suffix}.bin" for d in block_dirs]
+    px_paths = [Path(d) / "Temp" / f"AllPeaks_PX{suffix}.bin" for d in block_dirs]
 
     block_ps = [_parse_ps_header(p) for p in ps_paths]
     block_px = [_parse_px_header(p) for p in px_paths]

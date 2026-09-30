@@ -6,9 +6,11 @@ bytes are identical).
 """
 from __future__ import annotations
 
+import time
+import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional, Tuple
+from typing import Callable, Iterator, Optional, Tuple, TypeVar
 
 import numpy as np
 import zarr
@@ -301,8 +303,17 @@ def load_corrections(path: str | Path, p: ZarrParams) -> None:
     with open_zarr(path) as root:
         if p.nDarks > 0 and "exchange/dark" in root:
             dark_arr = np.asarray(root["exchange/dark"][:], dtype=np.float64)
-            if p.skipFrame > 0 and dark_arr.shape[0] > p.skipFrame:
-                dark_arr = dark_arr[p.skipFrame:]
+            if p.skipFrame > 0:
+                if dark_arr.shape[0] > p.skipFrame:
+                    dark_arr = dark_arr[p.skipFrame:]
+                else:
+                    warnings.warn(
+                        f"exchange/dark has {dark_arr.shape[0]} frame(s), not "
+                        f"more than SkipFrame={p.skipFrame}: too short to drop "
+                        f"the throwaway frame(s), so the dark is used whole.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
             p.dark = dark_arr.mean(axis=0).astype(np.float64)
         else:
             p.dark = np.zeros((Z, Y), dtype=np.float64)
@@ -347,18 +358,86 @@ def load_corrections(path: str | Path, p: ZarrParams) -> None:
 
 
 # ─── Frame reader ────────────────────────────────────────────────────────────
+class FrameReadError(RuntimeError):
+    """A frame could not be read. Never to be turned into an empty frame.
+
+    Until 2026-09-27 the producers caught read errors and returned an empty
+    result, so an unreadable frame was written as a frame with 0 peaks and
+    the run reported success. On copland (/gdata, GPFS) a TRANSIENT
+    ``[Errno 13] Permission denied`` on the .MIDAS.zip dropped 847 of 1441
+    frames that way and the layer reconstructed 3 grains instead of ~1600.
+    """
+
+
+# Transient filesystem errors (GPFS EACCES, NFS hiccups) clear within
+# seconds, so retry OSError on this schedule: 0.2, 0.4, 0.8, 1.6 s between 5
+# attempts (3 s total). Module globals, read at call time, so a caller or a
+# test can change them.
+READ_RETRY_ATTEMPTS = 5
+READ_RETRY_DELAY_S = 0.2
+
+_T = TypeVar("_T")
+
+
+def read_with_retry(
+    read: Callable[[], _T],
+    what: str,
+    on_retry: Optional[Callable[[], None]] = None,
+) -> _T:
+    """Call ``read()``, retrying OSError with doubling backoff.
+
+    Anything still failing -- or any non-OSError, which is not retried --
+    raises :class:`FrameReadError` naming ``what``. ``on_retry`` runs before
+    each retry (e.g. to reopen a cached store handle); its own errors are
+    ignored, the next attempt reports them.
+    """
+    attempts = max(1, int(READ_RETRY_ATTEMPTS))
+    delay = float(READ_RETRY_DELAY_S)
+    for i in range(attempts):
+        try:
+            return read()
+        except OSError as e:
+            if i == attempts - 1:
+                raise FrameReadError(
+                    f"{what}: could not be read after {attempts} attempts: {e}"
+                ) from e
+            print(f"{what}: read failed ({e}); retry {i + 1}/{attempts - 1} "
+                  f"in {delay:.1f}s", flush=True)
+            time.sleep(delay)
+            delay *= 2
+            if on_retry is not None:
+                try:
+                    on_retry()
+                except Exception:
+                    pass
+        except Exception as e:
+            raise FrameReadError(f"{what}: could not be read: {e!r}") from e
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 def read_frame(path: str | Path, frameNr: int) -> np.ndarray:
     """Read a single decompressed frame as float64. Adjusts for skipFrame
     is the caller's responsibility — pass the absolute frame index.
+
+    Transient OSErrors are retried (see :func:`read_with_retry`); a frame
+    that still cannot be read raises :class:`FrameReadError`.
     """
-    with open_zarr(path) as root:
-        return np.asarray(root["exchange/data"][frameNr], dtype=np.float64)
+    def _read():
+        with open_zarr(path) as root:
+            return np.asarray(root["exchange/data"][frameNr], dtype=np.float64)
+
+    return read_with_retry(_read, f"Frame (zarr index) {frameNr} of {path}")
 
 
 def read_frames(path: str | Path, start: int, end: int) -> np.ndarray:
     """Read frames [start, end) as float64. Returns shape (end-start, Y, Z)."""
-    with open_zarr(path) as root:
-        return np.asarray(root["exchange/data"][start:end], dtype=np.float64)
+    def _read():
+        with open_zarr(path) as root:
+            return np.asarray(root["exchange/data"][start:end],
+                              dtype=np.float64)
+
+    return read_with_retry(
+        _read, f"Frames (zarr index) {start}..{end - 1} of {path}")
 
 
 def frame_omega(p: ZarrParams, frameNr: int) -> float:
@@ -374,6 +453,8 @@ __all__ = [
     "load_corrections",
     "read_frame",
     "read_frames",
+    "read_with_retry",
+    "FrameReadError",
     "frame_omega",
     "canonical_pixel_type",
 ]

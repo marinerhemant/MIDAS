@@ -292,6 +292,22 @@ class RegionPool:
         if self._error is not None:
             raise self._error
 
+    def abort(self) -> None:
+        """Discard all queued work and stop the consumer (error path only).
+
+        Unlike :meth:`stop` this does not drain: it is for a run that is
+        already failing, where fitting the rest of the queue is wasted GPU
+        time. Consumer errors are swallowed; the caller is raising already.
+        """
+        with self._cond:
+            self.buckets.clear()
+            self._queued_bytes = 0
+            self._done = True
+            self._cond.notify_all()
+        if self._consumer is not None:
+            self._consumer.join()
+            self._consumer = None
+
     def __enter__(self) -> "RegionPool":
         self.start()
         return self

@@ -164,12 +164,14 @@ def correct_frame(
     bad_px_intensity: float,
     make_map: int,
     bg_bins: "Optional[BackgroundBins]" = None,
+    mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Replicate the C ``processImageFrame`` corrections (lines 1414-1440).
 
     Steps:
       1. ``image_d`` = square-padded float64 of ``raw_frame``
-      2. (if ``make_map==1``) replace pixels equal to ``bad_px_intensity`` with 0
+      2. (if ``make_map==1``) replace pixels equal to ``bad_px_intensity`` with 0;
+         (if ``mask`` is given) zero every masked pixel -- see below
       3. apply ImTransOpt sequence
       4. transpose to analysis frame
       5. mask via goodCoords; subtract dark, divide by flood, multiply by bc
@@ -193,6 +195,16 @@ def correct_frame(
     background-subtracted. That is the intended meaning, but it does change
     the numbers relative to a ``BgSubtract 0`` run -- they are not comparable.
 
+    ``mask`` is the square-padded detector mask from :func:`prepare_mask` (raw
+    layout; pixels > 0 are bad). Masked pixels are zeroed here, before
+    segmentation. Without it a detector's gap/dead pixels keep their sentinel
+    (an Eiger writes 65535), trip the saturation test in
+    ``seeds.find_regional_maxima``, and the WHOLE region is dropped -- with every
+    real peak 8-connected to a gap. On ESRF ma5608 (Eiger 4M) that was 2.41 % of
+    all spots, ~66 regions per frame logged as "saturated". The C tool used the
+    mask only for the ``maskTouched`` flag; the zeroing is new. Peaks cut by a gap
+    are now kept, truncated, and flagged through :func:`mask_touch_map`.
+
     Returns: corrected, UNGATED (NrPixels, NrPixels) float64.
     """
     image_d = make_square_image(
@@ -201,6 +213,9 @@ def correct_frame(
 
     if make_map == 1 and bad_px_intensity != 0.0:
         image_d = np.where(image_d == bad_px_intensity, 0.0, image_d)
+    if mask is not None:
+        # Raw layout, like the mask itself: before the transforms, as above.
+        image_d = np.where(mask > 0, 0.0, image_d)
 
     image_d = apply_image_transformations(image_d, transform_options)
     img = transpose_square(image_d)
@@ -255,8 +270,26 @@ __all__ = [
     "prepare_dark",
     "prepare_flood",
     "prepare_mask",
+    "mask_touch_map",
     "preprocess_frame",
 ]
+
+
+def mask_touch_map(mask: Optional[np.ndarray]) -> Optional[np.ndarray]:
+    """The mask grown by one pixel (8-neighbour), as 0/1 float, for ``maskTouched``.
+
+    Once :func:`correct_frame` zeroes masked pixels they can no longer belong to
+    a region, so testing a region against the mask itself would always read 0.
+    A peak cut by a gap touches the mask's one-pixel rim instead; flag that.
+    Same raw layout and ``mask[Z, Y]`` indexing as the mask it came from.
+    """
+    if mask is None:
+        return None
+    m = mask > 0
+    if not m.any():
+        return np.zeros(mask.shape, dtype=np.float64)
+    from scipy.ndimage import binary_dilation
+    return binary_dilation(m, structure=np.ones((3, 3), bool)).astype(np.float64)
 
 
 def preprocess_frame(
@@ -273,6 +306,7 @@ def preprocess_frame(
     bad_px_intensity: float,
     make_map: int,
     bg_bins: "Optional[BackgroundBins]" = None,
+    mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Replicate the C ``processImageFrame`` corrections (lines 1414-1440).
 
@@ -286,6 +320,6 @@ def preprocess_frame(
         raw_frame, NrPixels=NrPixels, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ,
         transform_options=transform_options, dark=dark, flood=flood,
         good_coords=good_coords, bc=bc, bad_px_intensity=bad_px_intensity,
-        make_map=make_map, bg_bins=bg_bins,
+        make_map=make_map, bg_bins=bg_bins, mask=mask,
     )
     return apply_threshold(corrected, good_coords)
