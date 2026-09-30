@@ -146,7 +146,9 @@ Test it directly: bin R about the file's beam centre under each candidate
 transform and compare ring-centroid scatter. On a single-panel 2880² frame the
 correct `ImTransOpt 2` gave **0.039 px RMS** about ideal; without the flip,
 **1.374 px**, and ring contrast collapsed from 101 to 6.9. The right value is
-unmistakable — but only if you look.
+unmistakable — but only if you look. That frame was the 20-ID-D Varex; the
+20-ID-E HEXM `s20varex2` is **`ImTransOpt 1`** (y-flip only; established 2026-09-27, ff-hedm Lab Notebook §12) —
+the value is per detector, so run the test on each.
 
 **Halt condition H1.** If the folder contains a parameter file, do not assume it
 is correct for these frames. Check it (§6, "verify against the raw rings")

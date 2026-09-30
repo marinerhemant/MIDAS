@@ -84,6 +84,11 @@ Everything else is worked out from the files.
    the same fraction. Hard rule 9; do not try to scan candidate energies for the
    best residual (Lab Notebook §15 records that attempt and its refutation).
 
+**`ImTransOpt` is per detector.** 20-ID-D HT-HEDM Varex: `2`. 20-ID-E HEXM
+`s20varex2`: `1` (y-flip only; established 2026-09-27). A powder cannot tell them apart except by the
+beam centre landing on `N-1 − BC`, so check it against a prior BC on that
+detector.
+
 ## When something looks wrong
 
 Go to **`manuals/calibrate-integrate/DIAGNOSIS.md`** — symptom → discriminating
