@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-defect"
-version = "0.8.0"
+version = "0.9.0"
 description = "Differentiable, phase-agnostic diffuse-scattering defect metrology on top of standard FF-HEDM: intensity-budget closure, per-grain dislocation density, fault-rod and selection-rule tests."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -41,7 +41,9 @@ dependencies = [
                                  # midas_hkls.asymmetry_sign_test, added there;
                                  # >=0.11 for centring_allowed, which rows.py now delegates to
     "midas-stress>=0.1",         # quat / rotation / misorientation primitives
-    "midas-diffract>=0.1",       # HEDMForwardModel for predicted spot positions
+    "midas-diffract>=0.9.0",     # HEDMForwardModel for predicted spot positions; >=0.2.0 for the
+                                 # distortion layer and FF-panel tilts build_forward_model now uses
+    "midas-distortion>=0.2.0",   # v1 -> v2 coefficient bridge in indexing.build_forward_model
     "midas-index>=0.1",          # initial-pass indexer for seed_index.py
     "midas-peakfit>=0.1",        # connected-component peak extraction (torch)
     "midas-invert>=0.1.1",         # shared fit + mixture-deconvolution primitives (used by peakshape.py)
