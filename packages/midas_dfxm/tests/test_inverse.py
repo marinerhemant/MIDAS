@@ -6,6 +6,7 @@ import torch
 
 from midas_dfxm import make_uniform_field, with_uniform_strain
 from midas_dfxm.inverse import (
+    StrainRecovery,
     normal_strain,
     recover_strain_direct,
     recover_strain_regularised,
@@ -87,6 +88,51 @@ def test_direct_recovery_exact_clean():
     measured = (eps6 @ M.transpose(0, 1)).transpose(0, 1)  # (K, N) clean
     rec = recover_strain_direct(measured, FULL_SET)
     assert torch.allclose(rec, eps6, atol=1e-9)
+
+
+# --------------------------------------------------------------------------
+# identifiability wired into the solver (flag, don't reject)
+# --------------------------------------------------------------------------
+@pytest.mark.unit
+def test_recover_strain_direct_default_unchanged_with_diagnostics_opt_in():
+    # return_diagnostics=False (the default) must reproduce the exact bare-tensor
+    # behaviour above -- no regression from wiring the diagnostic in.
+    eps6 = _planted_strain_field()
+    M = strain_design_matrix(FULL_SET, dtype=DT)
+    measured = (eps6 @ M.transpose(0, 1)).transpose(0, 1)
+    rec = recover_strain_direct(measured, FULL_SET)
+    assert isinstance(rec, torch.Tensor)
+    assert torch.allclose(rec, eps6, atol=1e-9)
+
+
+@pytest.mark.unit
+def test_recover_strain_direct_flags_well_conditioned_set():
+    eps6 = _planted_strain_field()
+    M = strain_design_matrix(FULL_SET, dtype=DT)
+    measured = (eps6 @ M.transpose(0, 1)).transpose(0, 1)
+    result = recover_strain_direct(measured, FULL_SET, return_diagnostics=True)
+    assert isinstance(result, StrainRecovery)
+    # the strain itself is byte-for-byte the same as the non-diagnostic call
+    assert torch.allclose(result.strain, eps6, atol=1e-9)
+    assert result.diagnostics["recoverable"]
+    assert result.diagnostics["rank"] == 6
+    assert math.isfinite(result.diagnostics["cond"])
+
+
+@pytest.mark.unit
+def test_recover_strain_direct_flags_degenerate_set_without_crashing():
+    # POOR_SET only constrains the 3 diagonal strain components (rank 3 of 6) --
+    # the chronic near-degenerate-geometry case, not a rare edge case. The solver
+    # must NOT raise/reject: it returns a (flagged) result, same shape as always.
+    n = 5
+    measured = torch.randn(len(POOR_SET), n, dtype=DT)
+    result = recover_strain_direct(measured, POOR_SET, return_diagnostics=True)
+    assert isinstance(result, StrainRecovery)
+    assert result.strain.shape == (n, 6)
+    assert torch.isfinite(result.strain).all()
+    assert not result.diagnostics["recoverable"]
+    assert result.diagnostics["rank"] == 3
+    assert math.isinf(result.diagnostics["cond"])
 
 
 @pytest.mark.slow

@@ -27,11 +27,19 @@ loop and ``midas_dfxm.field`` for geometry.
 """
 from __future__ import annotations
 
+import collections
+
 import torch
 
 from midas_invert.optimize import fit
 
 from .field import DeformationField, polar_decomposition, reciprocal_basis
+
+#: Optional return type of :func:`recover_deformation_direct` when
+#: ``return_diagnostics=True`` -- ``F`` is the same ``(N, 3, 3)`` tensor the
+#: bare call returns, ``diagnostics`` is the :func:`deformation_identifiability`
+#: report for the reflection set used.
+DeformationRecovery = collections.namedtuple("DeformationRecovery", ["F", "diagnostics"])
 
 
 def reference_Q(hkl, orientation, lattice_params) -> torch.Tensor:
@@ -143,7 +151,7 @@ def _frame_kw(field, orientation, lattice_params, kw) -> dict:
 
 def recover_deformation_direct(measured: torch.Tensor, reflections, *,
                                field=None, orientation=None, lattice_params=None,
-                               **kw) -> torch.Tensor:
+                               return_diagnostics: bool = False, **kw):
     """Per-voxel least-squares full-F recovery -- the closed-form incumbent analogue.
 
     ``measured`` is ``(N, 3m)`` stacked shifts. Solves ``A vec(H) = dQ`` per voxel,
@@ -153,12 +161,27 @@ def recover_deformation_direct(measured: torch.Tensor, reflections, *,
     Reference frame: pass ``field=`` (a :class:`DeformationField`) so the design matrix
     uses the SAME orientation + lattice the forward did -- the desync-proof path. For raw
     data, give ``orientation`` and/or ``lattice_params`` explicitly. See :func:`_frame_kw`.
+
+    ``torch.linalg.lstsq`` does not check the rank or condition of ``A`` -- a
+    rank-deficient or near-degenerate reflection set (e.g. a coplanar set, see
+    :func:`deformation_identifiability`) still returns *a* least-squares ``H``,
+    silently. Set ``return_diagnostics=True`` to also get the
+    :func:`deformation_identifiability` rank/condition report for the same
+    reflection set, so degenerate fits can be flagged downstream instead of
+    being hard-rejected here. Returns a :data:`DeformationRecovery` namedtuple
+    ``(F, diagnostics)`` in that case. Default (``False``) is unchanged -- a
+    bare ``(N, 3, 3)`` tensor -- for backward compatibility.
     """
     frame = _frame_kw(field, orientation, lattice_params, kw)
-    A = deformation_design_matrix(reflections, dtype=measured.dtype, device=measured.device, **frame)
+    design_kw = {**frame, "dtype": measured.dtype, "device": measured.device}
+    A = deformation_design_matrix(reflections, **design_kw)
     vecH = torch.linalg.lstsq(A, measured.transpose(0, 1)).solution   # (9, N)
     H = vecH.transpose(0, 1).reshape(-1, 3, 3)                        # (N,3,3) row-major
-    return _H_to_F(H)
+    F = _H_to_F(H)
+    if not return_diagnostics:
+        return F
+    diagnostics = deformation_identifiability(reflections, **design_kw)
+    return DeformationRecovery(F, diagnostics)
 
 
 def _curvature_penalty(vol9: torch.Tensor, shape) -> torch.Tensor:

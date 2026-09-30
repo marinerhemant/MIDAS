@@ -7,6 +7,7 @@ from midas_dfxm.field import DeformationField
 import itertools
 
 from midas_dfxm.field_inverse import (
+    DeformationRecovery,
     angular_condition_number,
     crlb_trace,
     decompose_deformation,
@@ -70,6 +71,53 @@ def test_roundtrip_large_deformation():
     meas = deformation_observable(_field(F), FULL_SET)
     F_rec = recover_deformation_direct(meas, FULL_SET, lattice_params=LATC)
     assert torch.allclose(F_rec, F, atol=1e-7)
+
+
+@pytest.mark.unit
+def test_recover_deformation_direct_default_unchanged_with_diagnostics_opt_in():
+    # return_diagnostics=False (the default) must reproduce the exact bare-tensor
+    # behaviour of the roundtrip tests above -- no regression from wiring the
+    # identifiability diagnostic into the solver.
+    rng = np.random.default_rng(0)
+    F = _random_F(40, rng, scale=2e-3)
+    meas = deformation_observable(_field(F), FULL_SET)
+    F_rec = recover_deformation_direct(meas, FULL_SET, lattice_params=LATC)
+    assert isinstance(F_rec, torch.Tensor)
+    assert torch.allclose(F_rec, F, atol=1e-9)
+
+
+@pytest.mark.unit
+def test_recover_deformation_direct_flags_well_conditioned_set():
+    rng = np.random.default_rng(0)
+    F = _random_F(40, rng, scale=2e-3)
+    meas = deformation_observable(_field(F), FULL_SET)
+    result = recover_deformation_direct(meas, FULL_SET, lattice_params=LATC,
+                                        return_diagnostics=True)
+    assert isinstance(result, DeformationRecovery)
+    # the recovered F itself is byte-for-byte the same as the non-diagnostic call
+    assert torch.allclose(result.F, F, atol=1e-9)
+    assert result.diagnostics["recoverable"]
+    assert result.diagnostics["rank"] == 9
+    assert np.isfinite(result.diagnostics["cond"])
+
+
+@pytest.mark.unit
+def test_recover_deformation_direct_flags_degenerate_set_without_crashing():
+    # A coplanar reflection set never probes the out-of-plane H column (Detlefs
+    # 2025 non-coplanarity rule, see test_coplanar_set_is_rank_deficient below) --
+    # rank 6 of 9, not recoverable. The solver must NOT raise/reject: it returns
+    # a (flagged) F of the usual shape.
+    coplanar = [(2, 0, 0), (0, 2, 0), (2, 2, 0), (2, -2, 0), (1, 1, 0), (3, 1, 0)]
+    n = 5
+    meas = torch.randn(n, 3 * len(coplanar), dtype=DT)
+    result = recover_deformation_direct(meas, coplanar, lattice_params=LATC,
+                                        return_diagnostics=True)
+    assert isinstance(result, DeformationRecovery)
+    assert result.F.shape == (n, 3, 3)
+    assert torch.isfinite(result.F).all()
+    assert not result.diagnostics["recoverable"]
+    assert result.diagnostics["rank"] < 9
+    assert np.isinf(result.diagnostics["cond"])
 
 
 @pytest.mark.unit

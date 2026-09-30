@@ -28,11 +28,19 @@ Units: strain dimensionless; reciprocal vectors carry the ``2*pi`` convention.
 """
 from __future__ import annotations
 
+import collections
+
 import torch
 
 from midas_invert.optimize import fit
 
 from .field import DeformationField, reciprocal_basis, small_strain_from_F
+
+#: Optional return type of :func:`recover_strain_direct` when
+#: ``return_diagnostics=True`` -- ``strain`` is the same ``(N, 6)`` tensor the
+#: bare call returns, ``diagnostics`` is the :func:`strain_identifiability`
+#: report for the reflection set used.
+StrainRecovery = collections.namedtuple("StrainRecovery", ["strain", "diagnostics"])
 
 # Voigt-6 order used here: [eps11, eps22, eps33, eps23, eps13, eps12] (symmetric,
 # no sqrt(2) / factor-2 convention baked in — the design-matrix rows carry the 2x
@@ -116,16 +124,32 @@ def strain_identifiability(reflections, **kw) -> dict:
     }
 
 
-def recover_strain_direct(measured: torch.Tensor, reflections, **kw) -> torch.Tensor:
+def recover_strain_direct(measured: torch.Tensor, reflections, *,
+                          return_diagnostics: bool = False, **kw):
     """Per-voxel least-squares strain tensor from normal-strain maps.
 
     ``measured`` is ``(K, N)`` (K reflections, N voxels). Returns ``(N, 6)`` Voigt-6.
     The plain linear solve — no regularisation, no cross-voxel coupling. Exact for
     clean data with a rank-6 reflection set; noise passes straight through.
+
+    ``torch.linalg.lstsq`` does not check the rank or condition of ``M`` -- a
+    rank-deficient or near-degenerate reflection set (the chronic case in
+    FF-HEDM data, not a rare edge case) still returns *a* least-squares answer,
+    silently. Set ``return_diagnostics=True`` to also get the
+    :func:`strain_identifiability` rank/condition report for the same reflection
+    set, so degenerate fits can be flagged/filtered/reweighted downstream instead
+    of being hard-rejected here. Returns a :data:`StrainRecovery` namedtuple
+    ``(strain, diagnostics)`` in that case. Default (``False``) is unchanged --
+    a bare ``(N, 6)`` tensor -- for backward compatibility.
     """
-    M = strain_design_matrix(reflections, dtype=measured.dtype, device=measured.device, **kw)
+    design_kw = {**kw, "dtype": measured.dtype, "device": measured.device}
+    M = strain_design_matrix(reflections, **design_kw)
     sol = torch.linalg.lstsq(M, measured).solution  # (6, N)
-    return sol.transpose(0, 1)
+    strain = sol.transpose(0, 1)
+    if not return_diagnostics:
+        return strain
+    diagnostics = strain_identifiability(reflections, **design_kw)
+    return StrainRecovery(strain, diagnostics)
 
 
 def strain_covariance(reflections, *, noise_std: float = 1.0, **kw) -> torch.Tensor:
