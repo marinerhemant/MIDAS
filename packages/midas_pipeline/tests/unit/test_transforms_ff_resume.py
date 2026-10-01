@@ -32,6 +32,7 @@ class _Ctx:
     """Minimal StageContext stand-in: _run_ff touches only these."""
 
     is_pf = False
+    is_multi_detector = False
 
     def __init__(self, layer_dir: Path, zarr_path: Path):
         self.layer_dir = layer_dir

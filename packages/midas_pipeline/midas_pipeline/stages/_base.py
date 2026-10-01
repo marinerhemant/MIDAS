@@ -69,6 +69,40 @@ class StageContext:
         return self.detector_dir(det)
 
 
+def ff_zip_jobs(ctx: StageContext) -> list[tuple[Optional[Path], Path]]:
+    """``[(zip_path, out_dir), ...]`` for the FF per-panel stages.
+
+    Single-detector: the one ``--zarr`` (or the layer dir's ``*.MIDAS.zip``)
+    and ``layer_dir``; ``zip_path`` is None when neither exists, so the caller
+    keeps its soft-skip.
+
+    Multi-detector: one entry per panel, ``(det.zarr_path, Det_<id>/)``. A
+    panel with no zip is a hard error -- soft-skipping it would let
+    ``cross_det_merge`` run on the panels that did survive and report a grain
+    map built from a subset of the detector.
+    """
+    cfg = ctx.config
+    if not ctx.is_multi_detector:
+        zp: Optional[Path] = Path(cfg.zarr_path) if cfg.zarr_path else None
+        if zp is None:
+            zp = next(iter(ctx.layer_dir.glob("*.MIDAS.zip")), None)
+        return [(zp, ctx.layer_dir)]
+    jobs: list[tuple[Optional[Path], Path]] = []
+    for det in ctx.detectors:
+        if not det.zarr_path:
+            raise FileNotFoundError(
+                f"detector {det.det_id} has no zarr_path; multi-detector runs "
+                "need one .MIDAS.zip per panel in detectors.json")
+        zp = Path(det.zarr_path)
+        if not zp.exists():
+            raise FileNotFoundError(
+                f"detector {det.det_id} zip not found: {zp}")
+        out = ctx.detector_dir(det)
+        out.mkdir(parents=True, exist_ok=True)
+        jobs.append((zp, out))
+    return jobs
+
+
 def resolve_layer_dir(result_dir: Path, layer_nr: int) -> Path:
     """Return the working directory for a given layer.
 

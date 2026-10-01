@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .._logging import LOG
 from ..results import StageResult
-from ._base import StageContext
+from ._base import StageContext, ff_zip_jobs
 from ._stub import stub_run
 
 
@@ -79,43 +79,51 @@ def run(ctx: StageContext) -> StageResult:
 
 
 def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
-    """FF single-zip path."""
+    """FF: one zip at the layer dir, or one zip per panel in ``Det_<id>/``."""
     cfg = ctx.config
-    layer_dir = ctx.layer_dir
-    zip_path = _resolve_ff_zip(ctx)
-    if zip_path is None or not zip_path.exists():
-        LOG.info("peakfit(FF): no zarr/zip at %s; skip.", zip_path)
-        return stub_run("peakfit", ctx)
-    target = layer_dir / "Temp" / "AllPeaks_PS.bin"
-    if target.exists():
-        LOG.info("peakfit(FF): %s already exists; skip.", target)
-        return _result(started, [target], 1, 0)
-    target.parent.mkdir(parents=True, exist_ok=True)
+    if ctx.is_multi_detector and cfg.run_sr:
+        # _sr_worker takes a directory holding the zip; per-panel zips live
+        # wherever detectors.json points, so this needs its own plumbing.
+        raise NotImplementedError(
+            "peakfit(FF): --run-sr is not supported with multiple detectors")
+    jobs = ff_zip_jobs(ctx)
+    written: list[Path] = []
+    for zip_path, out_dir in jobs:
+        if zip_path is None or not zip_path.exists():
+            LOG.info("peakfit(FF): no zarr/zip at %s; skip.", zip_path)
+            return stub_run("peakfit", ctx)
+        target = out_dir / "Temp" / "AllPeaks_PS.bin"
+        written.append(target)
+        if target.exists():
+            LOG.info("peakfit(FF): %s already exists; skip.", target)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
 
-    if cfg.run_sr:
-        from .. import sr_midas
-        sr_midas.log_status(LOG, run_sr=True)
-        _run_sr_subprocess(ctx, layer_dir)
-        if not target.exists():
-            raise RuntimeError(
-                f"peakfit(FF): SR-MIDAS reported success but {target} "
-                "was not written."
-            )
-        LOG.info("peakfit(FF): SR-MIDAS wrote %s", target)
-        return _result(started, [target], 1, 0)
+        if cfg.run_sr:
+            from .. import sr_midas
+            sr_midas.log_status(LOG, run_sr=True)
+            _run_sr_subprocess(ctx, out_dir)
+            if not target.exists():
+                raise RuntimeError(
+                    f"peakfit(FF): SR-MIDAS reported success but {target} "
+                    "was not written."
+                )
+            LOG.info("peakfit(FF): SR-MIDAS wrote %s", target)
+            continue
 
-    peakfit_run(
-        data_file=str(zip_path),
-        block_nr=0, n_blocks=1, num_procs=max(1, cfg.n_cpus_local),
-        result_folder_cli=str(layer_dir),
-        fit_peaks_cli=1,
-        device=_peakfit_device(cfg), dtype=cfg.dtype,
-        # peakfit is the long pole of an FF run (88.5 % of a 2652-grain gamma
-        # reconstruction); this is what makes that visible while it runs.
-        progress_cb=(ctx.progress.update if ctx.progress else None),
-    )
-    LOG.info("peakfit(FF): wrote %s", target)
-    return _result(started, [target], 1, 0)
+        peakfit_run(
+            data_file=str(zip_path),
+            block_nr=0, n_blocks=1, num_procs=max(1, cfg.n_cpus_local),
+            result_folder_cli=str(out_dir),
+            fit_peaks_cli=1,
+            device=_peakfit_device(cfg), dtype=cfg.dtype,
+            # peakfit is the long pole of an FF run (88.5 % of a 2652-grain
+            # gamma reconstruction); this is what makes that visible while it
+            # runs.
+            progress_cb=(ctx.progress.update if ctx.progress else None),
+        )
+        LOG.info("peakfit(FF): wrote %s", target)
+    return _result(started, written, len(written), 0)
 
 
 def _run_sr_subprocess(ctx: StageContext, layer_dir: Path) -> None:

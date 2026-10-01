@@ -63,7 +63,7 @@ def _merge_paramstest(per_det_paramstest: list[Path], det_configs,
                  "YBC", "ZBC", "BC",
                  "RingRadii",
                  "p0", "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9", "p10",
-                 "DetParams",
+                 "DetParams", "RingNumbers",
                  "OutputFolder", "ResultFolder"}
     for raw in text.splitlines():
         line = raw.strip().rstrip(";").rstrip()
@@ -76,6 +76,22 @@ def _merge_paramstest(per_det_paramstest: list[Path], det_configs,
         if key.startswith("EtaCoverage_Det"):
             continue
         lines.append(raw)
+
+    # Union of the panels' rings, not the first panel's: a ring only a later
+    # panel reaches would otherwise get spots in InputAll.csv but no
+    # EtaCoverage arcs and no slot in the indexer's ring list.
+    ring_union: set[int] = set()
+    for pt in per_det_paramstest:
+        if not pt.exists():
+            continue
+        for raw in pt.read_text().splitlines():
+            toks = raw.strip().rstrip(";").split()
+            if len(toks) >= 2 and toks[0] == "RingNumbers":
+                try:
+                    ring_union.add(int(float(toks[1])))
+                except ValueError:
+                    continue
+    lines.extend(f"RingNumbers {r}" for r in sorted(ring_union))
 
     layer_dir = out_path.parent
     lines.append(f"OutputFolder {layer_dir / 'Output'}")
@@ -155,6 +171,19 @@ def _append_detid_col(path: Path, det_id: int) -> int:
     return n_rows
 
 
+def _split_detid_head(head: str) -> tuple[str, bool]:
+    """``(header without a trailing DetID, whether it had one)``.
+
+    Per-panel CSVs reach the merge either bare (straight from ``transforms``)
+    or already carrying ``DetID`` (a panel that went through the single-detector
+    path, i.e. ``_append_detid_col``). The merge owns the column, so it strips
+    one if present and writes exactly one.
+    """
+    toks = head.split()
+    has = bool(toks) and toks[-1] == "DetID"
+    return " ".join(toks[:-1] if has else toks), has
+
+
 def _do_single_detector(ctx: StageContext, outputs: dict[str, str]):
     """No-op merge: single-detector InputAll.csv is already at layer_dir.
     Append a DetID column so binning + downstream stages can treat
@@ -167,6 +196,63 @@ def _do_single_detector(ctx: StageContext, outputs: dict[str, str]):
     outputs[str(input_all)] = ""
     ctx.merged_paramstest = ctx.layer_dir / "paramstest.txt"
     return input_all, input_all, n_total, [n_total]
+
+
+def _shifted_ids_hash_rows(path: Path, offset: int) -> list[str]:
+    """One panel's ``IDsHash.csv`` rows with SpotID bounds moved to global IDs.
+
+    Each row is ``ring id_min id_max(exclusive) d0``. Within a panel a ring is
+    one contiguous SpotID block; across the merged table it is one block per
+    panel, so the layer file repeats a ring once per panel. Readers look a
+    SpotID up by range, which is what lets one ring own several ranges.
+    ``process_grains`` refuses to run without this file: it is the only source
+    of the per-ring reference d-spacing for the strain gauge.
+    """
+    if not path.exists():
+        return []
+    rows: list[str] = []
+    for raw in path.read_text().splitlines():
+        toks = raw.split()
+        if len(toks) < 4:
+            continue
+        if int(toks[2]) - int(toks[1]) <= 1:
+            # transforms writes end = start + count + 1, so this ring has no
+            # spots on this panel. Its range would start at the same global ID
+            # as the next panel's first ring and the lookup would depend on
+            # how ties sort.
+            continue
+        rows.append(f"{toks[0]} {int(toks[1]) + offset} "
+                    f"{int(toks[2]) + offset} {toks[3]}")
+    return rows
+
+
+def _emit_eta_coverage(paramstest: Path) -> None:
+    """Append ``EtaCoverage_Det<N>`` rows for every panel to the merged paramstest.
+
+    The indexer divides by the spots a grain is predicted to put ON a panel
+    (its completeness denominator). Without these rows it divides by every
+    predicted spot, and on a pinwheel whose panels cover a fraction of each
+    ring nothing reaches ``MinMatchesToAcceptFrac``: 0 grains, exit 0.
+
+    midas-transforms does not write them (the retired midas-ff-pipeline
+    transforms stage did), so they are derived here from the ``DetParams`` and
+    ``RingRadii_Det<N>`` rows just written. Rows already present are kept.
+    """
+    from ..eta_coverage import parse_coverage_blocks, write_coverage_block
+    from .global_powder import _coverage_from_geometry
+
+    text = paramstest.read_text()
+    if parse_coverage_blocks(text):
+        return
+    arcs_by_det = _coverage_from_geometry(text)
+    if not arcs_by_det:
+        LOG.warning("cross_det_merge: could not derive η coverage from %s; "
+                    "the indexer will count every predicted spot, not just "
+                    "those that land on a panel", paramstest)
+        return
+    for det_id, arcs in arcs_by_det.items():
+        write_coverage_block(paramstest, det_id, arcs)
+    LOG.info("  wrote EtaCoverage rows for %d panel(s)", len(arcs_by_det))
 
 
 def _do_multi_detector(ctx: StageContext, outputs: dict[str, str]):
@@ -184,6 +270,7 @@ def _do_multi_detector(ctx: StageContext, outputs: dict[str, str]):
     fp_in = merged_input_all.open("w")
     fp_extra = merged_extra_csv.open("w")
     seed_globals: list[int] = []  # for merged SpotsToIndex.csv
+    ids_hash_rows: list[str] = []  # for merged IDsHash.csv
     try:
         for det_idx, det in enumerate(ctx.detectors):
             det_dir = ctx.detector_dir(det)
@@ -192,30 +279,36 @@ def _do_multi_detector(ctx: StageContext, outputs: dict[str, str]):
             sti = det_dir / "SpotsToIndex.csv"
             offset = next_spot_id - 1   # local L → global = L + offset
             n_det = 0
+            ids_hash_rows.extend(_shifted_ids_hash_rows(det_dir / "IDsHash.csv",
+                                                        offset))
             if ia.exists():
                 with ia.open() as fp:
-                    head = fp.readline()
+                    head, has_detid = _split_detid_head(fp.readline())
                     if det_idx == 0:
-                        fp_in.write(head.rstrip("\n") + " DetID\n")
+                        fp_in.write(head + " DetID\n")
                     for line in fp:
                         toks = line.rstrip("\n").split()
                         if len(toks) < 5:
                             continue
                         toks[4] = str(next_spot_id + n_det)
+                        if has_detid:
+                            toks.pop()
                         toks.append(str(det.det_id))
                         fp_in.write(" ".join(toks) + "\n")
                         n_det += 1
             if ie.exists():
                 with ie.open() as fp:
-                    head = fp.readline()
+                    head, has_detid = _split_detid_head(fp.readline())
                     if det_idx == 0:
-                        fp_extra.write(head.rstrip("\n") + " DetID\n")
+                        fp_extra.write(head + " DetID\n")
                     eid = next_spot_id
                     for line in fp:
                         toks = line.rstrip("\n").split()
                         if len(toks) < 5:
                             continue
                         toks[4] = str(eid)
+                        if has_detid:
+                            toks.pop()
                         toks.append(str(det.det_id))
                         fp_extra.write(" ".join(toks) + "\n")
                         eid += 1
@@ -243,6 +336,11 @@ def _do_multi_detector(ctx: StageContext, outputs: dict[str, str]):
             fp.write(f"{sid}\n")
     outputs[str(merged_sti)] = ""
 
+    if ids_hash_rows:
+        merged_ids_hash = ctx.layer_dir / "IDsHash.csv"
+        merged_ids_hash.write_text("\n".join(ids_hash_rows) + "\n")
+        outputs[str(merged_ids_hash)] = ""
+
     n_total = next_spot_id - 1
     outputs[str(merged_input_all)] = ""
     outputs[str(merged_extra_csv)] = ""
@@ -256,6 +354,7 @@ def _do_multi_detector(ctx: StageContext, outputs: dict[str, str]):
     merged_paramstest_path = ctx.layer_dir / "paramstest.txt"
     _merge_paramstest(per_det_paramstest, ctx.detectors, per_det_hkls,
                       merged_paramstest_path)
+    _emit_eta_coverage(merged_paramstest_path)
     outputs[str(merged_paramstest_path)] = ""
     ctx.merged_paramstest = merged_paramstest_path
 

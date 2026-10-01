@@ -262,29 +262,42 @@ def _kv_float(kv: Dict[str, List[str]], key: str, default: float) -> float:
 
 
 def _coverage_from_geometry(text: str) -> Dict[int, List[CoverageArc]]:
-    """Derive single-panel η coverage by enumerating the panel's pixels.
+    """Derive η coverage by enumerating each panel's pixels.
 
-    Returns ``{1: [CoverageArc, ...]}`` — shaped like ``parse_coverage_blocks``
-    so the rest of the stage is indifferent to where coverage came from.
+    Returns ``{det_id: [CoverageArc, ...]}`` — shaped like
+    ``parse_coverage_blocks`` so the rest of the stage is indifferent to where
+    coverage came from. ``{1: ...}`` for one panel; one key per ``DetParams``
+    row for a multi-detector paramstest.
     Empty dict when the geometry or the ring table is missing.
     """
     kv = _paramstest_kv(text)
 
     rings = kv.get("RingNumbers", [])
     radii = kv.get("RingRadii", [])
-    if not rings or len(rings) != len(radii):
+    multi_det = bool(kv.get("DetParams"))
+    ring_radii_um: List[Tuple[int, float]] = []
+    if rings and len(rings) == len(radii):
+        for rn_s, rad_s in zip(rings, radii):
+            try:
+                ring_radii_um.append((int(float(rn_s.split()[0])),
+                                      float(rad_s.split()[0])))
+            except (IndexError, ValueError):
+                continue
+    elif not multi_det:
         LOG.warning("  paramstest has %d RingNumbers and %d RingRadii — "
                     "cannot derive coverage from geometry",
                     len(rings), len(radii))
         return {}
-    ring_radii_um: List[Tuple[int, float]] = []
-    for rn_s, rad_s in zip(rings, radii):
+    # cross_det_merge writes RingRadii for every ring in hkls.csv, which can be
+    # more than RingNumbers selects; the multi-detector branch below reads
+    # RingRadii_Det<N> instead and keeps only the selected rings.
+    wanted: set = set()
+    for rn_s in rings:
         try:
-            ring_radii_um.append((int(float(rn_s.split()[0])),
-                                  float(rad_s.split()[0])))
+            wanted.add(int(float(rn_s.split()[0])))
         except (IndexError, ValueError):
             continue
-    if not ring_radii_um:
+    if not ring_radii_um and not multi_det:
         return {}
 
     lsd = _kv_float(kv, "LsdFit", 0.0) or _kv_float(kv, "Lsd", 0.0)
@@ -302,9 +315,51 @@ def _coverage_from_geometry(text: str) -> Dict[int, List[CoverageArc]]:
 
     width_um = _kv_float(kv, "Width", DEFAULT_WIDTH_UM)
 
+    px_um = _kv_float(kv, "px", 200.0)
+
+    # Multi-detector paramstest (written by cross_det_merge): the bare Lsd/BC/
+    # tx keys are the FIRST panel's only, so deriving coverage from them would
+    # credit the layer with one panel's arcs and every ring's scale would come
+    # out ~1/N_panels too small. One coverage table per DetParams row instead.
+    det_rows = kv.get("DetParams", [])
+    if det_rows:
+        out: Dict[int, List[CoverageArc]] = {}
+        for row in det_rows:
+            try:
+                v = [float(t) for t in row.split()]
+                det_id = int(v[0])
+                lsd_d, y_d, z_d, tx_d, ty_d, tz_d = v[1:7]
+            except (IndexError, ValueError):
+                LOG.warning("  malformed DetParams row %r — skipped", row)
+                continue
+            # Per-panel ring radii when the merge wrote them, else the shared
+            # table.
+            det_radii: List[Tuple[int, float]] = []
+            for rr in kv.get(f"RingRadii_Det{det_id}", []):
+                try:
+                    rn_s, rad_s = rr.split()[:2]
+                    rn = int(float(rn_s))
+                    if not wanted or rn in wanted:
+                        det_radii.append((rn, float(rad_s)))
+                except (IndexError, ValueError):
+                    continue
+            arcs_d = compute_panel_eta_coverage(
+                n_pixels=n_pixels, px_um=px_um, lsd_um=lsd_d,
+                y_bc_px=y_d, z_bc_px=z_d,
+                tx_deg=tx_d, ty_deg=ty_d, tz_deg=tz_d,
+                ring_radii_um=det_radii or ring_radii_um,
+                width_um=width_um,
+            )
+            if arcs_d:
+                out[det_id] = arcs_d
+        if out:
+            LOG.info("  derived η coverage from %d DetParams panel(s) "
+                     "(%d px, band ±%.0f µm)", len(out), n_pixels, width_um)
+            return out
+
     arcs = compute_panel_eta_coverage(
         n_pixels=n_pixels,
-        px_um=_kv_float(kv, "px", 200.0),
+        px_um=px_um,
         lsd_um=lsd,
         y_bc_px=_kv_float(kv, "YBCFit", _kv_float(kv, "YBC", 0.0)),
         z_bc_px=_kv_float(kv, "ZBCFit", _kv_float(kv, "ZBC", 0.0)),

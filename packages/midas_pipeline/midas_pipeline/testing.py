@@ -418,7 +418,41 @@ def generate_pinwheel_synthetic_dataset(*,
         device=device,
         log=lambda msg: LOG.info(msg),
     )
+    write_parameters_from_zarr(summary["zips"][0],
+                               Path(out_dir) / "Parameters.txt")
     return summary["zips"], summary["detectors_json"]
+
+
+def write_parameters_from_zarr(zip_path: Path, out: Path) -> Path:
+    """Write a ``Parameters.txt`` from a simulated zarr's own analysis_parameters.
+
+    ``simulate_panel_zarrs`` bakes every parameter into each panel's zarr but
+    writes no text file, while ``midas-pipeline run`` wants ``--params``. The
+    values are the first panel's, so the per-panel geometry (Lsd, BC, tx..) is
+    the first panel's too; a multi-detector run takes each panel's own from
+    its zarr / ``detectors.json``.
+    """
+    import numpy as np
+    import zarr
+
+    ap = zarr.open(str(zip_path), mode="r")["analysis/process/analysis_parameters"]
+    lines = []
+    for k in sorted(ap.array_keys()):
+        if k in ("YCen", "ZCen"):
+            continue
+        arr = ap[k][...]
+        if arr.dtype.kind in "SUO":              # InFileName / OutFileName
+            continue
+        if k in ("RingThresh", "RingsToExclude"):
+            lines += [f"{k} " + " ".join(f"{x:g}" for x in row)
+                      for row in np.atleast_2d(arr)]
+        else:
+            lines.append(f"{'px' if k == 'PixelSize' else k} "
+                         + " ".join(f"{x:.10g}" for x in np.atleast_1d(arr).ravel()))
+    lines.append(f"BC {float(ap['YCen'][...].ravel()[0])} "
+                 f"{float(ap['ZCen'][...].ravel()[0])}")
+    Path(out).write_text("\n".join(lines) + "\n")
+    return Path(out)
 
 
 def _make_per_det_paramfile(template: Path,

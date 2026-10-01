@@ -22,7 +22,7 @@ from typing import Optional
 
 from .._logging import LOG
 from ..results import StageResult
-from ._base import StageContext
+from ._base import StageContext, ff_zip_jobs
 from ._stub import stub_run
 
 
@@ -62,19 +62,29 @@ def run(ctx: StageContext) -> StageResult:
 
 
 def _run_ff(ctx: StageContext, started: float, gen_fn) -> StageResult:
-    """FF single-zip: one HKL list at the layer dir."""
+    """FF: one HKL list at the layer dir, or one per panel in ``Det_<id>/``."""
     layer_dir = ctx.layer_dir
-    out_csv = layer_dir / "hkls.csv"
-    zip_path = _resolve_ff_zip(ctx)
-    if zip_path is None or not zip_path.exists():
-        LOG.info("hkl(FF): no zarr/zip available at %s; skip.", zip_path)
-        return stub_run("hkl", ctx)
-    if out_csv.exists():
-        LOG.info("hkl(FF): %s already exists; skip.", out_csv)
-        return _result(started, [out_csv])
-    gen_fn(zip_path, result_folder=layer_dir)
-    LOG.info("hkl(FF): wrote %s", out_csv)
-    return _result(started, [out_csv])
+    jobs = ff_zip_jobs(ctx)
+    written: list[Path] = []
+    for zip_path, out_dir in jobs:
+        out_csv = out_dir / "hkls.csv"
+        if zip_path is None or not zip_path.exists():
+            LOG.info("hkl(FF): no zarr/zip available at %s; skip.", zip_path)
+            return stub_run("hkl", ctx)
+        if out_csv.exists():
+            LOG.info("hkl(FF): %s already exists; skip.", out_csv)
+        else:
+            gen_fn(zip_path, result_folder=out_dir)
+            LOG.info("hkl(FF): wrote %s", out_csv)
+        written.append(out_csv)
+    if ctx.is_multi_detector:
+        # Downstream stages (binning, indexing, refinement) read one layer-level
+        # hkls.csv; the panels share a material, so the first panel's list is it.
+        layer_hkls = layer_dir / "hkls.csv"
+        if not layer_hkls.exists():
+            shutil.copy2(written[0], layer_hkls)
+        written.append(layer_hkls)
+    return _result(started, written)
 
 
 def _run_pf(ctx: StageContext, started: float, gen_fn) -> StageResult:
@@ -146,15 +156,6 @@ def _run_pf(ctx: StageContext, started: float, gen_fn) -> StageResult:
              skipped, len(scans),
              "ok" if layer_hkls.exists() else "missing")
     return _result(started, written)
-
-
-def _resolve_ff_zip(ctx: StageContext) -> Optional[Path]:
-    """For FF mode, the zarr is the single ``--zarr`` arg or the layer dir's."""
-    if ctx.config.zarr_path:
-        return Path(ctx.config.zarr_path)
-    for p in ctx.layer_dir.glob("*.MIDAS.zip"):
-        return p
-    return None
 
 
 def _result(started: float, written: list[Path]) -> StageResult:

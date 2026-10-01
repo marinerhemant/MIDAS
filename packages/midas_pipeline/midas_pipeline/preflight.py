@@ -87,6 +87,26 @@ def check_inputs(cfg, layers: Optional[List[int]] = None) -> List[str]:
             f"parameter file has CRLF (Windows) line endings: {pf}\n"
             f"    fix with:  sed -i 's/\\r$//' {pf}")
 
+    # ---- 2a. multi-detector: one pre-built zip per panel ----------------
+    # ``--detectors`` carries a .MIDAS.zip per panel (zarr_path), so the raw
+    # frames are not needed either; without this the raw-key check below
+    # rejects a run whose inputs are complete.
+    if getattr(cfg, "detectors_json", None):
+        dj = Path(cfg.detectors_json)
+        try:
+            from .detector import DetectorConfig
+            dets = DetectorConfig.load_many(dj)
+        except Exception as e:
+            problems.append(f"--detectors could not be read: {dj} ({e})")
+            return problems
+        if len(dets) > 1:
+            for d in dets:
+                if not d.zarr_path or not Path(d.zarr_path).exists():
+                    problems.append(
+                        f"detector {d.det_id}: zarr_path not found: "
+                        f"{d.zarr_path or '(empty)'}")
+            return problems
+
     # ---- 2. a pre-built zarr/zip means raw data is not needed -----------
     if getattr(cfg, "zarr_path", None):
         z = Path(cfg.zarr_path)

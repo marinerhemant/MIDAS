@@ -42,7 +42,7 @@ import numpy as np
 
 from .._logging import LOG
 from ..results import StageResult
-from ._base import StageContext
+from ._base import StageContext, ff_zip_jobs
 from ._stub import stub_run
 
 RAD2DEG = 57.2957795130823
@@ -265,7 +265,9 @@ def _write_layer_extra(*, src_extra: Path, dst_extra: Path,
 
 
 def _run_ff(ctx: StageContext, started: float) -> StageResult:
-    """FF: midas_transforms.Pipeline.from_zarr(zip).run() + dump."""
+    """FF: midas_transforms.Pipeline.from_zarr(zip).run() + dump, once at the
+    layer dir or once per panel in ``Det_<id>/`` (``cross_det_merge`` joins them).
+    """
     try:
         from midas_transforms import Pipeline
     except ImportError as e:
@@ -273,40 +275,36 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
         return stub_run("transforms", ctx)
 
     cfg = ctx.config
-    layer_dir = ctx.layer_dir
-    zip_path = cfg.zarr_path
-    if not zip_path:
-        for p in layer_dir.glob("*.MIDAS.zip"):
-            zip_path = str(p)
-            break
-    if not zip_path or not Path(zip_path).exists():
-        LOG.info("transforms(FF): no zarr/zip; skip.")
-        return stub_run("transforms", ctx)
+    written: list[Path] = []
+    for zip_path, out_dir in ff_zip_jobs(ctx):
+        if zip_path is None or not zip_path.exists():
+            LOG.info("transforms(FF): no zarr/zip; skip.")
+            return stub_run("transforms", ctx)
 
-    # Resume guard, matching peakfit(FF)/hkl(FF) and _run_pf above.
-    #
-    # Without this, FF transforms re-runs unconditionally on every resume. That
-    # is not merely wasted work: transforms rewrites InputAll.csv and
-    # InputAllExtraInfoFittingAll.csv, which invalidates binning and therefore
-    # indexing, so a resume aimed at a LATER stage silently forces a full
-    # re-index. Measured on a 20-ID alumina layer (24900 seeds, 471k spots):
-    # ~90 minutes of re-indexing per retry, twice, while the only stage that
-    # actually needed to re-run was refinement.
-    target = layer_dir / "InputAllExtraInfoFittingAll.csv"
-    input_all = layer_dir / "InputAll.csv"
-    if target.exists() and input_all.exists():
-        LOG.info("transforms(FF): %s already exists; skip.", target)
-        return _result(started, [target], 1, 0)
+        # Resume guard, matching peakfit(FF)/hkl(FF) and _run_pf above.
+        #
+        # Without this, FF transforms re-runs unconditionally on every resume.
+        # That is not merely wasted work: transforms rewrites InputAll.csv and
+        # InputAllExtraInfoFittingAll.csv, which invalidates binning and
+        # therefore indexing, so a resume aimed at a LATER stage silently
+        # forces a full re-index. Measured on a 20-ID alumina layer (24900
+        # seeds, 471k spots): ~90 minutes of re-indexing per retry, twice,
+        # while the only stage that actually needed to re-run was refinement.
+        target = out_dir / "InputAllExtraInfoFittingAll.csv"
+        written.append(target)
+        if target.exists() and (out_dir / "InputAll.csv").exists():
+            LOG.info("transforms(FF): %s already exists; skip.", target)
+            continue
 
-    pipe = Pipeline.from_zarr(
-        zip_path,
-        result_folder=layer_dir,
-        device=cfg.device, dtype=cfg.dtype,
-    )
-    pipe.run()
-    pipe.dump(layer_dir)
-    LOG.info("transforms(FF): pipeline.dump → %s", layer_dir)
-    return _result(started, [layer_dir / "InputAllExtraInfoFittingAll.csv"], 1, 0)
+        pipe = Pipeline.from_zarr(
+            zip_path,
+            result_folder=out_dir,
+            device=cfg.device, dtype=cfg.dtype,
+        )
+        pipe.run()
+        pipe.dump(out_dir)
+        LOG.info("transforms(FF): pipeline.dump → %s", out_dir)
+    return _result(started, written, len(written), 0)
 
 
 def _result(started: float, written, ok: int, failed: int) -> StageResult:
