@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="logos/midas_logo.png" alt="MIDAS Logo" width="300">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logos/midas_logo_on-dark.svg">
+    <img src="logos/midas_logo_on-light.svg" alt="MIDAS: a beam diffracts from one gold grain of a polycrystal onto a detector" width="520">
+  </picture>
 </p>
 
 # MIDAS — Microstructural Imaging using Diffraction Analysis Software
