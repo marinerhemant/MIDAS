@@ -74,12 +74,13 @@ def test_make_pyfai_integrator_uses_correct_shift():
     s = spec_from_v1_params(p, requires_grad=False)
     ai = make_pyfai_integrator(s)
     # Pull poni back out and check
-    expected_p1 = (685.49 + 0.5) * 172.0 * 1e-6
-    expected_p2 = (921.03 + 0.5) * 172.0 * 1e-6
+    # images are [row=Z, col=Y]: pyFAI's axis 1 (poni1) is the ROW, i.e. BC_z; axis 2 (poni2) the COLUMN, BC_y
+    expected_p1 = (921.03 + 0.5) * 172.0 * 1e-6
+    expected_p2 = (685.49 + 0.5) * 172.0 * 1e-6
     assert abs(ai.poni1 - expected_p1) < 1e-12
     assert abs(ai.poni2 - expected_p2) < 1e-12
     # And NOT the wrong (no-shift) conversion
-    wrong_p1 = 685.49 * 172.0 * 1e-6
+    wrong_p1 = 921.03 * 172.0 * 1e-6
     assert abs(ai.poni1 - wrong_p1) > 1e-9
 
 

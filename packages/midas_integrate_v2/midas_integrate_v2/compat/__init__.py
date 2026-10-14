@@ -4,6 +4,7 @@ from .to_v1 import v1_params_from_spec
 from .pyfai import (
     bc_to_poni, poni_to_bc, poni_file_to_row_col, make_pyfai_integrator,
     read_poni, poni_file_to_bc, orientation_flips, describe_orientation,
+    midas_to_poni, poni_to_midas, poni_file_to_midas,
 )
 
 __all__ = [
@@ -16,6 +17,9 @@ __all__ = [
     "make_pyfai_integrator",
     "read_poni",
     "poni_file_to_bc",
+    "midas_to_poni",
+    "poni_to_midas",
+    "poni_file_to_midas",
     "orientation_flips",
     "describe_orientation",
 ]
