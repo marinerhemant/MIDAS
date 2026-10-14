@@ -145,8 +145,10 @@ def _build_floor_csr(
     device, dtype,
 ) -> torch.Tensor:
     """Floor-mode CSR — one nonzero per pxList entry."""
-    iy = pixel_y.astype(np.int64)
-    iz = pixel_z.astype(np.int64)
+    # A sub-pixel entry (SubPixelLevel > 1) carries y = raw_y + offset with |offset| < 0.5, so the parent pixel is the NEAREST integer; truncating (astype(int64))
+    # sent every sub-pixel at a negative offset (e.g. 2.75 for pixel 3) into the neighbouring pixel. Integer positions (SubPixelLevel 1) are unchanged by rounding.
+    iy = np.rint(pixel_y).astype(np.int64)
+    iz = np.rint(pixel_z).astype(np.int64)
     in_bounds = ((iy >= 0) & (iy < n_pixels_y)
                  & (iz >= 0) & (iz < n_pixels_z))
     col = iz * n_pixels_y + iy
@@ -310,8 +312,8 @@ def build_csr(
 
     # area_per_bin: matches the C initialize_PerFrameArr_Area_kernel which IS
     # bounds-checked, so we sum only in-bounds entries here.
-    iy_int = pixel_y.astype(np.int64)
-    iz_int = pixel_z.astype(np.int64)
+    iy_int = np.rint(pixel_y).astype(np.int64)             # parent pixel of a sub-pixel entry (see _build_floor_csr)
+    iz_int = np.rint(pixel_z).astype(np.int64)
     in_bounds = ((iy_int >= 0) & (iy_int < n_pixels_y)
                  & (iz_int >= 0) & (iz_int < n_pixels_z))
     area_per_bin = np.zeros(pixmap.n_bins, dtype=np.float64)
