@@ -61,7 +61,7 @@ n_eta = mean2d.shape[0]
 I = mean2d.mean(dim=0).numpy()
 sigma_analytic = (torch.sqrt((sig2d**2).sum(dim=0)) / n_eta).numpy()
 R_axis = spec.RMin + (np.arange(I.shape[0]) + 0.5) * spec.RBinSize
-two_theta_deg = np.degrees(np.arctan(R_axis * spec.pxY / float(spec.Lsd)))
+two_theta_deg = np.degrees(np.arctan(R_axis * spec.mean_pixel_um() / float(spec.Lsd)))
 print("integrated", I.shape)
 """),
     ("md", "## 3. Bootstrap to validate analytic σ"),

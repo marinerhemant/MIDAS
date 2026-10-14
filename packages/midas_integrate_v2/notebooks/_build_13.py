@@ -160,10 +160,11 @@ def powder_image(spec, *, ring_R_px=(40.0, 90.0, 160.0, 250.0, 340.0),
     BC_y = float(spec.BC_y)
     BC_z = float(spec.BC_z)
     yy, zz = np.meshgrid(np.arange(NY_), np.arange(NZ_), indexing="xy")
-    Yc = (yy - BC_y) * spec.pxY
-    Zc = (zz - BC_z) * spec.pxZ
+    _pxy, _pxz = spec.effective_pxYZ()
+    Yc = (yy - BC_y) * _pxy
+    Zc = (zz - BC_z) * _pxz
     R_um = np.sqrt(Yc * Yc + Zc * Zc)
-    R_px = R_um / spec.pxY
+    R_px = R_um / spec.mean_pixel_um()
     img = np.full((NZ_, NY_), bg, dtype=np.float64)
     for R0 in ring_R_px:
         img += ring_amp * np.exp(-(R_px - R0) ** 2 / (2 * ring_width_px ** 2))

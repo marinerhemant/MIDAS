@@ -92,9 +92,9 @@ n_eta = mean2d.shape[0]
 I = mean2d.mean(dim=0)
 sigma_I = torch.sqrt((sigma2d**2).sum(dim=0)) / n_eta
 R_axis = spec.RMin + (np.arange(I.shape[0]) + 0.5) * spec.RBinSize
-Q_axis = R_px_to_Q(torch.as_tensor(R_axis), Lsd_um=spec.Lsd, px_um=spec.pxY,
+Q_axis = R_px_to_Q(torch.as_tensor(R_axis), Lsd_um=spec.Lsd, px_um=spec.mean_pixel_um(),
                     lambda_A=spec.Wavelength).numpy()
-two_theta_deg = np.degrees(np.arctan(R_axis * spec.pxY / float(spec.Lsd)))
+two_theta_deg = np.degrees(np.arctan(R_axis * spec.mean_pixel_um() / float(spec.Lsd)))
 """),
     ("md", "## 5. PDF G(r) with σ propagation"),
     ("code", """\

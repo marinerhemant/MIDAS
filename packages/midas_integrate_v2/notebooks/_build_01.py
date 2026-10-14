@@ -265,7 +265,7 @@ CEO2_RINGS = [
     ((4, 0, 0), 1.353),
 ]
 Lsd_um = float(spec.Lsd)
-px_um  = spec.pxY
+px_um  = spec.mean_pixel_um()
 lam_A  = float(spec.Wavelength)
 
 predictions = []

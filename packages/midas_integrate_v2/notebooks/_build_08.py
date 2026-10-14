@@ -127,7 +127,7 @@ def R_px_to_Q(R_px, Lsd_um, px_um, lam_A):
 
 
 Lsd_um = float(spec.Lsd)
-px_um  = spec.pxY
+px_um  = spec.mean_pixel_um()
 lam_A  = float(spec.Wavelength)
 
 q_axis = R_px_to_Q(r_axis_px, Lsd_um=Lsd_um, px_um=px_um, lam_A=lam_A)

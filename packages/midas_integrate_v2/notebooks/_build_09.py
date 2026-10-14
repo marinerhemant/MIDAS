@@ -230,7 +230,7 @@ out_dir = HERE / "v07_demo_outputs"
 out_dir.mkdir(exist_ok=True, parents=True)
 
 # Convert R (px) → 2θ (centidegrees) for the GSAS XYE convention
-two_theta_deg = np.degrees(np.arctan(r_axis_px * spec.pxY / float(spec.Lsd)))
+two_theta_deg = np.degrees(np.arctan(r_axis_px * spec.mean_pixel_um() / float(spec.Lsd)))
 two_theta_centidegrees = two_theta_deg * 100.0
 
 # XYE: 2θ in centidegrees + intensity + σ
@@ -242,7 +242,7 @@ write_xye(xye_path,
 print(f"wrote {xye_path}")
 
 # Convert R (px) → Q (Å⁻¹) for the PDF .dat convention
-two_theta_rad = np.arctan(r_axis_px * spec.pxY / float(spec.Lsd))
+two_theta_rad = np.arctan(r_axis_px * spec.mean_pixel_um() / float(spec.Lsd))
 Q_invA = (4 * np.pi / float(spec.Wavelength)) * np.sin(two_theta_rad / 2.0)
 
 dat_path = out_dir / "ceo2.dat"

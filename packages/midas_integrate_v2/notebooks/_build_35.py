@@ -82,7 +82,7 @@ if HAVE:
     n_eta, n_r = cake.shape
     print(f"cake shape: {cake.shape}  (η bins × R bins)")
 
-    Lsd_um, px_um = float(spec.Lsd), float(spec.pxY)
+    Lsd_um, px_um = float(spec.Lsd), float(spec.mean_pixel_um())
     r_px = spec.RMin + spec.RBinSize * (np.arange(n_r) + 0.5)
     tth = np.degrees(np.arctan(r_px * px_um / Lsd_um))            # 2θ per R bin
     eta = spec.EtaMin + spec.EtaBinSize * (np.arange(n_eta) + 0.5)
