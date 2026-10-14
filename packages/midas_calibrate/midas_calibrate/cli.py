@@ -55,6 +55,9 @@ def autocalibrate_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--engine", choices=["alternating", "joint"], default="alternating")
     parser.add_argument("--n-iters", type=int, default=None,
                         help="override nIterations from the params file")
+    parser.add_argument("--freeze-distortion", action="store_true",
+                        help="do not refine p0..p14 (same as FitDistortion 0); for "
+                             "detectors whose software already corrects spatial distortion")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
@@ -64,6 +67,8 @@ def autocalibrate_main(argv: Sequence[str] | None = None) -> int:
     params = CalibrationParams.from_file(args.params_file)
     if args.n_iters is not None:
         params.nIterations = args.n_iters
+    if args.freeze_distortion:
+        params.freeze_distortion()
 
     image_path = args.image or Path(params.ImagePath)
     image = _load_image(image_path)

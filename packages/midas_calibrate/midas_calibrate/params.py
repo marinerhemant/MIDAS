@@ -271,6 +271,11 @@ class CalibrationParams:
                 params.Refine["Wavelength"] = bool(int(val.split()[0]))
             elif key == "FitParallax":
                 params.Refine["Parallax"] = bool(int(val.split()[0]))
+            elif key == "FitDistortion":
+                # 0 holds p0..p14 at the values in the file (normally 0). For
+                # detectors whose software already corrects spatial distortion.
+                params.Refine.update(
+                    {f"p{i}": bool(int(val.split()[0])) for i in range(15)})
             elif key == "RemoveOutliersBetweenIters":
                 params.RemoveOutliersBetweenIters = bool(int(val.split()[0]))
             elif key == "OutlierFactor":
@@ -316,6 +321,15 @@ class CalibrationParams:
         _apply_fit_key_aliases(params, seen)
         return params
 
+    def freeze_distortion(self) -> "CalibrationParams":
+        """Hold p0..p14 at their current values (do not refine them).
+
+        For detectors whose software already applies a spatial-distortion
+        correction. Same as ``FitDistortion 0`` in a parameter file. Returns
+        ``self`` so it can be chained."""
+        self.Refine.update({f"p{i}": False for i in range(15)})
+        return self
+
     def to_text(self) -> str:
         """Emit a parameters_refined.txt body (C-format compatible)."""
         lines: List[str] = []
@@ -326,6 +340,8 @@ class CalibrationParams:
         lines.append(f"tz {self.tz:.6f}")
         for i in range(15):
             lines.append(f"p{i} {getattr(self, f'p{i}'):.10g}")
+        if not any(self.Refine.get(f"p{i}", True) for i in range(15)):
+            lines.append("FitDistortion 0")   # round-trips freeze_distortion()
         lines.append(f"Parallax {self.Parallax:.6f}")
         lines.append(f"Wavelength {self.Wavelength:.6f}")
         lines.append(f"px {self.pxY:.6f}")
