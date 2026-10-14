@@ -724,6 +724,19 @@ class PipelineConfig:
     preproc_thresh: int = -1
     convert_files: bool = True
 
+    # ESRF Bliss raw data (pf): build the per-scan .MIDAS.zip from a Bliss
+    # master + Lima files instead of from per-scan raw folders. The omega sign
+    # is never guessed: give bliss_omega_sign, or bliss_omega_ref_raw (zips of
+    # another layer of the same experiment) to pin it frame by frame. See
+    # midas_pipeline.bliss_ingest.
+    bliss_master: Optional[str] = None
+    bliss_omega_sign: Optional[int] = None
+    bliss_omega_offset: float = 0.0
+    bliss_omega_ref_raw: Optional[str] = None
+    bliss_allow_offset: bool = False
+    bliss_mask_from: Optional[str] = None
+    bliss_detector: str = "eiger"
+
     # zip_convert reuses any existing .MIDAS.zip, and every downstream stage
     # reads geometry from the ZARR rather than from Parameters.txt -- so
     # editing tx/Lsd/BC and re-running into the same result folder used to keep

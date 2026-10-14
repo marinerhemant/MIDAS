@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from .._logging import LOG
 from ..results import StageResult
 from ._base import StageContext
@@ -66,6 +68,12 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
         return stub_run("zip_convert", ctx)
 
     from .._pf_scans import fan_out_scans
+
+    if getattr(cfg, "bliss_master", None):
+        if not cfg.convert_files:
+            LOG.warning("zip_convert(PF): --bliss-master given but --no-convert is on; not building zips.")
+        else:
+            _build_bliss(ctx, scans)
 
     # N6: I/O-bound subprocess per scan — thread fan-out with per-scan
     # claims. zip_workers=1 is the serial legacy behaviour.
@@ -125,6 +133,29 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
         outputs={"zips": [str(s.zip_path) for s in scans if s.zip_path.exists()]},
         metrics={"n_present": n_present, "n_built": n_built,
                  "n_failed": n_failed, "n_scans": len(scans)},
+    )
+
+
+def _build_bliss(ctx: StageContext, scans) -> None:
+    """Write the missing per-scan zips from the Bliss master (all gates run first; see bliss_ingest)."""
+    from ..bliss_ingest import build_zips_from_bliss
+
+    cfg = ctx.config
+    step = float(np.median(np.abs(np.diff([s.y_position_um for s in scans])))) if len(scans) > 1 else 0.0
+    build_zips_from_bliss(
+        scans,
+        master=cfg.bliss_master,
+        param_file=cfg.params_file,
+        layer_dir=ctx.layer_dir,
+        scan_step_um=step,
+        omega_sign=cfg.bliss_omega_sign,
+        omega_offset=cfg.bliss_omega_offset,
+        omega_ref_raw=cfg.bliss_omega_ref_raw,
+        allow_offset=cfg.bliss_allow_offset,
+        mask_from=cfg.bliss_mask_from,
+        detector=cfg.bliss_detector,
+        preproc_thresh=cfg.preproc_thresh,
+        zip_workers=max(1, int(getattr(cfg, "zip_workers", 1))),
     )
 
 

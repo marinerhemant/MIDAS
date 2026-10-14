@@ -425,6 +425,20 @@ def _build_parser() -> argparse.ArgumentParser:
     # Ingestion
     run.add_argument("--num-frame-chunks", type=int, default=-1)
     run.add_argument("--preproc-thresh", type=int, default=-1)
+    run.add_argument("--bliss-master", default=None,
+                     help="(pf) ESRF Bliss master .h5: build each scan's .MIDAS.zip from its Lima files. Scan s of "
+                          "the run is entry s of the master (acquisition order). dty must step by --scan-step.")
+    run.add_argument("--bliss-omega-sign", type=int, choices=(-1, 1), default=None,
+                     help="omega = sign*rot_center + offset. Never guessed: give this or --bliss-omega-ref-raw")
+    run.add_argument("--bliss-omega-ref-raw", default=None,
+                     help="dir of per-scan .MIDAS.zip from another layer of the same experiment; pins the omega "
+                          "sign frame by frame (exactly one sign must match, offset ~0)")
+    run.add_argument("--bliss-omega-offset", type=float, default=0.0)
+    run.add_argument("--bliss-allow-offset", action="store_true",
+                     help="accept a nonzero pinned omega offset (a snake that starts the other way pins the WRONG "
+                          "sign with an offset, so this is off by default)")
+    run.add_argument("--bliss-mask-from", default=None, help="a zip whose exchange/mask is copied into every scan")
+    run.add_argument("--bliss-detector", default="eiger")
     run.add_argument("--no-convert", dest="convert_files", action="store_false")
     run.set_defaults(convert_files=True)
     run.add_argument("--no-refresh-params", dest="refresh_params",
@@ -900,6 +914,13 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         num_frame_chunks=args.num_frame_chunks,
         preproc_thresh=args.preproc_thresh,
         convert_files=args.convert_files,
+        bliss_master=args.bliss_master,
+        bliss_omega_sign=args.bliss_omega_sign,
+        bliss_omega_offset=args.bliss_omega_offset,
+        bliss_omega_ref_raw=args.bliss_omega_ref_raw,
+        bliss_allow_offset=args.bliss_allow_offset,
+        bliss_mask_from=args.bliss_mask_from,
+        bliss_detector=args.bliss_detector,
         refresh_params=getattr(args, "refresh_params", True),
         force_param_refresh=getattr(args, "force_param_refresh", False),
         file_name=args.file_name,
