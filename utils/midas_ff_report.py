@@ -68,8 +68,22 @@ def parse_param(run_dir):
 
 def is_cubic(sg):  return sg is not None and 195<=sg<=230
 
-def ipf_cubic(OM):
-    v=np.abs(np.einsum('nij,j->ni',OM,np.array([0,0,1.0])))
+def ipf_cubic(OM, sample_dir=(0, 0, 1.0)):
+    """IPF colour of each grain for a SAMPLE direction (cubic key).
+
+    Delegates to midas_plotting.ipf (the package that owns IPF colouring). The
+    local formula is the fallback when midas_plotting is not installed. It used
+    to compute OM . d (where crystal [001] points in the sample), which is not
+    an IPF colour; fixed 2026-10-01 to OM^T . d (MIDAS OM maps crystal ->
+    sample). On a 20-ID Varex run the fixed local formula agrees with
+    midas_plotting to a median 6.9 deg in colour space (old formula 21.2 deg).
+    """
+    try:
+        from midas_plotting.ipf import ipf_rgb_from_matrix
+        return np.asarray(ipf_rgb_from_matrix(OM, 225, tuple(sample_dir)))
+    except ImportError:
+        pass
+    v=np.abs(np.einsum('nij,i->nj',OM,np.asarray(sample_dir,dtype=float)))
     v=np.sort(v,axis=1); v/=np.linalg.norm(v,axis=1,keepdims=True)
     rgb=np.stack([v[:,2]-v[:,1],v[:,1]-v[:,0],v[:,0]],1)
     rgb/=rgb.max(axis=1,keepdims=True); return np.clip(rgb,0,1)**0.6
