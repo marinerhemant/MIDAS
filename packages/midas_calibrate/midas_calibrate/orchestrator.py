@@ -5,6 +5,7 @@ joint differentiable engine is a separate entry point in `joint.py`.
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -78,6 +79,10 @@ def autocalibrate(
     Returns a CalibrationResult with refined parameters and per-iteration history.
     """
     params.validate()
+    # Tolerances (tolLsd, tolBC, tolTilts, tolDistortion, ...) bound the WHOLE fit,
+    # measured from the geometry we were given. ``refine_geometry`` mutates
+    # ``params`` in place, so keep a copy to anchor the bounds on.
+    bounds_anchor = copy.deepcopy(params)
     history: List[IterRecord] = []
     rt: Optional[RingTable] = None
     fits_final: Optional[List[FittedPoint]] = None
@@ -110,6 +115,7 @@ def autocalibrate(
             max_iter=200,
             huber_delta=(params.HuberDelta if params.Loss.lower() == "huber" else None),
             verbose=False,
+            bounds_anchor=bounds_anchor,
         )
         params = result.params
 

@@ -89,8 +89,17 @@ def refine_geometry(
     max_iter: int = 200,
     huber_delta: float | None = None,
     verbose: bool = False,
+    bounds_anchor: CalibrationParams | None = None,
 ) -> RefineResult:
     """One M-step pass: refine geometry from the supplied (Y_pix, Z_pix, ring) points.
+
+    ``bounds_anchor`` is the geometry the ``tol*`` tolerances are measured
+    from. Left None, they are measured from ``params`` -- the CURRENT values --
+    which is only right for a single call. In the E<->M loop that re-centres
+    the box every iteration, so a parameter pinned at its bound steps by one
+    full tolerance per iteration and ``tolDistortion 0.001`` over 5 iterations
+    permits 5e-3 (and ``tolLsd`` is not a limit at all). The orchestrator
+    passes the STARTING geometry so each tolerance bounds the whole fit.
 
     Returns updated params, final cost, return code, mean strain (μϵ).
     """
@@ -99,7 +108,8 @@ def refine_geometry(
 
     # Pack initial geometry & bounds, freeze unrefined params.
     x0 = pack(params, dtype=dtype, device=device)
-    lo, hi = bounds(params, dtype=dtype, device=device)
+    lo, hi = bounds(bounds_anchor if bounds_anchor is not None else params,
+                    dtype=dtype, device=device)
     mask = refine_mask(params).to(device)
     lo, hi = collapse_unrefined_bounds(lo, hi, x0, mask)
 
