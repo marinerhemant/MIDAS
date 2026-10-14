@@ -1,9 +1,10 @@
 """CLI for midas-joint-ff-calibrate.
 
 Subcommands:
-  grain-tx   Refine tx (and Wedge) from reconstructed grain spots — the
-             powder-blind geometry the pipeline ran with tx=0. Writes a
-             corrected paramstest for a pipeline re-run.
+  grain-tx       Refine tx from reconstructed grain spots — the powder-blind
+                 detector roll. Writes a corrected paramstest for a re-run.
+  friedel-wedge  Measure the absolute rotation-axis Wedge and the OmegaStep
+                 scale from Friedel pairs (the FitWedge.c method).
 """
 from __future__ import annotations
 
@@ -102,6 +103,48 @@ def _grain_tx(args) -> int:
     return 0
 
 
+def _friedel_wedge(args) -> int:
+    from midas_joint_ff_calibrate.friedel_wedge import friedel_wedge
+
+    res = friedel_wedge(
+        args.paramstest, args.layer_dir, pair_source=args.pairs,
+        fit_omega_scale=not args.no_omega_scale,
+        max_cot=args.max_cot, ome_tol=args.ome_tol, eta_tol=args.eta_tol,
+        n_boot=args.n_boot, min_pairs=args.min_pairs,
+        use_positions=not args.no_positions, out_paramstest=args.out,
+        write_omega_step=args.write_omega_step, loss=args.loss)
+    src = (f"from {res.n_grains} grains" if res.pair_source == "grains"
+           else "from the raw peak list")
+    print(f"\n  Friedel pairs used: {res.n_pairs}  {src}   "
+          f"robust omega scatter {res.sigma_deg:.4f} deg")
+    if res.pair_source == "peaks":
+        print(f"  estimated wrong pairs (decoy windows at 180 +- 3 deg): "
+              f"{100 * res.chance_pair_fraction:.1f} %")
+    print(f"  Wedge (absolute): {res.wedge_deg:+.5f} +- {res.wedge_se_deg:.5f} deg "
+          f"(SE: bootstrap over {'grains' if res.pair_source == 'grains' else 'pairs'}; "
+          f"estimator: {res.estimator})")
+    if res.class_counts:
+        print(f"  pair members on the omega frame grid: {100 * res.snapped_member_fraction:.0f} % "
+              f"(phase {res.grid_phase_frames:.3f} frame)")
+        for c in sorted(res.class_counts):
+            sg = res.class_sigma_deg.get(c)
+            print(f"    pairs with {c} snapped member(s): {res.class_counts[c]:6d}"
+                  + (f"   residual scatter {sg:.4f} deg" if sg is not None else ""))
+    if not args.no_omega_scale:
+        print(f"  OmegaStep: {res.omega_step_in:.6f} -> {res.omega_step_fit:.6f} deg/frame "
+              f"(relative {res.omega_scale_eps:+.2e} +- {res.omega_scale_se:.1e})")
+    if res.splits:
+        print("  split check (one fixed axis tilt => one wedge):")
+        for name, (w, se, n) in res.splits.items():
+            print(f"    {name:26s} {w:+.5f} +- {se:.5f}  (n={n})")
+    for msg in res.warnings:
+        print(f"  NOTE: {msg}")
+    if res.paramstest_out:
+        print(f"  wrote {res.paramstest_out} (Wedge"
+              f"{' + OmegaStep' if args.write_omega_step else ''})")
+    return 0
+
+
 def main(argv=None) -> int:
     p = _midas_make_parser(prog="midas-joint-ff-calibrate", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -161,6 +204,46 @@ def main(argv=None) -> int:
                     help="write corrected paramstest here for the re-run")
     gx.add_argument("--device", default="cpu")
     gx.set_defaults(func=_grain_tx)
+
+    fw = sub.add_parser(
+        "friedel-wedge",
+        help="measure the absolute rotation-axis Wedge (and the OmegaStep scale) "
+             "from Friedel pairs -- use this, not grain-tx, for Wedge")
+    fw.add_argument("--paramstest", type=Path, required=True,
+                    help="parameter file the reconstruction ran with (the layer "
+                         "paramstest.txt or the file given to --params)")
+    fw.add_argument("--layer-dir", type=Path, required=True,
+                    help="layer dir with SpotMatrix.csv (OmeRaw) and Grains.csv")
+    fw.add_argument("--out", type=Path, default=None,
+                    help="write a copy of --paramstest with the measured Wedge")
+    fw.add_argument("--write-omega-step", action="store_true",
+                    help="also write the fitted OmegaStep into --out")
+    fw.add_argument("--no-omega-scale", action="store_true",
+                    help="hold OmegaStep fixed (NOT recommended: a step error then "
+                         "biases the wedge, oppositely above and below the beam)")
+    fw.add_argument("--pairs", choices=("peaks", "grains"), default="peaks",
+                    help="'peaks' (default): pair the raw peak list, independent of the "
+                         "reconstruction; 'grains': pair within each grain's matched "
+                         "spots (selected around the run's own predictions)")
+    fw.add_argument("--max-cot", type=float, default=3.0,
+                    help="drop pairs with |cot eta| above this (near the poles)")
+    fw.add_argument("--ome-tol", type=float, default=None,
+                    help="pairing window on |omega2 - omega1 - 180| (deg; default "
+                         "0.5 peaks / 1.0 grains)")
+    fw.add_argument("--eta-tol", type=float, default=None,
+                    help="pairing window on the mirrored eta (deg; default 0.6 "
+                         "peaks / 1.0 grains)")
+    fw.add_argument("--loss", choices=("quant", "ls", "huber"), default="quant",
+                    help="'quant' (default): quantisation-aware weighted least squares "
+                         "(pairs with omegas on the frame grid are weighted by their own "
+                         "variance and trimmed at half a frame per snapped member); 'ls': "
+                         "plain least squares; 'huber': the legacy MAD-scaled Huber, biased "
+                         "toward 0 when many omegas sit on the frame grid")
+    fw.add_argument("--n-boot", type=int, default=100)
+    fw.add_argument("--min-pairs", type=int, default=200)
+    fw.add_argument("--no-positions", action="store_true",
+                    help="ignore grain positions (rays from the origin)")
+    fw.set_defaults(func=_friedel_wedge)
 
     args = p.parse_args(argv)
     return args.func(args)

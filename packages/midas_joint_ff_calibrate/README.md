@@ -52,8 +52,33 @@ midas-joint-ff-calibrate grain-tx \
 Also available as `refine_geometry_from_grains()` (library) and as an optional
 FF pipeline stage (`midas-pipeline run ... --grain-geometry-run`). `tx` enters
 at the *transforms* step, so benefiting from it means re-running the
-reconstruction with the corrected file. Only `tx` and `Wedge` can be refined
-here; see the notebook's Limitations section.
+reconstruction with the corrected file. On current packages the per-layer
+`paramstest.txt` also works (it carries canonical `Lsd`/`BC`/`tx` keys, and
+`LsdFit`/`txFit` are mapped on older files); grain-tx raises on 0 matched spots.
+
+## Rotation-axis `Wedge` and `OmegaStep` — from Friedel pairs
+
+Measure the Wedge with `friedel-wedge`, **not** with `grain-tx --refine Wedge`.
+Friedel mates diffract exactly 180° apart unless the rotation axis is tilted
+(`ω₂ − ω₁ − 180 ≈ −2·W·cot η`, η = atan2(−Y, Z)) or the ω scale is off (a constant). grain-tx's
+loss is the on-detector (Y, Z) distance with the grain poses frozen at the
+reconstruction's values and never compares observed ω, so one pass recovers only
+part of a wedge (see `manuals/FF_Grain_Geometry_tx.md`); Friedel pairs measure it
+in one pass from any reconstruction.
+
+```bash
+midas-joint-ff-calibrate friedel-wedge \
+    --paramstest  recon/LayerNr_1/paramstest.txt \
+    --layer-dir   recon/LayerNr_1 \
+    --out         ps_wedge.txt [--write-omega-step]
+```
+
+It fits the wedge and the OmegaStep scale jointly (exact Bragg solve per pair,
+default quantisation-aware weighted least squares, SE by bootstrap over pairs; `--loss ls|huber` select the others), reports both, and prints a split table
+(rings, ω halves, both sides of the beam) that a single fixed axis tilt must make
+flat. The Wedge is absolute: inputs are `OmeRaw` and raw pixels. This is the
+method of the 2014 `FitWedge.c`; `FitWedgeParallel.c` is deprecated. Then run
+`grain-tx --refine tx` on the `--out` file. Library: `midas_joint_ff_calibrate.friedel_wedge`.
 
 ## Architecture
 
