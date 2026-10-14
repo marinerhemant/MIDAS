@@ -202,8 +202,14 @@ def generate_synthetic_dataset(*,
                                n_grains: int = 50,
                                seed: int = 42,
                                n_cpus: int = 8,
-                               device: str = "cpu") -> Path:
+                               device: str = "cpu",
+                               omega_sigma_frames: float = 0.0,
+                               frame_integrate: bool = False) -> Path:
     """End-to-end synthetic data generation (pure-Python). Returns the .MIDAS.zip path.
+
+    ``omega_sigma_frames`` / ``frame_integrate`` (defaults = the historical
+    delta-in-omega rendering) are forwarded to ``SimConfig``; see
+    ``midas_diffract.simulate_panel_zarrs`` for the exposure-integrated mode.
 
     Uses ``midas_diffract.simulate_panel_zarrs`` with a single panel and
     ``midas_hkls`` for the ring list — no C ``ForwardSimulationCompressed``
@@ -286,6 +292,8 @@ def generate_synthetic_dataset(*,
         peak_intensity=_scalar("PeakIntensity", 50_000.0),
         gauss_sigma_px=_scalar("GaussWidth", 1.5),
         pos_noise_px=0.0,
+        omega_sigma_frames=omega_sigma_frames,
+        frame_integrate=frame_integrate,
     )
 
     LOG.info("simulate_panel_zarrs: 1 panel, %d grains, seed=%d, device=%s",
@@ -347,6 +355,8 @@ def generate_pinwheel_synthetic_dataset(*,
                                          pos_noise_px: float = 0.0,
                                          device: str = "cuda",
                                          out_stem: str = "midas_diffract_pinwheel",
+                                         omega_sigma_frames: float = 0.0,
+                                         frame_integrate: bool = False,
                                          ) -> tuple[list[Path], Path]:
     """Forward-simulate a true multi-detector pinwheel via midas_diffract.
 
@@ -406,6 +416,8 @@ def generate_pinwheel_synthetic_dataset(*,
         peak_intensity=peak_intensity,
         gauss_sigma_px=gauss_sigma_px,
         pos_noise_px=pos_noise_px,
+        omega_sigma_frames=omega_sigma_frames,
+        frame_integrate=frame_integrate,
     )
 
     summary = simulate_panel_zarrs(

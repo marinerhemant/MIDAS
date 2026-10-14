@@ -89,9 +89,18 @@ class SimConfig:
     gauss_sigma_px: float = 1.0           # 2D in-plane spot σ (px)
     # Frame-axis behaviour: ``omega_sigma_frames > 0`` spreads each spot
     # across ±3σ frames with Gaussian weights; ``= 0`` puts the spot
-    # entirely in floor(frame_nr) (matches ForwardSimulationCompressed
-    # which also deposits one spot per frame).
+    # entirely in the NEAREST frame (frame label = cell centre; see
+    # ``_per_frame_contribs``).
     omega_sigma_frames: float = 0.0
+    # ``frame_integrate=False`` (default, unchanged behaviour): the Gaussian is
+    # SAMPLED at integer frame cells, un-normalised, so a spot's total counts
+    # depend on its sub-frame offset when ``omega_sigma_frames`` is below ~1.
+    # ``True``: each frame receives the Gaussian INTEGRATED over its exposure
+    # [c-1/2, c+1/2), w_c = Phi((c+1/2-f)/s) - Phi((c-1/2-f)/s); the weights sum
+    # to 1, so total counts per spot = ``peak_intensity`` for every sigma and
+    # every sub-frame offset. Only acts when ``omega_sigma_frames > 0``
+    # (sigma = 0 is the delta/nearest-frame limit in both settings).
+    frame_integrate: bool = False
     pos_noise_px: float = 0.0             # extra Gaussian noise on (y, z) per spot
     # ring threshold for analysis_parameters/RingThresh (matches FF defaults)
     ring_thresh: int = 10
@@ -257,6 +266,107 @@ def _render_frame(
     # analysis frame is (Y, Z). To make peakfit's good_coords mask match the
     # rasterised spots, write to img[z_pix, y_pix] (NOT img[y_pix, z_pix]).
     np.add.at(img, (flat_z, flat_y), flat_v.astype(img.dtype))
+
+
+# ---------------------------------------------------------------------------
+#  Spot -> frame assignment (omega axis)
+# ---------------------------------------------------------------------------
+
+def _frame_overlap_weights(fs: np.ndarray, target: np.ndarray, sigma_f: float) -> np.ndarray:
+    """Gaussian (mean ``fs``, sd ``sigma_f`` frames) integrated over frame cell
+    ``target`` = [target-1/2, target+1/2): ``Phi(hi) - Phi(lo)``.
+
+    Uses the upper tail for cells right of the mean so the difference does not
+    cancel catastrophically. ``torch.special.ndtr`` keeps this numpy/torch-only
+    (no scipy dependency)."""
+    t = target.astype(np.float64)
+    hi = (t + 0.5 - fs) / sigma_f
+    lo = (t - 0.5 - fs) / sigma_f
+    ndtr = torch.special.ndtr
+    nd = lambda x: ndtr(torch.from_numpy(np.ascontiguousarray(x))).numpy()
+    return np.where(lo > 0.0, nd(-lo) - nd(-hi), nd(hi) - nd(lo))
+
+
+def _per_frame_contribs(
+    ys: np.ndarray,
+    zs: np.ndarray,
+    fs: np.ndarray,
+    *,
+    peak_intensity: float,
+    omega_sigma_frames: float,
+    frame_integrate: bool,
+    n_frames: int,
+) -> dict:
+    """Assign each spot's counts to frames: ``{frame: [(ys, zs, amp), ...]}``.
+
+    Frame ``c`` has omega label ``OmegaStart + c*OmegaStep`` and covers
+    ``[c-1/2, c+1/2)`` in frame units (``fs`` = continuous frame number from
+    the forward model, ``frame_nr``). Sign of the omega step does not matter
+    here (frame units).
+
+    * ``omega_sigma_frames <= 0``: all ``peak_intensity`` in the nearest frame.
+    * ``> 0`` and not ``frame_integrate`` (legacy, unchanged): ``exp(-d^2/2s^2)``
+      sampled at integer cells ``floor(fs)+k``, kept where ``w > 1e-3``.
+    * ``> 0`` and ``frame_integrate``: exposure-integrated weights (sum to 1),
+      ``amp = peak_intensity * w``; cells within ``ceil(5 s + 1)`` of the nearest
+      frame, weights ``<= 1e-9`` skipped, cells outside ``[0, n_frames)`` dropped
+      (so counts are NOT conserved for a spot within ~5 sigma of a scan edge).
+    """
+    per_frame: dict[int, list[tuple[np.ndarray, np.ndarray, np.ndarray]]] = {}
+    if omega_sigma_frames <= 0:
+        # Nearest frame: the pipeline labels frame f with omega
+        # OmegaStart + f*OmegaStep (midas_peakfit zarr_io.frame_omega), so a
+        # single-frame spot must go to the frame whose LABEL is nearest its
+        # omega. floor() (the ForwardSimulationCompressed habit) put every
+        # spot up to one full step away, a mean |step|/2 omega bias (0.128 deg
+        # at step -0.25) that reads as a rigid rotation of every grain about z.
+        near_f = np.floor(fs + 0.5).astype(np.int64)
+        for tf in np.unique(near_f):
+            idx = np.where(near_f == tf)[0]
+            if 0 <= int(tf) < n_frames:
+                per_frame.setdefault(int(tf), []).append((
+                    ys[idx], zs[idx],
+                    np.full(idx.size, peak_intensity, dtype=np.float64),
+                ))
+        return per_frame
+
+    sigma_f = omega_sigma_frames
+    if frame_integrate:
+        near_f = np.floor(fs + 0.5).astype(np.int64)
+        K_f = int(math.ceil(5.0 * sigma_f + 1.0))
+        for k in range(-K_f, K_f + 1):
+            target = near_f + k
+            w = _frame_overlap_weights(fs, target, sigma_f)
+            sel = (target >= 0) & (target < n_frames) & (w > 1e-9)
+            if not sel.any():
+                continue
+            for tf in np.unique(target[sel]):
+                idx = np.where((target == tf) & sel)[0]
+                per_frame.setdefault(int(tf), []).append((
+                    ys[idx], zs[idx],
+                    (peak_intensity * w[idx]).astype(np.float64),
+                ))
+        return per_frame
+
+    # Legacy sampled Gaussian (behaviour unchanged; regression-locked in
+    # tests/test_simulate_exposure.py against a verbatim copy of this block).
+    floor_f = np.floor(fs).astype(np.int64)
+    K_f = max(1, int(math.ceil(3.0 * sigma_f)))
+    for k in range(-K_f, K_f + 1):
+        target = floor_f + k
+        d = (fs - target.astype(np.float64))
+        w = np.exp(-(d ** 2) / (2.0 * sigma_f ** 2))
+        sel = (target >= 0) & (target < n_frames) & (w > 1e-3)
+        if not sel.any():
+            continue
+        t_sel = target[sel]
+        for tf in np.unique(t_sel):
+            idx = np.where((target == tf) & sel)[0]
+            per_frame.setdefault(int(tf), []).append((
+                ys[idx], zs[idx],
+                (peak_intensity * w[idx]).astype(np.float64),
+            ))
+    return per_frame
 
 
 # ---------------------------------------------------------------------------
@@ -695,45 +805,13 @@ def simulate_panel_zarrs(
         ys = spot_records["y_pix"][det_mask]
         zs = spot_records["z_pix"][det_mask]
         fs = spot_records["frame_nr"][det_mask]
-        floor_f = np.floor(fs).astype(np.int64)
-        frac_f = (fs - floor_f).astype(np.float64)            # ∈ [0, 1)
-        # Nearest frame: the pipeline labels frame f with omega
-        # OmegaStart + f*OmegaStep (midas_peakfit zarr_io.frame_omega), so a
-        # single-frame spot must go to the frame whose LABEL is nearest its
-        # omega. floor() (the ForwardSimulationCompressed habit) put every
-        # spot up to one full step away, a mean |step|/2 omega bias (0.128 deg
-        # at step -0.25) that reads as a rigid rotation of every grain about z.
-        near_f = np.floor(fs + 0.5).astype(np.int64)
-
-        # Build per-frame spot lists. Two modes:
-        #   omega_sigma_frames == 0  → full intensity in the nearest frame
-        #   omega_sigma_frames  > 0  → Gaussian smear across ±3σ frames
-        per_frame: dict[int, list[tuple[np.ndarray, np.ndarray, np.ndarray]]] = {}
-        if cfg.omega_sigma_frames <= 0:
-            for tf in np.unique(near_f):
-                idx = np.where(near_f == tf)[0]
-                if 0 <= int(tf) < n_frames:
-                    per_frame.setdefault(int(tf), []).append((
-                        ys[idx], zs[idx],
-                        np.full(idx.size, cfg.peak_intensity, dtype=np.float64),
-                    ))
-        else:
-            sigma_f = cfg.omega_sigma_frames
-            K_f = max(1, int(math.ceil(3.0 * sigma_f)))
-            for k in range(-K_f, K_f + 1):
-                target = floor_f + k
-                d = (fs - target.astype(np.float64))
-                w = np.exp(-(d ** 2) / (2.0 * sigma_f ** 2))
-                sel = (target >= 0) & (target < n_frames) & (w > 1e-3)
-                if not sel.any():
-                    continue
-                t_sel = target[sel]
-                for tf in np.unique(t_sel):
-                    idx = np.where((target == tf) & sel)[0]
-                    per_frame.setdefault(int(tf), []).append((
-                        ys[idx], zs[idx],
-                        (cfg.peak_intensity * w[idx]).astype(np.float64),
-                    ))
+        per_frame = _per_frame_contribs(
+            ys, zs, fs,
+            peak_intensity=cfg.peak_intensity,
+            omega_sigma_frames=cfg.omega_sigma_frames,
+            frame_integrate=cfg.frame_integrate,
+            n_frames=n_frames,
+        )
 
         def _frame_iter():
             for f in range(n_frames):
