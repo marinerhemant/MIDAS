@@ -507,6 +507,42 @@ def extract_fitted_points(
     ]
 
 
+def _gate_noise_rings(fits: List[FittedPoint], min_ring_snr: float,
+                      min_rings_kept: int = 4) -> List[FittedPoint]:
+    """Drop whole rings whose MEDIAN baseline-referenced SNR is below ``min_ring_snr``.
+
+    Applies ``MinRingSNR``, which v1 has parsed from the parameter file since the C days
+    but never applied (calibrate_v2 applies it in
+    ``midas_calibrate_v2.pipelines._common.filter_fits_by_ring_quality``; this is the same
+    rule, including its floor of ``min_rings_kept`` best-ranked rings, ranked by fit count
+    then median SNR, so the filter can never empty a dataset). Per RING, not per point.
+
+    ``min_ring_snr`` = 0 (the default) leaves the fits unchanged. The threshold is
+    EMPIRICAL, not a calibrated detection limit: on a three-frame real CCD ceria set the
+    noise-level 222 ring has a median of 0.9 / 1.6 / 8.8 (weak / medium / strong) and the
+    weakest real ring 2.8, so 2 falls in a gap there, but ring SNR is a continuum and
+    this has NOT been shown to improve the fitted geometry (placebo ring drops give the
+    same shift, and on known-truth synthetic images it does nothing).
+    """
+    if not fits:
+        return fits
+    rings = sorted({f.ring_idx for f in fits})
+    med = {r: float(np.median([f.snr_baseline for f in fits if f.ring_idx == r])) for r in rings}
+    cnt = {r: sum(1 for f in fits if f.ring_idx == r) for r in rings}
+    if min_ring_snr <= 0.0:
+        return fits
+    drop = {r for r in rings if med[r] < min_ring_snr}
+    if not drop:
+        return fits
+    if len(rings) - len(drop) < min_rings_kept:
+        rescued = set(sorted(rings, key=lambda r: (cnt[r], med[r]), reverse=True)[:min_rings_kept])
+        drop -= rescued
+        warnings.warn(
+            f"MinRingSNR={min_ring_snr:g} would leave fewer than {min_rings_kept} rings; "
+            "kept the best-ranked ones instead.", RuntimeWarning, stacklevel=2)
+    return [f for f in fits if f.ring_idx not in drop]
+
+
 def run_estep(
     params: CalibrationParams,
     image: np.ndarray,
@@ -518,4 +554,5 @@ def run_estep(
     cake = integrate_cake(params, image, rt, dark=dark, cake_mode=cake_mode,
                           mask=mask)
     fits = extract_fitted_points(cake, rt, params, snr_min=params.SNRMin)
+    fits = _gate_noise_rings(fits, float(getattr(params, "MinRingSNR", 0.0) or 0.0))
     return cake, fits
