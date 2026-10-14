@@ -109,7 +109,7 @@ def _r_bin_edges(spec) -> tuple[np.ndarray, np.ndarray]:
     n_r = spec.n_r_bins
     i = np.arange(n_r, dtype=np.float64)
     if spec.q_mode_active:
-        px = spec.effective_pxYZ()[0]
+        px = spec.mean_pixel_um()        # R is in mean-pixel units
         lsd = _float(spec.Lsd)
         lam = _float(spec.Wavelength)
         q_lo = spec.QMin + spec.QBinSize * i
@@ -141,7 +141,7 @@ def reta_map(spec, bin_area: Optional[Any] = None) -> np.ndarray:
     eta_i = np.arange(n_eta, dtype=np.float64)
     eta_mean = spec.EtaMin + spec.EtaBinSize * (eta_i + 0.5)       # (n_eta,)
 
-    px = spec.effective_pxYZ()[0]
+    px = spec.mean_pixel_um()            # R is in mean-pixel units
     lsd = _float(spec.Lsd)
     lam = _float(spec.Wavelength)
 

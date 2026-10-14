@@ -1,5 +1,10 @@
 """K×K subpixel-oversampled hard binning.
 
+.. note::
+   Position-sensitive work (calibration checks, strain from ring positions): prefer :class:`~.polygon.PolygonBinGeometry`. This
+   sub-sampling kernel has a narrow sampling-aliasing comb at radial bin widths w = m/K px (and sqrt(2)-related ones):
+   :class:`SubpixelResonanceWarning` is raised for them. Even off-resonance, K=16 is 3-6x polygon in sector scatter (std).
+
 Bridges :class:`HardBinGeometry` (single sample per pixel) and v1's
 exact polygon-area kernel (continuous).  Each pixel is split into
 ``K × K`` subpixels; each subpixel contributes ``1/K²`` of the pixel's
@@ -30,6 +35,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+import math
+
 import torch
 
 import numpy as np
@@ -38,6 +45,36 @@ from ..forward import pixel_to_REta_from_spec
 from ..spec import IntegrationSpec
 from .mask import normalise_mask
 from .trans_opt import apply_trans_opt_forward, needs_trans_opt
+from .pixel_correction import apply_pixel_divisor, pixel_divisor_from_spec
+
+
+class SubpixelResonanceWarning(UserWarning):
+    """The radial bin width sits on a sampling-aliasing resonance of the K x K sub-sample grid (filterable)."""
+
+
+#: sub-sample lattice directions with a MEASURED resonance: (1,0) -> |g| = 1 and (1,1) -> sqrt(2). (2,1) (|g| = sqrt(5)) is predicted by the
+#: Poisson-sum argument but was not seen in the data, so it is not warned about.
+_RESONANT_DIRECTIONS = (("axis (1,0)", 1.0), ("diagonal (1,1)", math.sqrt(2.0)))
+
+
+def resonant_bin_width(K: int, rbin_px: float, *, tol_px: float = 0.01):
+    """Return ``(direction, k, w_res)`` when ``rbin_px`` is within ``tol_px`` of ``k / (|g| K)`` for a sub-sample lattice
+    direction ``g`` and an integer ``k >= 1``, else ``None``.
+
+    Measured (noiseless synthetic scenes, 2026-10-14, rms over sectors): a K x K sub-sample grid whose spacing along a lattice direction divides the radial bin
+    width exactly makes the per-bin sample count a coherent function of azimuth, so fitted ring positions scatter from sector to
+    sector. For K = 4 at 0.25 px bins the scatter is 63 / 22 / 11 microstrain at rings 1.5 / 3 / 4.5 deg against 19 / 4.7 / 2.5 at
+    0.20 px; the spike is narrower than 0.01 px in the bin width, so only (near-)exact m/K widths are hit.
+    """
+    if K < 2 or K > 8 or not rbin_px or rbin_px <= 0:             # K > 8: the comb is down at the shared offset (K=16 at 0.25 px: rms 13/3.6/1.8 ue)
+        return None
+    for name, g in _RESONANT_DIRECTIONS:
+        unit = 1.0 / (g * K)                      # width at which one sample spacing along g fits exactly once
+        k = max(1, int(round(rbin_px / unit)))
+        w_res = k * unit
+        if abs(rbin_px - w_res) < tol_px and w_res <= 8.0:
+            return name, k, w_res
+    return None
 
 
 def _rect_subpixel_offsets(K: int, *, dtype, device):
@@ -115,6 +152,8 @@ class SubpixelBinGeometry:
     n_pixels_y: int
     n_pixels_z: int
     trans_opt: list = None        # type: ignore[assignment]
+    #: (n_pix,) per-pixel divisor SA*POL from the spec flags, or None (flags off)
+    pixel_divisor: Optional[torch.Tensor] = None
 
     @classmethod
     def from_spec(cls, spec: IntegrationSpec, K: int = 2,
@@ -157,6 +196,16 @@ class SubpixelBinGeometry:
                 f"pixel_shape must be 'rect' or 'hexagon', got {pixel_shape!r}"
             )
         spec.validate()
+        if not spec.q_mode_active:
+            _hit = resonant_bin_width(int(K), float(spec.RBinSize))
+            if _hit is not None:
+                import warnings
+                warnings.warn(
+                    f"SubpixelBinGeometry: K={K} with RBinSize={float(spec.RBinSize):g} px sits on a sampling-aliasing resonance "
+                    f"({_hit[0]}, k={_hit[1]}, resonant width {_hit[2]:.4f} px): ring positions can scatter by tens of microstrain "
+                    "from sector to sector (K=4 at 0.25 px: 63/22/11 microstrain at rings 1.5/3/4.5 deg vs 19/4.7/2.5 at 0.20 px). "
+                    "Use PolygonBinGeometry (exact, no sample grid), a larger K, or move RBinSize by more than 0.02 px. "
+                    "Filter with SubpixelResonanceWarning.", SubpixelResonanceWarning, stacklevel=2)
         lattice = getattr(spec, "lattice", "cartesian")
         if pixel_shape == "hexagon" and lattice != "hex_offset_y":
             raise ValueError(
@@ -205,6 +254,7 @@ class SubpixelBinGeometry:
             n_r=n_r, n_eta=n_eta,
             n_pixels_y=NY, n_pixels_z=NZ,
             trans_opt=list(spec.TransOpt),
+            pixel_divisor=pixel_divisor_from_spec(spec),
         )
 
     @property
@@ -240,7 +290,8 @@ def integrate_subpixel(
             image, geom.trans_opt,
             NrPixelsY=geom.n_pixels_y, NrPixelsZ=geom.n_pixels_z,
         )
-    img_flat = image.reshape(-1).to(torch.float64)
+    image = apply_pixel_divisor(image.to(torch.float64), geom)
+    img_flat = image.reshape(-1)
     n_bins = geom.n_eta * geom.n_r
     inv_K2 = 1.0 / (geom.K * geom.K)
 
@@ -285,7 +336,8 @@ def integrate_subpixel_batch(
         ])
     n_imgs = images.shape[0]
     n_bins = geom.n_eta * geom.n_r
-    img_flat = images.reshape(n_imgs, -1).to(torch.float64)  # (N, n_pix)
+    images = apply_pixel_divisor(images.to(torch.float64), geom)
+    img_flat = images.reshape(n_imgs, -1)  # (N, n_pix)
     inv_K2 = 1.0 / (geom.K * geom.K)
 
     sums = torch.zeros(n_imgs, n_bins, dtype=img_flat.dtype,

@@ -34,6 +34,7 @@ from ..diff.soft_bin import soft_bin_indices_weights, eta_is_full_circle
 from ..forward import eval_pixel_REta
 from ..spec import IntegrationSpec
 from .trans_opt import apply_trans_opt_forward, needs_trans_opt
+from .pixel_correction import apply_pixel_divisor, pixel_divisor_from_spec
 
 
 @dataclass
@@ -69,6 +70,8 @@ class SoftBinGeometry:
     n_pixels_y: int
     n_pixels_z: int
     trans_opt: list = None        # type: ignore[assignment]
+    #: (n_pix,) per-pixel divisor SA*POL from the spec flags, or None (flags off). Carries gradient to the spec when the spec does.
+    pixel_divisor: Optional[torch.Tensor] = None
 
     @classmethod
     def from_spec(cls, spec: IntegrationSpec) -> "SoftBinGeometry":
@@ -96,6 +99,7 @@ class SoftBinGeometry:
             n_r=spec.n_r_bins, n_eta=spec.n_eta_bins,
             n_pixels_y=spec.NrPixelsY, n_pixels_z=spec.NrPixelsZ,
             trans_opt=list(spec.TransOpt),
+            pixel_divisor=pixel_divisor_from_spec(spec, differentiable=True),
         )
 
     @property
@@ -138,6 +142,7 @@ def integrate_soft(
             image, geom.trans_opt,
             NrPixelsY=geom.n_pixels_y, NrPixelsZ=geom.n_pixels_z,
         )
+    image = apply_pixel_divisor(image, geom)
     img_flat = image.to(dtype=geom.dtype).reshape(-1)
     flat = torch.zeros(geom.n_eta * geom.n_r,
                         dtype=geom.dtype, device=geom.device)
@@ -177,6 +182,7 @@ def integrate_soft_batch(
     n_imgs = images.shape[0]
     out = torch.zeros(n_imgs, geom.n_eta, geom.n_r,
                        dtype=geom.dtype, device=geom.device)
+    images = apply_pixel_divisor(images, geom)
     img_flat = images.to(dtype=geom.dtype).reshape(n_imgs, -1)  # (N, n_pix)
     for ei, ew in ((geom.eb0, geom.ew0), (geom.eb1, geom.ew1)):
         for ri, rw in ((geom.rb0, geom.rw0), (geom.rb1, geom.rw1)):

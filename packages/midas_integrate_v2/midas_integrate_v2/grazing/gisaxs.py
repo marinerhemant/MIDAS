@@ -54,15 +54,17 @@ def pixel_to_qy_qz(
     Y = torch.as_tensor(Y_px, dtype=torch.float64)
     Z = torch.as_tensor(Z_px, dtype=torch.float64)
     Lsd = torch.as_tensor(float(spec.Lsd), dtype=torch.float64)
-    px = torch.as_tensor(float(spec.pxY), dtype=torch.float64)
+    pxY_um, pxZ_um = spec.effective_pxYZ()
+    pxY = torch.as_tensor(float(pxY_um), dtype=torch.float64)
+    pxZ = torch.as_tensor(float(pxZ_um), dtype=torch.float64)
     BC_y = torch.as_tensor(float(spec.BC_y), dtype=torch.float64)
     BC_z = torch.as_tensor(float(spec.BC_z), dtype=torch.float64)
     lam = torch.as_tensor(float(spec.Wavelength), dtype=torch.float64)
     alpha = torch.as_tensor(np.deg2rad(incidence_angle_deg), dtype=torch.float64)
     k = 2.0 * torch.pi / lam
 
-    dy = (Y - BC_y) * px
-    dz = (Z - BC_z) * px
+    dy = (Y - BC_y) * pxY            # column pitch
+    dz = (Z - BC_z) * pxZ            # row pitch
     Ldenom = torch.sqrt(Lsd * Lsd + dy * dy + dz * dz)
 
     qy = k * dy / Ldenom

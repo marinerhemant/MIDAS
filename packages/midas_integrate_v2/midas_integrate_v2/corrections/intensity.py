@@ -42,7 +42,7 @@ _DEG2RAD = math.pi / 180.0
 #:
 #: The reason 0 looked right is a convention transcription error. MIDAS η is
 #: ``atan2(-y, z)`` (``midas_integrate.geometry.calc_eta_angle``, and the same
-#: expression at ``_mapper_numba.py:97`` and ``:665`` where the η bins the
+#: expression at ``_mapper_numba.py:570`` where the η bins the
 #: correction consumes are actually built), so **η = 0 is VERTICAL** and
 #: η = ±90 is horizontal. pyFAI measures its azimuth ``chi`` from the
 #: horizontal detector X axis instead. The old docstring here read
@@ -73,7 +73,8 @@ POL_PLANE_HORIZONTAL_ETA_DEG = 90.0
 
 def two_theta_from_R(R_px: torch.Tensor, *, Lsd: torch.Tensor,
                       px: torch.Tensor) -> torch.Tensor:
-    """``2θ = atan(R · px / Lsd)``.  Differentiable."""
+    """``2θ = atan(R · px / Lsd)``.  Differentiable. ``px`` is the pitch in which ``R_px`` is expressed: for a v2 forward-map
+    radius that is the MEAN pitch (``spec.mean_pixel_um()`` / ``binning.pixel_correction.mean_pixel_um``), not ``pxY``."""
     return torch.atan(R_px * px / Lsd)
 
 

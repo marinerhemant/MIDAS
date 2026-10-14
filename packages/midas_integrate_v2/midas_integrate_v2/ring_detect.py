@@ -160,7 +160,7 @@ def detect_rings(
     rings = []
     for p in peaks:
         R = float(r_axis_px[p])
-        # Bragg: 2θ = atan(R · px / Lsd), d = λ / (2 sin θ)
+        # Bragg: 2θ = atan(R · px / Lsd), d = λ / (2 sin θ); px_um must be spec.mean_pixel_um() for a v2 R axis
         two_theta_rad = np.arctan(R * px_um / Lsd_um)
         sin_theta = np.sin(two_theta_rad / 2.0)
         d_A = float(wavelength_A / (2.0 * sin_theta))

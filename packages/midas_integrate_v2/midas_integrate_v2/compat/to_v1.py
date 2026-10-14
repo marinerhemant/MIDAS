@@ -57,6 +57,10 @@ def v1_params_from_spec(s: IntegrationSpec) -> IntegrationParams:
     p.Write2D = int(s.Write2D); p.DoBinSort = int(s.DoBinSort)
     p.SubPixelLevel = int(s.SubPixelLevel)
     p.SubPixelCardinalWidth = float(s.SubPixelCardinalWidth)
+    if float(getattr(s, "IntensityRefDistance_um", 0.0) or 0.0) > 0.0:
+        import warnings
+        warnings.warn("to_v1: IntensityRefDistance_um has no v1 equivalent and is dropped; the v1 integrator will not apply the "
+                      "distance normalisation.", UserWarning, stacklevel=2)
     p.SolidAngleCorrection = int(s.SolidAngleCorrection)
     p.PolarizationCorrection = int(s.PolarizationCorrection)
     p.PolarizationFraction = float(s.PolarizationFraction)

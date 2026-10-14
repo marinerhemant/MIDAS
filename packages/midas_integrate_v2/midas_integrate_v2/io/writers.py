@@ -77,6 +77,7 @@ def build_provenance(
         "Wavelength_A": float(spec.Wavelength),
         "pxY_um":      spec.pxY,
         "pxZ_um":      spec.pxZ,
+        "pxMean_um":   spec.mean_pixel_um(),     # the pitch R_px is expressed in
         "NrPixelsY":   spec.NrPixelsY,
         "NrPixelsZ":   spec.NrPixelsZ,
         "RhoD_px":     spec.RhoD,
@@ -84,6 +85,16 @@ def build_provenance(
         "EtaBinSize_deg": spec.EtaBinSize,
         "TransOpt":    list(spec.TransOpt),
     }
+    # Which per-pixel intensity corrections were applied (only when any is on, so flags-off headers and hashes are unchanged)
+    _sa = int(getattr(spec, "SolidAngleCorrection", 0) or 0)
+    _pol = int(getattr(spec, "PolarizationCorrection", 0) or 0)
+    _ref = float(getattr(spec, "IntensityRefDistance_um", 0.0) or 0.0)
+    if _sa or _pol or _ref > 0.0:
+        summary["corrections"] = {
+            "SolidAngleCorrection": _sa, "PolarizationCorrection": _pol,
+            "PolarizationFraction": float(spec.PolarizationFraction) if _pol else None,
+            "IntensityRefDistance_um": _ref,
+        }
     # Hash of the geometry summary for reproducibility checks
     summary["spec_hash"] = hashlib.sha256(
         json.dumps(summary, sort_keys=True).encode()

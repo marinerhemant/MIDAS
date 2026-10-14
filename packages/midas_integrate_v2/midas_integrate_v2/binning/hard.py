@@ -18,6 +18,9 @@ When to use which:
   hard-bin but routed through v1's numba mapper. Use when you also want
   the v1-format Map.bin written to disk for downstream tooling.
 
+SolidAngle / Polarization flags on the spec are applied per pixel (``pixel_divisor``, see
+:mod:`.pixel_correction`).
+
 The forward of hard-bin matches v1's ``floor`` integration to ULP
 precision on a uniformly-illuminated image, modulo the in-range mask
 behaviour at the very-low-R edge (v1 keeps any pixel with floor(R) in
@@ -35,6 +38,7 @@ from ..forward import eval_pixel_REta
 from ..spec import IntegrationSpec
 from .mask import normalise_mask
 from .trans_opt import apply_trans_opt_forward, needs_trans_opt
+from .pixel_correction import apply_pixel_divisor, pixel_divisor_from_spec
 
 
 @dataclass
@@ -63,6 +67,8 @@ class HardBinGeometry:
     n_pixels_y: int
     n_pixels_z: int
     trans_opt: list = None        # type: ignore[assignment]
+    #: (n_pix,) per-pixel divisor SA*POL from the spec flags, or None (flags off)
+    pixel_divisor: Optional[torch.Tensor] = None
 
     @classmethod
     def from_spec(cls, spec: IntegrationSpec, *,
@@ -103,6 +109,7 @@ class HardBinGeometry:
             n_r=n_r, n_eta=n_eta,
             n_pixels_y=spec.NrPixelsY, n_pixels_z=spec.NrPixelsZ,
             trans_opt=list(spec.TransOpt),
+            pixel_divisor=pixel_divisor_from_spec(spec),
         )
 
     @property
@@ -138,7 +145,8 @@ def integrate_hard(
             image, geom.trans_opt,
             NrPixelsY=geom.n_pixels_y, NrPixelsZ=geom.n_pixels_z,
         )
-    img_flat = image.reshape(-1).to(torch.float64)
+    image = apply_pixel_divisor(image.to(torch.float64), geom)
+    img_flat = image.reshape(-1)
     n_bins = geom.n_eta * geom.n_r
     valid = geom.valid
 
@@ -182,7 +190,8 @@ def integrate_hard_batch(
         ])
     n_imgs = images.shape[0]
     n_bins = geom.n_eta * geom.n_r
-    img_flat = images.reshape(n_imgs, -1).to(torch.float64)  # (N, n_pix)
+    images = apply_pixel_divisor(images.to(torch.float64), geom)
+    img_flat = images.reshape(n_imgs, -1)  # (N, n_pix)
     valid = geom.valid
     valid_idx = geom.flat_bin[valid]                          # (n_valid,)
     valid_imgs = img_flat[:, valid]                            # (N, n_valid)

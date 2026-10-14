@@ -103,7 +103,7 @@ def integrate_multi_detector(
                 * specs[k].RBinSize
             )
             Q_axis = R_px_to_Q(
-                R_axis, Lsd_um=specs[k].Lsd, px_um=specs[k].pxY,
+                R_axis, Lsd_um=specs[k].Lsd, px_um=specs[k].mean_pixel_um(),
                 lambda_A=specs[k].Wavelength,
             )
             I_per_det.append(_interp(q_grid, Q_axis, I))

@@ -19,7 +19,7 @@ pip install midas-integrate-v2
 | Per-ring `δr_k` (F2 fix) inside the radial map | sidecar JSON for downstream | ✅ Native, refinable |
 | Bit-identical hot path | ✅ CSR kernel | ✅ same CSR kernel |
 | Exact polygon-arc-arc bin overlap (no subpixel, no smooth-kernel approx) | ✅ numba kernel | ✅ pure-numpy/torch kernel |
-| Hand-holding student notebooks | — | ✅ 5 notebooks, self-contained |
+| Hand-holding student notebooks | — | ✅ student notebooks, self-contained |
 
 v2 reuses v1's CSR sparse-matmul integration kernel for the forward pass
 (so the hard-binning path stays bit-identical), and adds a parallel
@@ -128,6 +128,34 @@ build_and_write_map(p_v1, output_dir="run/")        # v1 CLI then takes over
   is, which is the slope you want for refinement.
 - **Map cache**: hashes the same fields as v1's `compute_param_hash` so
   v1 and v2 share `Map.bin` caches and never diverge.
+- **Pixel pitch and R** (non-square or hex pixels): v2's R axis (`RMin + RBinSize * (i + 0.5)`, the `reta_map`, a profile's `r_axis`)
+  is in units of the MEAN pitch, `spec.mean_pixel_um()`. Convert with `tan(2θ) = R * spec.mean_pixel_um() / Lsd`; `spec.pxY`
+  alone is wrong whenever `pxY != pxZ` (it equals the mean for square pixels). `pxZ` left at 0 means square. The v1 mapper
+  (`midas_integrate`, and the v1-bridged `build_geometry`) is a single-pitch model that uses `pxY` for both axes; it now
+  warns when `pxY != pxZ`, and `write_map_bin_from_geometry` warns because Map.bin readers assume `pxY` units.
+- **Corrections from the paramstest** (since 2026-10-11): `SolidAngleCorrection` /
+  `PolarizationCorrection` (with `PolarizationFraction`, `PolarizationPlaneEtaDeg`) set on the spec
+  are applied by the hard, subpixel and polygon geometries, their `*_with_variance` integrators and
+  `write_map_bin_from_geometry`, as `I / (SA * POL)` with the per-bin normaliser unchanged, exactly as
+  `integrate_with_corrections` and v1 do. The soft geometry (`SoftBinGeometry`, `integrate_soft`, CLI `--mode soft`)
+  applies them too, and its divisor keeps its gradient to the spec so refinement sees the correction's dependence
+  on the geometry. An explicit per-pixel `correction=` passed to a variance integrator replaces the spec-derived
+  one (never stacked). Opt out for one geometry with `geom.pixel_divisor = None`. Earlier versions ignored the
+  flags silently.
+- **Which binning kernel to use for ring positions (2026-10-14, measured on noiseless synthetic scenes)**: prefer `PolygonBinGeometry`. With the true
+  tilted plane supplied it was flat with tilt up to 60 deg (worst sector <= ~8 microstrain at rings >= 3 deg on noiseless synthetic
+  scenes, no tilt-dependent error above ~5 microstrain detectable). `SubpixelBinGeometry` puts the centre of each K x K sub-square
+  wholly into one bin and has a narrow sampling-aliasing comb at radial bin widths w = m/K px (K=4: 0.25 / 0.5 / 0.75 / 1.0 px)
+  and sqrt(2)-related widths: ring-position sector scatter of tens of microstrain (K=4 at 0.25 px: 63/22/11 microstrain at
+  rings 1.5/3/4.5 deg vs 19/4.7/2.5 at 0.20 px; rms over azimuth sectors, `tilt4way/logs/binwidth_midas.log`). It raises `SubpixelResonanceWarning` for 2 <= K <= 8 on those widths; azint (same
+  algorithm) shows the same behaviour. Larger K lowers the comb but does not remove it (K=16 at 0.25 px: 13/3.6/1.8 microstrain rms), so polygon remains the recommendation.
+- **Distance normalisation (opt-in, default off)**: `spec.IntensityRefDistance_um = L_ref` (> 0) multiplies the output by
+  `(Lsd / L_ref)^2`. Raw counts per pixel scale as `1/Lsd^2`; `SolidAngleCorrection` is normalised to 1 at normal incidence, so it
+  removes the angle dependence but not that factor. `L_ref = 1e6` reproduces GSAS-II, which multiplies by `Lsd[m]^2`, and makes
+  intensities from different sample-to-detector distances comparable. It is applied in the same divisor as the flags above (hard,
+  subpixel, polygon, variance, soft, `integrate_with_corrections`, Map.bin), works with or without them, and is v2-only (a v1 paramstest
+  has no key for it; `v1_params_from_spec` warns). When any correction is on, the profile header lists them under `corrections`.
+  Provisional: on one real 1-14 deg lineout set, SA + polarization (P = 1) + `L_ref = 1e6` matched the GSAS-II lineouts to 0.5-1 %.
 - **`nn.Module` corrections**: `δr_k`, the Stage-4 RBF spline, and the
   polarization/solid-angle factors are all torch modules with
   `requires_grad`-controllable parameters. Mix and match as the
@@ -139,7 +167,7 @@ build_and_write_map(p_v1, output_dir="run/")        # v1 CLI then takes over
 ## What's in v0.1.0 (the first release)
 
 Tested end-to-end against the v1 production pipeline on real Pilatus +
-Varex Aero CeO₂ data; **242 tests + 11 student notebooks**, all green.
+Varex Aero CeO₂ data; a full unit-test suite and student notebooks (see `tests/` and `notebooks/`).
 
 ### Math correctness
 
@@ -199,11 +227,11 @@ Notebook 10 walks through the demo with planted hot pixels.
   XYE (Rietveld), FXYE (GSAS), DAT (PDF), 2D-CSV, HDF5.
 - **Per-pixel masks** in every binning kernel — applied at *build time*,
   so masked pixels never enter the integration.
-- **3 CLI scripts**: `midas-integrate-v2` (single frame),
+- **CLI scripts** (see `[project.scripts]`): `midas-integrate-v2` (single frame),
   `midas-integrate-v2-batch` (sweep mode), `midas-integrate-v2-write-map`
-  (emit v1-format Map.bin / nMap.bin without numba).
+  (emit v1-format Map.bin / nMap.bin without numba), plus `-server`, `-pdf` and `midas-bootstrap`.
 
-### Pedagogical material (11 notebooks, ~3.5 hrs end-to-end)
+### Pedagogical material (student notebooks, ~3.5 hrs end-to-end)
 
 01 First Diffraction Pattern → 02 Geometry Intuition → 03 Joint
 Refinement → 04 Multi-Distance Calibration → 05 calibrate-v2 ↔

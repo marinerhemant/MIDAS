@@ -37,7 +37,7 @@ class _MILKResult:
 
 def _spec_to_pyfai_unit(spec, R_axis_px, *, unit: str) -> np.ndarray:
     """Convert MIDAS R-axis (pixels) to pyFAI's expected unit."""
-    px = float(spec.pxY)
+    px = float(spec.mean_pixel_um())     # R is in mean-pixel units (spec.mean_pixel_um docstring)
     Lsd = float(spec.Lsd)
     lam_A = float(spec.Wavelength)
     R = np.asarray(R_axis_px, dtype=np.float64)

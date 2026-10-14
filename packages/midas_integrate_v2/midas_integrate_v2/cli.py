@@ -500,6 +500,7 @@ def batch_main(argv=None) -> int:
             BC=(float(spec.BC_y), float(spec.BC_z)),
             eta_open_deg=(float(eta_lo_str), float(eta_hi_str)),
             symmetry=sym.strip(),
+            px_um=spec.effective_pxYZ(),
         )
         mask = gasket if mask is None else (mask & gasket)
         # Compute coverage on a coarse ring set (10 evenly-spaced radii
@@ -809,7 +810,7 @@ def pdf_main(argv=None) -> int:
         )
         Q_axis = R_px_to_Q(
             torch.as_tensor(R_axis, dtype=torch.float64),
-            Lsd_um=spec.Lsd, px_um=spec.pxY, lambda_A=spec.Wavelength,
+            Lsd_um=spec.Lsd, px_um=spec.mean_pixel_um(), lambda_A=spec.Wavelength,
         ).numpy()
         write_dat(
             f"{prefix}.dat",
@@ -831,7 +832,7 @@ def pdf_main(argv=None) -> int:
         sig2_safe = torch.where(valid, sig2d * sig2d, torch.zeros_like(sig2d))
         sigma_I = (torch.sqrt(sig2_safe.sum(dim=0)) / n_valid).numpy()
         R_axis = spec.RMin + (np.arange(I.shape[0]) + 0.5) * spec.RBinSize
-        two_theta_deg = np.degrees(np.arctan(R_axis * spec.pxY / float(spec.Lsd)))
+        two_theta_deg = np.degrees(np.arctan(R_axis * spec.mean_pixel_um() / float(spec.Lsd)))
         write_fxye(
             f"{prefix}.fxye",
             r_axis=two_theta_deg, intensity=I, sigma=sigma_I,

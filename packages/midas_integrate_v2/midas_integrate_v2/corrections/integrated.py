@@ -115,19 +115,14 @@ def integrate_with_corrections(
     # correction factor — same convention as v1 ``corrected /= sa`` etc).
     # Honour the SPEC's correction flags when no module was passed explicitly.
     #
-    # Before 2026-08-29 these fields were inert: `IntegrationSpec` carried
-    # PolarizationCorrection / PolarizationFraction / PolarizationPlaneEtaDeg /
-    # SolidAngleCorrection, `compat/from_v1.py` and `to_v1.py` faithfully
-    # round-tripped them (verified, including a non-default 37.5 deg plane), and
-    # then NOTHING read them — `PolarizationCorrection` was never constructed
-    # anywhere in the package, and none of integrate_soft/hard/subpixel/polygon
-    # applies a correction at all. Measured three ways: spec-flags-ON with no
-    # modules was byte-identical to spec-flags-OFF with no modules (max|d| = 0),
-    # while passing the modules explicitly differed by 1.047.
-    #
-    # The trap was that v1's mapper DOES honour `PolarizationCorrection = 1`, so
-    # converting a v1 param file to a v2 spec silently dropped the correction
-    # while every field still said it was on. Same family as issue #69.
+    # History: before 2026-08-29 these spec fields were inert everywhere (round-tripped by
+    # compat/from_v1 and to_v1 and then read by nothing), so converting a v1 paramstest with
+    # PolarizationCorrection = 1 to a v2 spec silently dropped the correction (issue #69 family).
+    # This function honoured them from 2026-08-29. The hard / subpixel / polygon geometries and
+    # their *_with_variance integrators honour them since the change that added
+    # ``binning/pixel_correction.py`` (same divisor, same convention: I / (SA * POL), normaliser
+    # unchanged), and so do ``SoftBinGeometry`` / ``integrate_soft`` and the CLI's ``--mode soft``,
+    # whose divisor keeps its gradient to the spec (``differentiable=True``).
     #
     # Precedence: an explicitly passed module wins; otherwise the spec decides.
     # To force a correction OFF, set its flag to 0 on the spec.
@@ -143,9 +138,10 @@ def integrate_with_corrections(
         solid_angle = _SaCorr()
 
     if solid_angle is not None or polarization is not None:
-        pxY_t = torch.as_tensor(spec.pxY, dtype=R_flat.dtype,
+        _pyz = spec.effective_pxYZ()      # hex: apothem-derived; pxZ unset: square
+        pxY_t = torch.as_tensor(_pyz[0], dtype=R_flat.dtype,
                                  device=R_flat.device)
-        pxZ_t = torch.as_tensor(spec.pxZ, dtype=R_flat.dtype,
+        pxZ_t = torch.as_tensor(_pyz[1], dtype=R_flat.dtype,
                                  device=R_flat.device)
     if solid_angle is not None:
         # Exact tilt-aware solid angle: needs per-pixel (Y, Z) and the
@@ -163,8 +159,14 @@ def integrate_with_corrections(
         )
         img_flat = img_flat / sa.clamp(min=1e-12)
     if polarization is not None:
-        pf = polarization(R_flat, Eta_flat, Lsd=spec.Lsd, px=pxY_t)
+        from ..binning.pixel_correction import mean_pixel_um
+        pf = polarization(R_flat, Eta_flat, Lsd=spec.Lsd,
+                          px=mean_pixel_um(spec, dtype=R_flat.dtype, device=R_flat.device))   # R_px is in mean-pixel units
         img_flat = img_flat / pf.clamp(min=1e-6)
+    from ..binning.pixel_correction import distance_ref_um
+    _ref = distance_ref_um(spec)
+    if _ref > 0.0:
+        img_flat = img_flat * (torch.as_tensor(spec.Lsd, dtype=img_flat.dtype, device=img_flat.device) / _ref) ** 2
 
     n_r, n_eta = spec.n_r_bins, spec.n_eta_bins
     rb0, rb1, rw0, rw1 = soft_bin_indices_weights(

@@ -244,7 +244,8 @@ def pixel_to_REta_from_spec(
         p_coeffs=_build_p_coeffs_from_spec(spec),
         parallax=spec.Parallax,
         pxY=torch.as_tensor(spec.pxY, dtype=dt, device=dev),
-        pxZ=torch.as_tensor(spec.pxZ, dtype=dt, device=dev),
+        # pxZ unset (0) = square pixels (matches IntegrationSpec.effective_pxYZ); 0 would collapse the Z axis
+        pxZ=(torch.as_tensor(spec.pxZ, dtype=dt, device=dev) if float(spec.pxZ) > 0 else None),
         rho_d=torch.as_tensor(spec.RhoD, dtype=dt, device=dev),
         lattice=lattice,
         apothem=apothem,

@@ -76,6 +76,10 @@ def _entries_from_hard(
     entries["z"] = raw_z_flat[pix_idx]
     entries["frac"] = 1.0
     entries["areaWeight"] = 1.0
+    if geom.pixel_divisor is not None:
+        # v1 bakes SolidAngle/Polarization into the pixel weight (``corrected /= sa / pol``);
+        # areaWeight, the normaliser, stays uncorrected.
+        entries["frac"] = 1.0 / geom.pixel_divisor.cpu().numpy()[pix_idx]
 
     # deltaR = R_pixel - R_bin_centre  (R_bin_centre stored in R_centres
     # at flat-bin index, but flat_bin = eta * n_r + r so the R index is
@@ -143,6 +147,8 @@ def _entries_from_subpixel(
             ent["z"] = raw_z_flat[pix_idx]
             ent["frac"] = inv_K2
             ent["areaWeight"] = inv_K2
+            if geom.pixel_divisor is not None:
+                ent["frac"] = inv_K2 / geom.pixel_divisor.cpu().numpy()[pix_idx]
             bin_for_v = flat_bin_np[sub_k][v]
             r_idx = bin_for_v % n_r
             ent["deltaR"] = R_flat[v] - R_centres[r_idx]
@@ -192,6 +198,12 @@ def write_map_bin_from_geometry(
             f"geom must be HardBinGeometry or SubpixelBinGeometry, got "
             f"{type(geom).__name__}"
         )
+    if abs(spec.mean_pixel_um() - spec.effective_pxYZ()[0]) > 1e-6 * spec.mean_pixel_um():
+        import warnings
+        warnings.warn(
+            "write_map_bin_from_geometry: this spec has non-square (or hex) pixels. v2's R is in MEAN-pixel units "
+            f"({spec.mean_pixel_um():g} um) but v1 and the C integrators read Map.bin radii as pxY ({spec.effective_pxYZ()[0]:g} um) "
+            "units, so downstream R -> 2theta / Q conversions with pxY will be off by pxY / mean.", UserWarning, stacklevel=2)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -213,6 +225,12 @@ def write_map_bin_from_geometry(
         entries, bin_idx = _entries_from_subpixel(
             geom, spec, R_centres, eta_centres, raw_y, raw_z,
         )
+
+    # v2 geometries index bins as eta * n_r + r; v1's mapper, Map.bin and CSR reader use
+    # r * n_eta + eta (``bin_idx = k * n_eta_bins + l``). Without this conversion v1 reads the R and
+    # eta axes swapped (found 2026-10-11: v1 integrate() on a v2-written Map.bin returned the R
+    # sequence along the eta axis whenever n_r != n_eta).
+    bin_idx = (bin_idx % n_r) * n_eta + (bin_idx // n_r)
 
     # Sort all entries by bin index so each bin's entries are contiguous.
     order = np.argsort(bin_idx, kind="stable")

@@ -15,6 +15,7 @@ tensor fields as plain Python scalars / strings, in the same spirit as
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
@@ -124,6 +125,11 @@ class IntegrationSpec:
     # turn from the beam's polarization. See
     # midas_integrate_v2.corrections.intensity.POL_PLANE_HORIZONTAL_ETA_DEG.
     PolarizationPlaneEtaDeg: float = 90.0
+    # Opt-in distance normalisation (um; 0 = off). With a value L_ref > 0 every pixel is multiplied by (Lsd / L_ref)^2, i.e. the
+    # per-pixel divisor gains (L_ref / Lsd)^2. Raw counts per pixel scale as 1/Lsd^2 (pixel solid angle = area cos^3 / Lsd^2); the
+    # SolidAngleCorrection (normalised to 1 at normal incidence) removes the angle dependence but not that 1/Lsd^2. GSAS-II multiplies
+    # by Lsd[m]^2 (L_ref = 1e6 um), so intensities from different distances are comparable. v2-only: the v1 paramstest has no key for it.
+    IntensityRefDistance_um: float = 0.0
     GradientCorrection: int = 0
     NrTransOpt: int = 0
     TransOpt: List[int] = field(default_factory=list)
@@ -201,7 +207,18 @@ class IntegrationSpec:
                      if isinstance(self.Apothem, torch.Tensor)
                      else float(self.Apothem))
             return 2.0 * a_val, a_val * math.sqrt(3.0)
-        return float(self.pxY), float(self.pxZ)
+        # pxZ unset (0) means square pixels, as everywhere else in this package.
+        return float(self.pxY), (float(self.pxZ) if float(self.pxZ) > 0 else float(self.pxY))
+
+    def mean_pixel_um(self) -> float:
+        """The pitch (um) in which the radius ``R_px`` of the forward map is expressed: ``0.5 * (pxY_eff + pxZ_eff)``.
+
+        ``midas_calibrate_v2.forward.geometry.pixel_to_REta`` returns ``R_px`` in units of this MEAN pitch, so every
+        conversion of a v2 R axis (``RMin + RBinSize * (i + 0.5)``, the ``reta_map``, a profile's ``r_axis``) to
+        2theta / Q must use ``tan(2theta) = R_px * mean_pixel_um() / Lsd``, never ``pxY`` alone. For square pixels this
+        equals ``pxY``; for non-square pixels using ``pxY`` is wrong by a factor ``pxY / mean`` in R, i.e. ``pxY / mean - 1``: +33 % at 200 x 100 um (Q too high), -7.5 % at 172 x 200 um (Q too low)."""
+        a, b = self.effective_pxYZ()
+        return 0.5 * (a + b)
 
     def refinable_tensors(self) -> dict:
         """Return the dict of all torch.Tensor fields. Convenience for
@@ -221,6 +238,8 @@ class IntegrationSpec:
             )
         if float(self.Lsd) <= 0:
             raise ValueError(f"Lsd invalid ({float(self.Lsd)})")
+        if not (float(self.IntensityRefDistance_um) >= 0.0 and math.isfinite(float(self.IntensityRefDistance_um))):
+            raise ValueError(f"IntensityRefDistance_um must be finite and >= 0 (0 = off), got {self.IntensityRefDistance_um}")
         if self.lattice == "cartesian":
             if self.pxY <= 0:
                 raise ValueError(f"pxY invalid ({self.pxY}) for lattice=cartesian")

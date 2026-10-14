@@ -63,6 +63,7 @@ from .hard import HardBinGeometry
 from .polygon import PolygonBinGeometry
 from .subpixel import SubpixelBinGeometry
 from .trans_opt import apply_trans_opt_forward, needs_trans_opt
+from .pixel_correction import apply_pixel_divisor, pixel_divisor_from_spec
 
 
 _VALID_ERROR_MODELS = ("poisson", "azimuthal", "hybrid")
@@ -121,11 +122,19 @@ def _prepare_pixel_arrays(
         )
 
     if correction is not None:
+        # An explicit per-pixel correction REPLACES the spec-derived one (it is not stacked on it),
+        # so a hand-built correction = sa * pf stays correct when the spec flags are also set.
         corr_f = _maybe_trans_opt(
             correction.to(torch.float64), geom, apply_trans_opt,
         )
         image_f = image_f / corr_f
         var_f = var_f / (corr_f * corr_f)
+    else:
+        div = getattr(geom, "pixel_divisor", None)
+        if div is not None:
+            d = div.reshape(geom.n_pixels_z, geom.n_pixels_y).to(image_f.device)
+            image_f = image_f / d
+            var_f = var_f / (d * d)
 
     return image_f.reshape(-1), var_f.reshape(-1)
 

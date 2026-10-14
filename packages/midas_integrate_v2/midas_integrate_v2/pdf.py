@@ -38,7 +38,8 @@ def R_px_to_Q(
 ) -> torch.Tensor:
     """Map detector radius (pixels) to scattering vector Q (Å⁻¹).
 
-    ``Q = (4π/λ) sin(2θ/2)`` with ``2θ = atan(R · px / Lsd)``.
+    ``Q = (4π/λ) sin(2θ/2)`` with ``2θ = atan(R · px / Lsd)``. ``px_um`` must be the pitch in which ``R_px`` is
+    expressed: for a v2 R axis that is ``spec.mean_pixel_um()`` (the MEAN pitch), not ``spec.pxY``.
     All inputs may be torch tensors with ``requires_grad`` for
     differentiable Q-grid construction.
     """
@@ -257,7 +258,7 @@ def integrate_to_Gr_with_variance(
         spec.RMin
         + (torch.arange(I.shape[0], dtype=torch.float64) + 0.5) * spec.RBinSize
     )
-    Q_axis = R_px_to_Q(R_axis, Lsd_um=spec.Lsd, px_um=spec.pxY,
+    Q_axis = R_px_to_Q(R_axis, Lsd_um=spec.Lsd, px_um=spec.mean_pixel_um(),   # R_px is in mean-pixel units
                        lambda_A=spec.Wavelength)
 
     # Resample (linear) onto a uniform Q-grid for FT-friendliness

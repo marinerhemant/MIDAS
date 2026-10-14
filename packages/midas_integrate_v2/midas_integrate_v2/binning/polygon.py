@@ -65,6 +65,7 @@ from midas_calibrate_v2.forward.panels import panel_idx_for_points
 from ..spec import IntegrationSpec
 from .mask import normalise_mask
 from .trans_opt import apply_trans_opt_forward, needs_trans_opt
+from .pixel_correction import apply_pixel_divisor, pixel_divisor_from_spec
 
 
 def _build_one_row(
@@ -334,6 +335,8 @@ class PolygonBinGeometry:
     n_pixels_y: int
     n_pixels_z: int
     trans_opt: list = None        # type: ignore[assignment]
+    #: (n_pix,) per-pixel divisor SA*POL from the spec flags, or None (flags off)
+    pixel_divisor: Optional[torch.Tensor] = None
 
     @classmethod
     def from_spec(cls, spec: IntegrationSpec, *,
@@ -498,6 +501,7 @@ class PolygonBinGeometry:
             n_r=n_r, n_eta=n_eta,
             n_pixels_y=NY, n_pixels_z=NZ,
             trans_opt=list(spec.TransOpt),
+            pixel_divisor=pixel_divisor_from_spec(spec),
         )
 
     @property
@@ -534,7 +538,8 @@ def integrate_polygon(
             image, geom.trans_opt,
             NrPixelsY=geom.n_pixels_y, NrPixelsZ=geom.n_pixels_z,
         )
-    img_flat = image.reshape(-1).to(torch.float64)
+    image = apply_pixel_divisor(image.to(torch.float64), geom)
+    img_flat = image.reshape(-1)
     n_bins = geom.n_eta * geom.n_r
 
     contrib = img_flat[geom.pix_idx] * geom.area

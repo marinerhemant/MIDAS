@@ -224,8 +224,12 @@ def estimate_initial_spec(
         image, initial_BC=initial_BC, mask=mask,
     )
     NY, NZ = NrPixelsY, NrPixelsZ
-    R_max_px = float(np.sqrt(max(BC_y, NY - BC_y) ** 2 +
-                              max(BC_z, NZ - BC_z) ** 2))
+    if pxY_um == pxZ_um:
+        R_max_px = float(np.sqrt(max(BC_y, NY - BC_y) ** 2 + max(BC_z, NZ - BC_z) ** 2))
+    else:
+        # non-square / hex pixels: physical farthest-corner distance, expressed in mean-pitch pixels (the unit of R_px)
+        R_max_px = float(np.hypot(max(BC_y, NY - BC_y) * pxY_um, max(BC_z, NZ - BC_z) * pxZ_um)
+                         / (0.5 * (pxY_um + pxZ_um)))
     if RhoD_px is None:
         RhoD_px = R_max_px
 

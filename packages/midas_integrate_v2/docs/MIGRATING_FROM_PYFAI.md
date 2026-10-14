@@ -151,7 +151,7 @@ sigma = (sigma2d ** 2).mean(dim=0).sqrt().numpy() / np.sqrt(spec.n_eta_bins)
 
 # Q-axis for PDF tools
 Q = (4 * np.pi / float(spec.Wavelength)) * np.sin(0.5 * np.arctan(
-    r_axis * spec.pxY / float(spec.Lsd)))
+    r_axis * spec.mean_pixel_um() / float(spec.Lsd)))   # R is in MEAN-pixel units (= pxY for square pixels)
 write_dat("out.dat", q_axis_invA=Q, intensity=prof, sigma=sigma,
           metadata=build_provenance(spec, integrate_mode="polygon"))
 ```

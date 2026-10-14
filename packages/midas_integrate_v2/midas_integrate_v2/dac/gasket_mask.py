@@ -17,7 +17,7 @@ API
 """
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -36,6 +36,7 @@ def build_gasket_mask(
     eta_open_deg: Tuple[float, float],
     symmetry: str = "two_fold",
     soft_edge_px: float = 0.0,
+    px_um: Optional[Tuple[float, float]] = None,
 ) -> np.ndarray:
     """Boolean detector mask for a DAC gasket geometry.
 
@@ -80,6 +81,11 @@ def build_gasket_mask(
         future float-mask path; users that want a soft mask should
         consume :class:`midas_integrate_v2.LearnableMask` directly).
 
+    px_um :
+        Optional ``(pxY, pxZ)`` pixel pitches in micrometres. With non-square pixels the in-plane angle of a pixel is
+        ``atan2(dz * pxZ, dy * pxY)``, not the index-space angle; pass ``spec.effective_pxYZ()`` for such detectors. Default
+        ``None`` = square pixels (index-space angle, the previous behaviour).
+
     Returns
     -------
     mask : np.ndarray of shape ``(NrPixelsZ, NrPixelsY)``, dtype bool.
@@ -93,8 +99,9 @@ def build_gasket_mask(
     yy = np.arange(NrPixelsY, dtype=np.float64)
     zz = np.arange(NrPixelsZ, dtype=np.float64)
     Z, Y = np.meshgrid(zz, yy, indexing="ij")
-    dy = Y - BC_y
-    dz = Z - BC_z
+    py, pz = (1.0, 1.0) if px_um is None else (float(px_um[0]), float(px_um[1]))
+    dy = (Y - BC_y) * py
+    dz = (Z - BC_z) * pz
     eta_pix = np.degrees(np.arctan2(dz, dy))
     eta_pix = _wrap_eta_deg(eta_pix)
 
@@ -155,9 +162,11 @@ def eta_coverage_per_ring(
     Z, Y = np.meshgrid(zz, yy, indexing="ij")
     BC_y = float(spec.BC_y) if hasattr(spec.BC_y, "__float__") else float(spec.BC_y.detach())
     BC_z = float(spec.BC_z) if hasattr(spec.BC_z, "__float__") else float(spec.BC_z.detach())
-    dy = Y - BC_y
-    dz = Z - BC_z
-    R = np.sqrt(dy * dy + dz * dz)
+    # in-plane geometry with the per-axis pitches: R in MEAN-pixel units (the unit of ring_R_px, as for every v2 R axis), eta physical
+    pxy_um, pxz_um = spec.effective_pxYZ()
+    dy = (Y - BC_y) * pxy_um
+    dz = (Z - BC_z) * pxz_um
+    R = np.sqrt(dy * dy + dz * dz) / spec.mean_pixel_um()
     eta = _wrap_eta_deg(np.degrees(np.arctan2(dz, dy)))
 
     coverage = np.zeros(rings.shape[0], dtype=np.float64)

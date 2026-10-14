@@ -138,7 +138,7 @@ class EmptySubtraction(nn.Module):
             )
             # R → Q proxy via small-angle approximation; exact mapping
             # not required — we just need a monotonic high-Q window.
-            two_theta = torch.atan(R_axis * spec.pxY / spec.Lsd)
+            two_theta = torch.atan(R_axis * spec.mean_pixel_um() / spec.Lsd)
             q_proxy = (4 * torch.pi / spec.Wavelength) * torch.sin(0.5 * two_theta)
             mask = (q_proxy >= q_lo) & (q_proxy <= q_hi)
             window = prof[mask]

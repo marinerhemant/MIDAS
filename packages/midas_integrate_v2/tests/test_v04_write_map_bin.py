@@ -215,10 +215,39 @@ def test_emitted_frac_sums_per_bin_match_v2_normalize_counts(tmp_path):
         end = start + pm.counts[b]
         frac_sums[b] = pm.pxList["frac"][start:end].sum()
 
-    # v2's per-bin pixel count
+    # v2's per-bin pixel count, in v1's bin order (r * n_eta + eta)
     expected = np.zeros(n_bins, dtype=np.float64)
     flat_bin = geom.flat_bin[geom.valid].cpu().numpy()
     for b in flat_bin:
-        expected[int(b)] += 1.0
+        r, e = int(b) % s.n_r_bins, int(b) // s.n_r_bins
+        expected[r * s.n_eta_bins + e] += 1.0
 
     np.testing.assert_array_equal(frac_sums, expected)
+
+
+# ── (6) bin order: v1 reads the R and eta axes the right way round ──
+
+@pytest.mark.parametrize("geom_kind", ["hard", "subpixel"])
+def test_v1_reads_v2_emitted_map_with_axes_unswapped(tmp_path, geom_kind):
+    """A radius image integrated through v1's CSR reader on a v2-written Map.bin must equal v2's own
+    result bin by bin. n_r != n_eta, so a swapped axis cannot hide (it did, before 2026-10-11)."""
+    from midas_integrate_v2.forward import eval_pixel_REta
+    s = _spec()
+    assert s.n_r_bins != s.n_eta_bins
+    geom = (HardBinGeometry.from_spec(s) if geom_kind == "hard"
+            else SubpixelBinGeometry.from_spec(s, K=2))
+    fn = integrate_hard if geom_kind == "hard" else integrate_subpixel
+    map_p, nmap_p = write_map_bin_from_geometry(geom, s, tmp_path)
+    pm = load_map(map_p, nmap_p)
+    csr = v1_build_csr(pm, n_r=s.n_r_bins, n_eta=s.n_eta_bins,
+                       n_pixels_y=s.NrPixelsY, n_pixels_z=s.NrPixelsZ,
+                       device="cpu", dtype=torch.float64,
+                       bc_y=float(s.BC_y), bc_z=float(s.BC_z))
+    with torch.no_grad():
+        R, _ = eval_pixel_REta(s)
+    img = R.detach().to(torch.float64)
+    via_v1 = v1_integrate(img, csr, mode="floor", normalize=True).T      # (n_eta, n_r)
+    want = fn(img, geom)
+    ok = want > 0
+    assert int(ok.sum()) > 50
+    torch.testing.assert_close(via_v1[ok], want[ok], rtol=1e-9, atol=1e-9)

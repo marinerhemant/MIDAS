@@ -83,7 +83,7 @@ def run_energy_sweep(
         )
         Q = R_px_to_Q(
             torch.as_tensor(R_axis, dtype=torch.float64),
-            Lsd_um=spec.Lsd, px_um=spec.pxY, lambda_A=spec.Wavelength,
+            Lsd_um=spec.Lsd, px_um=spec.mean_pixel_um(), lambda_A=spec.Wavelength,
         ).numpy()
         result.energies_eV.append(float(E))
         result.profiles.append(I)
