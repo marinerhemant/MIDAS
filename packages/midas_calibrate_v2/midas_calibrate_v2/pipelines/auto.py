@@ -174,6 +174,20 @@ class AutoCalibrationResult:
     #: test that populates ``unconstrained`` cannot fire for it — which is why
     #: these need their own list rather than being folded in.
     undetermined: List[str] = field(default_factory=list)
+    #: Gauge under which ``sigma`` was computed on a TILED detector (empty on
+    #: monolithic ones, where there is none). On a tiled detector the global
+    #: parameters are fitted together with one radial offset per (panel, ring),
+    #: and a uniform shift of one ring on every panel is indistinguishable from
+    #: a change of ``Lsd`` or of the radially symmetric distortion. ``sigma``
+    #: for those is therefore set by which panel is taken as the reference, not
+    #: by the data alone. ``sigma`` holds the mean-panel gauge, ``sigma_alt``
+    #: the best-sampled-panel gauge; ``sigma_gauge_dependent`` lists the
+    #: parameters on which the two differ by more than 10x. Quote those with
+    #: the gauge, or not at all. See :mod:`midas_calibrate_v2.inference.tiled_sigma`.
+    sigma_gauge: str = ""
+    sigma_alt: Dict[str, float] = field(default_factory=dict)
+    sigma_alt_gauge: str = ""
+    sigma_gauge_dependent: List[str] = field(default_factory=list)
     # Calibrant name(s) actually used.
     calibrants: List[str] = field(default_factory=list)
     # Diagnostic gate results (azimuth coverage, RhoD scaling, ...).
@@ -377,6 +391,13 @@ def calibrate(
       data. Measured on a 24-module Pilatus 2M (2026-09-08): 312 panel
       parameters on 677 ring arcs, and ~72 % of a 198 -> 120 µε in-loop drop
       was parameter counting.
+      **Global sigma on a tiled detector** (``panel_mode="radius"``): the
+      globals are re-freed together with the panel offsets and
+      ``result.sigma`` holds their 1-sigma under a mean-panel gauge, with
+      ``sigma_gauge`` naming it, ``sigma_alt`` the best-panel gauge and
+      ``sigma_gauge_dependent`` the parameters (``Lsd``, ``iso_R*``) on which
+      the two disagree. Beam centre and tilts do not depend on the gauge.
+      Not computed for ``panel_mode="shift"``.
     * ``BC_guess`` — optional ``(BC_y, BC_z)`` in pixels.  When supplied,
       the auto-seed step is **bypassed**; ``BC_guess`` + ``initial_Lsd``
       become the seed and LM refinement proceeds.  Use this as an explicit
@@ -713,6 +734,8 @@ def calibrate(
         residual_corr_path=bin_path if panel_layout is None else None,
     )
 
+    phase1_refined = [n for n, q in cr.spec.parameters.items() if q.refined]
+
     # Phase 2 (tiled detectors): freeze the global geometry + distortion and
     # refine ONLY per-panel rigid-body shifts.  Doing this jointly with the
     # alternating E↔M loop diverges — the E-step (peak extraction) has no
@@ -796,6 +819,10 @@ def calibrate(
     # sitting on a bound, so the caller can freeze it and re-run.
     sigma: Dict[str, float] = {}
     sigma_vector: Dict[str, np.ndarray] = {}
+    sigma_gauge = ""
+    sigma_alt: Dict[str, float] = {}
+    sigma_alt_gauge = ""
+    sigma_gauge_dependent: List[str] = []
     unconstrained: List[str] = []
     undetermined: List[str] = []
     at_bounds: List[str] = []
@@ -861,6 +888,39 @@ def calibrate(
                     "`sigma_vector`, `unconstrained` and `at_bounds` are empty "
                     "because nothing was measured, not because everything is "
                     "fine.", UserWarning, stacklevel=2)
+            # Tiled detector: the Laplace above is conditional on frozen
+            # globals, so it has no sigma for Lsd/BC/tilts/distortion. Free them
+            # together with the per-(panel, ring) offsets under a stated gauge.
+            if panel_layout is not None and panel_mode == "radius" \
+                    and "panel_ring_delta_r" in cr.spec.parameters:
+                try:
+                    from ..inference.tiled_sigma import tiled_global_sigma
+                    ts = tiled_global_sigma(
+                        cr.spec, u, fd, panel_layout=panel_layout,
+                        free_globals=phase1_refined)
+                    if ts is not None:
+                        for nm, sg_ in ts.sigma.items():
+                            if nm != "panel_ring_delta_r" and nm not in sigma:
+                                sigma[nm] = sg_
+                        sigma_alt = {k: v for k, v in ts.sigma_alt.items()
+                                     if k != "panel_ring_delta_r"}
+                        sigma_gauge, sigma_alt_gauge = ts.gauge, ts.gauge_alt
+                        sigma_gauge_dependent = list(ts.gauge_dependent)
+                        if sigma_gauge_dependent:
+                            warnings.warn(
+                                "calibrate(): on this tiled detector the 1-sigma of "
+                                f"{', '.join(sigma_gauge_dependent)} is set by the "
+                                "choice of reference panel, not by the data alone "
+                                "(mean-panel and best-panel gauges differ by more than "
+                                "10x). `sigma` is the mean-panel gauge, `sigma_alt` the "
+                                "best-panel gauge; quote it with `sigma_gauge`.",
+                                UserWarning, stacklevel=2)
+                except Exception as e:
+                    warnings.warn(
+                        f"calibrate(): the global sigma on this tiled detector could "
+                        f"not be computed ({type(e).__name__}: {e}); `sigma` holds no "
+                        f"global-geometry entry. That is a failure, not a clean result.",
+                        UserWarning, stacklevel=2)
             for nm, sg_ in sigma.items():
                 val = float(torch.as_tensor(u[nm]).reshape(-1)[0])
                 if not np.isfinite(sg_) or sg_ <= 0.0:
@@ -985,6 +1045,9 @@ def calibrate(
         residual_corr_map=cr.residual_corr_map,
         residual_corr_bin_path=bin_path,
         sigma=sigma, sigma_vector=sigma_vector,
+        sigma_gauge=sigma_gauge, sigma_alt=sigma_alt,
+        sigma_alt_gauge=sigma_alt_gauge,
+        sigma_gauge_dependent=sigma_gauge_dependent,
         unconstrained=unconstrained, undetermined=undetermined,
         at_bounds=at_bounds,
         calibrants=cal_names, diagnostics=diag_results,
