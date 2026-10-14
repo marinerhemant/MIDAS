@@ -116,11 +116,14 @@ def synthetic_powder_image(
     """
     ny, nz = int(spec.NrPixelsY), int(spec.NrPixelsZ)
     bc_y, bc_z = float(spec.BC_y), float(spec.BC_z)
-    px, lsd, lam = float(spec.pxY), float(spec.Lsd), float(spec.Wavelength)
+    pxy, pxz = spec.effective_pxYZ()           # per-axis pitches (um); equal for square pixels
+    lsd, lam = float(spec.Lsd), float(spec.Wavelength)
 
-    yy, zz = np.meshgrid(np.arange(ny), np.arange(nz), indexing="ij")
-    R_px = np.sqrt((yy - bc_y) ** 2 + (zz - bc_z) ** 2)
-    two_theta = np.arctan(R_px * px / lsd)
+    # image[row=Z, col=Y] (the integrator's convention): yy varies along axis 1, zz along axis 0. The earlier indexing="ij" built
+    # the transpose, which only went unnoticed while BC_y == BC_z and the pitches were equal.
+    yy, zz = np.meshgrid(np.arange(ny), np.arange(nz), indexing="xy")
+    R_um = np.hypot((yy - bc_y) * pxy, (zz - bc_z) * pxz)     # physical radius on the (possibly non-square) pixel grid
+    two_theta = np.arctan(R_um / lsd)
     Q_pix = (4.0 * np.pi / lam) * np.sin(0.5 * two_theta)
 
     qp = np.asarray(q_profile, dtype=np.float64)

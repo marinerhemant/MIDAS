@@ -62,7 +62,7 @@ def image_to_iq(
         spec.RMin
         + (torch.arange(I.shape[0], dtype=torch.float64) + 0.5) * spec.RBinSize
     )
-    Q = R_px_to_Q(R_axis, Lsd_um=spec.Lsd, px_um=spec.pxY,
+    Q = R_px_to_Q(R_axis, Lsd_um=spec.Lsd, px_um=spec.mean_pixel_um(),   # R_px is in MEAN-pixel units
                   lambda_A=spec.Wavelength)
     return Q, I, sigma_I
 
