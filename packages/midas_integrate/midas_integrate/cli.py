@@ -139,6 +139,8 @@ def integrate_main(argv=None) -> int:
                    help="dtype of dark file (default int64)")
     p.add_argument("--mode", default="floor",
                    choices=["floor", "bilinear", "gradient"])
+    p.add_argument("--pixel-weights", default="area", choices=["area", "fraction"],
+                   help="bin weighting: 'area' (MIDAS, default) or 'fraction' (every pixel counts once, as in pyFAI/azint)")
     p.add_argument("--device", default="cpu",
                    help="cpu | cuda | cuda:0 | mps | …")
     p.add_argument("--dtype", default="float32",
@@ -158,6 +160,7 @@ def integrate_main(argv=None) -> int:
         n_pixels_y=params.NrPixelsY, n_pixels_z=params.NrPixelsZ,
         device=args.device, dtype=torch_dtype,
         bc_y=params.BC_y, bc_z=params.BC_z,
+        pixel_weights=args.pixel_weights,
     )
     image = load_image(args.image,
                        n_pixels_y=params.NrPixelsY,
@@ -217,6 +220,8 @@ def server_main(argv=None) -> int:
     p.add_argument("--dark-dtype", default="int64")
     p.add_argument("--mode", default="floor",
                    choices=["floor", "bilinear", "gradient"])
+    p.add_argument("--pixel-weights", default="area", choices=["area", "fraction"],
+                   help="bin weighting: 'area' (MIDAS, default) or 'fraction' (as in pyFAI/azint)")
     p.add_argument("--device", default="cpu")
     p.add_argument("--dtype", default="float32",
                    choices=["float32", "float64"])
@@ -237,6 +242,7 @@ def server_main(argv=None) -> int:
         n_pixels_y=params.NrPixelsY, n_pixels_z=params.NrPixelsZ,
         device=args.device, dtype=torch_dtype,
         bc_y=params.BC_y, bc_z=params.BC_z,
+        pixel_weights=args.pixel_weights,
     )
 
     dark = None

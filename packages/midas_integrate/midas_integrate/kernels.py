@@ -81,6 +81,8 @@ class CSRGeometry:
         n_r, n_eta, n_pixels_y, n_pixels_z: the geometry shape. Flat pixel
             index is ``z * n_pixels_y + y``.
         bc_y, bc_z: beam-center pixels (recorded for reference).
+        pixel_weights: ``'area'`` (default) or ``'fraction'``, the weighting
+            convention the geometry was built with (see ``build_csr``).
     """
     csr_floor: torch.Tensor
     csr_bilinear: torch.Tensor
@@ -95,6 +97,7 @@ class CSRGeometry:
     csr_floor_sq: Optional[torch.Tensor] = None
     csr_bilinear_sq: Optional[torch.Tensor] = None
     csr_gradient_sq: Optional[torch.Tensor] = None
+    pixel_weights: str = "area"
 
     @property
     def n_bins(self) -> int:
@@ -251,6 +254,7 @@ def build_csr(
     bc_y: float = 0.0, bc_z: float = 0.0,
     build_modes: tuple[str, ...] = ("floor", "bilinear", "gradient"),
     compute_variance: bool = False,
+    pixel_weights: str = "area",
 ) -> CSRGeometry:
     """Pack a PixelMap into precomputed CSR matrices for fast integration.
 
@@ -268,7 +272,23 @@ def build_csr(
             the originals; values are element-wise squares of the canonical
             (sum-coalesced) per-(bin, pixel) weights. Doubles the precomputed
             CSR memory but makes ``integrate_with_variance`` available.
+        pixel_weights: how the pixels of a bin are weighted.
+            ``'area'`` (default, the MIDAS convention): a pixel counts by its
+            overlap area with the bin in the projected plane, so a bin value
+            is the area-weighted mean of the pixels it covers. ``'fraction'``:
+            every pixel is given the same total weight, so that its entries
+            over all bins sum to 1 (the convention of pyFAI's split pixel and
+            of azint), i.e. each pixel's weights are divided by its total
+            mapped area. The two are identical for a constant image and
+            differ when the intensity or the ring position varies with
+            azimuth (about 1 microstrain on one real 14-degree frame; a
+            provisional measurement, not a bound).
+            Pixels cut by the radial range limits are renormalised to 1
+            inside the range (pyFAI leaves their fraction below 1); this
+            only affects the bins at the ends of the range.
     """
+    if pixel_weights not in ("area", "fraction"):
+        raise ValueError(f"unknown pixel_weights {pixel_weights!r}; expected 'area' | 'fraction'")
     expected_bins = n_r * n_eta
     if pixmap.n_bins != expected_bins:
         raise ValueError(
@@ -316,6 +336,13 @@ def build_csr(
     iz_int = np.rint(pixel_z).astype(np.int64)
     in_bounds = ((iy_int >= 0) & (iy_int < n_pixels_y)
                  & (iz_int >= 0) & (iz_int < n_pixels_z))
+    if pixel_weights == "fraction":
+        flat_pix = iz_int * n_pixels_y + iy_int
+        a_pix = np.bincount(flat_pix[in_bounds], weights=area[in_bounds], minlength=n_pixels)
+        scale = np.ones_like(area)
+        scale[in_bounds] = 1.0 / np.maximum(a_pix[flat_pix[in_bounds]], AREA_THRESHOLD)
+        frac = frac * scale
+        area = area * scale
     area_per_bin = np.zeros(pixmap.n_bins, dtype=np.float64)
     np.add.at(area_per_bin, bin_index, np.where(in_bounds, area, 0.0))
 
@@ -374,6 +401,7 @@ def build_csr(
         csr_floor_sq=csr_floor_sq,
         csr_bilinear_sq=csr_bilinear_sq,
         csr_gradient_sq=csr_gradient_sq,
+        pixel_weights=pixel_weights,
     )
 
 

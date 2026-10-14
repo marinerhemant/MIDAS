@@ -44,6 +44,20 @@ profile = profile_1d(integrate(img, geom_cuda, mode='bilinear'), geom_cuda)
 | `'bilinear'`| pixel loop in `IntegratorZarrOMP.c` lines 1733–1744    | offline analysis, max accuracy |
 | `'gradient'`| `GradientCorrection=1` branch in the GPU stream         | strong tilt + small R |
 
+## Pixel weighting (`pixel_weights`)
+
+By default (`pixel_weights="area"`) a pixel counts in a bin by its overlap area with the bin in the projected plane, so a bin value is the
+area-weighted mean of the pixels it covers. `build_csr(..., pixel_weights="fraction")`, or `--pixel-weights fraction` on `midas-integrate` and
+`midas-integrate-server`, gives every pixel the same total weight (its weights over all bins sum to 1), the convention of pyFAI's split pixel and of
+azint. The two profiles are identical for a constant image (tested) and, for a synthetic ring that does not vary with azimuth, differ by at most 0.15 microstrain in our test; they differ more when the ring position or intensity varies with azimuth.
+We measured the size on one real frame at 14 degrees tilt (differences up to about 1 microstrain) and on a synthetic ring whose position varies by
+500 microstrain around the azimuth (about 10 microstrain); both are provisional measurements (one frame, one synthetic family), not a bound.
+Pixels cut by the radial range limits are renormalised to 1 inside the range, so the bins at the very ends of the range differ from pyFAI's. The
+option is applied by `build_csr` only; `build_fused_geometry` always uses area weights. Absolute intensities also differ between integrators by a
+solid-angle normalisation constant of order `1/cos^2(alpha) - 1` with `cos(alpha) = cos(ty) cos(tz)` (3.1 % for a pure 10 degree tilt and 13.2 % for
+20 degrees; 3.6 % and 15.5 % for tilts of ty = 10, tz = -4 and ty = 20, tz = -8 degrees), so compare profiles from different tools after fixing that
+constant.
+
 ## CLI
 
 Three entry points mirror the C binaries:
