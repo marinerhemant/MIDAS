@@ -56,7 +56,7 @@ import numpy as np
 import torch
 
 from midas_integrate.geometry import (
-    pixel_bin_intersect, REta_to_YZ, PIXEL_CORNER_OFFSETS, QUAD_ORDER,
+    pixel_bin_intersect, REta_to_YZ, PIXEL_CORNER_OFFSETS, QUAD_ORDER, quad_min_radius,
 )
 
 from ..forward import pixel_to_REta_from_spec
@@ -409,7 +409,9 @@ class PolygonBinGeometry:
         R = np.sqrt(Yc * Yc + Zc * Zc)
         Eta = np.degrees(np.arctan2(-Yc, Zc))           # (NZ, NY, 4)
 
-        R_lo_px = R.min(axis=-1)                  # (NZ, NY)
+        # A straight pixel edge can pass closer to the origin than its corners do, so the
+        # smallest candidate radius comes from the quad's edges (0 if it contains the origin).
+        R_lo_px = np.minimum(R.min(axis=-1), quad_min_radius(corners))   # (NZ, NY)
         R_hi_px = R.max(axis=-1)
         Eta_lo = Eta.min(axis=-1)
         Eta_hi = Eta.max(axis=-1)
