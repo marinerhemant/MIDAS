@@ -469,10 +469,12 @@ refiner's model — in every case seen here, an unrefined detector roll `tx`. It
 *structurally* invisible to a powder calibrant (§5h), so a run can pass every calibration
 gate and still carry it.
 
-**Lever.** §5h: `midas-joint-ff-calibrate grain-tx --refine tx,Wedge`, **compose** the
-reported residual onto the applied value, re-run from `transforms` — the stage that
-applies it (`midas_transforms/fit_setup/core.py:376`) — and iterate until the reported
-residual stops falling. Do **not** reach for the matching margins (README rule 9): the
+**Lever.** §5h: `midas-joint-ff-calibrate friedel-wedge` for the Wedge (and
+OmegaStep), then `grain-tx --refine tx` with that Wedge in its input; feed its `--out`
+file forward (do not add the printed number by hand: on joint-ff-calibrate >= 0.5.0 it
+is absolute whenever the file carries a Wedge), re-run from `transforms` — the stage that
+applies it (`midas_transforms/fit_setup/core.py:376`) — and iterate until `tx` stops
+moving. Do **not** reach for the matching margins (README rule 9): the
 refiner never reads them, and tightening them changes which candidates survive indexing
 rather than the residual. Do not expect the grain-Z scatter to halve as confirmation —
 that signature is dataset-dependent and did not appear here (§5h).

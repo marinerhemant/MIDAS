@@ -2840,3 +2840,63 @@ Follow-up to §14 (HS asked: "chase the peaks more"). Evidence: `$ANALYSIS/bt_20
   marginal indexings; grain count is not a quality figure. Untested next steps: a Completeness sweep; a split-half refit.
 - The pipeline's radial-vs-tangential residual decomposition (§13) now reads post-fit; the old datasetB investigation's radial numbers came
   from the pre-fit sidecar.
+
+## 17. 20-ID-E calibration layer (ss_cal): Friedel wedge, OmegaStep and Varex readout timing (2026-10-01)
+
+**Every result here is PROVISIONAL: none has been through /verify.** 20-ID-E HEXM, `s20varex2`, stainless-steel calibration
+layer `ss_cal` of the 20-ID-E Varex beamtime. Evidence: work dir `H` on chutoro
+(s20iduser), arm B and run C on toro (s20hedm), and a local mirror of the analysis folder (scripts, pre-registrations,
+`CHECKPOINT_2026-10-01.md`). Log paths below
+are relative to `H` unless stated. Method and parameters: Handbook phase-1 §5h.
+
+| claim | number | source | status |
+|---|---|---|---|
+| rotation-axis Wedge, peak-list Friedel pairs | **+0.02457 ± 0.00011°**, 36,235 pairs, identical from reconstructions at Wedge 0 and 0.05 | `s13_friedel_dev/s13d.log` | PROVISIONAL |
+| wrong pairs in that set | 0.1 % (decoys at 180 ± 3° × P(mate missing)²) | `s13_friedel_dev/s13e_chance.log` | PROVISIONAL |
+| grain-pair mode leaks the run's Wedge | 0.02339 (recon at Wedge 0), 0.02622 (at 0.05): ~6 % of the run's Wedge; fixed point 0.0248 | `s13_friedel_dev/s13a.log` | PROVISIONAL |
+| OmegaStep | 0.250584 (peak-list fit); 0.250576-0.250583 in 9 windows of the sweep; frame period 0.100232 s × 2.5°/s = 0.25058. The 0.250514 periodicity value is a ±0.047° scale error over the sweep | `s13d.log`, `s12_wedge/omegastep_friedel.log` | PROVISIONAL |
+| Wedge pre-registration (T4, band [0.0055, 0.022]°) | grain pairs +0.02328, peak list +0.02457: just outside the band, INCONCLUSIVE on "the grain-tx +0.011 is real"; the wedge is ~2× the grain-tx single pass | `s12_wedge/PREREGISTER.md` (status note) | INCONCLUSIVE |
+| grain-tx single pass, Wedge free | +0.0119° (under-reads; its loss is (Y, Z) with poses frozen) | `reset_test/` | PROVISIONAL |
+| tx | −0.0266 (grain-tx, absolute); freeing Wedge moves it by 6e-5° | `reset_test/graintx_psp2_p2.log` | PROVISIONAL |
+| ω residual carried by detector column | ring-to-ring spread of the median residual 0.0021° (column) vs 0.0244° (\|η\|), 0.0307° (row) | `s14_readout/s14c.log` | PROVISIONAL |
+| E readout shape | centre-out V along columns, arms 0.1438 / 0.1433°, apex col 1438.5 ± 6.5; GE-form k −0.136° (−0.54 frame) | `s14_readout/s14d.log` | PROVISIONAL |
+| same V on Fe9Cr layers | 0.083-0.094° | `s14_readout/s14i_fe9cr.log` | PROVISIONAL |
+| 20-ID-D Varex (layers L4/6/8 and L9 of two 20-ID-D runs) | split-halves step along columns, ±0.023-0.030°; fitting it cut residual scatter 14-24 % (in-sample) | `s14_readout/s14f_20idD.log` | PROVISIONAL |
+| A/B readout correction −0.136° (1126 same grains) | DiffOme −12.0 % [−13.2, −11.3]; \|dtan\| −4.4 % [−7.0, −0.8]; RMSErrorStrain −2.4 % [−5.8, +0.3]; registered −15/−5/−5 % | toro `s14h_ab_read.log`; `s14_readout/PREREGISTER.md` | INCONCLUSIVE |
+| run C −0.156° | vs A: DiffOme −12.1 % [−12.9, −11.3], \|dtan\| −3.9 %, strain n.s.; vs B no change; leftover V 0.1446 (A) → 0.0216 (B) → 0.0034 (C) | toro `s14j_C.log`; `s14_readout/PREREGISTER_C.md` | INCONCLUSIVE |
+| top/bottom wedge asymmetry | 0.0239 vs 0.0260; not explained by readout (Friedel pairs are blind to it); an axis tilt about x cannot change ω | `CHECKPOINT_2026-10-01.md` | OPEN |
+
+**What changed in code (2026-10 release).** `friedel-wedge` (new, `midas_joint_ff_calibrate/friedel_wedge.py`):
+peak-list pairs by default, `--pairs grains` optional, wrong-pair estimate. `OmegaReadoutShift/Axis/Shape/Centre` in
+`midas_transforms` (`fit_setup/core.py::_readout_correction`). The layer `paramstest.txt` now carries canonical
+`Lsd`/`BC`/`tx`/`ty`/`tz`/`LatticeConstant`/`ResidualCorrectionMap`; `midas_calibrate` maps `*Fit` keys; `midas_integrate` strips
+`;`; grain-tx raises on 0 matches. `utils/midas_ff_report.py` `ipf_cubic` now delegates to `midas_plotting` (the old formula was
+OM·d, not an inverse pole figure).
+
+**Lessons.**
+- **Pairing order in my first T4 script.** The first Friedel script admitted the reversed order of a pair
+  (`(o_j > o_i) | (o_j < o_i − 180)`) for only one sign of the separation, so which pairs entered depended on the outcome. Fixed to
+  "spot 1 is the earlier ω", one ordering per pair (`s12_wedge/scripts/s12a_friedel_wedge.py`).
+- **Omega-only index lookup in s14a.** The first readout script looked spot b up by its ω alone; `OmegaIni` repeats within a
+  frame, so ambiguous b's got an arbitrary peak. Indices now come from the pairing itself. The bad runs are kept as
+  `*_SUPERSEDED_bad_index*` (`s14_readout/s14a_SUPERSEDED_bad_index.log`).
+- **Selection on outcome.** Grain-pair mode looked like an independent measurement but its pairs were matched within `MarginOme`
+  of the run's own predicted ω, so the run's Wedge leaked in (~6 %). Two reconstructions at different Wedge exposed it: a
+  measurement that moves with the input it is meant to correct is selected on the outcome. Pairing the raw peak list removes it.
+- **A decoy count is not an error rate.** Pairs found at 180 ± 3° read 3-35 % on synthetics with every mate present; the wrong-pair
+  rate needs the P(mate missing)² factor (checked against synthetic truth at 0-15 % wrong pairs, at most 25 % low).
+- **Coloured-Jacobian grain-tx gave no speedup** and was removed. `tx` is well constrained by on-detector positions: 40 grains is
+  enough (HS), which is the real speed lever.
+- **The grain-tx "reset".** Fed the layer `paramstest.txt` (geometry keys `LsdFit`/`txFit` only), grain-tx matched 0 spots and
+  wrote `tx 0` with exit 0. Fixed at both ends (writer emits canonical keys; grain-tx raises on 0 matches); README traps table.
+- **OmegaStep from 360° periodicity was wrong** and was in every 20-ID-E parameter file of this beamtime. Friedel pairs and the
+  frame timing agree; periodicity overlaps only the ends of the sweep.
+- **RMSErrorStrain is nearly blind to an ω correction** (radial channel). Run 1 registered it as a criterion; run C dropped it, stated
+  before the run. Register on DiffOme and the tangential residual.
+- **The shift is fitted on the residuals it is judged on.** Leftover V is reported, not used as evidence; an independent check
+  (e.g. a second sample or a held-out layer) is still owed before the correction is quoted as measured.
+- **Resume from `transforms` without re-zipping** (`refresh_analysis_params`, then `--resume from --from transforms
+  --no-refresh-params`): run C took 1 min 40 s against 25 min for arm A.
+
+**Still open.** /verify of the Wedge, OmegaStep and readout claims; the top/bottom wedge asymmetry; the lattice test at 3.5932 Å
+(pending, chutoro); whether the 20-ID-D step correction (`OmegaReadoutShape 1`) helps a D reconstruction.

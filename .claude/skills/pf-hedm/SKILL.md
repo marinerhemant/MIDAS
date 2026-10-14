@@ -53,6 +53,11 @@ measurement" and it is better established before the run than after (see item 4 
    **20-ID-D and 20-ID-E differ**: E (HEXM) uses `s20varex2` with ω **positive as
    logged** and `ImTransOpt 1` (y-flip, established), versus D's ω negated and `ImTransOpt 2`;
    and at E `OmegaStep` must be measured (0.25051-0.25058 on `PUP_AML_bt_20id_sep26b`).
+   The detector, not the modality, sets the ω geometry: the Friedel `Wedge`/`OmegaStep`
+   (`friedel-wedge`, peak-list pairs) and the Varex readout timing (an ω offset fixed to
+   the pixel: E a centre-out V along columns, D a split-halves step;
+   `OmegaReadoutShift/Axis/Shape/Centre`) measured on FF apply to pf-HEDM data from the
+   same detector. See ff-hedm phase-1 §5h; all PROVISIONAL, readout A/B INCONCLUSIVE.
 
 2. **"Get back to me if you get stuck" does not fire here.** A mirrored voxel map, a c-omp
    refine that wrote zero voxels, and a strain fit on a raw pedestal all finish and look

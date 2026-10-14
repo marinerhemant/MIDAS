@@ -3,8 +3,9 @@ name: ff-hedm
 description: >-
   Take a far-field HEDM (FF-HEDM) dataset from raw frames to a validated grain
   list: survey the folder, establish the omega sign, calibrate on a calibrant,
-  measure RingThresh, run the MIDAS pipeline, refine the powder-blind tx and
-  Wedge from the grains, read Grains.csv, and report with provenance. Use when
+  measure RingThresh, run the MIDAS pipeline, refine the powder-blind tx from
+  the grains and measure the rotation-axis Wedge and OmegaStep from Friedel
+  pairs, read Grains.csv, and report with provenance. Use when
   asked to reconstruct, index, calibrate or diagnose an FF-HEDM / far-field
   3DXRD beamtime, when handed a folder of .ge5.h5 / GE or .vrx.h5 / Varex
   detector frames, or when an FF reconstruction looks wrong — including a run
@@ -94,25 +95,72 @@ things are genuinely different and each has cost a day:
   plausible results. **Exception, 20-ID-E (HEXM):** the detector there is
   `s20varex2`, not the D Varex; ω is **positive as logged** and `ImTransOpt`
   is **1** (y-flip only, z not flipped; established on PUP_AML_bt_20id_sep26b by the §2b Friedel test on the first grain
-  list). Also **measure `OmegaStep`**: 0.25051-0.25058 (not 0.25) on
-  `PUP_AML_bt_20id_sep26b`. Spine scope block has the details;
+  list). Also **measure `OmegaStep`**: 0.25058 (not 0.25, and not the 0.250514
+  periodicity estimate) on `PUP_AML_bt_20id_sep26b`, by Friedel pairs and frame
+  timing (§5h). Spine scope block has the details;
 * **`RhoD`** must be computed, never copied (spine rule 15, §6d). Wrong, it
   indexes **zero seeds and exits 0**, and whether it bites at all depends on the
   sample's symmetry;
 * calibrate with **`midas-calibrate-v2 --mode ff`** (§5), which writes the
   parameter file and fixes `RhoD` for you.
 
-After a first reconstruction, **§5h** refines `tx` and `Wedge` from the grains —
-the two a powder calibrant is structurally blind to. `grain-tx` returns a
-**residual**: compose it onto what the run already applied and iterate.
+After a first reconstruction, **§5h** fixes the three things a powder calibrant
+cannot see, with two tools:
 
-**Use the tool. Never hand-roll a `tx` scan** — a grid of pipeline re-runs gives no
-`Wedge`, no uncertainty and no gradient, at ~12 min a point. And **`--paramstest` is
-the MASTER param file** (the one `midas-pipeline --params` gets), *never*
-`<result>/LayerNr_1/paramstest.txt` — that one names its geometry `LsdFit`/`txFit`,
-so the model silently falls back to default geometry and reports
-`matched spots=0, tx=0.000000, rc=0`, which reads as "tx is already perfect".
-**Always read `matched spots` before believing the number.**
+* **`Wedge` and `OmegaStep` — `midas-joint-ff-calibrate friedel-wedge`.** Friedel
+  mates diffract exactly 180° apart unless the rotation axis is tilted
+  (`ω₂ − ω₁ − 180 ≈ −2·W·cot η`) or the ω scale is off (a constant). It fits both
+  jointly and returns the **absolute** Wedge, whatever Wedge the run used. This is
+  the `FitWedge.c` method; `FitWedgeParallel.c` is **deprecated** (it charges an
+  OmegaStep error to the wedge, with opposite signs above and below the beam).
+  Read its split table: one fixed axis tilt gives one wedge in every ring, ω range
+  and side of the beam. **Pairs come from the raw peak list by default**
+  (`InputAllExtraInfoFittingAll.csv`), independent of the reconstruction;
+  `--pairs grains` pairs matched spots, which were selected through `MarginOme`
+  around the run's own predictions and leak ~6 % of the run's Wedge. It prints an
+  estimated wrong-pair fraction (decoys at 180 ± 3° × P(mate missing)²; never the
+  raw decoy count). the 20-ID-E ss_cal run: +0.02457 ± 0.00011°, 36,235 pairs, 0.1 % wrong
+  (PROVISIONAL; Lab Notebook §17).
+* **`tx` — `grain-tx --refine tx`** (the default), with the Wedge from Friedel
+  pinned in its input file. **Do not refine Wedge with grain-tx**: its loss is the
+  on-detector (Y, Z) distance with the grain poses frozen at the reconstruction's
+  values, and it never compares observed ω, where a wedge acts at first order. One
+  pass recovers only part of a wedge (synthetic −0.5: −0.207 from 0, then −0.372,
+  −0.462, −0.489 over pipeline re-runs; the 20-ID-E ss_cal run pass 1: +0.0119 vs the
+  Friedel +0.02457). Friedel gets it in one pass from any reconstruction. ~40 good
+  grains are enough for `tx` (HS).
+* **Detector readout timing: `OmegaReadoutShift/Axis/Shape/Centre`.** A panel that
+  exposes some columns (or rows) earlier than others puts an ω offset on every spot
+  **fixed to the pixel**. Friedel pairs cannot see a column pattern (mates share a
+  column) and a calibrant has no ω. Detect it in the post-fit `Omega − OmegaExpPost`:
+  remove the `cot η` term, then see whether the per-ring medians collapse against
+  column, row or |η| (ss_cal: column 0.0021° vs row 0.0307°, |η| 0.0244°). 20-ID-E
+  `s20varex2`: centre-out V along columns, suggested `OmegaReadoutShift -0.156`,
+  `OmegaReadoutAxis 1`, `OmegaReadoutShape 0`; 20-ID-D Varex: a split-halves step
+  (±0.023-0.030°, uncorrected). The A/B cut post-fit `DiffOme` 12 % but met no
+  registered threshold: **INCONCLUSIVE, PROVISIONAL** (§5h). `RMSErrorStrain` is
+  nearly blind to ω; judge on `DiffOme` and the tangential residual. To try a shift,
+  `refresh_analysis_params` the archive and resume `--from transforms
+  --no-refresh-params` (no re-zip).
+
+**Never hand-compose the numbers.** Since `midas-joint-ff-calibrate` 0.5.0 (commit
+5773de0f) grain-tx reports **absolute** tx/Wedge whenever the input carries a
+non-zero Wedge (the raw-frame path); only tx-only on a Wedge-0 file is relative,
+and then its `--out` writer composes for you. Feed the `--out` file forward.
+Adding the printed value to the previous pass double-counts.
+
+**Never hand-roll a `tx` scan** — a grid of pipeline re-runs gives no uncertainty
+and no gradient, at ~12 min a point. **Always read `matched spots` before
+believing the number**: current grain-tx raises on 0 matches; older installs
+printed `tx=0.000000, rc=0` and wrote `tx 0` (the silent reset). `--paramstest`
+may be the master file or the layer `paramstest.txt` on current packages (the
+writer emits canonical `Lsd`/`BC`/`tx` keys and the readers map `LsdFit`/`txFit`
+on older layer files); on an older install use the master file.
+
+**Measure `OmegaStep` with friedel-wedge, not from 360° periodicity.** On
+`PUP_AML_bt_20id_sep26b` periodicity gave 0.250514, Friedel pairs and the frame
+timing both 0.25058 (uniform across the sweep); the 0.250514 used there left a
+±0.047° ω scale error.
 
 ## If a second modality exists, that is the only real accuracy check
 
