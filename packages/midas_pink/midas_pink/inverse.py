@@ -424,6 +424,7 @@ def splat_rois_3d(
     element: Optional[str] = None,
     polarization_horiz_fraction: float = 1.0,
     mosaicity_rad: float = 0.0,
+    frame_integrate: bool = False,
 ) -> torch.Tensor:
     """3D differentiable per-ROI splat in (frame, y, z) space.
 
@@ -436,6 +437,27 @@ def splat_rois_3d(
     This is the right loss for testing acquisition-speed claims because
     fewer omega frames -> coarser frame_nr quantization, which a pure
     (y, z) loss does not see.
+
+    ``frame_integrate`` (default False, behaviour bit-identical to before):
+    the frame-axis factor is by default the Gaussian SAMPLED at the integer
+    cell centres, ``exp(-df^2 / (2 sigma_eff^2))``, ``df`` = cell centre -
+    spot frame position. Its total over the cells then depends on the spot's
+    sub-frame offset (about 3 % at sigma_eff = 0.5, a factor ~2 at 0.3) and
+    its omega gradient nearly vanishes when the spot sits between two cells.
+    With ``frame_integrate=True`` each cell instead gets the Gaussian
+    integrated over the exposure interval [df - 1/2, df + 1/2]:
+    ``sqrt(2 pi) sigma_eff [Phi((df + 1/2)/sigma_eff) - Phi((df - 1/2)/sigma_eff)]``
+    (upper-tail form for cells right of the spot, negatives clamped to 0).
+    The ``sqrt(2 pi) sigma_eff`` factor is the area of the sampled kernel, so
+    the intensity scale (``intensity_per_spot``, loss weights) is unchanged:
+    the sum over an untruncated frame axis is ``sqrt(2 pi) sigma_eff``,
+    independent of the sub-frame offset (NOT sum-to-1). ``sigma_eff`` is the
+    same in both modes (``sigma_frame`` combined with the mosaicity omega
+    blur). The (y, z) factor is sampled at pixel centres in both modes. Cells
+    outside the ``roi_frames`` window are truncated, so the total falls short
+    of ``sqrt(2 pi) sigma_eff`` by the tail mass beyond +-(roi_frames // 2 +
+    1/2) frames (negligible for sigma_eff <~ 1 with the default
+    ``roi_frames=7``).
 
     Returns
     -------
@@ -495,10 +517,20 @@ def splat_rois_3d(
     df = F_abs.unsqueeze(1) - frames_kept.view(n_kept, N_E, 1, 1, 1)
     dy = Y_abs.unsqueeze(1) - ys_kept.view(n_kept, N_E, 1, 1, 1)
     dz = Z_abs.unsqueeze(1) - zs_kept.view(n_kept, N_E, 1, 1, 1)
-    psf = torch.exp(
-        -(dy * dy + dz * dz) * inv_two_sig2_yz
-        - df * df * inv_two_sig2_f
-    )
+    if frame_integrate:
+        # Exposure-integrated frame factor (see docstring). Not in place;
+        # differentiable w.r.t. df (hence the frame position).
+        hi = (df + 0.5) / sigma_eff_frame
+        lo = (df - 0.5) / sigma_eff_frame
+        ndtr = torch.special.ndtr
+        cell = torch.where(lo > 0.0, ndtr(-lo) - ndtr(-hi), ndtr(hi) - ndtr(lo))
+        frame_factor = cell.clamp_min(0.0) * (math.sqrt(2.0 * math.pi) * sigma_eff_frame)
+        psf = torch.exp(-(dy * dy + dz * dz) * inv_two_sig2_yz) * frame_factor
+    else:
+        psf = torch.exp(
+            -(dy * dy + dz * dz) * inv_two_sig2_yz
+            - df * df * inv_two_sig2_f
+        )
     psf = psf * valid_kept.view(n_kept, N_E, 1, 1, 1)
     use_extras = (element is not None) or (polarization_horiz_fraction != 1.0)
     if use_extras:
@@ -603,6 +635,9 @@ class RecoveryConfig:
     use_3d_loss: bool = False
     sigma_frame: float = 0.5
     roi_frames: int = 7
+    # Opt-in exposure-integrated frame axis in splat_rois_3d (see its
+    # docstring). False keeps the legacy sampled-Gaussian frame factor.
+    frame_integrate: bool = False
     # Centroid-distance loss. The image-space ROI loss has a basin of
     # attraction set by the ROI window size (≤ ~10 px shift typical),
     # so large orientation perturbations push predicted spots OUT of
@@ -654,6 +689,7 @@ def recover_grain_state(
                 opt_latc, sigma_psf_px=cfg.sigma_psf_px,
                 sigma_frame=cfg.sigma_frame, roi_frames=cfg.roi_frames,
                 intensity_per_spot=cfg.intensity_per_spot,
+                frame_integrate=cfg.frame_integrate,
             )
         return splat_rois(
             bank, plan,
