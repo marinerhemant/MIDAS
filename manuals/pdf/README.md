@@ -130,7 +130,12 @@ spec.ResidualCorrectionMap = str(res.residual_corr_bin_path)
 - If the calibrant has no measurable rings between the last one and Q_max, the Q scale there is
   **unmeasured**. Write that into every downstream number.
 
-## §4. Integrate with the corrections the integrator does not apply
+## §4. Integrate with the intensity corrections
+
+Two equivalent ways: set `spec.SolidAngleCorrection = 1` and `spec.PolarizationCorrection = 1` (with
+`PolarizationFraction`, `PolarizationPlaneEtaDeg`) and the integrators divide each pixel by SA x POL, or
+build the factor yourself as below and pass `correction=`. An explicit `correction=` REPLACES the
+spec-derived one; the two are never stacked. Before 2026-10-11 only the explicit route worked.
 
 ```python
 import numpy as np, torch
@@ -144,15 +149,17 @@ from midas_integrate_v2.pdf import R_px_to_Q
 dt = torch.float64
 Z, Y = torch.meshgrid(torch.arange(spec.NrPixelsZ, dtype=dt), torch.arange(spec.NrPixelsY, dtype=dt),
                       indexing="ij")
-px = torch.as_tensor(spec.pxY, dtype=dt)
+pxy_um, pxz_um = spec.effective_pxYZ()           # pxZ unset means square
+px = torch.as_tensor(pxy_um, dtype=dt)
 with torch.no_grad():
     pix = pixel_to_REta_from_spec(Y, Z, spec)
     sa = SolidAngleCorrection()(Y.reshape(-1), Z.reshape(-1), Ycen=spec.BC_y, Zcen=spec.BC_z,
                                 TRs=build_tilt_matrix(spec.tx, spec.ty, spec.tz), Lsd=spec.Lsd,
-                                pxY=px, pxZ=torch.as_tensor(spec.pxZ, dtype=dt))
+                                pxY=px, pxZ=torch.as_tensor(pxz_um, dtype=dt))
     pf = PolarizationCorrection(pol_fraction=float(spec.PolarizationFraction),
                                 pol_plane_eta_deg=float(spec.PolarizationPlaneEtaDeg))(
-        pix.R_px.reshape(-1), pix.eta_deg.reshape(-1), Lsd=spec.Lsd, px=px)
+        pix.R_px.reshape(-1), pix.eta_deg.reshape(-1), Lsd=spec.Lsd,
+        px=torch.as_tensor(spec.mean_pixel_um(), dtype=dt))        # R_px is in MEAN-pixel units (same as the spec flags use)
 corr = (sa * pf).reshape(spec.NrPixelsZ, spec.NrPixelsY)      # divided out: I/c, var/c²
 
 geom = HardBinGeometry.from_spec(spec, mask=mask)               # True = excluded

@@ -315,6 +315,9 @@ nothing (hard rule 17).
    `SolidAngleCorrection` (`packages/midas_integrate_v2/midas_integrate_v2/corrections/integrated.py:117-135`),
    so `midas_pdf.image_to_iq`, `integrate_to_Gr_with_variance` and `midas-integrate-v2-pdf` never
    correct. The `midas_pdf.frontend` docstring claims otherwise (`packages/midas_pdf/midas_pdf/frontend.py:1-9`).
+   **Changed 2026-10-11:** the hard / subpixel / polygon integrators and their variance versions now read the
+   spec flags (`binning/pixel_correction.py`), so the docstring is true when the flags are set; they default to 0
+   and `to_integration_spec()` does not set them, so nothing corrects unless the flags or `correction=` are given.
 2. **The geometry hand-off.** `AutoCalibrationResult` does not carry `RhoD`, and
    `to_integration_spec()` sets neither `RhoD` nor `ResidualCorrectionMap`
    (`packages/midas_calibrate_v2/midas_calibrate_v2/pipelines/auto.py:197`; the rho_d fallback is

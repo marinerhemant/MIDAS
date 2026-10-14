@@ -5,14 +5,18 @@
 > written after something silently produced a wrong answer, or would have; none is a style
 > preference. `$ANALYSIS/...` paths are provenance, defined at the end of the spine.
 
-1. **Apply the intensity corrections yourself — the variance integrators do not.**
-   `integrate_hard_with_variance` and the polygon/subpixel variants apply no polarization or
-   solid-angle correction and never read `spec.PolarizationCorrection` /
-   `spec.SolidAngleCorrection`; only `integrate_with_corrections` does
-   (`packages/midas_integrate_v2/midas_integrate_v2/corrections/integrated.py:117-135`). So
-   `midas_pdf.image_to_iq`, `integrate_to_Gr_with_variance` and `midas-integrate-v2-pdf` all
-   produce uncorrected profiles, whatever `packages/midas_pdf/midas_pdf/frontend.py:1-9` says.
-   Build the per-pixel correction and pass it as `correction=` (phase-5 §5.1). On a 470 mm
+1. **Switch the intensity corrections on: they are OFF unless the spec says so.**
+   Since midas-integrate-v2 0.9.0 the hard / subpixel / polygon geometries and
+   `integrate_*_with_variance` read `spec.SolidAngleCorrection` / `spec.PolarizationCorrection`
+   (with `PolarizationFraction`, `PolarizationPlaneEtaDeg`) and divide each pixel by SA x POL
+   (`packages/midas_integrate_v2/midas_integrate_v2/binning/pixel_correction.py`). Before that they
+   read nothing, whatever the paramstest said (`/verify` ESTABLISHED, claim 801500e71606). The flags
+   default to 0 and `to_integration_spec()` does not set them, so `midas_pdf.image_to_iq`,
+   `integrate_to_Gr_with_variance` and `midas-integrate-v2-pdf` STILL produce uncorrected profiles
+   unless you set the flags on the spec or pass `correction=`. An explicit per-pixel `correction=`
+   REPLACES the spec-derived one (it is not stacked on it), so the hand-built recipe below stays
+   correct with the flags also set. Old profiles made before this change are uncorrected.
+   Either set the flags, or build the per-pixel correction and pass it as `correction=` (phase-5 §5.1). On a 470 mm
    Varex at 67 keV the factor reaches ×2.3 at Q = 20 Å⁻¹ and ×4.8 at 26. Without it an IPA
    G(r) carries a spike of ≈ +410 at r ≈ 0.12 Å, which is the artifact in the earlier report
    on this beamtime (Lab Notebook §1, §4).
