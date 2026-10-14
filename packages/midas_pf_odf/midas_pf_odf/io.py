@@ -979,7 +979,7 @@ class ZarrFrameSource:
             return None
         raw = np.asarray(data[frame_idx]).astype(np.float64)        # (nz, ny)
         sq = make_square_image(raw, nsq, ny, nz)
-        img = transpose_square(apply_image_transformations(sq, ito))  # [y, z]
+        img = transpose_square(apply_image_transformations(sq, ito, NrPixelsY=ny, NrPixelsZ=nz))  # [y, z]
         return img - self._dark[scan_idx]
 
 
