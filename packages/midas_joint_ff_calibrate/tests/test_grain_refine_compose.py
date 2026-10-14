@@ -330,3 +330,23 @@ def test_both_spellings_are_rewritten_when_a_file_carries_both():
     assert got["p10"] == pytest.approx(expect, abs=1e-9), (
         "the legacy p-name was left stale — one file, two distortion fields")
     assert got["phi3"] == got["p10"]
+
+
+# ───────────────────────────────────────────────────────────── beam centre
+def test_refined_bc_y_rewrites_the_bc_line():
+    """BC_y is an internal name; the file key is ``BC <y> <z>``. Writing a
+    separate ``BC_y`` line left ``BC`` at the old value, which every reader
+    then used (a 20-ID Varex run, 2026-10-07)."""
+    v1 = _v1()
+    src = "Lsd 1000000\nBC 1024 1024\ntx 0\n"
+    txt = gr.corrected_paramstest_text(src, ("tx", "BC_y"), {"tx": 0.0, "BC_y": 1024.081},
+                                       v1, observed_from_raw=True)
+    bc = [ln.split() for ln in txt.splitlines() if ln.split()[:1] == ["BC"]]
+    assert bc == [["BC", "1024.081", "1024"]]
+    assert not any(ln.startswith("BC_y") for ln in txt.splitlines())
+
+
+def test_refined_bc_is_appended_when_the_file_has_none():
+    txt = gr.corrected_paramstest_text("Lsd 1000000\n", ("BC_z",), {"BC_z": 1023.5},
+                                       _v1(), observed_from_raw=True)
+    assert "BC 1024 1023.5" in txt.splitlines()

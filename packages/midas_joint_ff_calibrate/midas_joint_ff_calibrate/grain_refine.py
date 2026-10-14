@@ -228,6 +228,10 @@ def _read_hedm_keys(paramstest: Path) -> dict:
         except (KeyError, IndexError, ValueError):
             return None
 
+    # MinEta: the per-layer paramstest spells it ExcludePoleAngle.
+    if "MinEta" not in raw and _f("ExcludePoleAngle") is not None:
+        keys["MinEta"] = _f("ExcludePoleAngle")
+
     # omega of the first frame, by alias
     if keys["OmegaFirstFile"] is None:
         for nm in _OMEGA_START_ALIASES:
@@ -756,7 +760,20 @@ def corrected_paramstest_text(
                     "%.6g (fitted) = %.6g", nm, prior, value, prior + value)
             value = prior + value
         written[nm] = value
+        if nm in ("BC_y", "BC_z"):
+            continue  # one "BC y z" line, written below
         _emit(nm, value)
+
+    # BC_y / BC_z are internal names. The parameter file key is "BC <y> <z>";
+    # emitting "BC_y" as a line of its own left BC untouched, so every reader
+    # kept the old beam centre (hit 2026-10-07 on a 20-ID Varex run).
+    if "BC_y" in written or "BC_z" in written:
+        line = (f"BC {written.get('BC_y', float(v1.BC_y)):.10g} "
+                f"{written.get('BC_z', float(v1.BC_z)):.10g}")
+        if _re.search(r"(?m)^BC\b", txt):
+            txt = _re.sub(r"(?m)^BC\b.*$", line, txt)
+        else:
+            txt += ("" if txt.endswith("\n") else "\n") + line + "\n"
 
     # tx and the six distortion phases are ONE object, not two.
     #
@@ -855,7 +872,7 @@ def refine_geometry_from_grains(
     paramstest: Path | str,
     layer_dir: Path | str,
     *,
-    refine_params: Sequence[str] = ("tx", "Wedge"),
+    refine_params: Sequence[str] = ("tx",),
     kind: str = "angular",
     max_grains: int = 50,
     max_iter: int = 50,
@@ -872,7 +889,8 @@ def refine_geometry_from_grains(
     device: str = "cpu",
     dtype=torch.float64,
 ) -> GrainGeomRefineResult:
-    """Refine ``refine_params`` (default ``tx``, ``Wedge``) from reconstructed
+    """Refine ``refine_params`` (default ``tx``; measure ``Wedge`` with
+    :mod:`.friedel_wedge`, which uses the omega channel this loss ignores) from reconstructed
     grain spots, holding all other geometry fixed.
 
     Parameters
@@ -911,6 +929,14 @@ def refine_geometry_from_grains(
     dev = torch.device(device)
     v1 = V1Params.from_file(str(paramstest))
     hedm = _read_hedm_keys(Path(paramstest))
+    if float(v1.Lsd) <= 0:
+        raise ValueError(
+            f"{paramstest} gives no positive Lsd (nor LsdFit/Distance). Pass the "
+            "parameter file the reconstruction ran with.")
+    aliased = (getattr(v1, "extra", {}) or {}).get("AliasedKeys")
+    if aliased:
+        LOG.info("grain-tx: %s spells the geometry as *Fit keys; read %s",
+                 paramstest, aliased)
 
     # The forward model needs the omega-scan + detector-size acquisition keys
     # (OmegaStep, NrFilesPerSweep, NrPixelsY/Z). The STRIPPED per-layer
@@ -1096,6 +1122,18 @@ def refine_geometry_from_grains(
         spec.parameters[nm].init = t
         spec.parameters[nm].refined = False
         LOG.info("pinned %s to a supplied known value", nm)
+
+    # Nothing matched => nothing was measured. This used to fall through to the
+    # LM (cost nan, rc 2), print "tx: +0.000000", write "tx 0" into --out and
+    # exit 0, so an iteration loop silently reset tx. Fail loudly instead.
+    n_matched_pre = sum(int(m.mask.sum()) for m in matches)
+    if n_matched_pre == 0:
+        raise RuntimeError(
+            f"grain-tx: 0 spots matched for {len(observations)} grains from "
+            f"{layer_dir}. The geometry read from {paramstest} does not "
+            f"reproduce the reconstruction (Lsd={float(v1.Lsd):g}, "
+            f"tx={float(v1.tx):g}, OmegaStep={float(hedm['OmegaStep']):g}). "
+            "Pass the parameter file the pipeline ran with. Nothing was written.")
 
     conditioning = _conditioning_warnings(
         refine_params, len(grain_eulers), refine_grain_strain=refine_grain_strain,

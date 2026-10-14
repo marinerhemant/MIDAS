@@ -107,13 +107,16 @@ def main(argv=None) -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    gx = sub.add_parser("grain-tx", help="refine tx/Wedge from grain spots")
+    gx = sub.add_parser("grain-tx", help="refine tx (detector roll) from grain spots")
     gx.add_argument("--paramstest", type=Path, required=True,
                     help="paramstest the pipeline ran with (tx≈0, full geometry)")
     gx.add_argument("--layer-dir", type=Path, required=True,
                     help="pipeline layer dir (Grains.csv + SpotMatrix.csv + hkls.csv)")
-    gx.add_argument("--refine", default="tx,Wedge",
-                    help="comma-separated geometry blocks to refine (default tx,Wedge)")
+    gx.add_argument("--refine", default="tx",
+                    help="comma-separated geometry blocks to refine (default tx). "
+                         "Measure Wedge with friedel-wedge: grain-tx compares only "
+                         "on-detector (Y,Z) with the grain poses frozen, never the "
+                         "observed omega, so one pass recovers only part of a wedge.")
     gx.add_argument("--fix", action="append", metavar="KEY=VALUE",
                     help="pin a parameter to a value you KNOW, and hold it "
                          "there while the rest refines. Repeatable. Distinct "
