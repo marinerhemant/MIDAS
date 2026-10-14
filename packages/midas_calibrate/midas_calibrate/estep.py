@@ -489,6 +489,12 @@ def extract_fitted_points(
         Ycen=params.BC_y, Zcen=params.BC_z, TRs=TRs,
         Lsd=params.Lsd, RhoD=(params.RhoD if params.RhoD > 0 else params.MaxRingRad),
         px=px, parallax=params.Parallax,
+        # The cake was built WITH p0..p14 (``_calibration_to_integration_params``)
+        # and the M-step's forward model applies them, so the inversion must too.
+        # Without them each point lands 0.09 px off at p2 = p4 = 0.002 (0.18 px
+        # at 0.004), growing with radius, whenever the distortion is nonzero,
+        # i.e. on every iteration after the first of a free-distortion fit.
+        **{f"p{k}": getattr(params, f"p{k}") for k in range(15)},
     )
 
     return [
