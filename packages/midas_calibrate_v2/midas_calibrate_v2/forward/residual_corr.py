@@ -78,6 +78,7 @@ def build_residual_corr_map(
     NrPixelsY: int,
     NrPixelsZ: int,
     pxY: float,
+    px_mean: Optional[float] = None,
     smoothing: Optional[float] = None,
     grid_size: int = 200,
     dtype: torch.dtype = torch.float64,
@@ -97,7 +98,9 @@ def build_residual_corr_map(
     delta_R_um : per-fit radial residual ``RadFit - IdealR`` in **micrometres**
         (matches the ``DeltaR`` column of v1's corr.csv).
     NrPixelsY, NrPixelsZ : detector dimensions.
-    pxY : pixel pitch in micrometres (for the µm → px conversion).
+    pxY : pixel pitch in micrometres (for the µm → px conversion); used when ``px_mean`` is not given (square pixels).
+    px_mean : the MEAN pitch ``0.5 * (pxY + pxZ)`` in micrometres. The map is added to ``R_px`` from ``pixel_to_REta``, which is
+        expressed in mean-pixel units, so the µm → px conversion must use this for non-square pixels. ``None`` → ``pxY``.
     smoothing : RBF smoothing.  ``None`` → ``max(1, N * 0.001)`` (matches v1).
     grid_size : RBF eval grid size before upsampling to full detector.
     """
@@ -118,7 +121,7 @@ def build_residual_corr_map(
         raise ValueError(f"need >=50 fit points to build residual corr map; got {y_np.size}")
 
     # Negate ΔR (px) so lookup-add brings observed toward ideal (v1 convention).
-    dR_px = -dR_np / float(pxY)
+    dR_px = -dR_np / float(px_mean if px_mean is not None else pxY)
 
     # Normalize coords for RBF stability.
     y_mean = float(np.mean(y_np)); y_std = max(float(np.std(y_np)), 1.0)

@@ -499,13 +499,15 @@ def autocalibrate_multi(
             NrPixelsY = int(v1_per_image[0].NrPixelsY)
             NrPixelsZ = int(v1_per_image[0].NrPixelsZ)
             pxY0 = float(v1_per_image[0].pxY)
+            pxZ0 = float(getattr(v1_per_image[0], "pxZ", 0.0) or pxY0)
+            px_mean0 = 0.5 * (pxY0 + pxZ0)       # delta_R_um above was built with the mean pitch
             if verbose:
                 print(f"[multi] building residual corr map from "
                       f"{Y_cat.numel()} non-outlier fits across {n_imgs} images...",
                       flush=True)
             residual_map = build_residual_corr_map(
                 Y_cat, Z_cat, dR_cat,
-                NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ, pxY=pxY0,
+                NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ, pxY=pxY0, px_mean=px_mean0,
                 dtype=dtype,
             ).to(device=device)
             if residual_corr_path is not None:

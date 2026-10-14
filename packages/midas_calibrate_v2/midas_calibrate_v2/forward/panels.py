@@ -148,6 +148,9 @@ def apply_panel_shifts(
     -------
     (Y_pix_new, Z_pix_new) — corrected pixel coordinates.
     """
+    # NOTE (non-square pixels): shifts and the rotation below are in pixel-INDEX space, the v1 / C ``PanelShiftsFile`` convention.
+    # For pxY != pxZ a rotation by dth in index space is not a rigid rotation in micrometres (it shears by pxY/pxZ); the fitted angle
+    # absorbs part of that. Kept as is so existing panel files keep their meaning; no non-square multi-panel detector is in use.
     deg2rad = 0.017453292519943295
     n_panels = layout.n_panels()
     if delta_yz.shape != (n_panels, 2):

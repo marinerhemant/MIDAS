@@ -376,7 +376,7 @@ def autocalibrate(
                         delta_R_um[keep].detach().cpu(),
                         NrPixelsY=int(v1_params.NrPixelsY),
                         NrPixelsZ=int(v1_params.NrPixelsZ),
-                        pxY=pxY, dtype=dtype,
+                        pxY=pxY, px_mean=px_mean, dtype=dtype,
                     ).to(device=device)
                     if residual_corr_path is not None:
                         save_residual_corr_bin(residual_map, residual_corr_path)

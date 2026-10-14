@@ -627,6 +627,31 @@ def iterate_frozen_point_until_stable(
     easy trap for any caller who reads geometry back off the object they
     passed in rather than off ``IterateResult.fit``.
 
+    **Real tilted-detector data (2026-10-14; PROVISIONAL, two LaB6 frames from one detector class).** From a tilt-blind start
+    (tx = ty = tz = 0, ``make_seed`` Lsd/BC, default arguments) this reached the answer on two real LaB6 frames: a ~5 deg tilt
+    (0.72808 A) in 16 iterations / 22 s (150 ue, 19 of 21 rings, same geometry as ``autocalibrate_pv``) and a 45 deg tilt
+    (0.10798 A, 115 keV) in 30 iterations with the default pick (only 6 of 27 rings) or 50 iterations / 74 s with
+    ``point_pick_kwargs={"min_ring_gap_deg": 0.08}`` (25 of 27 rings, 558 ue; median ring residual 0.17 px, p95 0.56 px). The
+    number of iterations scales with the tilt (each iteration moves the tilt a few degrees), so raise ``max_iter`` for tilts
+    above ~45 deg. Two cautions: the single-run :func:`autocalibrate_frozen_point` is NOT a blind-start route (its default
+    ``tolTilts`` is 3 deg), and ``point_pick``'s default ``min_ring_gap_deg=0.3`` drops most of the tightly spaced rings at
+    high energy -- check ``coverage.n_rings_hit`` and lower it (0.08 worked) when few rings are used. A ring-position error in
+    pixels (median < 0.3 px, p95 < 1 px) is a more useful gate than a strain threshold at these geometries (a strain eps is
+    only eps * R pixels).
+
+    **Cautions from adversarial checks (2026-10-14, two real frames only).** ``converged=True`` means the parameters stopped moving,
+    not that the geometry is right: from tilt seeds other than 0 the loop ended ``converged=True`` on a wrong geometry (e.g. a ~5 deg
+    frame started at (ty, tz) = (0, +5): 9,214 microstrain, tz +7.25; the 45 deg frame started at tz = +5: 13,637 microstrain), and
+    the (0, 0) start was only validated on these two frames, so the basin is not established to be wide. Always check the final
+    strain / pixel residual and the ring overlay, not the flag. At 45 deg the iteration sits on a ~12,000 microstrain plateau for ~43
+    iterations before snapping in, so the default ``max_iter=60`` leaves little margin there (``max_iter=40`` reports
+    ``converged=False``). The returned geometry is the fixed point plus one extra distortion refit (tz moved 0.03 deg, Lsd 0.5 mm).
+    The result also depends on which rings are picked: fitting only every other ring of the 25 that were hit, from the SAME (0, 0)
+    start, returned ``converged=True`` after 116 iterations on a wrong geometry (11,520 microstrain, tz +32 deg), while the other half
+    converged correctly (605 microstrain). The number of iterations tracks the ring pick as much as the tilt (30 with 6 rings, 50 with
+    25, 38 with 13 at 45 deg), so "iterations scale with tilt" and ``min_ring_gap_deg=0.08`` rest on one frame each; a max pixel
+    residual of ~1 px is not robust (peak-fit lock-ons), the median and p95 are.
+
     Returns
     -------
     :class:`IterateResult`

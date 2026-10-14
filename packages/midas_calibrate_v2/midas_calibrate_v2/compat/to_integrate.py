@@ -315,11 +315,17 @@ def spec_from_calibration_result(
     # calibration used. (Setting it in pixels makes ρ ~px/µm too large by the
     # pitch, so the distortion polynomial explodes and washes out the rings.)
     px_mean = 0.5 * (float(result.pxY) + float(result.pxZ))
-    corner_px = math.sqrt(
-        max(result.BC_y, NY - 1 - result.BC_y) ** 2
-        + max(result.BC_z, NZ - 1 - result.BC_z) ** 2
-    )
-    s.RhoD = corner_px * px_mean
+    d_y = max(result.BC_y, NY - 1 - result.BC_y)
+    d_z = max(result.BC_z, NZ - 1 - result.BC_z)
+    if float(result.pxY) == float(result.pxZ):
+        corner_px = math.sqrt(d_y ** 2 + d_z ** 2)
+        s.RhoD = corner_px * px_mean
+    else:
+        # Non-square pixels: the farthest corner is hypot(d_y * pxY, d_z * pxZ) micrometres, and R_px is in MEAN-pitch units,
+        # so the radius in R_px units is that distance / px_mean (an index-space hypot would cut off the far corners).
+        corner_um = math.hypot(d_y * float(result.pxY), d_z * float(result.pxZ))
+        s.RhoD = corner_um
+        corner_px = corner_um / px_mean
 
     for name in DISTORTION_NAMES:
         if name in result.distortion and hasattr(s, name):

@@ -373,3 +373,16 @@ def test_residual_conv_net_nonzero_init():
     # Non-zero spread: max(abs) > 1e-6 confirms gradient flow is alive.
     assert out.abs().max().item() > 1e-6, \
         "ResidualConvNet collapsed to zero output at init — dead-ReLU regression"
+
+
+def test_run_all_gates_pointing_precision_um_note_uses_the_mean_pitch():
+    """mean_abs_px is in MEAN-pixel units, so the um note converts with 0.5 (pxY + pxZ): 0.4 px * 150 um = 60 um (pxY alone gives 80)."""
+    from midas_calibrate_v2.pipelines.diagnostics import run_all_gates
+
+    seed = _FakeV1(Lsd=350_000.0, BC_y=737.0, BC_z=810.0)
+    unp = {"Lsd": torch.tensor(350_000.0), "BC_y": torch.tensor(737.0), "BC_z": torch.tensor(810.0),
+           "pxY": torch.tensor(200.0), "pxZ": torch.tensor(100.0)}
+    history = [SimpleNamespace(mean_strain_uE=0.0, mean_abs_px=0.4)]
+    diags = run_all_gates(v1_init=seed, unpacked=unp, history=history, fits=None)
+    msg = [d for d in diags if d.name == "strain_cap"][0].message
+    assert "60.0" in msg and "80.0" not in msg, msg

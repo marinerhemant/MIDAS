@@ -853,7 +853,11 @@ def run_all_gates(
     if final is not None and getattr(final, "mean_abs_px", None) is not None:
         px_um = None
         try:
-            px_um = float(unpacked.get("pxY")) if unpacked is not None else None
+            if unpacked is not None:
+                # mean_abs_px is in MEAN-pixel units (forward/geometry.py), so convert with the mean pitch
+                _py = float(unpacked.get("pxY"))
+                _pz = float(unpacked.get("pxZ", _py))
+                px_um = 0.5 * (_py + _pz)
         except (TypeError, ValueError):
             px_um = None
         out.append(pointing_precision_check(history,
