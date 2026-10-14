@@ -51,6 +51,13 @@ from .rings import RingTable
 _BILINEAR_BYTES_PER_ENTRY = 400       # full-pipeline bytes per pixel-bin entry
 _RAM_HEADROOM_BYTES = 3 * 1024 ** 3   # room for the image, torch/LM state, OS
 
+# extract_fitted_points removes a sloping background with a line through the
+# radial-window ends, but only if the window spans at least this many ring
+# FWHMs (ends then lie >= ~4 sigma from the ring). Narrower windows keep the
+# constant window-minimum baseline: with the ends on the ring tails the line
+# cuts into one flank (+0.08 px at 2.5 sigma, ~0 at >= 4 sigma, measured).
+_RAMP_MIN_WINDOW_FWHM = 3.4
+
 
 def _available_ram_bytes() -> Optional[int]:
     """Best-effort available physical RAM in bytes; None if undetectable.
@@ -330,9 +337,59 @@ def extract_fitted_points(
         I_block = cake.intensity[idx, :].astype(np.float64)      # (n_R, n_eta)
         cov_block = (cake.coverage[idx, :].astype(np.float64)
                      if getattr(cake, "coverage", None) is not None else None)
-        # Per-η baseline subtract across the radial window (matches the
-        # ``I - I.min()`` per-η-bin step of the previous scalar loop).
-        I = np.maximum(I_block - I_block.min(axis=0, keepdims=True), 0.0)
+        # Per-η baseline across the radial window: a straight line through the
+        # means of the two window ends.
+        #
+        # This used to be the window MINIMUM, a constant. A constant leaves any
+        # background SLOPE inside the window in place, and the centroid is then
+        # pulled toward the high-background side. On a ceria frame whose
+        # background falls with 2θ that is inward, so the fit lands at a short
+        # Lsd. Measured at the TRUE geometry on a noise-free render (weak
+        # low-count CCD ceria frame, 20 px window): rings 1-3 sat -0.37 / -0.65 / -0.23 px
+        # inward with the minimum; 0 on a flat background; the sign flips with
+        # the slope; a line through the window ends takes it to ~0.06 px. The
+        # effect grows as the ring gets weak against the background, which is
+        # why it showed as "worse at low counts". (2026-10-11.)
+        #
+        # The line is only trustworthy when the window ends are OFF the ring. If
+        # they sit on its tails, the two end means differ by the grid phase and
+        # the line cuts into one flank of the peak (measured: window ends at
+        # 2.5σ of a flat-background ring, centred window, noise-free: +0.08 px
+        # with the line, -0.01 px with the minimum; at 4σ and wider both are
+        # ~0). So the line is used only when the window spans at least
+        # ``_RAMP_MIN_WINDOW_FWHM`` ring FWHMs, the FWHM being measured from the
+        # data (bins above half maximum, 10th percentile over η); otherwise the constant
+        # minimum is kept, exactly as before.
+        # Which η bins have a complete (unclipped) radial window. Needed here
+        # as well as for the rejection further down: a clipped bin has a
+        # truncated peak, so it must not vote on the ring width below.
+        window_complete = ~(I_block <= 0.0).any(axis=0)
+        if cov_block is not None:
+            cov_ref = cov_block.max(axis=0, keepdims=True)
+            cov_ref = np.where(cov_ref > 0.0, cov_ref, 1.0)
+            window_complete &= (cov_block >= min_cell_coverage * cov_ref).all(axis=0)
+        n_win = I_block.shape[0]
+        I_min = np.maximum(I_block - I_block.min(axis=0, keepdims=True), 0.0)
+        use_ramp = False
+        if n_win >= 5:
+            edge = max(2, n_win // 8)
+            lo = I_block[:edge].mean(axis=0)
+            hi = I_block[-edge:].mean(axis=0)
+            ramp = np.linspace(0.0, 1.0, n_win)[:, None]
+            base_lin = lo[None, :] + (hi - lo)[None, :] * ramp
+            pk_min = I_min.max(axis=0)
+            live = (pk_min > 0.0) & window_complete
+            if live.any() and R_window.size > 1:
+                dR = float(np.median(np.diff(R_window)))
+                # Low quantile, not the median: noise only ever ADDS bins above
+                # half maximum, so on a ring whose peak is near the noise the
+                # median reads it several times too wide (weak 222 arc: 9 px
+                # against 4 px for the strong rings) and would send exactly the
+                # ring that needs the line back to the constant.
+                fwhm_px = float(np.percentile(
+                    (I_min[:, live] >= 0.5 * pk_min[live]).sum(axis=0), 10)) * dR
+                use_ramp = (n_win * dR) >= _RAMP_MIN_WINDOW_FWHM * max(fwhm_px, dR)
+        I = np.maximum(I_block - base_lin, 0.0) if use_ramp else I_min
         tot = I.sum(axis=0)                                      # (n_eta,)
         valid_tot = tot > 0.0
         if not valid_tot.any():
@@ -347,14 +404,9 @@ def extract_fitted_points(
         # straight line through the two window ends, then compare the peak
         # height to the scatter at those ends.  A weak ring riding a sloping
         # background scores high on peak/mean but low here, which is the
-        # discrimination the ring filter needs.
-        n_win = I_block.shape[0]
+        # discrimination the ring filter needs. (Same line as the centroid
+        # baseline above.)
         if n_win >= 5:
-            edge = max(2, n_win // 8)
-            lo = I_block[:edge].mean(axis=0)
-            hi = I_block[-edge:].mean(axis=0)
-            ramp = np.linspace(0.0, 1.0, n_win)[:, None]
-            base_lin = lo[None, :] + (hi - lo)[None, :] * ramp
             height = (I_block - base_lin).max(axis=0)
             # Noise floor from counting statistics.  The scatter at the window
             # ends alone goes to zero wherever the ends happen to be flat (a
@@ -413,11 +465,7 @@ def extract_fitted_points(
         #   * a cell can carry stray counts and still lie off the detector
         #     (scatter, a hot pixel bleeding into a corner bin) — the intensity
         #     test cannot see that.
-        window_complete = ~(I_block <= 0.0).any(axis=0)
-        if cov_block is not None:
-            cov_ref = cov_block.max(axis=0, keepdims=True)
-            cov_ref = np.where(cov_ref > 0.0, cov_ref, 1.0)
-            window_complete &= (cov_block >= min_cell_coverage * cov_ref).all(axis=0)
+        # (``window_complete`` is computed above, before the baseline.)
         keep = valid_tot & (snr >= snr_min) & window_complete
         if not keep.any():
             continue
