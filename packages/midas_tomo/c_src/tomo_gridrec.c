@@ -76,6 +76,19 @@ void initFFTMemoryStructures(gridrecParams *param) {
   param->forward_plan_2d = NULL;
 }
 
+void freeGridRecTables(gridrecParams *param) {
+  free(param->cproj); free(param->filphase); free(param->wtbl);
+#ifdef INTERP
+  free(param->dwtbl);
+#endif
+  free(param->winv); free(param->work); free(param->H);
+  free(param->SINE); free(param->COSE);
+  free(param->G1); free(param->G2); free(param->S1); free(param->S2);
+  param->cproj = NULL; param->filphase = NULL; param->wtbl = NULL; param->winv = NULL;
+  param->work = NULL; param->H = NULL; param->SINE = NULL; param->COSE = NULL;
+  param->G1 = param->G2 = NULL; param->S1 = param->S2 = NULL;
+}
+
 void destroyFFTMemoryStructures(gridrecParams *param) {
   if (param->in_1d != NULL) {
     fftwf_free(param->in_1d);

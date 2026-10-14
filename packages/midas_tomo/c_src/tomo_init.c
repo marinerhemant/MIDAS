@@ -935,6 +935,10 @@ int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
       if (!(useGPU && gpu_ctx))
 #endif
       destroyFFTMemoryStructures(&param);
+      freeGridRecTables(&param);
+      free(param.wisdom_string);
+      freeSinoBuffers(&information);
+      free(readStruct.norm_sino);
     } // end #pragma omp parallel
     /* Never munmap a caller-owned buffer -- that memory belongs to the
      * calling process (a numpy array, in the Python case) and unmapping it
@@ -1220,6 +1224,7 @@ int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
         destroyFFTMemoryStructures(&param);
         free(param.wisdom_string);
         freeSinoBuffers(&information);
+        freeGridRecTables(&param);
       }
     } /* end outer cleanup loop */
 
@@ -1228,6 +1233,8 @@ int midas_tomo_run_full(const char *paramFileName, int requestedProcs,
         free(master_sinos[i]);
       free(master_sinos);
     }
+    for (i = 0; i < recon_info_record.n_slices; i++) free(readStruct[i].norm_sino);
+    free(readStruct);
     if (badWrite) {
       fprintf(stderr, "ERROR: could not write one or more reconstructions.\n");
       if (output_fd != -1)

@@ -1649,5 +1649,8 @@ int createPlanFile(GLOBAL_CONFIG_OPTS *recon_info_record) {
       sizeof(char) * (strlen(param.wisdom_string) + 1);
   strcpy(recon_info_record->wisdom_string, param.wisdom_string);
   destroyFFTMemoryStructures(&param);
+  freeGridRecTables(&param);
+  freeSinoBuffers(&information);
+  free(readStruct.norm_sino);
   return 0;
 }

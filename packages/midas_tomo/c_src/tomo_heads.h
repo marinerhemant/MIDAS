@@ -175,6 +175,7 @@ void fourn(float data[], unsigned long nn[], int ndim, int isign,
            gridrecParams *param);
 void initFFTMemoryStructures(gridrecParams *param);
 void destroyFFTMemoryStructures(gridrecParams *param);
+void freeGridRecTables(gridrecParams *param);
 
 //--------------------------------------------------------------------------------------------------------------------------
 // ConfigurationParameters
