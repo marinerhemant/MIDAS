@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-grain-odf"
-version = "0.1.3"
+version = "0.2.0"
 description = "Differentiable per-grain orientation distribution functions from FF-HEDM data"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -27,7 +27,7 @@ dependencies = [
     "hdf5plugin>=4.0",
     # Sibling MIDAS package -- the differentiable HEDM forward model
     # (Sharma et al., IUCrJ 2025) that this package builds on.
-    "midas-diffract>=0.1",
+    "midas-diffract>=0.10.0",
     # Sibling MIDAS package -- supplies tested orientation primitives
     # (axis-angle <-> matrix, matrix -> quat, fundamental zone, misorientation,
     # both numpy and torch backends).

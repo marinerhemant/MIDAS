@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-calibrate-v2"
-version = "0.23.0"
+version = "0.24.0"
 description = "Fully differentiable detector calibration for MIDAS — multi-image, Bayesian, NN-residual, joint forward cake. Coexists with midas-calibrate v1."
 readme = "README.md"
 license = { text = "BSD-3-Clause" }
@@ -25,11 +25,11 @@ dependencies = [
     "midas-distortion>=0.2.0",            # shared distortion model (single source)
     "midas-hkls>=0.1.0",
     "midas-integrate>=0.1.0",
-    "midas-peakfit>=0.2.0",
+    "midas-peakfit>=0.4.0",
     # >=0.4.0: FittedPoint.snr_baseline, which the per-ring quality filter in
     # pipelines/_common.py aggregates. Below it the attribute is absent and
     # --min-ring-snr silently gates on 0.0, i.e. keeps every ring.
-    "midas-calibrate>=0.4.0",
+    "midas-calibrate>=0.6.0",
     "h5py>=3.0",
     "hdf5plugin>=4.0",
     "tifffile>=2022.0",

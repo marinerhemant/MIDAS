@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pipeline"
-version = "0.19.0"
+version = "0.20.0"
 description = "Unified MIDAS HEDM orchestrator. FF is the single-scan degeneracy of PF; one orchestrator, --scan-mode {ff,pf}."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -46,7 +46,7 @@ dependencies = [
     # to re-read Parameters.txt into an archive that already exists. Below the
     # floor that import fails at stage time, after the run has already started.
     # >=0.3.0: reads ESRF Bliss raw data and CBF sweeps with a Dark (ff_zip).
-    "midas-zipper>=0.3.0",                # raw → .MIDAS.zip ingest (pip-portable)
+    "midas-zipper>=0.4.0",                # raw → .MIDAS.zip ingest (pip-portable)
     # The FBP reconstruction backend. midas_pipeline.recon.fbp used to reach
     # it by a sys.path hop into <repo>/TOMO and a shell-out to the MIDAS_TOMO
     # C binary -- which only resolved from a source checkout, and depended on
@@ -88,14 +88,14 @@ dependencies = [
     "midas-process-grains>=0.13.0",
     # >=0.9.0: one Wedge convention for FF, NF and PF. Below it a Wedge != 0 run
     # uses a different sign/frame than the refiner and the indexer.
-    "midas-diffract>=0.9.0",
+    "midas-diffract>=0.10.0",
     "midas-parsl-configs>=0.1.0",
     # grain_geometry imports midas_joint_ff_calibrate.grain_refine inside run().
     # It was never declared: the monorepo has everything installed, so a clean
     # `pip install midas-pipeline` only failed once someone enabled that stage.
     # >=0.4.2: below it refine_grain_strain is silently ignored, so the stage
     # asks for strain refinement (its own default) and does not get it.
-    "midas-joint-ff-calibrate>=0.5.0",
+    "midas-joint-ff-calibrate>=0.6.0",
     "midas-stress>=0.6.0",                # canonical orientation/diffraction primitives
 ]
 

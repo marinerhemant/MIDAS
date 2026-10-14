@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-dt"
-version = "0.7.0"
+version = "0.8.0"
 description = "Diffraction / X-ray computed tomography (XRD-CT): scan model, sinogram assembly with error propagation, reconstruction and per-voxel peak fitting."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -21,7 +21,7 @@ dependencies = [
     "hdf5plugin>=4.0",
     "midas-params>=0.9.0",  # preflight: CLI errors + path checks
     "numpy>=1.22",
-    "midas-tomo>=0.1.0",
+    "midas-tomo>=0.3.1",
     # Reduction (raw frames -> sinograms) is this package's primary path, not an
     # optional extra: FrameReducer, and therefore the whole documented workflow,
     # cannot run without it. It lived in [full] until 2026-08-14, which meant a

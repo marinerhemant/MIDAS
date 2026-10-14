@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pink"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pink-beam HEDM with spectrum-aware differentiable inversion (extends midas-diffract from mono to arbitrary S(E))"
 readme = "README.md"
 license = "BSD-3-Clause"

@@ -3,7 +3,7 @@
 Phase 1: per-voxel (R, ε) from peak shapes. Phase 2: per-voxel ODF.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 from midas_pf_odf.simulate import (
     SinglePhaseGrainPlant,

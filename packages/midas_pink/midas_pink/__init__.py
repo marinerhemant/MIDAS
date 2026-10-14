@@ -43,7 +43,7 @@ Quick start
                                     cfg=mp.RecoveryConfig(...))
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .spectrum import (
     ParameterisedSpectrum,
