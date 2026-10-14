@@ -37,6 +37,7 @@ from midas_integrate.bin_io import (
 from midas_integrate.geometry import (
     DEG2RAD,
     PIXEL_CORNER_OFFSETS,
+    QUAD_ORDER,
     REta_to_YZ_scalar,
     build_bin_edges,
     build_q_bin_edges_in_R,
@@ -44,6 +45,7 @@ from midas_integrate.geometry import (
     build_tilt_matrix,
     pixel_to_REta,
     pixel_bin_intersect,
+    quad_min_radius,
     solid_angle_factor,
 )
 from midas_integrate.panel import (
@@ -349,6 +351,10 @@ def _build_map_python(
 
     RMi = R_corners.min(axis=-1)
     RMa = R_corners.max(axis=-1)
+    # A straight pixel edge can pass closer to the origin than its corners do (by up to
+    # L^2 / (8 R)), so the smallest candidate radius comes from the quad's edges, and is
+    # 0 when the quad contains the origin. The largest radius is always at a corner.
+    RMi = np.minimum(RMi, quad_min_radius(cornerYZ))
     EtaMi = Eta_corners.min(axis=-1)
     EtaMa = Eta_corners.max(axis=-1)
 
@@ -361,8 +367,15 @@ def _build_map_python(
             if r_idx.size == 0:
                 continue
             eta_lo_s, eta_hi_s = emi, ema
+            # A pixel that crosses the eta = +-180 seam (or contains the beam centre) has
+            # corners on both sides, so its (min, max) eta spans > 180 deg and says nothing
+            # about which bins it touches. Visit EVERY eta bin; the exact intersection below
+            # returns zero for the ones it misses. The previous unwrap built the interval
+            # [max corner, 360 + min corner], the INNER part of the true extent, so a bin
+            # that only the outermost corner reaches was never visited and its area was
+            # silently dropped (up to ~30% of a pixel at R ~ 4 px with 10 deg bins).
             if (ema - emi) > 180.0:
-                eta_lo_s, eta_hi_s = ema, 360.0 + emi
+                eta_lo_s, eta_hi_s = -1.0e30, 1.0e30
             e_mask = (
                 ((eta_hi >= eta_lo_s) & (eta_lo <= eta_hi_s))
                 | ((eta_hi >= eta_lo_s + 360) & (eta_lo <= eta_hi_s + 360))

@@ -41,6 +41,7 @@ from midas_integrate.geometry import (
     circle_seg_intersect,
     ray_seg_intersect,
     point_in_quad,
+    quad_min_radius,
     invert_REta_to_pixel,
     RadiusUnitWarning,
 )
@@ -109,6 +110,7 @@ __all__ = [
     "circle_seg_intersect",
     "ray_seg_intersect",
     "point_in_quad",
+    "quad_min_radius",
     "invert_REta_to_pixel",
     "RadiusUnitWarning",
     # detector_mapper

@@ -65,7 +65,6 @@ except ImportError:                  # pragma: no cover
 
 DEG2RAD = math.pi / 180.0
 RAD2DEG = 180.0 / math.pi
-EPS = 1e-6
 QUAD_ORDER = (0, 1, 3, 2)
 
 #: Smallest (pixel, bin) overlap area kept, in pixel^2. Must match
@@ -92,167 +91,138 @@ _DZ = (-0.5, 0.5)
 # ─────────────────────────────────────────────────────────────────────────────
 # Geometry helpers (scalar @njit)
 # ─────────────────────────────────────────────────────────────────────────────
-@njit(cache=True, inline="always")
-def _calc_eta(y: float, z: float) -> float:
-    return RAD2DEG * math.atan2(-y, z)
-
-
-@njit(cache=True, inline="always")
-def _sign(x: float) -> float:
-    if x > 0.0:
-        return 1.0
-    if x < 0.0:
-        return -1.0
-    return 0.0
-
-
-@njit(cache=True, inline="always")
-def _between(val: float, lo: float, hi: float) -> bool:
-    return (val - EPS <= hi) and (val + EPS >= lo)
-
-
 @njit(cache=True)
-def _point_in_quad(py: float, pz: float, qy: np.ndarray, qz: np.ndarray) -> bool:
-    """qy[4], qz[4] in QUAD_ORDER traversal order (already permuted)."""
+def _quad_min_r(qy: np.ndarray, qz: np.ndarray) -> float:
+    """Smallest distance from the origin to the quad (0 if the origin is inside).
+
+    numba twin of ``geometry.quad_min_radius``.
+
+    The candidate radial bins of a pixel must come from this, not from the corners'
+    radii: a straight edge can pass closer to the origin than either of its corners,
+    by up to L^2 / (8 R). When a bin boundary falls in that window the pixel overlaps
+    the bin below it in a thin sliver that a corners-only range never visits (up to
+    ~0.4 percent of a pixel, on the pixels along the cardinal axes). The largest
+    radius is always at a corner: a chord lies inside the circle through its ends.
+    """
+    best = 1.0e300
     pos = 0
     neg = 0
     for e in range(4):
-        i0 = e
-        i1 = (e + 1) % 4
-        ey = qy[i1] - qy[i0]
-        ez = qz[i1] - qz[i0]
-        cross = ey * (pz - qz[i0]) - ez * (py - qy[i0])
-        if cross > 0:
-            pos += 1
-        elif cross < 0:
-            neg += 1
-    return pos == 0 or neg == 0
-
-
-@njit(cache=True)
-def _circle_seg_hits(y1: float, z1: float, y2: float, z2: float, R: float,
-                     out_hits: np.ndarray) -> int:
-    """out_hits: shape (2, 2) preallocated. Returns 0/1/2."""
-    dy = y2 - y1
-    dz = z2 - z1
-    a = dy * dy + dz * dz
-    if a < 1e-30:
-        return 0
-    b = 2.0 * (y1 * dy + z1 * dz)
-    c = y1 * y1 + z1 * z1 - R * R
-    disc = b * b - 4.0 * a * c
-    if disc < 0:
-        return 0
-    sd = math.sqrt(disc)
-    inv2a = 0.5 / a
-    n = 0
-    t1 = (-b - sd) * inv2a
-    if -EPS <= t1 <= 1.0 + EPS:
-        tc = max(0.0, min(1.0, t1))
-        out_hits[n, 0] = y1 + tc * dy
-        out_hits[n, 1] = z1 + tc * dz
-        n += 1
-    t2 = (-b + sd) * inv2a
-    if (-EPS <= t2 <= 1.0 + EPS) and (abs(t2 - t1) > 1e-12):
-        tc = max(0.0, min(1.0, t2))
-        out_hits[n, 0] = y1 + tc * dy
-        out_hits[n, 1] = z1 + tc * dz
-        n += 1
-    return n
-
-
-@njit(cache=True)
-def _ray_seg_hit(y1: float, z1: float, y2: float, z2: float,
-                 eta_deg: float, out_hit: np.ndarray) -> bool:
-    er = eta_deg * DEG2RAD
-    ce = math.cos(er)
-    se = math.sin(er)
-    dy = y2 - y1
-    dz = z2 - z1
-    denom = dy * ce + dz * se
-    if abs(denom) < 1e-30:
-        return False
-    t = -(y1 * ce + z1 * se) / denom
-    if t < -EPS or t > 1.0 + EPS:
-        return False
-    if t < 0.0:
+        i1 = e + 1
+        if i1 == 4:
+            i1 = 0
+        py = qy[e]
+        pz = qz[e]
+        dy = qy[i1] - py
+        dz = qz[i1] - pz
+        a = dy * dy + dz * dz
         t = 0.0
-    elif t > 1.0:
-        t = 1.0
-    hy = y1 + t * dy
-    hz = z1 + t * dz
-    if (-se) * hy + ce * hz < 0:
-        return False
-    out_hit[0] = hy
-    out_hit[1] = hz
-    return True
+        if a > 0.0:
+            t = -(py * dy + pz * dz) / a
+            if t < 0.0:
+                t = 0.0
+            elif t > 1.0:
+                t = 1.0
+        ry = py + t * dy
+        rz = pz + t * dz
+        d = math.sqrt(ry * ry + rz * rz)
+        if d < best:
+            best = d
+        cr = py * dz - pz * dy
+        if cr > 0.0:
+            pos += 1
+        elif cr < 0.0:
+            neg += 1
+    if pos == 0 or neg == 0:       # all edges wind the same way round the origin: it is inside
+        return 0.0
+    return best
 
 
 @njit(cache=True)
-def _polygon_area(edges: np.ndarray, n: int,
-                  RMin: float, RMax: float) -> float:
-    """Green's-theorem area of polygon with mixed straight + arc edges.
+def _clip_half(buf: np.ndarray, s: int, n: int, d: int,
+               uy: float, uz: float, sgn: float) -> int:
+    """Sutherland-Hodgman: clip polygon buf[s:s+n] to sgn*(uy*z - uz*y) >= 0, write the
+    result to buf[d:...] and return its vertex count. A vertex exactly on the line
+    counts as inside."""
+    m = 0
+    for i in range(n):
+        j = i + 1
+        if j == n:
+            j = 0
+        py = buf[s + i, 0]
+        pz = buf[s + i, 1]
+        qy = buf[s + j, 0]
+        qz = buf[s + j, 1]
+        fp = sgn * (uy * pz - uz * py)
+        fq = sgn * (uy * qz - uz * qy)
+        pin = fp >= 0.0
+        qin = fq >= 0.0
+        if pin:
+            buf[d + m, 0] = py
+            buf[d + m, 1] = pz
+            m += 1
+        if pin != qin:
+            t = fp / (fp - fq)
+            buf[d + m, 0] = py + t * (qy - py)
+            buf[d + m, 1] = pz + t * (qz - pz)
+            m += 1
+    return m
 
-    edges: shape (50, 2) preallocated; only edges[:n] are valid.
-    """
-    if n < 3:
+
+@njit(cache=True, inline="always")
+def _disk_piece(py: float, pz: float, dy: float, dz: float,
+                ta: float, tb: float, R2: float) -> float:
+    """Signed area of (triangle origin-A-B) intersect (disk R2) for the sub-segment
+    A = P + ta*d, B = P + tb*d, which lies wholly inside or wholly outside the disk."""
+    ay = py + ta * dy
+    az = pz + ta * dz
+    by = py + tb * dy
+    bz = pz + tb * dz
+    tm = 0.5 * (ta + tb)
+    my = py + tm * dy
+    mz = pz + tm * dz
+    cr = ay * bz - az * by
+    if my * my + mz * mz <= R2:
+        return 0.5 * cr
+    return 0.5 * R2 * math.atan2(cr, ay * by + az * bz)
+
+
+@njit(cache=True)
+def _disk_area(buf: np.ndarray, s: int, n: int, R: float) -> float:
+    """Exact area of (counterclockwise polygon buf[s:s+n]) intersect (disk of radius R
+    at the origin): per edge, a triangle for the part inside the disk and a circular
+    sector for the parts outside, split at the (at most two) circle crossings."""
+    if n < 3 or R <= 0.0:
         return 0.0
-    # centroid
-    cx = 0.0
-    cy = 0.0
+    R2 = R * R
+    total = 0.0
     for i in range(n):
-        cx += edges[i, 0]
-        cy += edges[i, 1]
-    cx /= n
-    cy /= n
-    # Sort edges by angle around centroid (insertion sort — fast for small n)
-    angles = np.empty(n, dtype=np.float64)
-    order = np.empty(n, dtype=np.int64)
-    for i in range(n):
-        angles[i] = math.atan2(edges[i, 1] - cy, edges[i, 0] - cx)
-        order[i] = i
-    # insertion sort
-    for i in range(1, n):
-        a = angles[i]
-        oi = order[i]
-        j = i - 1
-        while j >= 0 and angles[j] > a:
-            angles[j + 1] = angles[j]
-            order[j + 1] = order[j]
-            j -= 1
-        angles[j + 1] = a
-        order[j + 1] = oi
-
-    RMin2 = RMin * RMin
-    RMax2 = RMax * RMax
-    tol = 1e-6
-    area = 0.0
-    for k in range(n):
-        i0 = order[k]
-        i1 = order[(k + 1) % n]
-        y1 = edges[i0, 0]
-        z1 = edges[i0, 1]
-        y2 = edges[i1, 0]
-        z2 = edges[i1, 1]
-        r1sq = y1 * y1 + z1 * z1
-        r2sq = y2 * y2 + z2 * z2
-        on_rmin = (abs(r1sq - RMin2) < tol * max(RMin2, 1e-30) and
-                   abs(r2sq - RMin2) < tol * max(RMin2, 1e-30))
-        on_rmax = (abs(r1sq - RMax2) < tol * max(RMax2, 1e-30) and
-                   abs(r2sq - RMax2) < tol * max(RMax2, 1e-30))
-        if on_rmin or on_rmax:
-            R = RMin if on_rmin else RMax
-            a1 = math.atan2(z1, y1)
-            a2 = math.atan2(z2, y2)
-            d = a2 - a1
-            if d > math.pi:
-                d -= 2.0 * math.pi
-            if d < -math.pi:
-                d += 2.0 * math.pi
-            area += (R * R * 0.5) * d
-        else:
-            area += 0.5 * (y1 * z2 - y2 * z1)
-    return abs(area)
+        j = i + 1
+        if j == n:
+            j = 0
+        py = buf[s + i, 0]
+        pz = buf[s + i, 1]
+        dy = buf[s + j, 0] - py
+        dz = buf[s + j, 1] - pz
+        a = dy * dy + dz * dz
+        if a == 0.0:
+            continue
+        b = 2.0 * (py * dy + pz * dz)
+        c = py * py + pz * pz - R2
+        disc = b * b - 4.0 * a * c
+        ta = 0.0
+        if disc > 0.0:
+            sq = math.sqrt(disc)
+            t1 = (-b - sq) / (2.0 * a)
+            t2 = (-b + sq) / (2.0 * a)
+            if 0.0 < t1 < 1.0:
+                total += _disk_piece(py, pz, dy, dz, ta, t1, R2)
+                ta = t1
+            if 0.0 < t2 < 1.0:
+                total += _disk_piece(py, pz, dy, dz, ta, t2, R2)
+                ta = t2
+        total += _disk_piece(py, pz, dy, dz, ta, 1.0, R2)
+    return total
 
 
 @njit(cache=True)
@@ -261,124 +231,52 @@ def _pixel_bin_area(quad_y: np.ndarray, quad_z: np.ndarray,
                     RMin: float, RMax: float,
                     EtaMin: float, EtaMax: float,
                     edges: np.ndarray) -> float:
-    """quad_y/quad_z[4]   in QUAD_ORDER traversal order
-       bin_y/bin_z[4]     bin corner positions (RMin/EtaMin, RMin/EtaMax,
-                                                RMax/EtaMin, RMax/EtaMax)
-       edges              scratch (50, 2)
+    """Exact area of (pixel quad) intersect (annular sector RMin..RMax, EtaMin..EtaMax).
+
+    quad_y/quad_z[4]   in QUAD_ORDER traversal (boundary) order
+    bin_y/bin_z[4]     unused; kept so the call sites do not change
+    edges              scratch (50, 2); rows 0-7, 8-15, 16-23, 24-31 hold polygons
+
+    area = A(RMax) - A(RMin), A(R) = area(pixel clipped to the wedge, inside the disk
+    of radius R); a wedge wider than 180 degrees is the whole-pixel disk area minus
+    the complementary wedge. Same algorithm as ``geometry.pixel_bin_intersect``; see
+    there for why it replaced the vertex enumeration.
     """
-    n_e = 0
-
-    # (1) pixel quad corners inside the (R, Eta) bin
-    for m in range(4):
-        cy = quad_y[m]
-        cz = quad_z[m]
-        RT = math.sqrt(cy * cy + cz * cz)
-        ET = _calc_eta(cy, cz)
-        if EtaMin < -180.0 and _sign(ET) != _sign(EtaMin):
-            ET -= 360.0
-        if EtaMax > 180.0 and _sign(ET) != _sign(EtaMax):
-            ET += 360.0
-        if RMin <= RT <= RMax and EtaMin <= ET <= EtaMax:
-            edges[n_e, 0] = cy
-            edges[n_e, 1] = cz
-            n_e += 1
-
-    # (2) bin corners inside the pixel quad
-    for m in range(4):
-        if _point_in_quad(bin_y[m], bin_z[m], quad_y, quad_z):
-            edges[n_e, 0] = bin_y[m]
-            edges[n_e, 1] = bin_z[m]
-            n_e += 1
-
-    # (3) edge-vs-edge intersections (only when we don't already have ≥4)
-    hits = np.empty((2, 2), dtype=np.float64)
-    one_hit = np.empty(2, dtype=np.float64)
-    if n_e < 4:
-        for e in range(4):
-            i0 = e
-            i1 = (e + 1) % 4
-            py1 = quad_y[i0]; pz1 = quad_z[i0]
-            py2 = quad_y[i1]; pz2 = quad_z[i1]
-
-            n_h = _circle_seg_hits(py1, pz1, py2, pz2, RMin, hits)
-            for h in range(n_h):
-                hy = hits[h, 0]; hz = hits[h, 1]
-                EtaH = _calc_eta(hy, hz)
-                if EtaMin < -180.0 and _sign(EtaH) != _sign(EtaMin):
-                    EtaH -= 360.0
-                if EtaMax > 180.0 and _sign(EtaH) != _sign(EtaMax):
-                    EtaH += 360.0
-                if EtaMin - EPS <= EtaH <= EtaMax + EPS:
-                    edges[n_e, 0] = hy
-                    edges[n_e, 1] = hz
-                    n_e += 1
-            n_h = _circle_seg_hits(py1, pz1, py2, pz2, RMax, hits)
-            for h in range(n_h):
-                hy = hits[h, 0]; hz = hits[h, 1]
-                EtaH = _calc_eta(hy, hz)
-                if EtaMin < -180.0 and _sign(EtaH) != _sign(EtaMin):
-                    EtaH -= 360.0
-                if EtaMax > 180.0 and _sign(EtaH) != _sign(EtaMax):
-                    EtaH += 360.0
-                if EtaMin - EPS <= EtaH <= EtaMax + EPS:
-                    edges[n_e, 0] = hy
-                    edges[n_e, 1] = hz
-                    n_e += 1
-
-            if _ray_seg_hit(py1, pz1, py2, pz2, EtaMin, one_hit):
-                hy = one_hit[0]; hz = one_hit[1]
-                RH = math.sqrt(hy * hy + hz * hz)
-                if RMin - EPS <= RH <= RMax + EPS:
-                    edges[n_e, 0] = hy
-                    edges[n_e, 1] = hz
-                    n_e += 1
-            if _ray_seg_hit(py1, pz1, py2, pz2, EtaMax, one_hit):
-                hy = one_hit[0]; hz = one_hit[1]
-                RH = math.sqrt(hy * hy + hz * hz)
-                if RMin - EPS <= RH <= RMax + EPS:
-                    edges[n_e, 0] = hy
-                    edges[n_e, 1] = hz
-                    n_e += 1
-
-    if n_e < 3:
+    if not (EtaMax > EtaMin) or not (RMax > RMin):
         return 0.0
+    # load the quad counterclockwise
+    s = 0.0
+    for i in range(4):
+        j = (i + 1) % 4
+        s += quad_y[i] * quad_z[j] - quad_y[j] * quad_z[i]
+    for i in range(4):
+        k = i if s >= 0.0 else 3 - i
+        edges[i, 0] = quad_y[k]
+        edges[i, 1] = quad_z[k]
 
-    # Dedup + clip
-    out_e = np.empty((50, 2), dtype=np.float64)
-    n_out = 0
-    for i in range(n_e):
-        is_dup = False
-        for j in range(i + 1, n_e):
-            dy = edges[i, 0] - edges[j, 0]
-            dz = edges[i, 1] - edges[j, 1]
-            if dy * dy + dz * dz == 0.0:
-                is_dup = True
-                break
-        if is_dup:
-            continue
-        RT = math.sqrt(edges[i, 0] ** 2 + edges[i, 1] ** 2)
-        ET = _calc_eta(edges[i, 0], edges[i, 1])
-        if not _between(ET, EtaMin, EtaMax):
-            if _between(ET + 360.0, EtaMin, EtaMax):
-                ET += 360.0
-            elif _between(ET - 360.0, EtaMin, EtaMax):
-                ET -= 360.0
-        if not _between(RT, RMin, RMax):
-            continue
-        if not _between(ET, EtaMin, EtaMax):
-            continue
-        out_e[n_out, 0] = edges[i, 0]
-        out_e[n_out, 1] = edges[i, 1]
-        n_out += 1
-
-    if n_out < 3:
-        return 0.0
-    return _polygon_area(out_e, n_out, RMin, RMax)
+    w = EtaMax - EtaMin
+    if w >= 360.0:
+        a = _disk_area(edges, 0, 4, RMax) - _disk_area(edges, 0, 4, RMin)
+        return a if a > 0.0 else 0.0
+    e0 = EtaMin * DEG2RAD
+    e1 = EtaMax * DEG2RAD
+    d0y = -math.sin(e0)
+    d0z = math.cos(e0)
+    d1y = -math.sin(e1)
+    d1z = math.cos(e1)
+    if w <= 180.0:
+        n1 = _clip_half(edges, 0, 4, 8, d0y, d0z, 1.0)
+        n2 = _clip_half(edges, 8, n1, 16, d1y, d1z, -1.0)
+        a = _disk_area(edges, 16, n2, RMax) - _disk_area(edges, 16, n2, RMin)
+        return a if a > 0.0 else 0.0
+    n1 = _clip_half(edges, 0, 4, 8, d1y, d1z, 1.0)
+    n2 = _clip_half(edges, 8, n1, 16, d0y, d0z, -1.0)
+    full = _disk_area(edges, 0, 4, RMax) - _disk_area(edges, 0, 4, RMin)
+    comp = _disk_area(edges, 16, n2, RMax) - _disk_area(edges, 16, n2, RMin)
+    a = full - comp
+    return a if a > 0.0 else 0.0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main parallel kernel
-# ─────────────────────────────────────────────────────────────────────────────
 @njit(cache=True, parallel=True)
 def map_kernel(
     R_corners: np.ndarray,        # (NZ, NY, 4)
@@ -449,6 +347,8 @@ def map_kernel(
                 v = Eta_corners[j, i, k]
                 if v < emi: emi = v
                 if v > ema: ema = v
+            rq = _quad_min_r(quad_y, quad_z)
+            if rq < rmi: rmi = rq
 
             # masked pixel handling
             is_masked = (mask_present == 1) and (mask[j, i] == 1.0)
@@ -460,11 +360,16 @@ def map_kernel(
                 # candidate Eta bins (handle ±360 wrap)
                 eta_lo_s = emi
                 eta_hi_s = ema
-                wraps = (eta_hi_s - eta_lo_s) > 180.0
-                if wraps:
-                    tmp = eta_hi_s
-                    eta_hi_s = 360.0 + eta_lo_s
-                    eta_lo_s = tmp
+                # A pixel that crosses the eta = +-180 seam (or contains the beam centre) has
+                # corners on both sides, so its (min, max) eta spans > 180 deg and says nothing
+                # about which bins it touches. Visit EVERY eta bin; the exact intersection below
+                # returns zero for the ones it misses. The previous unwrap built the interval
+                # [max corner, 360 + min corner], the INNER part of the true extent, so a bin
+                # that only the outermost corner reaches was never visited and its area was
+                # silently dropped (up to ~30% of a pixel at R ~ 4 px with 10 deg bins).
+                if (eta_hi_s - eta_lo_s) > 180.0:
+                    eta_lo_s = -1.0e30
+                    eta_hi_s = 1.0e30
                 for ke in range(n_eta_bins):
                     in_range = False
                     if eta_hi[ke] >= eta_lo_s and eta_lo[ke] <= eta_hi_s:
@@ -869,6 +774,10 @@ def map_kernel_subpixel(
                         quad_y[k] = -Rt_c * math.sin(e_rad)
                         quad_z[k] =  Rt_c * math.cos(e_rad)
 
+                    rq = _quad_min_r(quad_y, quad_z)
+                    if rq < rmi:
+                        rmi = rq
+
                     # Sub-pixel center for deltaR
                     ypr_sub = ypr + sp_cy
                     zpr_sub = zpr + sp_cz
@@ -886,11 +795,16 @@ def map_kernel_subpixel(
                             continue
                         eta_lo_s = emi
                         eta_hi_s = ema
-                        wraps = (eta_hi_s - eta_lo_s) > 180.0
-                        if wraps:
-                            tmp = eta_hi_s
-                            eta_hi_s = 360.0 + eta_lo_s
-                            eta_lo_s = tmp
+                        # A pixel that crosses the eta = +-180 seam (or contains the beam centre) has
+                        # corners on both sides, so its (min, max) eta spans > 180 deg and says nothing
+                        # about which bins it touches. Visit EVERY eta bin; the exact intersection below
+                        # returns zero for the ones it misses. The previous unwrap built the interval
+                        # [max corner, 360 + min corner], the INNER part of the true extent, so a bin
+                        # that only the outermost corner reaches was never visited and its area was
+                        # silently dropped (up to ~30% of a pixel at R ~ 4 px with 10 deg bins).
+                        if (eta_hi_s - eta_lo_s) > 180.0:
+                            eta_lo_s = -1.0e30
+                            eta_hi_s = 1.0e30
                         for ke in range(n_eta_bins):
                             in_range = False
                             if eta_hi[ke] >= eta_lo_s and eta_lo[ke] <= eta_hi_s:

@@ -46,12 +46,27 @@ def test_midas_eta_zero_is_vertical_and_ninety_is_horizontal():
 
 def test_the_eta_the_kernels_use_is_the_same_convention():
     """The correction consumes the *bin* η built inside the mapper, not
-    ``calc_eta_angle``. They must be the same function."""
-    from midas_integrate.geometry import calc_eta_angle
-    from midas_integrate._mapper_numba import _calc_eta as numba_eta
+    ``calc_eta_angle``. They must be the same function.
 
-    for y, z in ((0.0, 1.0), (1.0, 0.0), (-1.0, 0.0), (0.7, -0.7), (-0.3, 0.9)):
-        assert numba_eta(y, z) == pytest.approx(calc_eta_angle(y, z), abs=1e-12)
+    The mapper's bins are wedges along the ray ``(-sin eta, cos eta)`` (see
+    ``_pixel_bin_area``). Pin that this is ``calc_eta_angle``'s convention
+    without reaching for a private helper: a tiny pixel at azimuth
+    ``calc_eta_angle(y, z)`` lies wholly inside the bin around that azimuth and
+    wholly outside the bin five degrees away, for every quadrant.
+    """
+    import numpy as np
+    from midas_integrate.geometry import calc_eta_angle
+    from midas_integrate._mapper_numba import _pixel_bin_area
+
+    h = 1e-3
+    edges = np.empty((50, 2)); dummy = np.zeros(4)
+    for y, z in ((0.0, 10.0), (10.0, 0.0), (-10.0, 0.0), (7.0, -7.0), (-3.0, 9.0), (0.0, -10.0)):
+        eta = calc_eta_angle(y, z); R = math.hypot(y, z)
+        qy = np.array([y - h, y - h, y + h, y + h]); qz = np.array([z - h, z + h, z + h, z - h])
+        inside = _pixel_bin_area(qy, qz, dummy, dummy, R - 1.0, R + 1.0, eta - 1.0, eta + 1.0, edges)
+        outside = _pixel_bin_area(qy, qz, dummy, dummy, R - 1.0, R + 1.0, eta + 4.0, eta + 6.0, edges)
+        assert inside == pytest.approx(4.0 * h * h, rel=1e-9), (y, z, eta, inside)
+        assert outside == 0.0, (y, z, eta, outside)
 
 
 # ------------------------------------------- 2. where the node actually is

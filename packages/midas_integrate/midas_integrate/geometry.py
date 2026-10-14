@@ -674,6 +674,9 @@ def find_unique_vertices(edges_in: List[Tuple[float, float]],
                          ) -> List[Tuple[float, float]]:
     """Drop duplicate vertices and clip to the (R, Eta) bin.
 
+    Not used by ``pixel_bin_intersect`` any more (it clips against a disk
+    instead of enumerating vertices); kept as public API.
+
     Mirror of dg_find_unique_vertices.
     """
     out: List[Tuple[float, float]] = []
@@ -707,6 +710,10 @@ def find_unique_vertices(edges_in: List[Tuple[float, float]],
 def polygon_area(edges: List[Tuple[float, float]],
                  RMin: float, RMax: float) -> float:
     """Green's-theorem area of a polygon with mixed straight + arc edges.
+
+    Not used by ``pixel_bin_intersect`` any more; kept as public API. NOTE: an
+    edge whose endpoints both lie on RMin or RMax is integrated as an arc, so it
+    is wrong for a straight pixel edge that crosses a bin circle twice.
 
     Vertices are sorted counterclockwise around the centroid before applying
     the line integral. Edges where both endpoints lie on R = RMin or R = RMax
@@ -760,90 +767,158 @@ def polygon_area(edges: List[Tuple[float, float]],
     return abs(area)
 
 
+def quad_min_radius(cornerYZ: np.ndarray) -> np.ndarray:
+    """Smallest distance from the origin to each pixel quad; 0 where it contains the origin.
+
+    ``cornerYZ`` has shape (..., 4, 2) with Z-ordered corners (walked via ``QUAD_ORDER``);
+    the result has shape (...).
+
+    The candidate radial bins of a pixel must be taken from this, not from the corners'
+    radii: a straight edge can pass closer to the origin than either of its corners, by up
+    to L^2 / (8 R). When a bin boundary falls inside that window the pixel overlaps the bin
+    below it in a thin sliver that a corners-only range never visits (up to ~0.4 percent of
+    a pixel, on the pixels along the cardinal axes). The LARGEST radius is always at a
+    corner: a chord lies inside the circle through its endpoints.
+    """
+    idx = list(QUAD_ORDER)
+    P = np.asarray(cornerYZ, dtype=np.float64)[..., idx, :]       # boundary order
+    Q = np.roll(P, -1, axis=-2)
+    D = Q - P
+    a = (D ** 2).sum(-1)
+    t = np.clip(-(P * D).sum(-1) / np.where(a > 0.0, a, 1.0), 0.0, 1.0)
+    foot = P + t[..., None] * D
+    dist = np.sqrt((foot ** 2).sum(-1)).min(axis=-1)
+    cr = P[..., 0] * D[..., 1] - P[..., 1] * D[..., 0]
+    inside = ~((cr > 0).any(-1) & (cr < 0).any(-1))     # every edge winds the same way: origin inside
+    return np.where(inside, 0.0, dist)
+
+
+def _clip_halfplane(poly, uy: float, uz: float, sgn: float):
+    """Sutherland-Hodgman: keep the part of ``poly`` with sgn*(uy*z - uz*y) >= 0.
+
+    The half-plane is bounded by the line through the origin along (uy, uz). A
+    vertex exactly on the line counts as inside, so a pixel edge lying exactly on a
+    bin ray is kept whole instead of being split by rounding.
+    """
+    n = len(poly)
+    if n == 0:
+        return []
+    f = [sgn * (uy * p[1] - uz * p[0]) for p in poly]
+    out = []
+    for i in range(n):
+        j = (i + 1) % n
+        pin = f[i] >= 0.0
+        if pin:
+            out.append(poly[i])
+        if pin != (f[j] >= 0.0):
+            t = f[i] / (f[i] - f[j])
+            out.append((poly[i][0] + t * (poly[j][0] - poly[i][0]),
+                        poly[i][1] + t * (poly[j][1] - poly[i][1])))
+    return out
+
+
+def _area_in_disk(poly, R: float) -> float:
+    """Exact area of (counterclockwise polygon) intersect (disk of radius R at the origin).
+
+    Sum over edges of the signed area of (triangle origin-P-Q) intersect (disk):
+    the parts of the edge inside the disk contribute a triangle, the parts outside
+    contribute a circular sector of the same angle. Each edge is split at its (at
+    most two) crossings with the circle. There are no arcs to classify, no vertices
+    to deduplicate and no tolerances: a straight edge that cuts the circle twice
+    (near-tangent), an edge lying exactly on a ray, and a two-vertex lens all
+    come out right.
+    """
+    n = len(poly)
+    if n < 3 or R <= 0.0:
+        return 0.0
+    R2 = R * R
+    total = 0.0
+    for i in range(n):
+        py, pz = poly[i]
+        qy, qz = poly[(i + 1) % n]
+        dy = qy - py
+        dz = qz - pz
+        a = dy * dy + dz * dz
+        if a == 0.0:
+            continue
+        b = 2.0 * (py * dy + pz * dz)
+        c = py * py + pz * pz - R2
+        cuts = [0.0]
+        disc = b * b - 4.0 * a * c
+        if disc > 0.0:
+            s = math.sqrt(disc)
+            t1 = (-b - s) / (2.0 * a)
+            t2 = (-b + s) / (2.0 * a)
+            if 0.0 < t1 < 1.0:
+                cuts.append(t1)
+            if 0.0 < t2 < 1.0:
+                cuts.append(t2)
+        cuts.append(1.0)
+        for k in range(len(cuts) - 1):
+            ta, tb = cuts[k], cuts[k + 1]
+            ay, az = py + ta * dy, pz + ta * dz
+            by, bz = py + tb * dy, pz + tb * dz
+            tm = 0.5 * (ta + tb)
+            my, mz = py + tm * dy, pz + tm * dz
+            cr = ay * bz - az * by
+            if my * my + mz * mz <= R2:
+                total += 0.5 * cr
+            else:
+                total += 0.5 * R2 * math.atan2(cr, ay * by + az * bz)
+    return total
+
+
 def pixel_bin_intersect(
     cornerYZ: np.ndarray,            # shape (4, 2) of pixel corners in (Y, Z)
     RMin: float, RMax: float, EtaMin: float, EtaMax: float,
-    bin_corners: Optional[np.ndarray] = None,   # shape (4, 2) bin corners
+    bin_corners: Optional[np.ndarray] = None,   # accepted for compatibility; unused
 ) -> float:
-    """Compute intersection area of a pixel quad with one (R, Eta) bin.
+    """Exact area of the intersection of a pixel quad with one (R, Eta) bin.
 
-    This is the inner kernel called by ``detector_mapper.build_map`` for each
-    candidate (pixel, bin) pair. It mirrors the Green's-theorem section of
-    ``mapper_build_map`` in MapperCore.c.
+    The bin is the annular sector RMin <= R <= RMax between the rays at EtaMin and
+    EtaMax (MIDAS eta: the ray at eta points along (-sin eta, cos eta) in (Y, Z)).
+    The pixel is the straight-edged quad through ``cornerYZ`` (Z-ordered corners,
+    walked via ``QUAD_ORDER``).
 
-    ``bin_corners`` are the (Y,Z) of the bin's four (R, Eta) corners; if not
-    provided, they are computed from RMin/RMax/EtaMin/EtaMax.
+    area = A(RMax) - A(RMin), with A(R) = area(pixel clipped to the wedge, inside
+    the disk of radius R). The wedge clip is a convex polygon clip against the two
+    bounding rays; a wedge wider than 180 degrees is handled as the pixel's disk
+    area minus the area in the complementary wedge. See ``_area_in_disk``.
+
+    This replaces the earlier vertex enumeration (pixel corners in bin, bin
+    corners in pixel, edge crossings, sort, then arc-or-chord by whether both
+    endpoints lie on a bin circle). That scheme could not represent a straight
+    pixel edge cutting a bin circle twice: it integrated the segment between the
+    two crossings as an arc, and returned zero when only those two vertices
+    existed.
     """
-    if bin_corners is None:
-        bin_corners = np.empty((4, 2), dtype=np.float64)
-        bin_corners[0] = REta_to_YZ_scalar(RMin, EtaMin)
-        bin_corners[1] = REta_to_YZ_scalar(RMin, EtaMax)
-        bin_corners[2] = REta_to_YZ_scalar(RMax, EtaMin)
-        bin_corners[3] = REta_to_YZ_scalar(RMax, EtaMax)
-
-    edges: List[Tuple[float, float]] = []
-
-    # (1) pixel corners that lie inside the (R, Eta) bin
-    for m in range(4):
-        cy, cz = cornerYZ[m, 0], cornerYZ[m, 1]
-        RT = math.hypot(cy, cz)
-        ET = calc_eta_angle(cy, cz)
-        if EtaMin < -180.0 and _sign(ET) != _sign(EtaMin):
-            ET -= 360.0
-        if EtaMax > 180.0 and _sign(ET) != _sign(EtaMax):
-            ET += 360.0
-        if RMin <= RT <= RMax and EtaMin <= ET <= EtaMax:
-            edges.append((cy, cz))
-
-    # (2) bin corners that lie inside the pixel quad
-    for m in range(4):
-        by, bz = bin_corners[m, 0], bin_corners[m, 1]
-        if point_in_quad(by, bz, cornerYZ):
-            edges.append((by, bz))
-
-    # (3) edge-vs-edge intersections (only when we don't already have ≥4)
-    if len(edges) < 4:
-        for e in range(4):
-            i0 = QUAD_ORDER[e]
-            i1 = QUAD_ORDER[(e + 1) % 4]
-            py1, pz1 = cornerYZ[i0, 0], cornerYZ[i0, 1]
-            py2, pz2 = cornerYZ[i1, 0], cornerYZ[i1, 1]
-
-            for hit in circle_seg_intersect(py1, pz1, py2, pz2, RMin):
-                hy, hz = hit
-                EtaH = calc_eta_angle(hy, hz)
-                if EtaMin < -180.0 and _sign(EtaH) != _sign(EtaMin):
-                    EtaH -= 360.0
-                if EtaMax > 180.0 and _sign(EtaH) != _sign(EtaMax):
-                    EtaH += 360.0
-                if EtaMin - EPS <= EtaH <= EtaMax + EPS:
-                    edges.append((hy, hz))
-            for hit in circle_seg_intersect(py1, pz1, py2, pz2, RMax):
-                hy, hz = hit
-                EtaH = calc_eta_angle(hy, hz)
-                if EtaMin < -180.0 and _sign(EtaH) != _sign(EtaMin):
-                    EtaH -= 360.0
-                if EtaMax > 180.0 and _sign(EtaH) != _sign(EtaMax):
-                    EtaH += 360.0
-                if EtaMin - EPS <= EtaH <= EtaMax + EPS:
-                    edges.append((hy, hz))
-
-            hit = ray_seg_intersect(py1, pz1, py2, pz2, EtaMin)
-            if hit is not None:
-                hy, hz = hit
-                RH = math.hypot(hy, hz)
-                if RMin - EPS <= RH <= RMax + EPS:
-                    edges.append((hy, hz))
-            hit = ray_seg_intersect(py1, pz1, py2, pz2, EtaMax)
-            if hit is not None:
-                hy, hz = hit
-                RH = math.hypot(hy, hz)
-                if RMin - EPS <= RH <= RMax + EPS:
-                    edges.append((hy, hz))
-
-    if len(edges) < 3:
+    if not (EtaMax > EtaMin) or not (RMax > RMin):
         return 0.0
-    edges = find_unique_vertices(edges, RMin, RMax, EtaMin, EtaMax)
-    if len(edges) < 3:
-        return 0.0
-    return polygon_area(edges, RMin, RMax)
+    quad = [(float(cornerYZ[i, 0]), float(cornerYZ[i, 1])) for i in QUAD_ORDER]
+    # counterclockwise in (Y, Z)
+    s = 0.0
+    for i in range(4):
+        y1, z1 = quad[i]
+        y2, z2 = quad[(i + 1) % 4]
+        s += y1 * z2 - y2 * z1
+    if s < 0.0:
+        quad.reverse()
+
+    def sector(poly):
+        return _area_in_disk(poly, RMax) - _area_in_disk(poly, RMin)
+
+    w = EtaMax - EtaMin
+    if w >= 360.0:
+        return max(sector(quad), 0.0)
+    e0 = EtaMin * DEG2RAD
+    e1 = EtaMax * DEG2RAD
+    d0y, d0z = -math.sin(e0), math.cos(e0)
+    d1y, d1z = -math.sin(e1), math.cos(e1)
+    if w <= 180.0:
+        p = _clip_halfplane(quad, d0y, d0z, 1.0)
+        p = _clip_halfplane(p, d1y, d1z, -1.0)
+        return max(sector(p), 0.0)
+    # wider than a half turn: the wedge is not convex; subtract the complementary wedge
+    pc = _clip_halfplane(quad, d1y, d1z, 1.0)
+    pc = _clip_halfplane(pc, d0y, d0z, -1.0)
+    return max(sector(quad) - sector(pc), 0.0)
