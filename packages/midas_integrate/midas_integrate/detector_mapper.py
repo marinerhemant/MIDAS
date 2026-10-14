@@ -505,6 +505,13 @@ def build_map(
     params.validate()
     t0 = time.perf_counter()
 
+    if params.pxZ and abs(float(params.pxZ) - float(params.pxY)) > 1e-6 * float(params.pxY):
+        warnings.warn(
+            f"midas_integrate's v1 mapper is a single-pitch model: it uses pxY ({params.pxY:g} um) for BOTH detector "
+            f"axes and ignores pxZ ({params.pxZ:g} um), so radii, bin assignment and areas are wrong for non-square "
+            "pixels. Use midas_integrate_v2's native binning (HardBinGeometry / SubpixelBinGeometry / PolygonBinGeometry / "
+            "SoftBinGeometry), which handles pxY != pxZ.", UserWarning, stacklevel=2)
+
     NY = params.NrPixelsY
     NZ = params.NrPixelsZ
     px = params.pxY

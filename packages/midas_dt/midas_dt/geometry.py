@@ -235,6 +235,12 @@ def from_calibration(result: Any) -> DTGeometry:
             f"expected an AutoCalibrationResult; the object given lacks {missing}"
         )
     px = float(result.pxY)
+    pxz = float(getattr(result, "pxZ", 0.0) or 0.0)
+    if pxz > 0 and abs(pxz - px) > 1e-6 * px:
+        raise ValueError(
+            f"midas_dt's geometry is a single-pitch (square pixel) model, but this calibration has pxY={px:g} um and "
+            f"pxZ={pxz:g} um; taking pxY alone would give wrong radii and 2theta. Use spec_from_calibration(), which keeps "
+            "both pitches, to integrate.")
     ny, nz = int(result.NrPixelsY), int(result.NrPixelsZ)
     bcy, bcz = float(result.BC_y), float(result.BC_z)
 

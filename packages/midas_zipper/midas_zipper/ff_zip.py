@@ -30,6 +30,22 @@ from numcodecs import blosc as _blosc
 _MIDAS_DIST = "midas-zipper"
 
 
+
+def _cbf_pixel_um(px_m):
+    """Pixel pitch (um) from a CBF/Pilatus ``Pixel_size`` entry (metres; a single value or a ``(y, z)`` pair).
+
+    The FF-HEDM stack is single-pitch, so for a pair the first axis is kept; a non-square pair emits a warning because radii
+    would then be wrong along the other axis."""
+    if isinstance(px_m, (tuple, list)):
+        if len(px_m) > 1 and abs(px_m[1] - px_m[0]) > 1e-6 * abs(px_m[0]):
+            import warnings
+            warnings.warn(
+                f"CBF header pixel size is non-square ({px_m[0] * 1e6:g} x {px_m[1] * 1e6:g} um); the FF-HEDM stack uses "
+                "one pitch, so only the first axis is kept and radii will be wrong along the other.",
+                UserWarning, stacklevel=3)
+        return px_m[0] * 1e6
+    return float(px_m) * 1e6
+
 def _midas_make_parser(*a, **kw):
     """ArgumentParser factory. Uses midas_params' subclass when available so
     argument errors carry the running version and a did-you-mean; falls back to
@@ -601,10 +617,7 @@ def process_multifile_scan(file_type, config, z_groups):
             pilatus = cbf_hdr.get('pilatus', {})
             if 'Pixel_size' in pilatus and 'px' not in config and 'PixelSize' not in config:
                 px_m = pilatus['Pixel_size']  # (y_m, z_m) tuple or single float
-                if isinstance(px_m, (tuple, list)):
-                    px_um = px_m[0] * 1e6  # assume square pixels, take first
-                else:
-                    px_um = float(px_m) * 1e6
+                px_um = _cbf_pixel_um(px_m)
                 config['px'] = px_um
                 config['PixelSize'] = px_um
                 print(f"  - Auto-sensed pixel size from CBF header: {px_um:.1f} µm")
