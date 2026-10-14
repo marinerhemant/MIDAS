@@ -213,3 +213,27 @@ def test_a_snake_starting_the_other_way_is_refused_not_pinned_to_the_wrong_sign(
         omega_map_from_reference(new, ref)
     m = omega_map_from_reference([r + rng.normal(0, 1e-3, r.size) for r in ref], ref)   # same direction: pure +rot
     assert m["sign"] == 1.0 and abs(m["offset"]) < 0.01
+
+
+# ── omega range: MIDAS takes [-180, 180] only ───────────────────────────────
+def test_wrap_omega_leaves_a_normal_scan_alone_and_shifts_a_whole_scan_outside_the_range():
+    from midas_zipper.bliss import wrap_omega_180
+    w, sh = wrap_omega_180(np.linspace(-89.94, 90.94, 50)); assert not sh and w[0] == pytest.approx(-89.94)
+    w, sh = wrap_omega_180(np.linspace(200.0, 380.0, 50)); assert sh and w.min() >= -180 and w.max() < 180
+    assert np.allclose(np.diff(w), np.diff(np.linspace(200.0, 380.0, 50)))        # same sweep, only shifted by 360
+
+
+def test_a_scan_running_through_plus_minus_180_is_refused():
+    from midas_zipper.bliss import wrap_omega_180
+    with pytest.raises(ValueError, match="through"):
+        wrap_omega_180(np.linspace(100.0, 260.0, 50))
+
+
+def test_convert_master_wraps_omega_and_refuses_a_scan_through_180(tmp_path):
+    m, rots = _master(tmp_path)
+    p = tmp_path / "params.txt"; p.write_text(PARAMS)
+    out = convert_master(m, tmp_path / "raw", "S", p, omega_sign=1, omega_offset=360.0)   # whole master shifted by 360
+    om = np.asarray(zarr.open(str(out[0]), "r")[OMEGA_CENTER_KEY][...])
+    assert om.min() >= -180 and np.allclose(om, rots[0], atol=1e-9)
+    with pytest.raises(ValueError, match="through"):
+        convert_master(m, tmp_path / "raw2", "S", p, omega_sign=1, omega_offset=120.0)  # -90..91 -> 30..211 crosses 180

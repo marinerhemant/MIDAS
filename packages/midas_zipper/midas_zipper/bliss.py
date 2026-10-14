@@ -10,7 +10,9 @@ module only finds them and adds what the zipper does not know about:
 ``measurement/process/scan_parameters/omegaCenter``
     per-frame omega. midas_peakfit uses it in place of start + i*step, which is
     what makes a SNAKE scan (omega running up on one scan and down on the next)
-    come out right. It is ``sign * rot_center + offset``.
+    come out right. It is ``sign * rot_center + offset``, wrapped into
+    [-180, 180) because MIDAS takes no other range (:func:`wrap_omega_180`). A
+    scan that runs THROUGH +-180 cannot be stored that way and is refused.
 ``measurement/process/scan_parameters/dty``
     the scan's translation, for the record (positions.csv is built separately).
 ``exchange/mask``
@@ -41,7 +43,8 @@ try:  # Eiger/Lima frames are bitshuffle/LZ4 compressed
 except ImportError:  # pragma: no cover
     pass
 
-__all__ = ["BlissScan", "survey_master", "omega_map_from_reference", "convert_master"]
+__all__ = ["BlissScan", "survey_master", "omega_map_from_reference", "wrap_omega_180", "convert_scan",
+           "convert_master"]
 
 OMEGA_CENTER_KEY = "measurement/process/scan_parameters/omegaCenter"
 DTY_KEY = "measurement/process/scan_parameters/dty"
@@ -182,17 +185,88 @@ def omega_map_from_reference(rots: Sequence[np.ndarray], ref_omegas: Sequence[np
             "n_scans": len(pairs), "n_frames": int(R.size)}
 
 
+def wrap_omega_180(omega: Sequence[float]) -> Tuple[np.ndarray, bool]:
+    """Wrap per-frame omega (deg) into [-180, 180), the only range MIDAS takes.
+
+    Returns ``(wrapped, was_shifted)``. A whole scan sitting outside the range (e.g. 200..380) is shifted by a
+    multiple of 360, which changes nothing physical. A scan that runs THROUGH the +-180 boundary would come out
+    with a 360 deg jump between neighbouring frames (omega sweeping 170 -> 190 becomes 170 -> -170), which
+    omegaCenter cannot represent: it raises instead of writing a scan whose frames are silently out of order.
+    """
+    w = np.asarray(omega, dtype=np.float64).ravel()
+    out = (w + 180.0) % 360.0 - 180.0
+    shifted = bool(np.any(np.abs(out - w) > 1e-9))
+    if out.size > 1 and np.max(np.abs(np.diff(out))) > 180.0 and np.max(np.abs(np.diff(w))) <= 180.0:
+        raise ValueError(f"omega runs through +-180 deg (raw {w[0]:.4f} .. {w[-1]:.4f}); MIDAS takes only [-180, 180] "
+                         "so this scan would have a 360 deg jump between neighbouring frames. Split the scan or "
+                         "shift the omega offset so the whole scan sits inside one 360 deg window")
+    return out, shifted
+
+
+def convert_scan(sc: "BlissScan", out_zip: os.PathLike | str, param_file: os.PathLike | str, *, omega_sign: float,
+                 omega_offset: float = 0.0, mask: Optional[np.ndarray] = None, preproc_thresh: int = -1,
+                 work_dir: Optional[os.PathLike | str] = None) -> Path:
+    """Write ONE scan of a Bliss master to exactly ``out_zip`` (frames unchanged, ``omegaCenter`` wrapped into
+    [-180, 180), ``dty`` for the record, optional ``mask``). ``preproc_thresh`` is the zipper's ``-preProcThresh``
+    (pixels below it become 0). ``work_dir`` holds the zipper's intermediate files (default: ``out_zip``'s
+    directory)."""
+    import zarr
+    from . import generate_ff_zip
+    from .zipwrite import write_arrays
+
+    if omega_sign not in (1, -1, 1.0, -1.0):
+        raise ValueError("omega_sign must be +1 or -1 (pin it with omega_map_from_reference)")
+    out_zip = Path(out_zip); d = Path(work_dir) if work_dir is not None else out_zip.parent
+    d.mkdir(parents=True, exist_ok=True)
+    omega, _ = wrap_omega_180(float(omega_sign) * sc.rot_center + float(omega_offset))   # refuse BEFORE any work
+    data_fn, data_loc = sc.frames_file, sc.frames_path
+    if sc.total_frames not in (-1, sc.n_frames):     # one line of an fscan2d: a VDS over its frame range
+        import h5py
+        data_fn = str(d / f"{out_zip.stem}_frames.h5"); data_loc = "/data"
+        with h5py.File(sc.frames_file, "r") as f:
+            full = f[sc.frames_path]; shp, dt = full.shape, full.dtype
+        with h5py.File(data_fn, "w") as h:
+            lay = h5py.VirtualLayout(shape=(sc.n_frames,) + shp[1:], dtype=dt)
+            lay[:] = h5py.VirtualSource(sc.frames_file, sc.frames_path, shape=shp)[sc.frame_start:sc.frame_start + sc.n_frames]
+            h.create_virtual_dataset("data", lay)
+    generate_ff_zip(result_folder=str(d), param_file=str(param_file), data_fn=data_fn, preproc_thresh=int(preproc_thresh),
+                    extra_args=["-dataLoc", data_loc])
+    made = d / f"{Path(data_fn).name}.analysis.MIDAS.zip"
+    if not made.is_file():
+        raise RuntimeError(f"zipper wrote no {made}")
+    shutil.move(str(made), str(out_zip))
+    z = zarr.open(str(out_zip), "r")
+    nf = z["exchange/data"].shape[0]
+    if nf != sc.n_frames:
+        raise RuntimeError(f"{out_zip.name}: {nf} frames written, entry {sc.entry} has {sc.n_frames}")
+    # generate_ff_zip drives the zipper through sys.argv, so two calls in one process (threads) can read each
+    # other's input and still produce a plausible zip. The zip records the file it read: it must be ours.
+    src = np.asarray(z["analysis/process/analysis_parameters/dataFN"][...]).ravel()[0]
+    src = src.decode() if isinstance(src, bytes) else str(src)
+    if src != str(data_fn):
+        raise RuntimeError(f"{out_zip.name} was built from {src}, not from {data_fn}: concurrent zipper calls in one "
+                           "process share sys.argv; run each scan in its own process")
+    arrays = {OMEGA_CENTER_KEY: omega}
+    if sc.dty is not None:
+        arrays[DTY_KEY] = np.array([sc.dty])
+    chunks = {}
+    if mask is not None:
+        if mask.shape[-2:] != z["exchange/data"].shape[1:]:
+            raise ValueError(f"mask {mask.shape} does not fit frames {z['exchange/data'].shape}")
+        arrays[MASK_KEY] = mask; chunks[MASK_KEY] = (1,) + mask.shape[-2:]
+    write_arrays(out_zip, arrays, chunks=chunks)
+    return out_zip
+
+
 def convert_master(master: os.PathLike | str, out_raw: os.PathLike | str, stem: str,
                    param_file: os.PathLike | str, *, omega_sign: float, omega_offset: float = 0.0,
                    mask_from: Optional[os.PathLike | str] = None, first_scan_nr: int = 1,
                    scans: Optional[List[BlissScan]] = None, only: Optional[Sequence[int]] = None,
-                   detector: str = "eiger") -> List[Path]:
+                   detector: str = "eiger", preproc_thresh: int = -1) -> List[Path]:
     """Write ``out_raw/<n>/<stem>_<n:06d>.MIDAS.zip`` for every scan of ``master`` (n from ``first_scan_nr``,
     in scan order; ``only`` restricts to those n). ``omega_sign`` must be given (+1 or -1): take it from
     :func:`omega_map_from_reference`. ``param_file`` supplies the analysis parameters as for any zip."""
     import zarr
-    from . import generate_ff_zip
-    from .zipwrite import write_arrays
 
     if omega_sign not in (1, -1, 1.0, -1.0):
         raise ValueError("omega_sign must be +1 or -1 (pin it with omega_map_from_reference)")
@@ -205,38 +279,9 @@ def convert_master(master: os.PathLike | str, out_raw: os.PathLike | str, stem: 
         n = first_scan_nr + i
         if only is not None and n not in set(only):
             continue
-        d = Path(out_raw) / str(n); d.mkdir(parents=True, exist_ok=True)
-        data_fn, data_loc = sc.frames_file, sc.frames_path
-        if sc.total_frames not in (-1, sc.n_frames):     # one line of an fscan2d: a VDS over its frame range
-            import h5py
-            data_fn = str(d / f"{stem}_{n:06d}_frames.h5"); data_loc = "/data"
-            with h5py.File(sc.frames_file, "r") as f:
-                full = f[sc.frames_path]; shp, dt = full.shape, full.dtype
-            with h5py.File(data_fn, "w") as h:
-                lay = h5py.VirtualLayout(shape=(sc.n_frames,) + shp[1:], dtype=dt)
-                lay[:] = h5py.VirtualSource(sc.frames_file, sc.frames_path, shape=shp)[sc.frame_start:sc.frame_start + sc.n_frames]
-                h.create_virtual_dataset("data", lay)
-        generate_ff_zip(result_folder=str(d), param_file=str(param_file), data_fn=data_fn,
-                        extra_args=["-dataLoc", data_loc])
-        made = d / f"{Path(data_fn).name}.analysis.MIDAS.zip"
-        final = d / f"{stem}_{n:06d}.MIDAS.zip"
-        if not made.is_file():
-            raise RuntimeError(f"zipper wrote no {made}")
-        shutil.move(str(made), str(final))
-        z = zarr.open(str(final), "r")
-        nf = z["exchange/data"].shape[0]
-        if nf != sc.n_frames:
-            raise RuntimeError(f"{final.name}: {nf} frames written, entry {sc.entry} has {sc.n_frames}")
-        arrays = {OMEGA_CENTER_KEY: float(omega_sign) * sc.rot_center + float(omega_offset)}
-        if sc.dty is not None:
-            arrays[DTY_KEY] = np.array([sc.dty])
-        chunks = {}
-        if mask is not None:
-            if mask.shape[-2:] != z["exchange/data"].shape[1:]:
-                raise ValueError(f"mask {mask.shape} does not fit frames {z['exchange/data'].shape}")
-            arrays[MASK_KEY] = mask; chunks[MASK_KEY] = (1,) + mask.shape[-2:]
-        write_arrays(final, arrays, chunks=chunks)
-        written.append(final)
+        written.append(convert_scan(sc, Path(out_raw) / str(n) / f"{stem}_{n:06d}.MIDAS.zip", param_file,
+                                    omega_sign=omega_sign, omega_offset=omega_offset, mask=mask,
+                                    preproc_thresh=preproc_thresh))
     return written
 
 
@@ -255,6 +300,7 @@ def main(argv=None) -> int:
     c.add_argument("--omega-sign", type=float, required=True); c.add_argument("--omega-offset", type=float, default=0.0)
     c.add_argument("--mask-from"); c.add_argument("--first-scan-nr", type=int, default=1)
     c.add_argument("--only", type=int, nargs="*"); c.add_argument("--detector", default="eiger")
+    c.add_argument("--preproc-thresh", type=int, default=-1, help="zipper -preProcThresh: pixels below it become 0")
     a = ap.parse_args(argv)
     if a.cmd == "survey":
         sc = survey_master(a.master, detector=a.detector)
@@ -272,7 +318,8 @@ def main(argv=None) -> int:
     else:
         out = convert_master(a.master, a.out_raw, a.stem, a.param_file, omega_sign=a.omega_sign,
                              omega_offset=a.omega_offset, mask_from=a.mask_from,
-                             first_scan_nr=a.first_scan_nr, only=a.only, detector=a.detector)
+                             first_scan_nr=a.first_scan_nr, only=a.only, detector=a.detector,
+                             preproc_thresh=a.preproc_thresh)
         print(f"wrote {len(out)} zips")
     return 0
 
