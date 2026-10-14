@@ -24,3 +24,10 @@ def test_hook_writes_only_when_requested(tmp_path, monkeypatch):
 def test_key_is_propagated_to_the_comp_paramstest():
     from midas_pipeline.stages import _comp_params
     assert "RelFitRMSEWeightR0" in _comp_params._INDEXER_KEYS
+
+
+def test_spot_weights_directional_reaches_the_refiner_paramstest():
+    """SpotWeightsDirectional in the user's file must be appended to the refiner's
+    paramstest, or FitUnified.c refines unweighted with no message (2026-10-11)."""
+    from midas_pipeline.stages import _comp_params
+    assert "SpotWeightsDirectional" in _comp_params._INDEXER_KEYS

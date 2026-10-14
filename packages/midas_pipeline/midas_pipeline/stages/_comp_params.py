@@ -40,6 +40,9 @@ _INDEXER_KEYS = (
     "SeedDropWeakestFrac",
     # refiner relative-misfit weight (FitUnified.c; needs RelFitRMSE.bin)
     "RelFitRMSEWeightR0",
+    # refiner per-spot directional weights (FitUnified.c; needs SpotWeights.bin).
+    # Was missing: a parameter file setting it refined UNWEIGHTED with no message.
+    "SpotWeightsDirectional",
 )
 
 
