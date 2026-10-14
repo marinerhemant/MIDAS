@@ -412,9 +412,30 @@ class SplatBlurModel(torch.nn.Module):
       fractional frame and lands in the frame containing it (the C code's
       ``floor``), widened by a Gaussian ω-width σ_ω (frames, fitted) integrated
       over the frame bins [j, j+1) for j = floor-1..floor+1, renormalised.
-    - ``"linear"``: split between the two frames whose centres bracket it. This
-      spreads a sharp reflection over two frames and is kept only for comparison;
-      on real NF data it misallocates 20-40 % of many spots (step3b_omega).
+    - ``"linear"``: split between the two frames whose centres bracket it (a tent;
+      identical to :class:`IntensityModel`, the ``fit_intensity`` default). It equals
+      a UNIFORM ω rocking curve one frame wide (σ = 0.29 frame), so it is right for
+      spots about that wide and spreads sharper ones over two frames.
+
+    Measured allocation error (``tests/test_frame_allocation.py``; known-truth spots,
+    exposure-integrated over frames [j, j+1), 400 sub-frame offsets; TV = fraction of a
+    spot's intensity in the wrong frame, mean over offsets). The earlier claim that the
+    tent "misallocates 20-40 % of many spots on real data" is NOT supported: the
+    synthetic figure depends on the true ω width, and the cited analysis is not in
+    the repository::
+
+        σ_ω true     tent     gauss σ=0.2 (default)   gauss σ=σ_true
+        0 (delta)    0.250        0.160                    0.0005
+        0.16         0.122        0.032                    0.0000
+        0.30         0.037        0.080                    0.0001
+        0.50         0.142        0.231                    0.0085
+
+    Neither kernel dominates; the gauss model is only better when ``sigma_omega``
+    matches the data, which ``fit_intensity(model_kind="splat")`` fits (recovered to
+    within 0.015 on simulated Gaussian-ω scenes). Non-Gaussian ω profiles
+    (Lorentzian) leave 0.23-0.24 error in both at σ = 0.3. Downstream |F| exponent and
+    relative grain scales were NOT materially different between the two on simulated
+    censored scenes (|p-2| ≤ 0.07 tent, ≤ 0.04 gauss; median relative-scale error 0.015-0.026 either way).
 
     With triangle sub-point rows (:func:`build_contributions` ``edge_length=...``)
     the spatial splat is the voxel's projected footprint. Stage 2: separable
@@ -646,7 +667,10 @@ def fit_intensity(
     support are ignored (they belong to grains or noise not in the model).
 
     ``model_kind="splat"`` uses :class:`SplatBlurModel` (``psf_radius`` = blur radius),
-    the right choice for triangle sub-point tables; ``"psf"`` the per-row Gaussian splat.
+    the right choice for triangle sub-point tables; ``"psf"`` the per-row Gaussian splat
+    with a linear (tent) frame split. ``"psf"`` stays the default: on known-truth spots
+    neither frame kernel is uniformly better (see :class:`SplatBlurModel`); use ``"splat"``
+    when the spots are sharper than ~0.3 frame, where ``sigma_omega`` is then fitted.
     ``noise_model="het"`` fits ``sigma^2 = sigma0^2 + g * max(mu, 0)`` (Poisson-like
     growth with signal) instead of a constant sigma.
     ``exclude_keys``: pixel keys dropped from the likelihood (e.g. pixels that
