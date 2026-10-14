@@ -5,7 +5,7 @@ by ``PeaksFittingConsolidatedIO.h`` (``PEAK_COL_NAMES``).
 """
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Sequence, Tuple
 
 import numpy as np
 
@@ -146,4 +146,41 @@ def build_saturated_rows(
     return rows
 
 
-__all__ = ["N_PEAK_COLS", "build_peak_rows", "build_saturated_rows"]
+def sensor_extent(
+    NrPixelsY: int, NrPixelsZ: int, transform_options: Sequence[int]
+) -> Tuple[int, int]:
+    """``(n_y, n_z)``: the extent of the real sensor in the frame ``YCen`` /
+    ``ZCen`` are reported in (the analysis frame, after ``ImTransOpt``).
+
+    Each transpose (code 3) swaps the two axes; flips do not change the extent.
+    """
+    if sum(1 for c in transform_options if c == 3) % 2:
+        return int(NrPixelsZ), int(NrPixelsY)
+    return int(NrPixelsY), int(NrPixelsZ)
+
+
+def off_sensor_mask(
+    rows: np.ndarray, n_y: int, n_z: int, margin: float = 1.0
+) -> np.ndarray:
+    """Boolean mask of peak rows whose ``YCen`` / ``ZCen`` (columns 3, 4) fall
+    outside ``[-margin, n - 1 + margin]`` on the real sensor.
+
+    A fitted centroid can overshoot the edge pixel by a fraction of a pixel, so
+    ``margin`` (pixels) keeps that from being flagged. Anything further out
+    cannot be a real spot: the image data only exists on the sensor, so it means
+    the frame the positions are in disagrees with ``NrPixelsY`` / ``NrPixelsZ``
+    -- e.g. an ``ImTransOpt`` that mirrors about the wrong edge.
+    """
+    if rows.shape[0] == 0:
+        return np.zeros(0, dtype=bool)
+    y, z = rows[:, 3], rows[:, 4]
+    return (
+        (y < -margin) | (y > n_y - 1 + margin)
+        | (z < -margin) | (z > n_z - 1 + margin)
+    )
+
+
+__all__ = [
+    "N_PEAK_COLS", "build_peak_rows", "build_saturated_rows",
+    "off_sensor_mask", "sensor_extent",
+]

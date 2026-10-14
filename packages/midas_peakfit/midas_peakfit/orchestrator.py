@@ -16,6 +16,7 @@ import os
 import threading
 import pickle
 import time
+import warnings
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Tuple
@@ -34,7 +35,9 @@ from midas_peakfit.pool import RegionPool
 from midas_peakfit.preprocess import (
     apply_threshold, correct_frame, mask_touch_map, prepare_dark, prepare_flood, prepare_mask,
 )
-from midas_peakfit.postfit import build_saturated_rows
+from midas_peakfit.postfit import (
+    build_saturated_rows, off_sensor_mask, sensor_extent,
+)
 from midas_peakfit.seeds import saturated_region, seed_region
 from midas_peakfit.zarr_io import frame_omega, load_corrections, parse_zarr_params, read_frame
 
@@ -635,6 +638,35 @@ def run(
                 f"Saturated (not fitted): {n_saturated_per_frame[f_local] if f_local < len(n_saturated_per_frame) else 0}, "
                 f"Number of peaks: {acc.n_peaks}"
             )
+
+    # Bounds check: every fitted centroid must lie on the real sensor. Spots
+    # outside it mean the reported frame disagrees with NrPixelsY/NrPixelsZ
+    # (an ImTransOpt mirroring about the wrong edge was the known cause). The
+    # rows are still written -- this reports, it does not change the output.
+    n_y_ext, n_z_ext = sensor_extent(p.NrPixelsY, p.NrPixelsZ, p.TransOpt)
+    n_off = n_all = 0
+    y_seen = [np.inf, -np.inf]
+    z_seen = [np.inf, -np.inf]
+    for acc in accumulators:
+        for r in acc.rows:
+            n_all += r.shape[0]
+            bad = off_sensor_mask(r, n_y_ext, n_z_ext)
+            if bad.any():
+                n_off += int(bad.sum())
+                y_seen = [min(y_seen[0], r[bad, 3].min()), max(y_seen[1], r[bad, 3].max())]
+                z_seen = [min(z_seen[0], r[bad, 4].min()), max(z_seen[1], r[bad, 4].max())]
+    if n_off:
+        msg = (
+            f"[orch] WARNING: {n_off} of {n_all} fitted peaks have YCen/ZCen "
+            f"off the real sensor (valid YCen [0, {n_y_ext}), ZCen "
+            f"[0, {n_z_ext}); off-sensor YCen in [{y_seen[0]:.1f}, "
+            f"{y_seen[1]:.1f}], ZCen in [{z_seen[0]:.1f}, {z_seen[1]:.1f}]). "
+            f"The frame the positions are in disagrees with NrPixelsY="
+            f"{p.NrPixelsY}, NrPixelsZ={p.NrPixelsZ}; check ImTransOpt="
+            f"{list(p.TransOpt)} and that BC/Lsd were fitted in the same frame."
+        )
+        print(msg)
+        warnings.warn(msg, RuntimeWarning, stacklevel=2)
 
     # Saturated regions are not fitted and are NOT in AllPeaks_PS.bin (which is
     # therefore unchanged). They go to the AllPeaks_PS_sat.bin sibling below,

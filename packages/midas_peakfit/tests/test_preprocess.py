@@ -1,5 +1,6 @@
 """Test pre-processing pipeline (square-pad, transforms, dark/flood)."""
 import numpy as np
+import pytest
 
 from midas_peakfit.preprocess import (
     apply_image_transformations,
@@ -71,3 +72,51 @@ def test_preprocess_frame_smoke():
     assert out.dtype == np.float64
     # Bright pixels are above threshold; transposed they end up at imgCorrBC[20:25, 20:25]
     assert (out > 0).any()
+
+
+# ─── Non-square panels: transforms mirror about the REAL sensor edge ─────────
+# Same convention as midas_calibrate_v2.io.transforms.apply_im_trans (flip
+# within the true (Z, Y) array). Regression: on a 1028x512 Eiger, ImTransOpt 2
+# sent ZCen to [516, 1027] because the flip ran over the padded square.
+def _analysis_yz(opts, NY, NZ, y0, z0):
+    N = max(NY, NZ)
+    raw = np.zeros((NZ, NY))
+    raw[z0, y0] = 1.0
+    sq = make_square_image(raw, N, NY, NZ)
+    img = transpose_square(
+        apply_image_transformations(sq, opts, NrPixelsY=NY, NrPixelsZ=NZ)
+    )
+    (y, z), = np.argwhere(img > 0)
+    return int(y), int(z)
+
+
+@pytest.mark.parametrize("NY,NZ", [(1028, 512), (512, 1028), (7, 5), (5, 7)])
+@pytest.mark.parametrize("opts", [[], [1], [2], [1, 2], [3], [3, 1], [2, 3], [3, 2, 1]])
+def test_nonsquare_matches_rect_transform(NY, NZ, opts):
+    """Analysis-frame (y, z) equals the transform of the real (Z, Y) array."""
+    y0, z0 = 3, 2
+    ref = np.zeros((NZ, NY))
+    ref[z0, y0] = 1.0
+    for c in opts:
+        ref = ref[:, ::-1] if c == 1 else ref[::-1, :] if c == 2 else ref.T
+    rz, ry = np.argwhere(ref > 0)[0]          # ref is (Z', Y')
+    assert _analysis_yz(opts, NY, NZ, y0, z0) == (int(ry), int(rz))
+
+
+def test_nonsquare_flip_z_stays_on_sensor():
+    y, z = _analysis_yz([2], NY=1028, NZ=512, y0=300, z0=100)
+    assert (y, z) == (300, 511 - 100)
+
+
+def test_nonsquare_flip_y_when_z_larger():
+    y, z = _analysis_yz([1], NY=512, NZ=1028, y0=100, z0=300)
+    assert (y, z) == (511 - 100, 300)
+
+
+def test_square_unchanged_by_dims():
+    a = np.arange(16.0).reshape(4, 4)
+    for opts in ([1], [2], [3], [1, 3]):
+        np.testing.assert_array_equal(
+            apply_image_transformations(a, opts),
+            apply_image_transformations(a, opts, NrPixelsY=4, NrPixelsZ=4),
+        )

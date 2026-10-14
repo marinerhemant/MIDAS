@@ -16,31 +16,56 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 # ─── Image transformations (matching applyImageTransformations_d) ───────────
 def apply_image_transformations(
-    image: np.ndarray, transform_options: List[int]
+    image: np.ndarray,
+    transform_options: List[int],
+    *,
+    NrPixelsY: Optional[int] = None,
+    NrPixelsZ: Optional[int] = None,
 ) -> np.ndarray:
-    """Apply ``transform_options`` in order. Operates on a square (N, N) array.
+    """Apply ``transform_options`` in order to a square (N, N) array.
 
-    Codes (from C source):
+    Codes:
         0: no-op
-        1: flip-horizontal (along Y / row axis) — ``image[l, m] := image[l, N-m-1]``
-        2: flip-vertical   (along Z / col axis) — ``image[l, m] := image[N-l-1, m]``
-        3: transpose                            — ``image[l, m] := image[m, l]``
+        1: flip Y  (mirror the column axis) — ``image[l, m] := image[l, W-m-1]``
+        2: flip Z  (mirror the row axis)    — ``image[l, m] := image[H-l-1, m]``
+        3: transpose                        — ``image[l, m] := image[m, l]``
+
+    ``NrPixelsY`` / ``NrPixelsZ`` give the real (Z, Y) block that
+    :func:`make_square_image` placed at ``[:NrPixelsZ, :NrPixelsY]``. When they
+    are passed and the panel is non-square, the sequence is applied to that
+    real block only and the result is re-padded into the square, so a flip
+    mirrors about the real sensor edge (z -> NrPixelsZ-1-z), not about the
+    padded square's edge (z -> NrPixels-1-z). This is the convention of
+    ``midas_calibrate_v2.io.transforms.apply_im_trans``; a transpose swaps the
+    block to ``(NrPixelsY, NrPixelsZ)``, and a flip after it acts on that
+    swapped block. Without them (or on a square panel) the whole array is
+    transformed, as before.
 
     Operates on a copy; returns the transformed array.
     """
     if not transform_options:
         return image.copy()
 
-    out = image.copy()
+    n = image.shape[0]
+    rect = (
+        NrPixelsY is not None
+        and NrPixelsZ is not None
+        and (NrPixelsY != n or NrPixelsZ != n)
+    )
+    out = image[:NrPixelsZ, :NrPixelsY] if rect else image
     for code in transform_options:
         if code == 1:
-            out = out[:, ::-1].copy()
+            out = out[:, ::-1]
         elif code == 2:
-            out = out[::-1, :].copy()
+            out = out[::-1, :]
         elif code == 3:
-            out = out.T.copy()
+            out = out.T
         # 0 / unknown → no-op
-    return out
+    if not rect:
+        return out.copy()
+    padded = np.zeros_like(image)
+    padded[: out.shape[0], : out.shape[1]] = out
+    return padded
 
 
 def make_square_image(
@@ -97,7 +122,9 @@ def prepare_dark(
     else:
         avg = raw_dark
     sq = make_square_image(avg.astype(np.float64), NrPixels, NrPixelsY, NrPixelsZ)
-    transformed = apply_image_transformations(sq, transform_options)
+    transformed = apply_image_transformations(
+        sq, transform_options, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ
+    )
     return transpose_square(transformed)
 
 
@@ -217,7 +244,9 @@ def correct_frame(
         # Raw layout, like the mask itself: before the transforms, as above.
         image_d = np.where(mask > 0, 0.0, image_d)
 
-    image_d = apply_image_transformations(image_d, transform_options)
+    image_d = apply_image_transformations(
+        image_d, transform_options, NrPixelsY=NrPixelsY, NrPixelsZ=NrPixelsZ
+    )
     img = transpose_square(image_d)
 
     out = np.zeros_like(img)
