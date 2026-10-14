@@ -1472,11 +1472,18 @@ class HEDMForwardModel(nn.Module):
             Lsd_list = self._Lsd_eff.to(dtype)
             out_y = []
             out_z = []
-            # FF multi-panel mode uses the inverse of peakfit's
-            # tilt-aware compute_rt_eta (small-tilt agreement with the
-            # NF ray-plane intersection, but the latter diverges for
-            # pinwheel-scale tilts). NF mode keeps the ray-plane path.
-            ff_panel = self.flip_y and self.multi_mode == "panel" and self.apply_tilts
+            # FF (flip_y) uses the inverse of the pipeline's pixel -> lab
+            # conversion (peakfit compute_rt_eta / midas_calibrate
+            # pixel_to_REta_torch), whatever multi_mode is; NF keeps the
+            # ray-plane path. The two are NOT equivalent even at small tilt:
+            # with the NF path an FF model applies tx with the opposite sign
+            # (tx -0.5 deg -> eta off by 1 deg) and ty -0.46 deg puts 154 ue on
+            # the ring radius. Selecting by multi_mode == "panel" sent every
+            # single-detector FF model with apply_tilts (multi_mode defaults to
+            # "layered") down the NF path (found 2026-10-07: a synthetic FF
+            # dataset at real 20-ID Varex tilts read back through the pipeline with
+            # -181 ue e33 on sharp grains; tests/test_ff_tilt_convention.py).
+            ff_panel = self.flip_y and self.apply_tilts
             for d in range(self.n_distances):
                 if ff_panel:
                     yd, zd = self._apply_ff_panel_tilt(
@@ -1517,8 +1524,18 @@ class HEDMForwardModel(nn.Module):
             )
             rho_d_t = torch.as_tensor(float(rho_d_val), dtype=R.dtype, device=R.device)
             p_v2 = self.p_distortion.to(R.dtype)
-            R_corr = _apply_dist(R, eta_deg_d, p_v2, rho_d_t, terms=_v2_terms())
-            scale = R_corr / R
+            # The pipeline CORRECTS an observed radius, R_c = R_o * D(R_o / rho_d, eta)
+            # (midas_calibrate pixel_to_REta_torch / transforms). A forward model must
+            # produce the OBSERVED radius, i.e. invert that map: solve
+            # R_o * D(R_o) = R by fixed point R_o <- R / D(R_o) (D ~ 1 +- 1e-3, so three
+            # steps are exact to ~1e-9 and stay differentiable). Applying the correction
+            # itself (what this did before 2026-10-13) moved spots the wrong way: on a real
+            # 20-ID Varex calibration predictions were off by twice the distortion, 0.11 px median, 0.94 px max.
+            from midas_distortion import distortion_factor as _dist_factor
+            R_obs = R
+            for _ in range(3):
+                R_obs = R / _dist_factor(R_obs / rho_d_t, eta_deg_d, p_v2, terms=_v2_terms())
+            scale = R_obs / R
             ydet_d = ydet_d * scale
             zdet_d = zdet_d * scale
 
