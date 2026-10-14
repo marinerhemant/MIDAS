@@ -9,18 +9,21 @@ Given only:
 
 return calibrated geometry with diagnostics.
 
-The pipeline stages are:
+The pipeline stages are (every LM stage is :func:`autocalibrate_pv`, which runs a
+capture phase of up to ``n_capture_max`` iterations before its fine iterations):
 
-  1. **Auto-seed** (Hough + arc-fit on the image) → BC and a rough Lsd.
-  2. **Lsd-only LM** with very wide bounds → drag Lsd into the
-     ±0.3 % LM basin (B6) from the rough Hough Lsd (~±20 % accurate, B5).
-  3. **Geometry LM** (Lsd + BC + tilts) with distortion frozen →
-     stabilise the linear geometry before letting the harmonics in.
-  4. **Full LM** via :func:`autocalibrate_robust` → all parameters,
-     plus the safety gates from :mod:`pipelines.diagnostics`.
-  5. **Lsd grid sweep fallback**: if the gates fail, retry stages 2–4
-     from each of {0.5×, 0.75×, 1.0×, 1.5×, 2.0×} Hough Lsd, returning
-     the best-strain pass.
+  1. **Auto-seed** (``auto_seed_calibrant``: arc fit on the image) → BC and a rough Lsd.
+     Skipped when a beam centre is supplied.
+  2. **Lsd-only LM** with wide bounds (±50 % of the seed) → drag Lsd into the LM basin.
+  3. **Lsd + BC**, then **Lsd + BC + tilts**, distortion frozen → stabilise the linear
+     geometry before letting the harmonics in.
+  4. **Full LM** (all parameters, per-panel terms on a tiled detector); the safety gates
+     of :mod:`pipelines.diagnostics` are run on each attempt.
+  5. **Lsd grid sweep fallback**: the seed Lsd is multiplied in turn by
+     ``lsd_sweep_factors`` (default {1, 0.5, 1.5, 0.75, 2, 0.33, 3}); an attempt with
+     fewer than four distinct rings in its fit set is skipped, and the first attempt
+     whose gates do not fail is returned. A stage that raises is reported with a
+     ``UserWarning`` and the attempt is dropped.
 
 Usage::
 
@@ -48,6 +51,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import copy
 import math
+import warnings
 import numpy as np
 import torch
 
@@ -307,6 +311,11 @@ def _geometry_only_spec(
             p.bounds = (cur - tilts_tol_deg, cur + tilts_tol_deg)
             p.transform = Logit(*p.bounds)
     return spec
+
+
+def _failed_stage_messages(stage_log) -> List[str]:
+    """Entries of a stage log that record a stage which raised (``"... FAILED: ..."``)."""
+    return [m for m in stage_log if "FAILED" in m]
 
 
 def _try_calibrate_at_lsd(
@@ -720,6 +729,9 @@ def first_time_calibrate(
             verbose=verbose,
         )
         overall_log.extend(stage_log)
+        for _m in _failed_stage_messages(stage_log):
+            warnings.warn(f"first_time_calibrate: attempt at Lsd={lsd_try:.0f} um dropped: {_m}",
+                          UserWarning, stacklevel=2)
         if res is None or not res.history:
             continue
         strain = float(res.history[-1].mean_strain_uE)
@@ -748,6 +760,7 @@ def first_time_calibrate(
             unpacked=res.unpacked,
             history=res.history,
             fits=res.fits_final,
+            retention=getattr(res, "retention", None),
             spec=getattr(res, "spec", None),
             panel_layout=panel_layout,
             strain_threshold_uE=strain_threshold_uE,

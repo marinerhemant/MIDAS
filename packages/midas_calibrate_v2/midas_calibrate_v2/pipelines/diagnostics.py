@@ -5,9 +5,12 @@ and v1's silent strain blow-up.
 Three lightweight gates:
 
   1. ``cross_validation_gate(fits, unpacked, n_train_rings)`` — splits
-     the fits by ring and asks whether the held-out residual is
-     statistically distinguishable from the training residual.  A
-     clean pass means the analytical model generalises.
+     the fits by ring and asks whether the outer-ring residual is
+     statistically distinguishable from the inner-ring residual.  It is
+     in-sample (no re-fit), compares only rings of similar azimuthal
+     coverage, drops fits near the detector border or a module gap, and
+     cannot FAIL by default (``allow_fail=False``): its 1.5x threshold has
+     never been calibrated against known truth.
 
   2. ``strain_cap_check(history, threshold_uE)`` — flags runs whose
      converged strain exceeds a calibrant threshold.  Catches every
@@ -51,6 +54,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional, List
 
+import numpy as np
 import torch
 
 from ..forward.panels import PanelLayout
@@ -209,39 +213,96 @@ def detector_scope_gate(
         metrics=metrics)
 
 
+def _edge_distance_px(Y, Z, shape_yz, panel_layout):
+    """Distance in pixels from each fit to (a) the detector border and (b) the nearest
+    module-gap pixel. Returns ``(d_border, d_gap)``, or ``None`` when no shape is known.
+
+    ``shape_yz`` is ``(NrPixelsY, NrPixelsZ)``, the ``[Y, Z]`` order of
+    ``PanelLayout.panel_index_mask``. The two are kept apart on purpose: a ring that runs
+    off the detector is truncated over a long arc, while a module gap truncates a window
+    only within about one fit window of it. One margin for both removed every fit on a
+    Pilatus, whose modules are 243 x 195 px (no pixel is farther than ~97 px from a gap).
+    ``d_gap`` is ``inf`` on a monolithic detector.
+    """
+    from scipy import ndimage
+    mask = getattr(panel_layout, "panel_index_mask", None) if panel_layout is not None else None
+    if mask is not None:
+        valid = (mask.detach().cpu().numpy() >= 0)
+    elif shape_yz is not None:
+        valid = np.ones((int(shape_yz[0]), int(shape_yz[1])), dtype=bool)
+    else:
+        return None
+    shape = valid.shape
+    ones = np.ones(shape, dtype=bool)
+    d_border = ndimage.distance_transform_edt(np.pad(ones, 1, constant_values=False))[1:-1, 1:-1]
+    if valid.all():
+        d_gap = np.full(shape, np.inf)
+    else:
+        d_gap = ndimage.distance_transform_edt(valid)       # distance to the nearest invalid pixel
+    yi = np.clip(np.rint(np.asarray(Y)).astype(int), 0, shape[0] - 1)
+    zi = np.clip(np.rint(np.asarray(Z)).astype(int), 0, shape[1] - 1)
+    return d_border[yi, zi], d_gap[yi, zi]
+
+
 def cross_validation_gate(
     fits,                                 # FittedDataset with ring_idx
     unpacked: Dict[str, torch.Tensor],
     *,
-    n_train_rings: Optional[int] = None,  # default: split at floor(n_rings * 2/3)
+    n_train_rings: Optional[int] = None,  # default: split the compared rings 2/3 : 1/3
     panel_layout: Optional[PanelLayout] = None,
+    fix_panel_id: int = 0,
+    detector_shape=None,                  # (NrPixelsY, NrPixelsZ); enables the edge cut
+    edge_margin_px: float = 100.0,        # drop fits closer than this to the detector border
+    gap_margin_px: float = 10.0,          # ...or closer than this to a module gap (~a fit window)
+    min_ring_fit_fraction: float = 0.5,   # compare only rings with >= this fraction of the
+                                          # best-covered ring's fits (azimuthal coverage)
+    allow_fail: bool = False,             # the threshold is not calibrated: cap at warn
     fail_med_ratio: float = 1.5,         # test/train median > this → fail
     warn_med_ratio: float = 1.2,         # test/train median > this → warn
     ks_p_threshold: float = 0.01,        # KS p-value below this is suspicious
 ) -> DiagnosticResult:
-    """Held-out-ring cross-validation gate.
+    """Ring-split residual gate (historically "held-out-ring cross-validation").
 
-    Calibrate on rings 0..N_train-1 implicit in ``unpacked`` (the caller
-    should have done this); evaluate the residual on *all* fits at the
-    converged geometry, then split by ring index and compare.
+    Evaluates the residual of the converged geometry on every fit, splits the fits by
+    ring index (inner two thirds against the outer third by default) and compares the
+    two groups. It does NOT re-fit, so on a calibration that used all rings it is an
+    in-sample comparison, "still informative, less rigorous"; a true hold-out needs a
+    fit made on the training rings alone and a separate dataset holding the test rings.
 
-    Note: this gate does NOT re-fit.  It assumes ``unpacked`` is the
-    converged MAP and the fits include held-out rings that were
-    *not* used in the LM.  To use it as a true CV gate, call the
-    calibration with ``spec.max_ring_number = n_train_rings`` (so the
-    cake produces only train rings), then call this function with
-    a separate fits dataset that includes the test rings.
+    Two things made the plain ratio mislead on a real frame (Varex CeO2, 1.84x, FAIL):
+    the outer rings are partial corner arcs, 47 % of whose fits lie within 50 px of the
+    panel edge against 5 % of the inner-ring fits, and edge-truncated peaks have a median
+    residual about 4.6 times that of interior ones. The ratio then measures which fits
+    fall in the outer third, not the distortion basis. So by default
 
-    For an in-line check on a single calibration that used all rings,
-    this gate degenerates to comparing the upper-third of rings vs the
-    lower two-thirds — still informative, less rigorous.
+    * fits within ``edge_margin_px`` of the detector border, or within ``gap_margin_px`` of
+      a module gap, are dropped (the border margin is set by the Varex frame; the gap
+      margin is one fit window, not tuned on data), and
+    * only rings holding at least ``min_ring_fit_fraction`` of the best-covered ring's
+      fits (a proxy for azimuthal coverage) are compared.
+
+    On that Varex frame this gives ~1.3x, a pass. The raw ratio (no cut) is reported in
+    ``metrics["ratio_raw"]``.
+
+    The 1.5x / 1.2x thresholds have never been calibrated against known truth, so the
+    gate cannot fail by default: a result above the fail threshold is reported as a
+    warning that says so. ``allow_fail=True`` restores the hard failure.
     """
     rho_d = fits.rho_d
     with torch.no_grad():
+        # ``ring_idx`` is what applies the per-ring (``delta_r_k``) and the
+        # per-(panel, ring) (``panel_ring_delta_r``) radial offsets. Without it
+        # the gate scored a DIFFERENT model from the one fitted: on a tiled
+        # detector calibrated with ``panel_mode="radius"`` (calibrate()'s
+        # default) every one of those offsets was silently dropped, so the
+        # held-out/train ratio did not describe the calibration it was judging.
         r_all = pseudo_strain_residual(
             fits.Y_pix, fits.Z_pix, fits.ring_two_theta_deg, unpacked,
             rho_d=rho_d, panel_layout=panel_layout,
             panel_idx=getattr(fits, "panel_idx", None),
+            fix_panel_id=fix_panel_id,
+            ring_idx=getattr(fits, "ring_idx", None),
+            ring_d_spacing_A=getattr(fits, "ring_d_spacing_A", None),
         )
     r_uE = (r_all.abs() * 1e6).cpu().numpy()
     ring_arr = fits.ring_idx.cpu().numpy()
@@ -254,16 +315,44 @@ def cross_validation_gate(
             metrics={"n_rings": float(len(rings_present))},
         )
 
-    if n_train_rings is None:
-        n_train_rings = max(1, int(len(rings_present) * 2 / 3))
-    train_mask = ring_arr < n_train_rings
-    test_mask = ~train_mask
-    if test_mask.sum() < 5:
+    # --- the raw (uncut) comparison, always reported -----------------------------
+    n_tr_raw = n_train_rings if n_train_rings is not None else max(1, int(len(rings_present) * 2 / 3))
+    tr_raw, te_raw = ring_arr < n_tr_raw, ring_arr >= n_tr_raw
+    ratio_raw = (float(_np_median(r_uE[te_raw])) / max(float(_np_median(r_uE[tr_raw])), 1e-3)
+                 if te_raw.sum() >= 5 and tr_raw.sum() >= 5 else float("nan"))
+
+    # --- coverage match and edge cut --------------------------------------------
+    counts = {r: int((ring_arr == r).sum()) for r in rings_present}
+    best = max(counts.values())
+    used_rings = [r for r in rings_present if counts[r] >= min_ring_fit_fraction * best]
+    keep = np.isin(ring_arr, used_rings)
+    n_edge = 0
+    d_edge = _edge_distance_px(fits.Y_pix.cpu().numpy(), fits.Z_pix.cpu().numpy(),
+                               detector_shape, panel_layout)
+    if d_edge is not None and (edge_margin_px > 0 or gap_margin_px > 0):
+        near = (d_edge[0] < edge_margin_px) | (d_edge[1] < gap_margin_px)
+        n_edge = int((near & keep).sum())
+        keep &= ~near
+    if len(used_rings) < 4:
+        return DiagnosticResult(
+            name="cross_validation", severity="warn",
+            message=(f"only {len(used_rings)} rings have comparable azimuthal coverage "
+                     f"(>= {min_ring_fit_fraction:.0%} of the best ring's fits); split too narrow"),
+            metrics={"n_rings_used": float(len(used_rings)), "ratio_raw": ratio_raw})
+
+    n_train_used = (max(1, int(round(len(used_rings) * 2 / 3)))
+                    if n_train_rings is None else int(n_train_rings))
+    train_rings = set(used_rings[:n_train_used])
+    train_mask = keep & np.isin(ring_arr, list(train_rings))
+    test_mask = keep & ~np.isin(ring_arr, list(train_rings))
+    if test_mask.sum() < 5 or train_mask.sum() < 5:
         return DiagnosticResult(
             name="cross_validation",
             severity="warn",
-            message=f"only {int(test_mask.sum())} test fits — split too narrow",
-            metrics={"n_test": float(test_mask.sum())},
+            message=(f"only {int(test_mask.sum())} test fits — split too narrow "
+                     f"({n_edge} near-edge fits were dropped first)"),
+            metrics={"n_test": float(test_mask.sum()), "ratio_raw": ratio_raw,
+                     "n_edge_excluded": float(n_edge)},
         )
 
     train_uE = r_uE[train_mask]
@@ -273,20 +362,28 @@ def cross_validation_gate(
     ratio = med_test / max(med_train, 1e-3)
 
     ks_p = _ks_2samp_p(train_uE, test_uE)
+    first_test_ring = min(r for r in used_rings if r not in train_rings)
 
     if ratio > fail_med_ratio and ks_p < ks_p_threshold:
-        sev = "fail"
-        msg = (f"held-out median {med_test:.2f} μϵ vs train {med_train:.2f} μϵ "
-               f"({ratio:+.2f}× , KS p={ks_p:.2e}) — analytical basis is "
-               f"incomplete on rings ≥{n_train_rings}")
+        if allow_fail:
+            sev = "fail"
+            msg = (f"held-out median {med_test:.2f} μϵ vs train {med_train:.2f} μϵ "
+                   f"({ratio:+.2f}× , KS p={ks_p:.2e}) — analytical basis is "
+                   f"incomplete on rings ≥{first_test_ring}")
+        else:
+            sev = "warn"
+            msg = (f"outer-ring residual {ratio:.2f}× inner ({med_test:.2f} vs "
+                   f"{med_train:.2f} μϵ, KS p={ks_p:.2e}) on rings ≥{first_test_ring}: above the "
+                   f"{fail_med_ratio:.1f}× fail threshold, reported as a warning because that "
+                   f"threshold is not calibrated (raw ratio {ratio_raw:.2f}×)")
     elif ratio > warn_med_ratio and ks_p < ks_p_threshold:
         sev = "warn"
         msg = (f"held-out residual {ratio:.2f}× train, KS p={ks_p:.2e} — "
-               f"borderline systematic on rings ≥{n_train_rings}")
+               f"borderline systematic on rings ≥{first_test_ring}")
     else:
         sev = "ok"
         msg = (f"held-out residual {ratio:.2f}× train, KS p={ks_p:.2e} — "
-               f"model generalises across rings")
+               f"model generalises across rings (raw ratio {ratio_raw:.2f}×)")
 
     return DiagnosticResult(
         name="cross_validation",
@@ -296,10 +393,13 @@ def cross_validation_gate(
             "med_train_uE": med_train,
             "med_test_uE": med_test,
             "ratio": ratio,
+            "ratio_raw": ratio_raw,
             "ks_pvalue": ks_p,
             "n_train": float(train_mask.sum()),
             "n_test": float(test_mask.sum()),
-            "n_train_rings": float(n_train_rings),
+            "n_train_rings": float(len(train_rings)),
+            "n_rings_used": float(len(used_rings)),
+            "n_edge_excluded": float(n_edge),
         },
     )
 
@@ -817,6 +917,65 @@ def n_rings_from_fits(fits) -> Optional[int]:
     return int(_np.unique(arr).size)
 
 
+def fit_retention_gate(
+    retention,
+    *,
+    warn_below: float = 0.5,
+    fail_below: float = 0.1,
+) -> DiagnosticResult:
+    """Did the clipped-window screen leave enough of the data to fit?
+
+    ``retention`` is ``PVCalibrationResult.retention``: one record per screen
+    pass with ``n_snr_pass`` and ``n_kept``. The WORST pass decides. A run can
+    converge, report a small strain and still have been fitted to a sliver of
+    the rings: on a frame whose dark exceeded its image the screen kept 50 of
+    ~7500 candidate fits, and nothing else in the gate list noticed.
+
+    Returns ``ok`` with a note when the screen never ran (older pipelines, or
+    no coverage map), so a missing record is not read as a pass.
+    """
+    rows = [r for r in (retention or []) if r.get("n_snr_pass", 0) > 0]
+    if not rows:
+        return DiagnosticResult(
+            name="fit_retention", severity="ok",
+            message="no clipped-window screen record (nothing to check)",
+            metrics={})
+    worst = min(rows, key=lambda r: r["n_kept"] / r["n_snr_pass"])
+    frac = worst["n_kept"] / worst["n_snr_pass"]
+    m = {"worst_retention": frac, "phase": worst["phase"],
+         "n_snr_pass": worst["n_snr_pass"], "n_kept": worst["n_kept"]}
+    if frac < fail_below:
+        return DiagnosticResult(
+            name="fit_retention", severity="fail",
+            message=(f"the clipped-window screen kept {worst['n_kept']} of "
+                     f"{worst['n_snr_pass']} SNR-passing fits "
+                     f"({100 * frac:.1f} %, {worst['phase']} phase): the "
+                     f"calibration rests on a sliver of the data"),
+            metrics=m)
+    if frac < warn_below:
+        return DiagnosticResult(
+            name="fit_retention", severity="warn",
+            message=(f"the clipped-window screen kept only {100 * frac:.1f} % of "
+                     f"the SNR-passing fits ({worst['phase']} phase)"),
+            metrics=m)
+    return DiagnosticResult(
+        name="fit_retention", severity="ok",
+        message=f"screen kept {100 * frac:.1f} % of SNR-passing fits (worst phase)",
+        metrics=m)
+
+
+def _detector_shape_yz(v1_init, spec=None):
+    """(NrPixelsY, NrPixelsZ) of the frame the fits live in, or None if unknown.
+
+    The spec holds the counts AFTER ``im_trans`` (a transpose swaps them), so it wins
+    over the seed parameters when it has them."""
+    for src in (spec, v1_init):
+        ny, nz = getattr(src, "NrPixelsY", 0), getattr(src, "NrPixelsZ", 0)
+        if ny and nz:
+            return int(ny), int(nz)
+    return None
+
+
 def run_all_gates(
     *,
     v1_init,
@@ -830,6 +989,7 @@ def run_all_gates(
     strain_warn_uE: float = 50.0,
     pointing_fail_px: float = 1.0,
     pointing_warn_px: float = 0.5,
+    retention=None,
 ) -> List[DiagnosticResult]:
     """Run every gate, returning a list of DiagnosticResult.  The gates that
     need fitted points are skipped if ``fits`` is None.
@@ -871,10 +1031,14 @@ def run_all_gates(
                                       warn_uE=strain_warn_uE,
                                       n_rings=n_rings_used))
     out.append(basin_check(v1_init, unpacked))
+    if retention is not None:
+        out.append(fit_retention_gate(retention))
     if fits is not None:
         out.append(cross_validation_gate(fits, unpacked,
                                            n_train_rings=n_train_rings,
-                                           panel_layout=panel_layout))
+                                           panel_layout=panel_layout,
+                                           fix_panel_id=int(getattr(spec, "fix_panel_id", 0) or 0),
+                                           detector_shape=_detector_shape_yz(v1_init, spec)))
         out.append(azimuth_coverage_gate(fits, unpacked, spec=spec))
         out.append(rho_d_scaling_gate(fits, unpacked, spec=spec))
     return out
@@ -958,6 +1122,7 @@ __all__ = [
     "basin_check",
     "azimuth_coverage_gate",
     "rho_d_scaling_gate",
+    "fit_retention_gate",
     "run_all_gates",
     "summarise",
     "worst_severity",

@@ -1039,7 +1039,7 @@ from midas_calibrate_v2.compat.from_v1 import (
     spec_from_v1_file, add_per_ring_offset,
 )
 from midas_calibrate_v2.pipelines.single_pv import autocalibrate_pv
-from midas_calibrate_v2.pipelines._common import filter_ring_table
+from midas_calibrate_v2.pipelines._common import filter_ring_table, ring_number_cap
 from midas_calibrate_v2.seed.auto_max_ring import auto_detect_max_ring
 from midas_calibrate.rings import build_ring_table
 
@@ -1208,10 +1208,12 @@ reduction).
 # Need to know N_rings the pipeline will use AFTER auto-max-ring detection.
 # Easiest: build the ring table, run auto_detect_max_ring, then count.
 rt0 = build_ring_table(v1)
-mr = auto_detect_max_ring(
+mr_rows = auto_detect_max_ring(
     rt0.r_ideal_px, v1.NrPixelsY, v1.NrPixelsZ,
     v1.BC_y, v1.BC_z, data=image,
 ) or 0
+# a row COUNT, not a ring_nr label: they differ once degenerate rings are merged
+mr = ring_number_cap(rt0, mr_rows)
 spec_probe = spec_from_v1_file(PARAMS)
 rt_filtered = filter_ring_table(
     rt0,

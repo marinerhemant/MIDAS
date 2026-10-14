@@ -512,14 +512,8 @@ def calibrate(
     # ``np.std(corr)`` → the auto-threshold ``100·(1+std//100)`` becomes
     # astronomical and the seed fails with "no connected components above
     # threshold".
-    sentinel_mask = np.zeros(image.shape, dtype=bool)
-    if np.issubdtype(image.dtype, np.signedinteger) or np.issubdtype(image.dtype, np.floating):
-        sentinel_mask |= (image == -1) | (image == -2)
-    if image.dtype == np.uint32:
-        sentinel_mask |= (image == np.iinfo(np.uint32).max)
-    elif image.dtype == np.uint16:
-        sentinel_mask |= (image == np.iinfo(np.uint16).max)
-    sentinel_mask = sentinel_mask if bool(sentinel_mask.any()) else None
+    from ..seed.mask import sentinel_mask_from_raw
+    sentinel_mask = sentinel_mask_from_raw(image)
     if dark is not None:
         if dark.shape != image.shape:
             raise ValueError(

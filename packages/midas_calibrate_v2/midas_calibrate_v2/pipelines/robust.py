@@ -240,6 +240,7 @@ def autocalibrate_robust(
         unpacked=res.unpacked,
         history=res.history,
         fits=res.fits_final,
+        retention=getattr(res, "retention", None),
         panel_layout=panel_layout,
         n_train_rings=cv_n_train_rings,
         strain_threshold_uE=strain_threshold_uE,

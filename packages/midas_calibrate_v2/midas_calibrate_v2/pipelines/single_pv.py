@@ -32,7 +32,9 @@ from ..loss.pseudo_strain import pseudo_strain_residual
 from ..loss.robust_trim import stratified_trim, azimuth_deg, evaluate_full_strain
 from ..parameters.spec import CalibrationSpec
 from ..seed.auto_max_ring import auto_detect_max_ring
-from ._common import FittedDataset, _filter_by_snr, filter_ring_table, ring_table_for
+from ..seed.mask import apply_sentinel_mask
+from ._common import (FittedDataset, _filter_by_snr, filter_ring_table,
+                      ring_number_cap, ring_table_for)
 
 
 @dataclass
@@ -58,6 +60,34 @@ class PVCalibrationResult:
     #: Iterations run in the capture window, before ``history`` (which holds the
     #: fine-window iterations only, as it always has).
     capture_history: List[IterRecord] = field(default_factory=list)
+    #: One record per clipped-window screen that ran: ``phase``, ``iteration``,
+    #: ``n_snr_pass`` (fits that cleared ``snr_min`` before the screen) and
+    #: ``n_kept`` (of those, how many the screen left). Feeds
+    #: ``pipelines.diagnostics.fit_retention_gate``.
+    retention: List[dict] = field(default_factory=list)
+    #: Why the fine-phase outer loop stopped: ``"settled"`` (strain stable AND the
+    #: geometry moved less than ``param_tol_px`` over the last two iterations),
+    #: ``"strain_floor"``, ``"strain_rising"``, ``"iteration_cap"`` or
+    #: ``"strain_stable"`` (legacy rule, ``param_tol_px=None``).
+    stop_reason: str = ""
+    #: ``True`` only for ``"settled"``. NOT a statement that another seed would end
+    #: here: on the Pilatus frame two seeds 100 um apart both settled (steps 0.045
+    #: and 0.032 px) and ended 316 um apart. The legacy ``"strain_stable"`` stop says
+    #: nothing about the parameters and reports ``False``.
+    settled: bool = False
+    #: Largest geometry step over the last (up to) two outer iterations, as a ring
+    #: radius shift in pixels at the outermost fitted ring (see
+    #: :func:`_geometry_step_px`). ``None`` with fewer than two fine iterations.
+    final_step_px: Optional[float] = None
+
+
+class GeometryNotSettledWarning(UserWarning):
+    """The outer loop ended while the geometry was still moving by more than
+    ``param_tol_px`` at the outermost ring. Any sigma quoted for this fit is
+    conditional on the final iterate and says nothing about where the loop was
+    heading. Seen on a Pilatus whose Lsd moved 49, 12, 76 um on the last three
+    iterations and, from a seed shifted by 100 um, ended 248 um away (23 sigma).
+    Settling is necessary, not sufficient: see ``PVCalibrationResult.settled``."""
 
 
 class CaptureRangeWarning(UserWarning):
@@ -69,6 +99,135 @@ class ClippedWindowWarning(UserWarning):
     """Every fine-window fit sits in a radial window cut by a panel edge, gap
     or mask, so none could be dropped without leaving nothing to fit. The fits
     are truncated peaks and the geometry that follows is not trustworthy."""
+
+
+class CaptureNotSettledWarning(UserWarning):
+    """The capture phase ended because it ran out of iterations (``n_capture_max``),
+    not because the rings stopped moving. The fine phase then starts from a geometry
+    that is still far from the rings. Seen on a real Varex frame with a 14 degree
+    tilt: with ten capture iterations and no distortion terms the blind start stopped
+    2.0 degrees short in tz at 793 microstrain with nothing but a verbose line to say so;
+    twenty iterations reached 0.05 degrees at 29 microstrain."""
+
+
+def _capture_cap_message(shift_px: float, capture_shift_px: float, n_done: int,
+                         n_capture_max: int):
+    """Warning text when the capture phase ended on its iteration cap with the
+    predicted rings still moving by at least ``capture_shift_px``; ``None`` otherwise."""
+    if shift_px < capture_shift_px or n_done < n_capture_max:
+        return None
+    return (f"autocalibrate_pv: the capture phase used all n_capture_max={n_capture_max} "
+            f"iterations and the last LM step still moved the predicted rings by "
+            f"{shift_px:.2f} px (>= capture_shift_px={capture_shift_px:g}). The fine phase "
+            f"starts from a geometry that has not reached the rings, and can settle on a "
+            f"wrong one at a low strain. Raise n_capture_max, or start from a closer seed.")
+
+
+class CoarseCakeBinWarning(UserWarning):
+    """The radial cake bin of the parameter set is coarse. On the Varex CeO2 frame the kept
+    strain was 49, 20.1, 7.42, 7.30 and 7.50 microstrain for RBinSize 2, 1, 0.5, 0.25 and
+    0.125 px with everything else equal; a parameter file with ``RBinSize 1`` therefore gave
+    a calibration nearly three times worse than the same data at 0.25 px, with no message."""
+
+
+def _coarse_cake_bin_message(rbin_px: float, limit_px: float = 0.5):
+    """Warning text when ``rbin_px`` exceeds ``limit_px`` (0.5 px: the first value at which the
+    Varex kept strain was within 2 % of its 0.25 px value); ``None`` otherwise (0 means unset)."""
+    if not (rbin_px and rbin_px > limit_px):
+        return None
+    return (f"autocalibrate_pv: RBinSize={rbin_px:g} px is coarse for the peak fits; on the Varex CeO2 "
+            f"frame the kept strain was 20.1 uE at 1 px against 7.30 uE at 0.25 px. Set RBinSize to "
+            f"0.25 (or smaller) in the parameter set before calibrating.")
+
+
+class FitRetentionWarning(UserWarning):
+    """The clipped-window screen removed most of the fits that had cleared the
+    SNR cut. What is left is a thin, unrepresentative sample of the rings, and
+    the geometry that follows is not trustworthy even though the run converges
+    and reports a strain. Seen on a frame whose dark exceeded its image (99.8 %
+    of the candidate fits dropped, 2 rings left) and on a multi-panel frame
+    whose gap pixels had been clamped into valid data."""
+
+
+def _screen_retention(bf, keep, snr_min) -> tuple:
+    """``(n_snr_pass, n_kept)``: of the fits that cleared ``snr_min``, how many
+    the clipped-window screen left. Counted over SNR-passing fits only, because
+    the fitter returns a fit for every (ring, eta) cell, off-detector ones
+    included, and those would swamp the ratio."""
+    good = (bf.snr >= float(snr_min)) if snr_min is not None else torch.ones_like(keep)
+    return int(good.sum()), int((good & keep).sum())
+
+
+def _geometry_step_px(prev, cur, R_outer_px: float, px_um: float) -> float:
+    """Largest first-order shift of the outermost fitted ring between two outer
+    iterations, in pixels, from the change in each geometry parameter.
+
+    * ``Lsd``: ``R * dLsd / Lsd`` (exact, ``R = Lsd * tan 2theta``).
+    * beam centre: ``hypot(dBC_y, dBC_z)``.
+    * tilts: ``R * tan(2theta) * d(angle)``, the small-tilt effect of a rotation of
+      the detector plane on a ring of radius ``R`` (``tan 2theta = R * px / Lsd``).
+
+    A convention, not a calibrated tolerance: it puts the three parameters on the
+    one scale the data sees, a displacement of the rings.
+    """
+    import math
+    R = float(R_outer_px)
+    lsd = float(cur.Lsd)
+    d_lsd = R * abs(float(cur.Lsd) - float(prev.Lsd)) / lsd
+    d_bc = math.hypot(float(cur.BC_y) - float(prev.BC_y), float(cur.BC_z) - float(prev.BC_z))
+    tan2t = R * float(px_um) / lsd
+    d_t = max(abs(float(cur.ty) - float(prev.ty)), abs(float(cur.tz) - float(prev.tz)))
+    return max(d_lsd, d_bc, R * tan2t * math.radians(d_t))
+
+
+def _outer_loop_decision(history, R_outer_px: float, px_um: float, *,
+                         param_tol_px: Optional[float],
+                         strain_rtol: float = 0.01):
+    """``(stop, reason, step_px)`` after the newest fine iteration.
+
+    ``param_tol_px=None`` is the legacy rule: stop as soon as the strain changes by
+    less than ``strain_rtol`` (or falls below 1 uE, or rises by 5 %). That rule
+    watches the objective, not the parameters, and can stop while Lsd is still
+    climbing by hundreds of um per iteration. With a tolerance, a stable strain
+    stops the loop only when the geometry step over the last (up to) two
+    iterations is also below it. A strain floor or a rising strain still stops it
+    (the old behaviour: keep the best), but is not reported as settled.
+    """
+    if len(history) < 2:
+        return False, "", None
+    prev, cur = history[-2].mean_strain_uE, history[-1].mean_strain_uE
+    steps = [_geometry_step_px(history[i - 1], history[i], R_outer_px, px_um)
+             for i in range(max(1, len(history) - 2), len(history))]
+    step = max(steps)
+    floor = cur < 1.0
+    rising = cur > prev * 1.05
+    stable = abs(prev - cur) < strain_rtol * max(prev, 1.0)
+    if param_tol_px is None:
+        if floor or rising or stable:
+            return True, "strain_stable", step
+        return False, "", step
+    if floor:
+        return True, "strain_floor", step
+    if rising:
+        return True, "strain_rising", step
+    if stable and step < param_tol_px:
+        return True, "settled", step
+    return False, "", step
+
+
+def _note_retention(log, phase, iteration, n_pass, n_kept, min_retention,
+                    stacklevel=3) -> None:
+    if log is not None:
+        log.append(dict(phase=phase, iteration=int(iteration),
+                        n_snr_pass=int(n_pass), n_kept=int(n_kept)))
+    if n_pass > 0 and (n_kept / n_pass) < float(min_retention):
+        warnings.warn(FitRetentionWarning(
+            f"the clipped-window screen kept {n_kept} of {n_pass} SNR-passing "
+            f"fits ({100.0 * n_kept / n_pass:.1f} %) in the {phase} phase. The "
+            f"remaining fits are too few to trust. Check for gap or dead-pixel "
+            f"sentinels that were clamped instead of masked, a dark frame whose "
+            f"exposure does not match the image, or a window wider than the "
+            f"ring spacing."), stacklevel=stacklevel)
 
 
 def _bake_fits_to_dataset(fits: BatchedFits, v1: V1Params, rt: RingTable,
@@ -223,7 +382,9 @@ def _capture_window_complete(bf: BatchedFits, cake_t, R_centers, eta_centers, rt
 def _fit_capture_windows(cake_t, R_centers, eta_centers, rt_R_ideal, *,
                          capture_window_px: float, fine_window_px: float,
                          coverage=None, min_cell_coverage: float = 0.5,
-                         verbose: bool = False, **fit_kw) -> BatchedFits:
+                         verbose: bool = False, retention_log=None,
+                         iteration: int = 0, min_retention: float = 0.5,
+                         **fit_kw) -> BatchedFits:
     """Capture-phase peak fits. The batched fitter takes one window for every
     ring, so rings are grouped by (whole-px) window and fitted per group, with
     ``ring_idx`` mapped back to the full ring table.
@@ -262,6 +423,9 @@ def _fit_capture_windows(cake_t, R_centers, eta_centers, rt_R_ideal, *,
         if verbose:
             print(f"  [pv capture] dropped {int((~keep).sum())} of {keep.numel()} fits "
                   f"whose window is clipped", flush=True)
+        n_pass, n_kept = _screen_retention(bf, keep, fit_kw.get("snr_min"))
+        _note_retention(retention_log, "capture", iteration, n_pass, n_kept,
+                        min_retention)
         bf = BatchedFits(**{f: getattr(bf, f)[keep] for f in _BF_FIELDS})
     return bf
 
@@ -346,6 +510,106 @@ def _recentre_tilt_bounds(spec, unpacked) -> Optional[dict]:
     return centres if moved else None
 
 
+def _row_scale(attr, cache: dict, r_data, name: str) -> float:
+    """Scale of a constraint row against the data rows: a number, or ``"auto"`` = the rms of the
+    data residual at the first evaluation (frozen for the rest of that LM solve)."""
+    if isinstance(attr, str):
+        if attr != "auto":
+            raise ValueError(f"{name} must be a number or 'auto', got {attr!r}")
+        if name not in cache:
+            cache[name] = max(float(r_data.detach().pow(2).mean().sqrt()), 1e-12)
+        return cache[name]
+    return float(attr)
+
+
+def _make_residual_fn(ds, *, spec, panel_layout, v1_params):
+    """Residual vector over fit set ``ds``: data rows plus every active
+    constraint row (zero-sum, panel expansion, Gaussian priors).
+
+    One builder for both the full and the post-trim fit set. They used to be
+    two hand-copied closures inside ``autocalibrate_pv``, and the trimmed one
+    silently lacked the expansion row, so ``spec.no_panel_expansion`` was dead
+    under every ``trim_mode`` except "off". Which rows are active is read from
+    ``spec`` here, so a caller cannot get the two sets out of step.
+    """
+    from ..loss.constraints import gaussian_prior_residual, zero_sum_residual
+    from ..loss.panel_gauge import panel_expansion_residual
+    from ..parameters.parameter import GaussianPrior
+
+    # Sigma panel = 0 zero-sum gauge (or the F2 per-ring sum dr_k = 0 gauge):
+    # curvature exactly along the gauge nullspace, data residual unaffected.
+    zs_active = bool(getattr(spec, "zero_sum_panels", False)) or \
+        bool(getattr(spec, "zero_sum_dr_k", False))
+    zs_lambda = float(getattr(spec, "zero_sum_lambda",
+                              getattr(spec, "zero_sum_dr_k_lambda", 1e6)))
+    # Gauge rows are sqrt(lambda) * sum(delta); the data rows are strain (~1e-5). Unscaled, the
+    # gauge curvature (1e6 per panel parameter) dwarfs the data curvature (~1e-5) in the
+    # Marquardt diagonal, and the LM steps along the free panel directions vanish. The rows are
+    # therefore scaled by the data noise: lambda_eff = lambda * s**2, with s a number
+    # (``spec.zero_sum_row_scale``), the string "auto" (the default: rms of the data residual at the first
+    # evaluation, frozen for the rest of that LM solve), or 1.0 (the unscaled legacy rows, which
+    # froze the Pilatus panel block: kept strain 38.8 against 29.7 uE scaled; see tests/test_gauge_row_scale.py).
+    zs_scale_attr = getattr(spec, "zero_sum_row_scale", "auto")
+    ex_scale_attr = getattr(spec, "panel_expansion_row_scale", "auto")   # same convention
+    zs_scale_cache: dict = {}
+    # Per-block units of the zero-sum rows: the blocks are in px, deg, um and a pure number, so one
+    # row weight is ~500 times stiffer on the dLsd block than on dy/dz in the LM's (bounded)
+    # coordinates, where the data curvature is comparable across blocks. ``"bounds"`` (the default)
+    # divides each block by the half-width of its parameter bounds (the natural scale of the bounded
+    # coordinate); None keeps the raw units. On the Pilatus frame the raw-unit scaled rows left the dLsd
+    # block at its seed (53 um rms); with bounds units it moves (571-654 um rms, fix-panel-28: 689).
+    zs_units: dict = {}
+    if getattr(spec, "zero_sum_block_units", "bounds") == "bounds":
+        for _nm in ("panel_delta_yz", "panel_delta_theta", "panel_delta_lsd", "panel_delta_p2", "delta_r_k"):
+            _q = spec.parameters.get(_nm) if isinstance(getattr(spec, "parameters", None), dict) else None
+            _b = getattr(_q, "bounds", None) if _q is not None else None
+            if _b is not None and float(_b[1]) > float(_b[0]):
+                zs_units[_nm] = 0.5 * (float(_b[1]) - float(_b[0]))
+    # Second panel nullspace: a uniform radial expansion of the modules is
+    # degenerate with Lsd, and fix_panel_id / zero-sum do not touch it.
+    ex_active = bool(getattr(spec, "no_panel_expansion", False)) \
+        and panel_layout is not None
+    ex_lambda = float(getattr(spec, "panel_expansion_lambda", 1e6))
+    # Parameter.prior = GaussianPrior(mean, std) contributes (theta - mu)/sigma
+    # rows so the LM cost matches -2 log posterior.
+    has_prior = any(isinstance(q.prior, GaussianPrior)
+                    for q in spec.parameters.values())
+
+    def residual_fn(unpacked_now: dict) -> torch.Tensor:
+        r = pseudo_strain_residual(
+            ds.Y_pix, ds.Z_pix, ds.ring_two_theta_deg,
+            unpacked_now,
+            rho_d=ds.rho_d, weights=ds.weights,
+            panel_layout=panel_layout, panel_idx=ds.panel_idx,
+            fix_panel_id=getattr(spec, "fix_panel_id", 0),
+            ring_idx=ds.ring_idx,
+            ring_d_spacing_A=ds.ring_d_spacing_A,
+        )
+        if zs_active:
+            zs_s = _row_scale(zs_scale_attr, zs_scale_cache, r, "zero_sum_row_scale")
+            _up = ({k: (v / zs_units[k] if k in zs_units else v) for k, v in unpacked_now.items()}
+                   if zs_units else unpacked_now)
+            zs = zero_sum_residual(_up, lambda_zs=zs_lambda * zs_s * zs_s)
+            if zs.numel() > 0:
+                r = torch.cat([r, zs])
+        if ex_active:
+            ex_s = _row_scale(ex_scale_attr, zs_scale_cache, r, "panel_expansion_row_scale")
+            ex = panel_expansion_residual(
+                unpacked_now, panel_layout=panel_layout,
+                bc_y=unpacked_now.get("BC_y", v1_params.BC_y),
+                bc_z=unpacked_now.get("BC_z", v1_params.BC_z),
+                lambda_ex=ex_lambda * ex_s)   # this row is lambda * amp (not sqrt(lambda) * amp)
+            if ex.numel() > 0:
+                r = torch.cat([r, ex])
+        if has_prior:
+            pr = gaussian_prior_residual(unpacked_now, spec)
+            if pr.numel() > 0:
+                r = torch.cat([r, pr])
+        return r
+
+    return residual_fn
+
+
 def autocalibrate_pv(
     v1_params: V1Params,
     image: np.ndarray,
@@ -376,6 +640,13 @@ def autocalibrate_pv(
     min_cell_coverage: float = 0.5,       # a cell in the window must reach this
                                             # fraction of the best-covered cell
                                             # in the same window to count as whole
+    min_screen_retention: float = 0.5,    # warn (FitRetentionWarning) when the
+                                            # clipped-window screen keeps less than
+                                            # this fraction of the SNR-passing fits
+    param_tol_px: Optional[float] = 0.05,  # fine-phase stop: strain stable AND the
+                                            # geometry step (ring shift at the outer
+                                            # ring, px) below this over the last two
+                                            # iterations. None = legacy strain-only
     pv_max_iter: int = 50,
     snip_window: int = 0,           # 0 = none, recommend ~2× peak FWHM in bins
     doublet_separation_px: float = 0.0,  # 0 = none; v1 default 25 px
@@ -459,6 +730,20 @@ def autocalibrate_pv(
     # the spec (see io/transforms.apply_im_trans for the three ways doing this
     # by hand fails silently). Guarded so the no-transform path -- every caller
     # that has ever worked -- is byte-identical to before.
+    # Bad pixels: the RAW sentinels (-1/-2, the unsigned dtype max) are ALWAYS
+    # masked, on top of any mask the caller gave. Done before the transform (the
+    # mask is in the raw orientation and rides with the image) and before any
+    # clamping. Without it a module gap is a block of valid pixels (1 after a
+    # clamp, 2-3 once the dark's own sentinels are subtracted), the cake
+    # counts it as covered, and the clipped-window screen cannot see it; capture
+    # fits centred in a gap then pull the geometry away.
+    image, dark, mask, _n_sent = apply_sentinel_mask(image, dark, mask)
+    _cb = _coarse_cake_bin_message(float(getattr(v1_params, "RBinSize", 0.0) or 0.0))
+    if _cb is not None:
+        warnings.warn(CoarseCakeBinWarning(_cb), stacklevel=2)
+    if _n_sent and verbose:
+        print(f"  [pv] masked {_n_sent} pixels (sentinels + caller mask, "
+              f"{100.0 * _n_sent / image.size:.2f} % of the frame)", flush=True)
     if spec.im_trans:
         image, dark, mask, spec.NrPixelsY, spec.NrPixelsZ = apply_im_trans(
             image, dark, mask, spec.im_trans)
@@ -479,7 +764,10 @@ def autocalibrate_pv(
     cached_n_after_snr = None
     in_capture = capture_window_px > half_window_px and n_capture_max > 0
     capture_history: List[IterRecord] = []
+    retention_log: List[dict] = []
     last_fine_edge_q90: Optional[float] = None
+    stop_reason = ""
+    final_step_px: Optional[float] = None
     px_mean = (0.5 * (v1_params.pxY + v1_params.pxZ) if v1_params.pxZ > 0
                else v1_params.pxY)
 
@@ -520,9 +808,13 @@ def autocalibrate_pv(
                     v1_params.BC_y, v1_params.BC_z,
                     data=img_for_snr,
                 )
-                if mr > 0:
-                    spec.max_ring_number = mr
-                    max_ring_eff = mr
+                # mr counts rows; max_ring_number is a ring_nr label (see
+                # ring_number_cap) -- the two differ once radius-degenerate
+                # reflections have been merged.
+                mr_nr = ring_number_cap(rt, mr)
+                if mr_nr > 0:
+                    spec.max_ring_number = mr_nr
+                    max_ring_eff = mr_nr
                     if verbose:
                         print(f"  [pv iter {it}] auto-max-ring: keeping {mr} of "
                               f"{len(rt.ring_nr)} rings", flush=True)
@@ -558,6 +850,8 @@ def autocalibrate_pv(
                     min_cell_coverage=min_cell_coverage, max_iter=pv_max_iter,
                     snr_min=snr_min, snip_window=snip_window,
                     dtype=dtype, device=device, verbose=verbose,
+                    retention_log=retention_log, iteration=len(capture_history),
+                    min_retention=min_screen_retention,
                 )
             else:
                 bf = fit_cake_per_ring_batched(
@@ -577,6 +871,9 @@ def autocalibrate_pv(
                         bf, cake_t, R_centers, eta_centers, rt_R_ideal,
                         wins_fine, cov_fine, min_cell_coverage)
                     n_drop = int((~keep).sum())
+                    _p, _k = _screen_retention(bf, keep, snr_min)
+                    _note_retention(retention_log, "fine", it, _p, _k,
+                                    min_screen_retention, stacklevel=2)
                     if n_drop:
                         if bool(keep.any()):
                             bf = BatchedFits(**{f: getattr(bf, f)[keep]
@@ -669,9 +966,13 @@ def autocalibrate_pv(
             if verbose:
                 offsets = (bf.R_fit - rt_R_ideal[bf.ring_idx]).detach().cpu().numpy()
                 import numpy as _np
-                print(f"  [pV-batched] offset stats |R_fit - R_ideal|: "
-                      f"med={_np.median(_np.abs(offsets)):.3f} px  "
-                      f"q90={_np.quantile(_np.abs(offsets), 0.9):.3f} px", flush=True)
+                if offsets.size:
+                    print(f"  [pV-batched] offset stats |R_fit - R_ideal|: "
+                          f"med={_np.median(_np.abs(offsets)):.3f} px  "
+                          f"q90={_np.quantile(_np.abs(offsets), 0.9):.3f} px", flush=True)
+                else:
+                    # every fit was screened out; the retention warning carries the news
+                    print("  [pV-batched] no fits survived the screen", flush=True)
             if not in_capture and bf.R_fit.numel() > 0:
                 last_fine_edge_q90 = float(torch.quantile(
                     (bf.R_fit - rt_R_ideal[bf.ring_idx]).abs().detach().cpu(), 0.9))
@@ -738,62 +1039,8 @@ def autocalibrate_pv(
                 print(f"  [iter {it}] no fits passed SNR; aborting", flush=True)
             break
 
-        # If the spec carries a Σ panel = 0 zero-sum gauge (or the
-        # F2 per-ring Σ δr_k = 0 gauge), append the constraint as
-        # additional residual rows.  Adds curvature exactly along the
-        # gauge nullspace; data residual is unaffected.
-        _zs_active = bool(getattr(spec, "zero_sum_panels", False)) or \
-                     bool(getattr(spec, "zero_sum_dr_k", False))
-        _zs_lambda = float(getattr(spec, "zero_sum_lambda",
-                                    getattr(spec, "zero_sum_dr_k_lambda", 1e6)))
-        if _zs_active:
-            from ..loss.constraints import zero_sum_residual
-        # Second panel nullspace: a uniform radial expansion of the modules is
-        # degenerate with Lsd, and fix_panel_id / zero-sum do not touch it.
-        _ex_active = bool(getattr(spec, "no_panel_expansion", False)) \
-            and panel_layout is not None
-        _ex_lambda = float(getattr(spec, "panel_expansion_lambda", 1e6))
-        if _ex_active:
-            from ..loss.panel_gauge import panel_expansion_residual
-        # Gaussian priors on individual parameters
-        # (Parameter.prior = GaussianPrior(mean, std)) contribute
-        # (θ - μ)/σ rows so LM cost matches -2 log posterior.  Active
-        # whenever any parameter in the spec has a GaussianPrior.
-        from ..parameters.parameter import GaussianPrior as _GP
-        _has_gauss_prior = any(
-            isinstance(p.prior, _GP)
-            for p in spec.parameters.values()
-        )
-        if _has_gauss_prior:
-            from ..loss.constraints import gaussian_prior_residual
-
-        def residual_fn(unpacked_now: dict) -> torch.Tensor:
-            r = pseudo_strain_residual(
-                fits_ds.Y_pix, fits_ds.Z_pix, fits_ds.ring_two_theta_deg,
-                unpacked_now,
-                rho_d=fits_ds.rho_d, weights=fits_ds.weights,
-                panel_layout=panel_layout, panel_idx=fits_ds.panel_idx,
-                fix_panel_id=getattr(spec, "fix_panel_id", 0),
-                ring_idx=fits_ds.ring_idx,
-                ring_d_spacing_A=fits_ds.ring_d_spacing_A,
-            )
-            if _zs_active:
-                zs = zero_sum_residual(unpacked_now, lambda_zs=_zs_lambda)
-                if zs.numel() > 0:
-                    r = torch.cat([r, zs])
-            if _ex_active:
-                ex = panel_expansion_residual(
-                    unpacked_now, panel_layout=panel_layout,
-                    bc_y=unpacked_now.get("BC_y", v1_params.BC_y),
-                    bc_z=unpacked_now.get("BC_z", v1_params.BC_z),
-                    lambda_ex=_ex_lambda)
-                if ex.numel() > 0:
-                    r = torch.cat([r, ex])
-            if _has_gauss_prior:
-                pr = gaussian_prior_residual(unpacked_now, spec)
-                if pr.numel() > 0:
-                    r = torch.cat([r, pr])
-            return r
+        residual_fn = _make_residual_fn(
+            fits_ds, spec=spec, panel_layout=panel_layout, v1_params=v1_params)
 
         # Pre-LM trim of high-strain outliers — computed at the seeded
         # geometry.  Three modes:
@@ -933,29 +1180,8 @@ def autocalibrate_pv(
             )
             n_used = int(fits_ds.Y_pix.numel())
 
-            def residual_fn(unpacked_now: dict) -> torch.Tensor:    # rebound
-                r = pseudo_strain_residual(
-                    fits_ds.Y_pix, fits_ds.Z_pix, fits_ds.ring_two_theta_deg,
-                    unpacked_now,
-                    rho_d=fits_ds.rho_d, weights=fits_ds.weights,
-                    panel_layout=panel_layout, panel_idx=fits_ds.panel_idx,
-                    fix_panel_id=getattr(spec, "fix_panel_id", 0),
-                    ring_idx=fits_ds.ring_idx,
-                    ring_d_spacing_A=fits_ds.ring_d_spacing_A,
-                )
-                if _zs_active:
-                    from ..loss.constraints import zero_sum_residual as _zsr
-                    zs = _zsr(unpacked_now, lambda_zs=_zs_lambda)
-                    if zs.numel() > 0:
-                        r = torch.cat([r, zs])
-                if _has_gauss_prior:
-                    from ..loss.constraints import (
-                        gaussian_prior_residual as _gpr,
-                    )
-                    pr = _gpr(unpacked_now, spec)
-                    if pr.numel() > 0:
-                        r = torch.cat([r, pr])
-                return r
+            residual_fn = _make_residual_fn(
+                fits_ds, spec=spec, panel_layout=panel_layout, v1_params=v1_params)
 
         unpacked_pre = _unpack_current(spec, dtype, device) if in_capture else None
         unpacked, cost, rc = lm_minimise(
@@ -1063,6 +1289,10 @@ def autocalibrate_pv(
                       f"ty={rec.ty:.4f} tz={rec.tz:.4f}  rings moved {shift_px:.2f} px",
                       flush=True)
             if shift_px < capture_shift_px or len(capture_history) >= n_capture_max:
+                _msg = _capture_cap_message(shift_px, capture_shift_px,
+                                            len(capture_history), n_capture_max)
+                if _msg is not None:
+                    warnings.warn(CaptureNotSettledWarning(_msg), stacklevel=2)
                 in_capture = False
                 if verbose:
                     why = ("rings stopped moving" if shift_px < capture_shift_px
@@ -1092,17 +1322,38 @@ def autocalibrate_pv(
         if len(history) >= 2:
             prev = history[-2].mean_strain_uE
             cur_ms = mean_uE
-            # Break on convergence OR on strain increase (the latter signals
-            # alternating-engine bias: the cake rebuild at the moved geometry
-            # produces noisier fits than the previous iter, so keep the best).
-            if (cur_ms < 1.0
-                    or abs(prev - cur_ms) < 0.01 * max(prev, 1.0)
-                    or cur_ms > prev * 1.05):
+            # Strain-only stops are the legacy rule; with ``param_tol_px`` a
+            # stable strain also needs a stable geometry. Strain increase signals
+            # alternating-engine bias (the cake rebuild at the moved geometry
+            # produces noisier fits than the previous iter), so keep the best.
+            try:
+                R_outer = float(torch.hypot(fits_ds.Y_pix - rec.BC_y,
+                                            fits_ds.Z_pix - rec.BC_z).max())
+            except Exception:
+                R_outer = 0.0
+            stop, why, step_px = _outer_loop_decision(
+                history, R_outer, px_mean, param_tol_px=param_tol_px)
+            final_step_px = step_px
+            if stop:
+                stop_reason = why
                 if verbose:
-                    print(f"  [pv iter {it}] terminating "
-                          f"(converged or strain rising: {prev:.2f} → {cur_ms:.2f})",
-                          flush=True)
+                    print(f"  [pv iter {it}] terminating ({why}: strain "
+                          f"{prev:.2f} → {cur_ms:.2f}, geometry step "
+                          f"{step_px:.3f} px at the outer ring)", flush=True)
                 break
+
+    if not stop_reason and history:
+        stop_reason = "iteration_cap"
+    if (param_tol_px is not None and stop_reason in ("iteration_cap", "strain_rising",
+                                                     "strain_floor")
+            and final_step_px is not None and final_step_px >= param_tol_px):
+        warnings.warn(GeometryNotSettledWarning(
+            f"autocalibrate_pv: the outer loop ended ({stop_reason}) with the geometry "
+            f"still moving by {final_step_px:.3f} px at the outermost ring (tolerance "
+            f"{param_tol_px:g} px). The returned geometry is the last iterate, not a "
+            f"fixed point; a sigma computed here is conditional on it and a different "
+            f"seed can end elsewhere. Raise n_iter, or compare runs from shifted seeds."),
+            stacklevel=2)
 
     if last_fine_edge_q90 is not None and last_fine_edge_q90 >= 0.95 * half_window_px:
         warnings.warn(CaptureRangeWarning(
@@ -1160,8 +1411,14 @@ def autocalibrate_pv(
 
     return PVCalibrationResult(spec=spec, unpacked=unpacked or {},
                                 history=history, fits_final=fits_final,
-                                capture_history=capture_history)
+                                capture_history=capture_history,
+                                retention=retention_log,
+                                stop_reason=stop_reason,
+                                settled=(stop_reason == "settled"),
+                                final_step_px=final_step_px)
 
 
 __all__ = ["autocalibrate_pv", "PVCalibrationResult", "IterRecord",
-           "CaptureRangeWarning", "ClippedWindowWarning"]
+           "CaptureRangeWarning", "ClippedWindowWarning",
+           "FitRetentionWarning", "GeometryNotSettledWarning",
+           "CaptureNotSettledWarning", "CoarseCakeBinWarning"]

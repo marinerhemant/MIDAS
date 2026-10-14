@@ -45,6 +45,28 @@ def filter_ring_table(rt: RingTable, *,
     return rt.select(keep)
 
 
+def ring_number_cap(rt: RingTable, n_rows: int) -> int:
+    """The ``max_ring_number`` that keeps exactly the first ``n_rows`` rows of ``rt``.
+
+    ``auto_detect_max_ring`` counts POSITIONS in the radius-sorted table, but
+    ``filter_ring_table`` / ``spec.max_ring_number`` compare ``ring_nr``, the
+    hkl generator's label. They are the same number only while the labels are
+    contiguous. ``build_ring_table`` merges radius-identical reflections (CeO2:
+    (333)/(511) and (442)/(600)), which leaves gaps in ``ring_nr``, so passing
+    the count straight through silently dropped the outermost distinct ring:
+    a cap of 13 kept 12 rings on the Varex CeO2 table (0.23.0 and earlier).
+
+    Returns 0 (no cap) when ``n_rows`` is not a proper prefix. For a
+    multi-phase table, whose labels restart per phase, this is the largest label
+    among the first ``n_rows`` rows, so a cap can keep a few extra rows of the
+    other phase but never drops one it asked to keep.
+    """
+    n = len(rt.ring_nr)
+    if n_rows <= 0 or n_rows >= n:
+        return 0
+    return int(np.asarray(rt.ring_nr)[:n_rows].max())
+
+
 def ring_table_for(
     v1_params: V1Params,
     *,
@@ -303,9 +325,17 @@ def run_estep_v1(
 
     ``mask`` is an optional bad-pixel mask already in the image's orientation;
     nonzero means BAD. Masked pixels leave both the numerator and the
-    denominator of every cake cell.
+    denominator of every cake cell. The raw sentinels (-1/-2, unsigned dtype
+    max) in ``image`` or ``dark`` are masked in addition, always.
     """
     rt = ring_table_for(v1_params, spec=spec, verbose=verbose)
+    # The one chokepoint of the centroid path: image and dark arrive RAW and
+    # separate here (the cake builder subtracts them), so the sentinels are
+    # still recognisable. Every pipeline that builds a cake through this
+    # function -- single, joint_cake, multi, nn_residual, bayesian*, and so
+    # calibrate() -- therefore masks module gaps and dead pixels.
+    from ..seed.mask import apply_sentinel_mask
+    image, dark, mask, _ = apply_sentinel_mask(image, dark, mask)
     cake, fits = run_estep(v1_params, image, rt, dark=dark, mask=mask)
     if not fits:
         raise RuntimeError("E-step produced no fitted points")

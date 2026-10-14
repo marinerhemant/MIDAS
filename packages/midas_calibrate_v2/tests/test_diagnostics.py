@@ -253,10 +253,15 @@ def test_cross_validation_gate_fail(monkeypatch):
     monkeypatch.setattr(diagnostics, "pseudo_strain_residual", fake_residual)
 
     res = diagnostics.cross_validation_gate(
-        fake_fits, {}, fail_med_ratio=1.5, warn_med_ratio=1.2,
+        fake_fits, {}, fail_med_ratio=1.5, warn_med_ratio=1.2, allow_fail=True,
     )
     assert res.severity == "fail"
     assert res.metrics["ratio"] > 1.5
+    # the shipped default cannot fail: the threshold is not calibrated
+    soft = diagnostics.cross_validation_gate(
+        fake_fits, {}, fail_med_ratio=1.5, warn_med_ratio=1.2,
+    )
+    assert soft.severity == "warn" and "not calibrated" in soft.message
 
 
 # -------------------------------------------------- run_all_gates / summarise

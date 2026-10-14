@@ -11,8 +11,11 @@ Three cascading criteria:
    SNR < ``snr_threshold`` once we hit ``max_low_snr_run`` consecutive
    low-SNR rings.
 
-Returns ``0`` (= no limit) if all rings are usable, else the maximum
-ring index (1-based, matching v1's convention).
+Returns ``0`` (= no limit) if all rings are usable, else the number of usable
+ROWS of ``sim_rads_px`` (1-based position, a count). That is NOT necessarily a
+``ring_nr`` label: once radius-degenerate reflections are merged the labels
+have gaps, so convert with ``pipelines._common.ring_number_cap`` before using
+it as ``spec.max_ring_number``.
 """
 from __future__ import annotations
 
@@ -32,7 +35,7 @@ def auto_detect_max_ring(
     snr_threshold: float = 3.0,
     max_low_snr_run: int = 3,
 ) -> int:
-    """Return the max usable ring index (1-based), or 0 for "no limit".
+    """Return the number of usable rows (1-based position), or 0 for "no limit".
 
     Parameters
     ----------

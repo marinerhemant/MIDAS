@@ -28,7 +28,8 @@ from ..loss.pseudo_strain import pseudo_strain_residual
 from ..loss.robust_trim import stratified_trim, azimuth_deg, evaluate_full_strain
 from ..parameters.spec import CalibrationSpec
 from ..seed.auto_max_ring import auto_detect_max_ring
-from ._common import FittedDataset, filter_ring_table, ring_table_for
+from ._common import (FittedDataset, filter_ring_table, ring_number_cap,
+                      ring_table_for)
 
 
 @dataclass
@@ -150,6 +151,11 @@ def autocalibrate_pv_2d(
     fits_final: Optional[FittedDataset] = None
     unpacked = None
 
+    # Bad pixels: the RAW sentinels are always masked, on top of any caller mask
+    # (see the same step in single_pv.autocalibrate_pv).
+    from ..seed.mask import apply_sentinel_mask
+    image, dark, mask, _n_sent = apply_sentinel_mask(image, dark, mask)
+
     for it in range(n_iter):
         # ring_table_for (not build_ring_table) so MinRingSeparation and the
         # spec's ring exclusions reach this pipeline too — they used to apply
@@ -163,9 +169,13 @@ def autocalibrate_pv_2d(
                 rt.r_ideal_px, v1_params.NrPixelsY, v1_params.NrPixelsZ,
                 v1_params.BC_y, v1_params.BC_z, data=img_for_snr,
             )
-            if mr > 0:
-                spec.max_ring_number = mr
-                max_ring_eff = mr
+            # mr counts rows; max_ring_number is a ring_nr label (see
+            # ring_number_cap) -- the two differ once radius-degenerate
+            # reflections have been merged.
+            mr_nr = ring_number_cap(rt, mr)
+            if mr_nr > 0:
+                spec.max_ring_number = mr_nr
+                max_ring_eff = mr_nr
                 if verbose:
                     print(f"  [pv2d iter {it}] auto-max-ring: keeping {mr} of "
                           f"{len(rt.ring_nr)} rings", flush=True)

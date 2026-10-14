@@ -123,7 +123,7 @@
    (`packages/midas_calibrate_v2/midas_calibrate_v2/forward/distortion.py:49`).
    On that frame even `"radial"` was not enough and `"none"` was required: 181 µε
    diverging → 72 µε. **Check, do not assume:** run the azimuth gate
-   (`azimuth_coverage_gate`, `.../pipelines/diagnostics.py:586`), refine the largest
+   (`azimuth_coverage_gate`, `.../pipelines/diagnostics.py:686`), refine the largest
    block that passes,
    and confirm the loop settles.
 
