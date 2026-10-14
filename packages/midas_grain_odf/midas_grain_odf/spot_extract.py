@@ -12,6 +12,7 @@ per-spot patches rather than the full detector volume.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -157,8 +158,29 @@ def splat_spots_to_patches_sparse(
     sigma_f_row: Optional[torch.Tensor] = None,
     sigma_radial_row: Optional[torch.Tensor] = None,
     sigma_eta_row: Optional[torch.Tensor] = None,
+    frame_integrate: bool = False,
+    pixel_integrate: bool = False,
 ) -> torch.Tensor:
     """Radius-bounded Gaussian splatter via scatter_add.
+
+    ``pixel_integrate`` (default off; isotropic kernel only): integrate the
+    detector PSF over each pixel's area (erf over the pixel edges, pixel ``i``
+    covering ``[i - 1/2, i + 1/2)``) instead of sampling it at the pixel centre,
+    rescaled by ``2 pi s_yz^2`` so the total matches the sampled kernel. A
+    pixel records the photons that land anywhere on it; a centre-sampled
+    Gaussian of width ~1 px is a measurably different shape.
+
+    ``frame_integrate`` (default off, so existing callers are unchanged):
+    integrate the omega profile over each frame's exposure instead of
+    sampling the Gaussian at the frame centre. Frame cell ``c`` covers local
+    frame coordinate ``[c - 1/2, c + 1/2)``, so its weight is
+    ``Phi((c + 1/2 - f)/s_f) - Phi((c - 1/2 - f)/s_f)``, rescaled by
+    ``sqrt(2 pi) s_f`` so the integrated intensity matches the sampled kernel.
+    A detector frame records everything diffracted while the sample turns
+    through it; for a spot narrower than a frame (s_f ~ 0.3) the sampled
+    kernel misplaces intensity by up to half a frame and its gradient with
+    respect to ``spot_f`` nearly vanishes between frame centres, which is why
+    single-frame spots carried no sub-frame omega information.
 
     For each predicted spot the kernel is evaluated only on the
     (2*radius_f + 1) * (2*radius_yz + 1)^2 cells around the rounded center,
@@ -245,16 +267,28 @@ def splat_spots_to_patches_sparse(
         rz = spec.radial_z.to(dtype).reshape(1, -1, 1)
         d_rad = dy * ry + dz * rz                                    # (K, S, L)
         d_eta = -dy * rz + dz * ry
-        arg = (d_rad / s_rad) ** 2 + (d_eta / s_eta) ** 2 + (df / s_f) ** 2
+        arg = (d_rad / s_rad) ** 2 + (d_eta / s_eta) ** 2
     else:
         s_yz = (sigma_yz_row.to(dtype).reshape(-1, 1, 1) if sigma_yz_row is not None
                 else spec.sigma_yz)
-        arg = (
-            (dy / s_yz) ** 2
-            + (dz / s_yz) ** 2
-            + (df / s_f) ** 2
-        )
-    kernel = torch.exp(-0.5 * arg)
+        arg = (dy / s_yz) ** 2 + (dz / s_yz) ** 2
+    if pixel_integrate:
+        if anisotropic:
+            raise ValueError("pixel_integrate supports the isotropic kernel only")
+        s_t = torch.as_tensor(s_yz, dtype=dtype, device=device)
+        iv = 1.0 / (math.sqrt(2.0) * s_t)
+        k_y = 0.5 * (torch.erf((dy + 0.5) * iv) - torch.erf((dy - 0.5) * iv))
+        k_z = 0.5 * (torch.erf((dz + 0.5) * iv) - torch.erf((dz - 0.5) * iv))
+        yz = k_y * k_z * (2.0 * math.pi * s_t * s_t)
+    else:
+        yz = torch.exp(-0.5 * arg)
+    if frame_integrate:
+        s_f_t = torch.as_tensor(s_f, dtype=dtype, device=device)
+        inv = 1.0 / (math.sqrt(2.0) * s_f_t)
+        k_f = 0.5 * (torch.erf((df + 0.5) * inv) - torch.erf((df - 0.5) * inv))
+        kernel = yz * k_f * (math.sqrt(2.0 * math.pi) * s_f_t)
+    else:
+        kernel = yz * torch.exp(-0.5 * (df / s_f) ** 2)
     if anisotropic:
         # Conserve integrated intensity vs the instrumental width
         # (∝ σ_yz²·σ_f for the isotropic baseline).
