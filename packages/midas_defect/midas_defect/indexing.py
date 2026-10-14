@@ -113,19 +113,18 @@ def build_forward_model(crystal, geom: Geometry, *,
     #   multi_mode="panel"; the default "layered" mode applies the NF ray-plane intersection,
     #   which put spots a median 7.6 px off at tilts (0.3, 0.15, 0.37) deg.
     # * distortion: the 15-term p_coeffs were not passed at all. They are LEGACY paramstest
-    #   p0..p14 applied raw -> ideal by midas_transforms; HEDMForwardModel applies the
-    #   midas_distortion v2 layout ideal -> raw. The bridge is v1_to_v2_coeffs (a reindex) with
-    #   the AMPLITUDES negated and the phases kept: the first-order inverse of D = 1 + delta,
-    #   leaving an O(delta^2) residual (~2e-3 px for realistic coefficients).
+    #   p0..p14 applied raw -> ideal by midas_transforms. HEDMForwardModel (midas_diffract >= 0.10.0)
+    #   takes those same coefficients (v1_to_v2_coeffs is a reindex) and inverts the correction itself
+    #   (fixed point), so they are passed as they are. Before 0.10.0 the model applied the correction
+    #   in the wrong direction and this code compensated with negated AMPLITUDES (a first-order
+    #   inverse with an O(delta^2) residual); with 0.10.0 that compensation would double-invert.
     # With all three, the two predictors agree to <1e-2 px (tests/test_indexing_forward_conventions.py).
     omega_edge = geom.omega_first_deg - 0.5 * geom.omega_step_deg
     has_dist = any(abs(float(p)) > 0 for p in geom.p_coeffs)
     p_ideal_to_raw = None
     if has_dist:
         import midas_distortion as md
-        v2 = np.asarray(md.v1_to_v2_coeffs(np.asarray(geom.p_coeffs, float)), float)
-        amp = np.array([not n.startswith("phi") for n in md.P_COEF_NAMES])
-        p_ideal_to_raw = np.where(amp, -v2, v2).tolist()
+        p_ideal_to_raw = np.asarray(md.v1_to_v2_coeffs(np.asarray(geom.p_coeffs, float)), float).tolist()
     hgeom = HEDMGeometry(
         Lsd=geom.lsd_um, y_BC=geom.bcy_px, z_BC=geom.bcz_px, px=geom.px_um,
         omega_start=omega_edge, omega_step=geom.omega_step_deg,
