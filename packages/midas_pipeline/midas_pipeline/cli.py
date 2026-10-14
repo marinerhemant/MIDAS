@@ -341,8 +341,16 @@ def _build_parser() -> argparse.ArgumentParser:
                           "recovered grain spots; writes a corrected paramstest "
                           "for a re-run from the transforms stage.")
     run.add_argument("--grain-geometry-refine", default="tx",
-                     help="comma-separated geometry blocks to refine "
-                          "(default 'tx'; e.g. 'tx,Wedge').")
+                     help="comma-separated grain-tx blocks to refine (default "
+                          "'tx'). Wedge is measured from Friedel pairs instead; "
+                          "see --grain-geometry-no-friedel-wedge.")
+    run.add_argument("--grain-geometry-no-friedel-wedge", action="store_true",
+                     help="skip the Friedel-pair Wedge/OmegaStep measurement "
+                          "(midas-joint-ff-calibrate friedel-wedge) that runs "
+                          "before grain-tx.")
+    run.add_argument("--grain-geometry-write-omega-step", action="store_true",
+                     help="also write the Friedel-fitted OmegaStep into the "
+                          "corrected paramstest.")
     run.add_argument("--grain-geometry-kind", default="angular",
                      choices=["angular", "internal_angle"],
                      help="η-sensitive loss; 'pixel' is disabled (blind to tx).")
@@ -834,6 +842,8 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         kind=args.grain_geometry_kind,
         max_grains=int(args.grain_geometry_max_grains),
         out_name=args.grain_geometry_out,
+        friedel_wedge=not bool(args.grain_geometry_no_friedel_wedge),
+        write_omega_step=bool(args.grain_geometry_write_omega_step),
     )
     soft_attribution = SoftAttributionConfig(
         enable=bool(args.soft_attribution),

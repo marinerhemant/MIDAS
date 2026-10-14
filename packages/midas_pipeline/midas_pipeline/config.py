@@ -512,7 +512,13 @@ class GrainGeometryConfig:
     ``project_ff_tx_grain_calibration``.
     """
     run: bool = False
-    refine_params: tuple = ("tx",)          # ("tx",) or ("tx", "Wedge")
+    refine_params: tuple = ("tx",)          # grain-tx blocks; Wedge comes from friedel_wedge
+    # Measure the absolute rotation-axis Wedge (and the OmegaStep scale) from
+    # Friedel pairs before refining tx; grain-tx then runs with that Wedge
+    # pinned. grain-tx (Y,Z loss, frozen grain poses) recovers only part of a
+    # wedge per pass; Friedel pairs measure it absolutely in one.
+    friedel_wedge: bool = True
+    write_omega_step: bool = False          # also write the Friedel OmegaStep
     kind: str = "angular"                   # eta-sensitive: "angular" | "internal_angle"
     max_grains: int = 50                    # highest-confidence grains to use
     max_iter: int = 50
