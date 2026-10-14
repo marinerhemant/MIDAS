@@ -409,13 +409,20 @@ def _predict_via_midas_diffract(
     N = om_fz_per_grain.shape[0]
 
     # ---- build the forward model ----
+    # The scan window is always [omega_min, omega_max] (ascending), with the
+    # frame index counted up from omega_min.  A signed OmegaStep < 0 (1-ID
+    # aero scans) describes the same window traversed the other way, so the
+    # step used for the frame grid here must be |step|: a negative step makes
+    # (omega - omega_min) / step <= 0 for every in-window omega, which the
+    # forward model then rejects as off-scan (zero visible reflections).
     span = geom.omega_max_deg - geom.omega_min_deg
-    n_frames = max(int(round(span / max(geom.omega_step_deg, 1e-6))), 1)
+    step_abs = max(abs(geom.omega_step_deg), 1e-6)
+    n_frames = max(int(round(span / step_abs)), 1)
     fm_geom = HEDMGeometry(
         Lsd=geom.lsd_um,
         y_BC=geom.y_BC, z_BC=geom.z_BC,
         px=geom.pixel_um,
-        omega_start=geom.omega_min_deg, omega_step=geom.omega_step_deg,
+        omega_start=geom.omega_min_deg, omega_step=step_abs,
         n_frames=n_frames,
         n_pixels_y=geom.n_pixels_y, n_pixels_z=geom.n_pixels_z,
         min_eta=geom.min_eta_deg,
