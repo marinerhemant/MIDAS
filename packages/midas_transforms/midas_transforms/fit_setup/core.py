@@ -3,7 +3,8 @@
 End-to-end:
 
 1. Read the 24-col ``Radius_*.csv`` and project into the C ``SpotsInfo`` layout.
-2. Apply the per-spot omega correction (from t_int / t_gap / OmegaStep / Z_pix).
+2. Apply the per-spot omega correction (from t_int / t_gap / OmegaStep / Z_pix), then the
+   detector-readout timing correction (OmegaReadoutShift/Axis/Shape/Centre; off by default).
 3. Sort spots within each ring by Omega (stable, secondary key = original index)
    and renumber SpotID consecutively across all rings.
 4. Apply tilt + distortion (lab µm) via ``transform.apply_tilt_distortion``.
@@ -177,6 +178,43 @@ def _omega_correction(
     return spotsinfo
 
 
+def _readout_correction(
+    spotsinfo: np.ndarray, *, shift: float, axis: int, shape: int, centre: float,
+    nr_pixels_y: int, nr_pixels_z: int,
+) -> np.ndarray:
+    """Detector-readout omega timing: ``Omega -= shift * shape(pixel)``.
+
+    ``axis`` 0 = rows (ZCen, column 3), 1 = columns (YCen, column 2).
+    ``shape`` 0 = centre-out ``1 - |X - C| / (N/2)``; 1 = split halves
+    ``sign(X - C)``. ``centre`` C in px (<= 0 means N/2). Additive to the legacy
+    :func:`_omega_correction`; ``shift == 0`` is a no-op.
+
+    Measured on 20-ID-E s20varex2 from the post-fit per-spot omega residual,
+    which collapses across rings against the detector COLUMN (not eta, not row):
+    a centre-out V, ``shift -0.136`` deg (the centre columns exposed ~0.54 frame
+    earlier than the edges). The 20-ID-D Varex shows a split-halves step instead.
+    Friedel pairs share a column, so this cancels in a Friedel wedge fit.
+    """
+    if not shift:
+        return spotsinfo
+    if axis not in (0, 1) or shape not in (0, 1):
+        raise ValueError(f"OmegaReadoutAxis must be 0/1 and OmegaReadoutShape 0/1; "
+                         f"got {axis}/{shape}")
+    n = int(nr_pixels_y if axis == 1 else nr_pixels_z)
+    if n <= 0:
+        raise ValueError("OmegaReadoutShift needs NrPixelsY/NrPixelsZ to place the readout centre.")
+    x = spotsinfo[:, 2] if axis == 1 else spotsinfo[:, 3]
+    c = float(centre) if centre and centre > 0 else n / 2.0
+    if shape == 0:
+        g = 1.0 - np.abs(x - c) / (n / 2.0)
+    else:
+        g = np.sign(x - c)
+    spotsinfo[:, 1] = spotsinfo[:, 1] - shift * g
+    spotsinfo[:, 1] = np.where(spotsinfo[:, 1] < -180, spotsinfo[:, 1] + 360, spotsinfo[:, 1])
+    spotsinfo[:, 1] = np.where(spotsinfo[:, 1] > 180, spotsinfo[:, 1] - 360, spotsinfo[:, 1])
+    return spotsinfo
+
+
 def _sort_per_ring_renumber(
     spotsinfo: np.ndarray, ring_numbers: List[int],
 ):
@@ -267,6 +305,15 @@ def fit_setup(
         t_int=zarr_params.tInt,
         omega_step=zarr_params.OmegaStep,
         nr_pixels=zarr_params.NrPixels if zarr_params.NrPixels > 0 else 1,
+    )
+    spotsinfo = _readout_correction(
+        spotsinfo,
+        shift=float(getattr(zarr_params, "OmegaReadoutShift", 0.0) or 0.0),
+        axis=int(getattr(zarr_params, "OmegaReadoutAxis", 0) or 0),
+        shape=int(getattr(zarr_params, "OmegaReadoutShape", 0) or 0),
+        centre=float(getattr(zarr_params, "OmegaReadoutCentre", 0.0) or 0.0),
+        nr_pixels_y=zarr_params.NrPixelsY or zarr_params.NrPixels,
+        nr_pixels_z=zarr_params.NrPixelsZ or zarr_params.NrPixels,
     )
 
     # Determine ring iteration order from RingThresh.

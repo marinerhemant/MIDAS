@@ -81,7 +81,7 @@ FORCE_DOUBLE_PARAMS = {
     "zDiffThresh", "GlobalPosition", "tolPanelFit", "tolP", "tolP0", "tolP1",
     "tolP2", "tolP3", "tolP4", "tolShifts", "tolRotation", "tolLsdPanel",
     "tolP2Panel", "DoubletSeparation", "MultFactor", "StepSizePos", "tInt",
-    "tGap", "StepSizeOrient", "MarginRadius", "MarginRadial", "MarginEta",
+    "tGap", "OmegaReadoutShift", "OmegaReadoutCentre", "StepSizeOrient", "MarginRadius", "MarginRadial", "MarginEta",
     "MarginOme", "MargABG", "MargABC", "OmeBinSize", "EtaBinSize", "RBinSize",
     "EtaMin", "MinEta", "EtaMax", "X", "Y", "Z", "U", "V", "W", "SHpL",
     "Polariz", "MaxOmeSpotIDsToIndex", "MinOmeSpotIDsToIndex", "BeamThickness",
@@ -107,6 +107,7 @@ FORCE_INT_PARAMS = {
     "NormalizeRingWeights", "OutlierIterations", "WeightByRadius",
     "WeightByFitSNR", "L2Objective", "PerPanelLsd", "PerPanelDistortion",
     "FixPanelID", "MinIndicesForFit", "LocalMaximaOnly", "FitParallax",
+    "OmegaReadoutAxis", "OmegaReadoutShape",
     # Opt-in local background subtraction in the peak search
     # (midas_peakfit.background). BgSubtract 0 = legacy/C behaviour.
     "BgSubtract", "BgNSectors",

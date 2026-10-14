@@ -499,7 +499,7 @@ OPTIONAL_FITSETUP_KEYS_FLOAT = (
     "MinEta", "MinMatchesToAcceptFrac",
     "MaxOmeSpotIDsToIndex", "MinOmeSpotIDsToIndex",
     "WeightFitRMSE", "WeightMask",
-    "tInt", "tGap",
+    "tInt", "tGap", "OmegaReadoutShift", "OmegaReadoutCentre",
     "Vsample", "DiscArea",
     "OmegaStart", "OmegaStep",
     "MinIntegratedIntensity",
@@ -511,6 +511,7 @@ OPTIONAL_FITSETUP_KEYS_INT = (
     "SpaceGroup",
     "DiscModel",
     "IncludeSaturatedSpots",
+    "OmegaReadoutAxis", "OmegaReadoutShape",
 )
 OPTIONAL_FITSETUP_KEYS_STR = (
     "PanelShiftsFile", "ResidualCorrectionMap", "ResultFolder",
@@ -614,6 +615,20 @@ class ZarrParams:
     WeightMask: float = 1.0
     tInt: float = 1.0
     tGap: float = 0.0
+    # Detector-READOUT omega timing, measured from the data (post-fit per-spot
+    # omega residual vs detector pixel). Separate from, and additive to, the
+    # legacy tGap/tInt row correction above. omega -= Shift * shape(pixel):
+    #   Axis  0 = rows (ZCen, DetectorVert), 1 = columns (YCen, DetectorHor)
+    #   Shape 0 = centre-out  shape = 1 - |X - C| / (N/2)   (1 at C, 0 at the edges)
+    #         1 = split halves shape = sign(X - C)
+    #   Centre C in px; 0 = the detector middle N/2.
+    # Pixel coordinates are those of the peak list (YCen/ZCen = SpotMatrix
+    # DetectorHor/DetectorVert, i.e. after ImTransOpt). Shift 0 = off.
+    # 20-ID-E s20varex2 (2026-09 beamtime): columns, centre-out, -0.136 deg.
+    OmegaReadoutShift: float = 0.0
+    OmegaReadoutCentre: float = 0.0
+    OmegaReadoutAxis: int = 0
+    OmegaReadoutShape: int = 0
     # N8: fit_setup intensity spot filter (0 = off — the FF default).
     MinIntegratedIntensity: float = 0.0
 

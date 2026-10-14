@@ -78,6 +78,9 @@ KEY_EARLIEST_STAGE: Dict[str, str] = {
     "GlobalPosition": "transforms", "BeamStopY": "transforms",
     "BeamStopZ": "transforms",
     "IncludeSaturatedSpots": "transforms",   # read at merge, not peak search
+    # detector-readout omega timing, applied in fit_setup (transforms)
+    "OmegaReadoutShift": "transforms", "OmegaReadoutAxis": "transforms",
+    "OmegaReadoutShape": "transforms", "OmegaReadoutCentre": "transforms",
     # ── indexing: search envelope and matching windows ──
     "Rsample": "indexing", "Hbeam": "indexing", "Vsample": "indexing",
     "MinNrSpots": "indexing", "Completeness": "indexing",

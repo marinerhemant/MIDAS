@@ -1273,6 +1273,33 @@ PARAMS: list[ParamSpec] = [
         applies_to=FF_PF, units="s", stages=S_INDEX, hidden_in_wizard=True,
     ),
     ParamSpec(
+        name="OmegaReadoutShift", type=ParamType.FLOAT, category="Sample geometry",
+        description="Detector-readout omega timing, measured from the data: "
+                    "omega -= OmegaReadoutShift * shape(pixel) (see OmegaReadoutAxis/"
+                    "Shape/Centre). 0 = off. Additive to the tGap/tInt row correction.",
+        applies_to=FF_PF, units="deg", stages=S_INDEX, hidden_in_wizard=True,
+        notes="20-ID-E s20varex2 (2026-09 beamtime): -0.136 with Axis 1, Shape 0 "
+              "(centre-out along columns). Measure it from the post-fit per-spot "
+              "omega residual vs detector column/row; Friedel pairs cannot see it.",
+    ),
+    ParamSpec(
+        name="OmegaReadoutAxis", type=ParamType.INT, category="Sample geometry",
+        description="Readout-timing axis: 0 = rows (ZCen/DetectorVert), "
+                    "1 = columns (YCen/DetectorHor).",
+        applies_to=FF_PF, stages=S_INDEX, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="OmegaReadoutShape", type=ParamType.INT, category="Sample geometry",
+        description="Readout-timing shape: 0 = centre-out 1 - |X - C|/(N/2); "
+                    "1 = split halves sign(X - C).",
+        applies_to=FF_PF, stages=S_INDEX, hidden_in_wizard=True,
+    ),
+    ParamSpec(
+        name="OmegaReadoutCentre", type=ParamType.FLOAT, category="Sample geometry",
+        description="Readout-timing centre / split line in px (0 = detector middle).",
+        applies_to=FF_PF, units="px", stages=S_INDEX, hidden_in_wizard=True,
+    ),
+    ParamSpec(
         name="GridSize", type=ParamType.FLOAT, category="Sample geometry",
         description="Voxel grid spacing.",
         applies_to=frozenset({NF}), required_for=frozenset({NF}),
