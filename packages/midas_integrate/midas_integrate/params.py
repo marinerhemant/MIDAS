@@ -306,10 +306,16 @@ def parse_params(path: str | Path) -> IntegrationParams:
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
+            # The C writers (FitSetup, the FF pipeline's per-layer
+            # paramstest.txt) end value lines with ';' ("px 150.000000;").
+            # Left on, float("150.000000;") failed and the key was silently
+            # dropped: px, Distance and NrPixels read as 0 from a layer file.
+            line = line.split("#", 1)[0].strip().rstrip(";").strip()
             tokens = line.split(None, 1)
             if len(tokens) < 2:
                 continue
             key, value = tokens[0], tokens[1].strip()
+            value = " ".join(t.rstrip(";") for t in value.split())
 
             # Special multi-value keys
             if key == "BC":

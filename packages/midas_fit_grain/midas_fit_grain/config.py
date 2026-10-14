@@ -422,6 +422,9 @@ def _apply_param(cfg: FitConfig, key: str, args: list[str],
         "LsdFit", "YBCFit", "ZBCFit", "txFit", "tyFit", "tzFit",
         "OmegaStart", "OmegaStep",
         "RingToIndex", "NoSaveAll",
+        # canonical geometry block (midas-transforms writes it beside the *Fit
+        # echoes, same values; the *Fit keys above keep precedence here)
+        "BC", "ResidualCorrectionMap",
         # fit_setup spot filter (midas-transforms N8; peak-search-time only)
         "MinIntegratedIntensity",
     }:

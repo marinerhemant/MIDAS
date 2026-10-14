@@ -124,6 +124,11 @@ class ParamsTest:
     # Written only when non-zero (no FF behaviour change).
     MinIntegratedIntensity: float = 0.0
 
+    # Stage-4 residual-correction map the geometry was calibrated with. Written
+    # in the canonical block so raw-pixel consumers (grain-tx, friedel-wedge)
+    # re-derive YLab/ZLab exactly as this stage did. Empty = none.
+    ResidualCorrectionMap: str = ""
+
     # Refinement weights
     WeightMask: float = 1.0
     WeightFitRMSE: float = 0.0
@@ -191,6 +196,7 @@ _INT_KEYS = {"NoSaveAll", "SpaceGroup", "UseFriedelPairs", "RingToIndex",
 _STR_KEYS = {
     "SpotsFileName", "RefinementFileName", "IDsFileName",
     "OutputFolder", "ResultFolder", "GrainsFile",
+    "ResidualCorrectionMap",
 }
 
 
@@ -414,6 +420,24 @@ def write_paramstest(p: ParamsTest, path: Union[str, Path]) -> None:
         fp.write(f"txFit {f6(p.txFit)}\n")
         fp.write(f"tyFit {f6(p.tyFit)}\n")
         fp.write(f"tzFit {f6(p.tzFit)}\n")
+        # Canonical geometry block: the SAME geometry under the names every
+        # parameter-file reader understands (Lsd, BC, tx/ty/tz,
+        # LatticeConstant). The *Fit / Distance / LatticeParameter lines above
+        # stay for older readers. Without this block a reader that only knows
+        # the canonical keys (midas_calibrate.params, used by grain-tx) read
+        # this file as Lsd = 0, tx = 0: grain-tx matched 0 spots and wrote
+        # "tx 0" with exit 0. The C indexer and refiner accept these keys as
+        # synonyms of the ones above (IndexerUnified.c: Lsd == Distance,
+        # LatticeConstant == LatticeParameter; FitUnified reads BC/tx but
+        # works on the corrected YLab/ZLab), so their behaviour is unchanged.
+        fp.write(f"Lsd {f6(p.LsdFit if p.LsdFit else p.Lsd)}\n")
+        fp.write(f"BC {f6(p.YBCFit)} {f6(p.ZBCFit)}\n")
+        fp.write(f"tx {f6(p.txFit)}\n")
+        fp.write(f"ty {f6(p.tyFit)}\n")
+        fp.write(f"tz {f6(p.tzFit)}\n")
+        fp.write("LatticeConstant " + " ".join(f6(v) for v in p.LatticeConstant) + "\n")
+        if p.ResidualCorrectionMap:
+            fp.write(f"ResidualCorrectionMap {p.ResidualCorrectionMap}\n")
         # Full v1-ordered distortion polynomial (C truncated to p0..p3).
         # %.12g: distortion amplitudes span 1e-9 .. 1e2 — the C %f (6
         # fractional digits) would flush small harmonics to 0.
@@ -713,6 +737,7 @@ class ZarrParams:
         pt.txFit = self.tx
         pt.tyFit = self.ty
         pt.tzFit = self.tz
+        pt.ResidualCorrectionMap = self.ResidualCorrectionMap
         # Repeated keys
         pt.OmegaRanges = list(self.OmegaRanges)
         pt.BoxSizes = list(self.BoxSizes)

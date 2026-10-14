@@ -14,6 +14,46 @@ from typing import Dict, List, Optional, Tuple, Union
 from midas_integrate.params import IntegrationParams, parse_params as _parse_int
 
 
+#: Older per-layer ``paramstest.txt`` files (FF pipeline / FitSetup before the
+#: writer emitted canonical keys) carry the geometry the reconstruction RAN
+#: with only under these names. Read as FALLBACKS: an explicit canonical key in
+#: the same file always wins. Without them a layer file read here gave Lsd = 0
+#: and tx = 0 silently (grain-tx then matched 0 spots and wrote ``tx 0``).
+FIT_KEY_ALIASES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("Lsd", ("LsdFit", "Distance")),
+    ("tx", ("txFit",)),
+    ("ty", ("tyFit",)),
+    ("tz", ("tzFit",)),
+)
+
+
+def _apply_fit_key_aliases(params: "CalibrationParams", seen: Dict[str, str]) -> None:
+    """Fill canonical geometry from ``*Fit`` / legacy spellings when absent.
+
+    Records what it did in ``params.extra["AliasedKeys"]`` (e.g.
+    ``"Lsd<-LsdFit tx<-txFit"``) so callers can say so."""
+    used = []
+    for canon, alts in FIT_KEY_ALIASES:
+        if canon in seen:
+            continue
+        for a in alts:
+            if a in seen:
+                setattr(params, canon, float(seen[a].split()[0]))
+                used.append(f"{canon}<-{a}")
+                break
+    if "BC" not in seen and "YBCFit" in seen and "ZBCFit" in seen:
+        params.BC_y = float(seen["YBCFit"].split()[0])
+        params.BC_z = float(seen["ZBCFit"].split()[0])
+        used.append("BC<-YBCFit,ZBCFit")
+    if "LatticeConstant" not in seen and "LatticeParameter" in seen:
+        vals = [float(v) for v in seen["LatticeParameter"].split()]
+        if len(vals) >= 6:
+            params.LatticeConstant = tuple(vals[:6])  # type: ignore
+            used.append("LatticeConstant<-LatticeParameter")
+    if used:
+        params.extra["AliasedKeys"] = " ".join(used)
+
+
 @dataclass
 class CalibrationParams:
     # -------------------------- detector geometry (mirrors IntegrationParams)
@@ -155,6 +195,7 @@ class CalibrationParams:
             params = cls()
 
         # Calibration-specific keys
+        seen: Dict[str, str] = {}
         for line in text.splitlines():
             # Strip comments and the MIDAS C ';' line terminator (e.g.
             # ``MaxRingRad 312493.037332;``) so values parse as floats.
@@ -165,6 +206,7 @@ class CalibrationParams:
             if len(parts) != 2:
                 continue
             key, val = parts[0].strip(), parts[1].strip()
+            seen.setdefault(key, val)
 
             # Apply known calibration keys
             if key == "SpaceGroup":
@@ -271,6 +313,7 @@ class CalibrationParams:
             else:
                 params.extra[key] = val
 
+        _apply_fit_key_aliases(params, seen)
         return params
 
     def to_text(self) -> str:
