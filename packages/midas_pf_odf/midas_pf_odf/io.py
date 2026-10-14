@@ -68,6 +68,28 @@ def _first_float(params: Dict, key: str, default: Optional[float] = None) -> flo
     raise KeyError(f"paramstest missing required key {key!r}")
 
 
+def _has_key(params: Dict, key: str) -> bool:
+    """True if ``key`` is present with at least one numeric token."""
+    return bool(params.get(key)) and bool(params[key][0])
+
+
+def _tx_fallback_from_parameters_txt(layer: Path) -> Optional[float]:
+    """``tx`` from a ``Parameters.txt`` next to the paramstest, else None.
+
+    The master parameter file's ``tx`` is held fixed through the C FF chain
+    (FitSetupZarr refines ty/tz only), so it is the value the run used."""
+    for name in ("Parameters.txt", "parameters.txt"):
+        f = layer / name
+        if f.exists():
+            try:
+                q = parse_paramstest(f)
+                if _has_key(q, "tx"):
+                    return float(q["tx"][0][0])
+            except (OSError, ValueError):
+                return None
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Geometry / scan config / model
 # ---------------------------------------------------------------------------
@@ -122,13 +144,25 @@ def geometry_from_paramstest(
     n_frames: Optional[int] = None,
     omega_step: Optional[float] = None,
     apply_distortion: bool = False,
+    tx_deg: Optional[float] = None,
+    tx_fallback_deg: Optional[float] = None,
 ) -> HEDMGeometry:
     """Build a correct :class:`HEDMGeometry` from a parsed paramstest.
 
     Maps the MIDAS keys: ``Distance``/``LsdFit`` → Lsd, ``YBCFit`` → y_BC,
     ``ZBCFit`` → z_BC, ``OmegaRange`` → omega_start, ``tyFit``/``tzFit`` →
-    ty/tz tilts (tx assumed 0), ``Wedge`` → wedge (same sign and stage frame
-    as FF Grains.csv; ``midas_diffract.forward`` "Wedge convention").
+    ty/tz tilts, ``txFit`` (else ``tx``) → tx tilt, ``Wedge`` → wedge (same
+    sign and stage frame as FF Grains.csv; ``midas_diffract.forward`` "Wedge
+    convention").
+
+    **tx (known-limits [KL-066]):** the C ``FitSetupZarr`` wrote ``tyFit``/
+    ``tzFit`` but never ``txFit``, so a paramstest from an older run has NO tx.
+    A silent tx = 0 is wrong whenever the run's ``Parameters.txt`` says
+    otherwise (a Cu pf-HEDM dataset: 0.114081 deg = 1.2-2.0 px tangential shift on rings
+    628-997 px and thousands of microstrain of absorbed strain). Resolution:
+    ``tx_deg`` (explicit override, always wins) > ``txFit``/``tx`` in the
+    paramstest > ``tx_fallback_deg`` (e.g. read from the run's
+    ``Parameters.txt``; used with a warning) > 0 with a loud ``UserWarning``.
     ``flip_y=True`` (FF/pf
     DetCor convention). Detector pixel dimensions must be supplied by the
     caller (paramstest does not record them).
@@ -217,7 +251,29 @@ def geometry_from_paramstest(
     min_eta = _first_float(params, "MinEta", _first_float(params, "ExcludePoleAngle", 6.0))
     ty = _first_float(params, "tyFit", _first_float(params, "ty", 0.0))
     tz = _first_float(params, "tzFit", _first_float(params, "tz", 0.0))
-    tx = _first_float(params, "txFit", _first_float(params, "tx", 0.0))
+    if tx_deg is not None:
+        tx = float(tx_deg)
+    elif _has_key(params, "txFit") or _has_key(params, "tx"):
+        tx = _first_float(params, "txFit", _first_float(params, "tx", 0.0))
+    elif tx_fallback_deg is not None:
+        tx = float(tx_fallback_deg)
+        warnings.warn(
+            "geometry_from_paramstest: paramstest has neither txFit nor tx "
+            "(the C FitSetupZarr never wrote it, [KL-066]); using the supplied "
+            f"fallback tx = {tx:.6f} deg (e.g. from Parameters.txt).",
+            stacklevel=2,
+        )
+    else:
+        tx = 0.0
+        warnings.warn(
+            "geometry_from_paramstest: paramstest has neither txFit nor tx, so "
+            "tx = 0 is assumed. The C FitSetupZarr never wrote txFit "
+            "([KL-066]); if the run's Parameters.txt has a non-zero tx this "
+            "silently shifts every predicted spot tangentially (0.114 deg = "
+            "1.2-2.0 px at ring radii 628-997 px) and is absorbed as spurious "
+            "strain. Pass tx_deg=<Parameters.txt tx> (or tx_fallback_deg=).",
+            stacklevel=2,
+        )
     wedge = _first_float(params, "Wedge", 0.0)
     # P1-4: raw-frame consumers must model the calibrated detector
     # distortion (measured effect on SOH Varex: 4-166 µm ring shifts,
@@ -271,8 +327,13 @@ def build_model_from_paramstest(
     omega_step: Optional[float] = None,
     apply_distortion: bool = False,
     ring_numbers: Optional[Sequence[int]] = None,
+    tx_deg: Optional[float] = None,
 ) -> Tuple[HEDMForwardModel, np.ndarray]:
     """Build the pf-HEDM forward model (geometry + scan_config + hkls).
+
+    ``tx_deg`` overrides the detector tx tilt; if the paramstest carries no
+    ``txFit``/``tx`` (older runs, [KL-066]) a ``Parameters.txt`` next to it is
+    used as a fallback, with a warning (see :func:`geometry_from_paramstest`).
 
     Reads ``paramstest.txt``, ``hkls.csv`` and ``positions.csv`` from
     ``layer_dir``. Returns ``(model, ring_nr)`` where ``ring_nr`` is the
@@ -310,6 +371,7 @@ def build_model_from_paramstest(
         params, n_pixels_y=n_pixels_y, n_pixels_z=n_pixels_z,
         n_frames=n_frames, omega_step=omega_step,
         apply_distortion=apply_distortion,
+        tx_deg=tx_deg, tx_fallback_deg=_tx_fallback_from_parameters_txt(layer),
     )
     if max_two_theta_deg is None:
         if "MaxRingRad" in params:
@@ -727,6 +789,11 @@ def geometry_from_zarr(zip_path: str | Path) -> HEDMGeometry:
     transposed ``[y, z]`` detector size, ``YCen``/``ZCen`` for the beam centre.
     """
     zp = read_zarr_params(zip_path)
+    if "tx" not in zp:
+        import warnings
+        warnings.warn(
+            "geometry_from_zarr: analysis_parameters has no 'tx'; tx = 0 is "
+            "assumed ([KL-066]).", stacklevel=2)
     om_start = zp["_omega_start"]
     om_step = zp["_omega_step"]
     n_frames = int(_scalar(zp, "numFilesPerScan"))
@@ -742,7 +809,8 @@ def geometry_from_zarr(zip_path: str | Path) -> HEDMGeometry:
         n_pixels_y=n_sq, n_pixels_z=n_sq,
         min_eta=_scalar(zp, "MinEta"),
         wavelength=_scalar(zp, "Wavelength"),
-        tx=0.0, ty=_scalar(zp, "ty"), tz=_scalar(zp, "tz"),
+        tx=(_scalar(zp, "tx") if "tx" in zp else 0.0),
+        ty=_scalar(zp, "ty"), tz=_scalar(zp, "tz"),
         wedge=_scalar(zp, "Wedge"), flip_y=True,
     )
 
