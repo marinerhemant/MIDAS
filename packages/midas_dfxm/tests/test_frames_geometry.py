@@ -158,10 +158,17 @@ def test_scans_propagate_the_frame():
 # --------------------------------------------------------------------------
 
 def test_default_geometry_reproduces_hardcoded_vertical():
-    """Bit-for-bit: the old k_out was [cos, 0, sin] in the x-z plane."""
+    """The old k_out was [cos, 0, sin] in the x-z plane.
+
+    Compared to 1e-15 absolute, not bit-for-bit: the function uses torch's
+    cos/sin and the reference uses math's, and Apple libm and glibc differ by
+    about one ULP (2e-16). That bound is PLATFORM tolerance, not a defect
+    being admitted; a real change in the geometry moves k_out by far more.
+    """
     k = diffracted_beam_direction(TT, dtype=DT)
     tt = math.radians(TT)
-    assert torch.equal(k, torch.tensor([math.cos(tt), 0.0, math.sin(tt)], dtype=DT))
+    expected = torch.tensor([math.cos(tt), 0.0, math.sin(tt)], dtype=DT)
+    assert torch.allclose(k, expected, rtol=0.0, atol=1e-15)
 
 
 def test_horizontal_geometry_k_out():
