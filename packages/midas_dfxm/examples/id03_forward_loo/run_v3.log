@@ -1,0 +1,32 @@
+10:50:44 loading planes
+10:51:15 plane 1.1: frame order CONSISTENT: adjacent-frame correlation 0.013 vs random orders median 0.007, p99 0.008 (p = 0.00498) [52538 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+10:51:51 plane 2.1: frame order CONSISTENT: adjacent-frame correlation 0.180 vs random orders median 0.012, p99 0.018 (p = 0.00498) [46428 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+10:52:25 plane 3.1: frame order CONSISTENT: adjacent-frame correlation 0.193 vs random orders median 0.010, p99 0.015 (p = 0.00498) [44484 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+10:52:59 plane 4.1: frame order CONSISTENT: adjacent-frame correlation 0.136 vs random orders median 0.008, p99 0.013 (p = 0.00498) [44481 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+10:53:34 plane 5.1: frame order CONSISTENT: adjacent-frame correlation 0.091 vs random orders median 0.007, p99 0.011 (p = 0.00498) [44482 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+10:54:11 plane 6.1: frame order CONSISTENT: adjacent-frame correlation 0.089 vs random orders median 0.007, p99 0.011 (p = 0.00498) [44491 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+10:54:47 plane 7.1: frame order CONSISTENT: adjacent-frame correlation 0.094 vs random orders median 0.007, p99 0.010 (p = 0.00498) [44479 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+10:55:23 plane 8.1: frame order CONSISTENT: adjacent-frame correlation 0.027 vs random orders median 0.009, p99 0.010 (p = 0.00498) [46519 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+10:55:35 grain pixels in the union mask: 785778
+10:57:23 primary (0-based fold idx): [4, 3, 5] | excluded px: 102544
+10:57:23 v2 rescoring
+11:01:54 v2 R2: {0: -0.063, 1: -6.617, 2: 0.067, 3: 0.501, 4: 0.573, 5: 0.492, 6: -11.171, 7: -0.125} primary pooled 0.547
+11:01:54 v3 leave-one-plane-out
+11:03:27 fold 0: w 1.6 s 0.5 R2 -0.002
+11:04:59 fold 1: w 1.6 s 0.5 R2 -0.308
+11:06:31 fold 2: w 1.6 s 0.5 R2 0.426
+11:08:00 fold 3: w 1.6 s 0.5 R2 0.674
+11:09:31 fold 4: w 1.6 s 0.5 R2 0.705
+11:11:02 fold 5: w 1.6 s 0.5 R2 0.682
+11:12:38 fold 6: w 1.6 s 0.5 R2 -0.131
+11:14:13 fold 7: w 1.6 s 0.5 R2 -0.003
+11:14:13 v3 R2: {0: -0.002, 1: -0.308, 2: 0.426, 3: 0.674, 4: 0.705, 5: 0.682, 6: -0.131, 7: -0.003} primary pooled 0.695
+11:15:23 v3 ablations: {'abl_widths': 0.6594325051666284, 'abl_mu_chi_centres': -0.4762525560051678}
+11:15:23 block null
+11:16:43 fold 4: observed 0.718 null -0.565+-0.035 p 0.0099
+11:17:58 fold 3: observed 0.746 null -0.748+-0.072 p 0.0099
+11:19:13 fold 5: observed 0.692 null -0.454+-0.038 p 0.0099
+11:19:13 controls
+11:28:13 C1_matched primary pipeline/oracle 0.977 0.999
+11:35:11 C2_gaussian_truth primary pipeline/oracle 0.952 0.991
+11:35:11 VERDICT: {'verdict': 'REFUTED', 'criteria': {'primary_no_loss': True, 'far_planes': False, 'near_flank': False, 'block_null': True, 'c1': True}, 'refuted_reasons': ['near flank 2: 0.426 not >= v2 0.067 + 2.0'], 'P_v3': 0.6954263058981209, 'P_v2': 0.5466201686582579}

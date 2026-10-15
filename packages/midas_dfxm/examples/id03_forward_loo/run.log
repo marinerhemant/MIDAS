@@ -1,0 +1,31 @@
+09:39:09 loading planes
+09:39:34 plane 1.1: frame order CONSISTENT: adjacent-frame correlation 0.013 vs random orders median 0.007, p99 0.008 (p = 0.00498) [52538 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+09:40:10 plane 2.1: frame order CONSISTENT: adjacent-frame correlation 0.180 vs random orders median 0.012, p99 0.018 (p = 0.00498) [46428 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+09:40:44 plane 3.1: frame order CONSISTENT: adjacent-frame correlation 0.193 vs random orders median 0.010, p99 0.015 (p = 0.00498) [44484 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+09:41:22 plane 4.1: frame order CONSISTENT: adjacent-frame correlation 0.136 vs random orders median 0.008, p99 0.013 (p = 0.00498) [44481 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+09:41:59 plane 5.1: frame order CONSISTENT: adjacent-frame correlation 0.091 vs random orders median 0.007, p99 0.011 (p = 0.00498) [44482 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+09:42:33 plane 6.1: frame order CONSISTENT: adjacent-frame correlation 0.089 vs random orders median 0.007, p99 0.011 (p = 0.00498) [44491 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+09:43:05 plane 7.1: frame order CONSISTENT: adjacent-frame correlation 0.094 vs random orders median 0.007, p99 0.010 (p = 0.00498) [44479 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+09:43:41 plane 8.1: frame order CONSISTENT: adjacent-frame correlation 0.027 vs random orders median 0.009, p99 0.010 (p = 0.00498) [46519 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+09:43:53 grain pixels in the union mask: 785778
+09:45:42 smoke ROI excluded from scoring: 90000 px
+09:45:42 primary planes (by total intensity, blind to the model): [4, 3, 5]
+09:45:42 leave-one-plane-out, all folds, all grain pixels
+10:00:27 per-fold R2 (full): {0: -0.062, 1: -6.541, 2: 0.067, 3: 0.502, 4: 0.574, 5: 0.494, 6: -11.216, 7: -0.123}
+10:00:27 primary pooled: {'full': 0.547732879829355, 'moment_widths': 0.19040676952609514, 'uniform': -0.17188597047745224, 'abl_smu': 0.5473827773165216, 'abl_schi': 0.5435476113821796, 'abl_sob': 0.5837431557219698, 'abl_widths': 0.5759643351861167, 'abl_centres': -0.2865733308216114}
+10:00:45 fold 4: median r 0.890, frac R2<0 0.068
+10:01:08 fold 3: median r 0.885, frac R2<0 0.129
+10:01:28 fold 5: median r 0.878, frac R2<0 0.239
+10:01:28 permutation nulls
+10:07:14 fold 4: observed 0.579, block null -0.118+-0.015 (p 0.0050), pixel null -0.120
+10:12:23 fold 3: observed 0.542, block null -0.236+-0.026 (p 0.0050), pixel null -0.240
+10:17:23 fold 5: observed 0.505, block null -0.168+-0.016 (p 0.0050), pixel null -0.171
+10:17:23 noise and synthetic controls
+10:17:42 noise: {'far_plane': 0, 'ob0_median': 16.198570872063186, 'sigma0_sq': 7.210671424865723, 'gain_residual_diagnostic_only': 2499.1308324629754, 'intercept_residual_diagnostic_only': 771.7158481645289, 'gains_swept': {'g0': 0.0, 'g2.23': 2.23, 'g22.3': 22.3}}
+10:18:00 control matched/g0: pipeline 0.769  oracle 1.000
+10:18:17 control twin/g0: pipeline 0.686  oracle 0.536
+10:18:31 control matched/g2.23: pipeline 0.769  oracle 0.999
+10:18:49 control twin/g2.23: pipeline 0.686  oracle 0.535
+10:19:05 control matched/g22.3: pipeline 0.763  oracle 0.991
+10:19:20 control twin/g22.3: pipeline 0.682  oracle 0.531
+10:19:20 VERDICT: {'verdict': 'INCONCLUSIVE', 'gain_over_N0': 0.7196188503068073, 'R2_full': 0.547732879829355, 'R2_N0': -0.17188597047745224, 'R2_moment_widths_v1': 0.19040676952609514, 'R2_fraction_of_noiseless_pipeline_ceiling': 0.7119053100638268, 'noiseless_pipeline_ceiling': 0.7693900748966843, 'block_p': [0.004975124378109453, 0.004975124378109453, 0.004975124378109453], 'drop_pipeline': 0.08300140867195971, 'drop_oracle': 0.46360512625805883, 'criteria': {'abs': True, 'gain': True, 'block': True, 'control_valid': True, 'control_sees_twin': False}, 'refuted_reasons': []}

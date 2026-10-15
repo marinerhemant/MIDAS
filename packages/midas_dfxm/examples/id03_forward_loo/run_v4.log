@@ -1,0 +1,47 @@
+04:20:44 loading planes
+04:24:55 plane 1.1: frame order CONSISTENT: adjacent-frame correlation 0.013 vs random orders median 0.007, p99 0.008 (p = 0.00498) [52538 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+04:26:26 plane 2.1: frame order CONSISTENT: adjacent-frame correlation 0.180 vs random orders median 0.012, p99 0.018 (p = 0.00498) [46428 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+04:27:30 plane 3.1: frame order CONSISTENT: adjacent-frame correlation 0.193 vs random orders median 0.010, p99 0.015 (p = 0.00498) [44484 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+04:28:21 plane 4.1: frame order CONSISTENT: adjacent-frame correlation 0.136 vs random orders median 0.008, p99 0.013 (p = 0.00498) [44481 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+04:29:07 plane 5.1: frame order CONSISTENT: adjacent-frame correlation 0.091 vs random orders median 0.007, p99 0.011 (p = 0.00498) [44482 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+04:29:54 plane 6.1: frame order CONSISTENT: adjacent-frame correlation 0.089 vs random orders median 0.007, p99 0.011 (p = 0.00498) [44491 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+04:30:53 plane 7.1: frame order CONSISTENT: adjacent-frame correlation 0.094 vs random orders median 0.007, p99 0.010 (p = 0.00498) [44479 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+04:31:40 plane 8.1: frame order CONSISTENT: adjacent-frame correlation 0.027 vs random orders median 0.009, p99 0.010 (p = 0.00498) [46519 px, 200 permutations, smallest possible p 0.00498]. This rules out a scrambled pairing, not a reversed sweep or a wrong step or offset in the motor table.
+04:31:54 grain pixels in the union mask: 785778
+04:36:08 primary: [4, 3, 5] excluded px: 102544
+04:36:08 v3 leave-one-plane-out (re-derives centres and (w, s))
+04:37:41 fold 0: w 1.6 s 0.5 R2 -0.002
+04:39:30 fold 1: w 1.6 s 0.5 R2 -0.308
+04:41:20 fold 2: w 1.6 s 0.5 R2 0.426
+04:42:53 fold 3: w 1.6 s 0.5 R2 0.674
+04:45:08 fold 4: w 1.6 s 0.5 R2 0.705
+04:47:19 fold 5: w 1.6 s 0.5 R2 0.682
+04:48:57 fold 6: w 1.6 s 0.5 R2 -0.131
+04:51:32 fold 7: w 1.6 s 0.5 R2 -0.003
+04:57:02 physical forward, flat-top and Gaussian acceptance, all folds, workers 4
+05:01:53 fold 1 gauss: R2 -3.250
+05:01:55 fold 0 gauss: R2 -0.007
+05:03:17 fold 1 flat: R2 -0.658
+05:03:26 fold 0 flat: R2 -0.002
+05:06:22 fold 2 gauss: R2 -0.255
+05:07:46 fold 2 flat: R2 -0.024
+05:07:51 fold 3 gauss: R2 0.548
+05:09:09 fold 3 flat: R2 0.535
+05:12:29 fold 4 flat: R2 0.660
+05:12:43 fold 4 gauss: R2 0.657
+05:13:51 fold 5 gauss: R2 0.568
+05:14:41 fold 5 flat: R2 0.595
+05:17:25 fold 6 gauss: R2 -5.869
+05:18:29 fold 6 flat: R2 -0.336
+05:19:32 fold 7 gauss: R2 -0.025
+05:20:04 fold 7 flat: R2 -0.003
+05:20:04 block null on the primary folds
+05:31:14 null fold 3: observed 0.642 null -0.918+-0.078 p 0.0099
+05:31:16 null fold 5: observed 0.599 null -0.566+-0.041 p 0.0099
+05:31:18 null fold 4: observed 0.689 null -0.719+-0.037 p 0.0099
+05:31:18 physical flat R2: {0: -0.002, 1: -0.658, 2: -0.024, 3: 0.535, 4: 0.66, 5: 0.595, 6: -0.336, 7: -0.003} primary 0.624
+05:31:18 physical gauss R2: {0: -0.007, 1: -3.25, 2: -0.255, 3: 0.548, 4: 0.657, 5: 0.568, 6: -5.869, 7: -0.025} primary 0.621
+05:32:03 corr with v3: {4: 0.9692970167220915, 3: 0.9137411276287136, 5: 0.9054615933905086}
+05:32:03 matched synthetic control
+05:32:55 synthetic control: {'truth_w': 1.6, 'truth_s': 0.5, 'noise_var0': 7.222463130950928, 'pipeline_primary': 0.9591942151071803, 'oracle_primary': 0.9990328006954551}
+05:32:55 VERDICT: {'verdict': 'INCONCLUSIVE', 'criteria': {'no_loss_vs_v2': True, 'agrees_with_v3': False, 'flank': True, 'far': True, 'block_null': True, 'gaussian_control': True, 'synthetic': True}, 'refuted_reasons': [], 'P_phys_flat': 0.6242714926798902}

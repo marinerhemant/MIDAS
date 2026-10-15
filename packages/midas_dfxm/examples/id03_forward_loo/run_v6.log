@@ -1,0 +1,42 @@
+22:19:37 loading
+22:27:05 v3 leave-one-plane-out (centres and (w, s))
+22:29:23 fold 0: w 1.6 s 0.5 R2 -0.002
+22:31:34 fold 1: w 1.6 s 0.5 R2 -0.308
+22:33:59 fold 2: w 1.6 s 0.5 R2 0.426
+22:36:59 fold 3: w 1.6 s 0.5 R2 0.674
+22:39:03 fold 4: w 1.6 s 0.5 R2 0.705
+22:40:53 fold 5: w 1.6 s 0.5 R2 0.682
+22:42:43 fold 6: w 1.6 s 0.5 R2 -0.131
+22:45:05 fold 7: w 1.6 s 0.5 R2 -0.003
+22:45:05 v6 tasks: 20 workers 4
+22:47:48 fold 0 v6: R2 -0.002 L 1
+22:47:51 fold 1 v6: R2 -0.333 L 1
+22:47:53 fold 3 v6: R2 0.678 L 1
+22:47:57 fold 2 v6: R2 0.415 L 1
+22:50:07 fold 4 v6: R2 0.707 L 1
+22:50:15 fold 5 v6: R2 0.696 L 1
+22:50:34 fold 6 v6: R2 -0.174 L 1
+22:50:47 fold 7 v6: R2 -0.003 L 1
+22:53:41 fold 5 alpha: R2 0.696 L 1
+22:54:07 fold 3 alpha: R2 0.678 L 1
+22:54:15 fold 1 alpha: R2 -0.333 L 1
+22:54:28 fold 4 alpha: R2 0.707 L 1
+22:55:53 fold 6 alpha: R2 -0.174 L 1
+22:56:34 fold 1 L1: R2 -0.339 L 1
+22:56:42 fold 3 L1: R2 0.677 L 1
+22:56:59 fold 4 L1: R2 0.707 L 1
+22:58:11 fold 5 L1: R2 0.691 L 1
+22:58:29 fold 1 gauss: R2 -2.316 L 1
+22:58:47 fold 6 gauss: R2 -6.305 L 1
+22:58:49 fold 6 L1: R2 -0.197 L 1
+22:58:49 block null (primary folds, alpha = 0.153, unsmoothed amplitude)
+23:02:58 null fold 4: observed 0.719 null -0.592+-0.034 p 0.0099
+23:02:58 null fold 3: observed 0.747 null -0.817+-0.074 p 0.0099
+23:02:59 null fold 5: observed 0.699 null -0.508+-0.038 p 0.0099
+23:02:59 R2 v6: {0: -0.002, 1: -0.333, 2: 0.415, 3: 0.678, 4: 0.707, 5: 0.696, 6: -0.174, 7: -0.003} primary 0.699
+23:02:59 R2 alpha {1: -0.333, 3: 0.678, 4: 0.707, 5: 0.696, 6: -0.174} primary 0.699
+23:02:59 R2 L1 {1: -0.339, 3: 0.677, 4: 0.707, 5: 0.691, 6: -0.197} primary 0.699
+23:02:59 R2 gauss {1: -2.316, 6: -6.305} primary nan
+23:02:59 matched synthetic control
+23:03:49 synthetic: {'pipeline_primary': 0.9769906430697579, 'oracle_primary': 0.9989384936180332}
+23:03:49 VERDICT: {'verdict': 'INCONCLUSIVE', 'criteria': {'primary_gain': False, 'flank_not_lower': True, 'far_and_flank': True, 'block_null': True, 'gaussian_control': True, 'synthetic': True}, 'refuted_reasons': [], 'P_v6': 0.6994477135978034, 'P_v5_reference': 0.699, 'gain_over_v5': 0.0004477135978034896, 'no_improvement': True}
