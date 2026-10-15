@@ -46,7 +46,7 @@ loop-versus-void test: loops with isotropically distributed normals scatter
 isotropically too.
 """
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
 from .core_shell import (
     core_shell_sphere_form_factor_squared,
