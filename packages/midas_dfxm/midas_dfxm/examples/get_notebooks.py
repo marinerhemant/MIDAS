@@ -30,6 +30,10 @@ TUTORIALS = {
     "tutorial_school_dfxm.py":
         "the differentiable forward model and full-F inverse on synthetic data (Run Cell in "
         "VS Code, or run it as a script)",
+    "forward_id03_maps_to_frames.ipynb":
+        "the forward half of the ID03 exercise: regenerate the raw frames of a held-out plane from "
+        "the inverted maps (empirical model and the package's physical forward), with controls "
+        "that can fail",
     "forward_sim_synthetic_to_MD.ipynb":
         "forward-simulate DFXM from a synthetic grain, a real DDD network, a real CP-FEM "
         "field, and real MD data, in that order -- the reverse direction of reduce_id03_scan",

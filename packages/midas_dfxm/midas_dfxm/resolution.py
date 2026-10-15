@@ -58,7 +58,11 @@ class ResolutionFunction:
         reflection placed at the centre of the acceptance.
     sigma_par : float | tensor
         Longitudinal (radial, along ``q_nom``) width [1/Angstrom] — energy
-        bandwidth. Probed by the strain scan.
+        bandwidth. Probed by the strain scan. Ignored when ``par_flat`` is set.
+    par_flat : (width, softness) | None
+        Optional flat-top longitudinal acceptance [1/Angstrom], an erf-edged box of
+        full width ``width`` and edge softness ``softness`` replacing the Gaussian.
+        ``None`` (default) keeps the Gaussian exactly as before.
     sigma_perp : float | tensor
         Transverse width [1/Angstrom] — divergence + objective NA. Probed by the
         mosaicity scan.
@@ -69,6 +73,7 @@ class ResolutionFunction:
     sigma_perp: float = 5e-3
     sigma_perp2: "float | None" = None   # roll (2nd transverse) width; None -> isotropic transverse (== sigma_perp)
     rock_dir: "torch.Tensor | None" = None  # in-scattering-plane direction orienting e_t1 (rock); None -> arbitrary transverse frame
+    par_flat: "tuple | None" = None          # (width, softness) in 1/Angstrom: flat-top longitudinal acceptance; None -> Gaussian sigma_par
 
     def weight(self, Q_lab: torch.Tensor) -> torch.Tensor:
         """Acceptance weight in ``[0, 1]`` for lab-frame vectors ``Q_lab`` ``(..., 3)``.
@@ -95,6 +100,15 @@ class ResolutionFunction:
         s_perp2 = torch.as_tensor(
             self.sigma_perp if self.sigma_perp2 is None else self.sigma_perp2,
             device=Q_lab.device, dtype=Q_lab.dtype)
+        if self.par_flat is not None:
+            # flat-top longitudinal acceptance: an erf-edged box of full width ``w`` and edge softness ``s``
+            # (unit height). Replaces the Gaussian in d_par; ``sigma_par`` is then unused. This is the shape the
+            # objective's angular acceptance gives when it dominates the longitudinal width.
+            w, s = (torch.as_tensor(v, device=Q_lab.device, dtype=Q_lab.dtype) for v in self.par_flat)
+            r = torch.sqrt(torch.as_tensor(2.0, device=Q_lab.device, dtype=Q_lab.dtype)) * s
+            f_par = 0.5 * (torch.erf((d_par + 0.5 * w) / r) - torch.erf((d_par - 0.5 * w) / r))
+            chi2 = (d_t1 / s_perp) ** 2 + (d_t2 / s_perp2) ** 2
+            return f_par * torch.exp(-0.5 * chi2)
         chi2 = (d_par / s_par) ** 2 + (d_t1 / s_perp) ** 2 + (d_t2 / s_perp2) ** 2
         return torch.exp(-0.5 * chi2)
 
