@@ -1,6 +1,6 @@
 # midas-saxs
 
-Differentiable small-angle X-ray scattering for MIDAS. Two source terms, one
+Differentiable small-angle X-ray scattering for MIDAS. Three source terms, one
 detector:
 
 - **Density contrast** — voids, gas bubbles, precipitates. Sphere / ellipsoid /
@@ -9,6 +9,9 @@ detector:
   from here, so MIDAS has one definition of "SAXS form factor".
 - **Strain contrast** — dislocation loops, driven by a `midas_ddd` network read
   from ExaDiS. Optional extra: `pip install 'midas-saxs[dislocations]'`.
+- **Atomistic** (provisional) — a periodic MD box read from a LAMMPS dump; scattering
+  from the atomic positions themselves. See *Scattering from MD atomic positions* below
+  for what has and has not been checked.
 
 ```python
 from midas_saxs import SAXSGeometry, SpherePopulation, simulate_frame
@@ -52,6 +55,13 @@ like voids (see Identifiability below).
 An earlier version of this README quoted `kappa dV` in the loop plane and `dV`
 along the normal, a `1/kappa^2 = 6.25` contrast, and 6.30x from the demo. That
 is the distortion term alone, and at small angle it is backwards.
+
+**2b. The null is a property of the linear-elastic model, not (yet) of relaxed atoms.** A first atomistic check
+(2026-10-07, details in *Scattering from MD atomic positions* below) relaxed a vacancy Frank loop in Cu with an EAM
+potential and compared its frame with the continuum amplitude. Away from the normal the two agree to tens of percent; along
+the normal the continuum is exactly zero while the relaxed atoms keep a small residual that is 40-200 times below the
+un-relaxed disc but dominates the ring at q R above about 3.5. The registered test for the null returned REFUTED. One
+potential, one radius, 0 K, vacancy loops only; treat the "exact null" as a statement about the continuum model.
 
 **3. Real voids bury the signature.** Add voids of the same radius at the same
 number density — the physically realistic irradiated case — and the azimuthal
@@ -116,6 +126,91 @@ parameter), use a habit distribution that can actually reach isotropy, put the
 void population at its realistic loading, and report the sample mounting --
 because the answer depends on all four.
 
+## Scattering from MD atomic positions (provisional)
+
+A worked example that runs without LAMMPS (a synthetic Cu box with a void, written to a dump and read back, checked against an analytic curve and against the exact atom sum) is `notebooks/02_saxs_image_from_md_atoms.ipynb`.
+
+```python
+from midas_saxs import SAXSGeometry, simulate_frame, read_lammps_trajectory
+
+frames = read_lammps_trajectory("irradiated.dump", type_map={1: "Cu"}, frames=slice(0, 40, 5))
+geom = SAXSGeometry(lsd_um=5.0e5, bcy_px=256, bcz_px=256, px_um=75.0, wavelength_A=0.7293,
+                    n_pix_y=512, n_pix_z=512, beamstop_radius_px=10)
+fr = simulate_frame(geom, atoms=frames, sample_volume_A3=1e12)
+fr.components["atoms"], fr.info["atoms"], fr.warnings
+```
+
+**What it computes.** For one periodic box the amplitude `A(h) = sum_i f_s(i)(|G|) exp(2 pi i h . s_i)` at the
+box's own reciprocal-lattice points `G`, with Cromer-Mann form factors, summed per species. The box defines
+intensity only there (Paddison, arXiv:1809.07088; the same statement the dislocation code makes). Pixels
+between lattice points get a Gaussian window average at a stated resolution, in the un-normalised (Parseval)
+form, so the same structure stored in a supercell gives the same intensity per volume. The result is
+electrons^2 per A^3 and is multiplied by `sample_volume_A3`, exactly like the particle terms.
+
+**Inputs that matter.**
+- LAMMPS types are integers. You must pass `type_map={1: "Cu", 2: "He"}` (or have an `element` column);
+  there is no default element. Units must be metal or real (Angstrom). The reader accepts orthogonal and
+  triclinic boxes, plain or `.gz`, and refuses a trajectory whose cell or species order changes.
+- **Orientation.** Transmission SAXS has no omega, so the sample orientation is yours to set:
+  `atoms_options={"lab_from_sample": R}` with `r_lab = R r_sample`. The default puts the cell's x axis along the beam.
+- **Frames** are averaged as intensities (incoherently); the spread across them is the thermal disorder.
+- `atoms_options` also takes `resolution_fwhm_inv_A` (default two reciprocal-lattice spacings) and
+  `method` (`"auto"`, `"direct"`, `"fft"`).
+
+**The q floor.** Below about three reciprocal-lattice spacings (`3 * 2 pi / L`) the excluded `G = 0` term and
+the box's periodicity dominate; `Frame.warnings` reports the fraction of pixels below it. A 20 nm box has a floor
+near 0.09 1/A, so MD boxes cover the upper part of a SAXS window, not its lowest q.
+
+**Two ways to get `A(h)`.** `direct` is the exact sum (cost `N_atoms x N_G`). `fft` deposits each species on a
+grid with cardinal B-splines and takes a 3-D FFT; it is valid only for `|h_i| <= n_i / 8` and refuses points
+outside that. Its aliased Bragg leakage grows as `N^2`: `info["atoms"]["fft_leakage_bound_f2"]` is the
+worst case in units of one atom's scattering, and a warning appears when it exceeds 1.
+
+### What has been checked, and how far (2026-10-02)
+
+`/verify` returned **PROVISIONAL** (claim `8252e0c9ef19`): one lens refuted the claim as first worded, three
+were uncertain. What stands:
+
+- **The code computes the sum it says it computes.** It equals an independent exact sum over the removed atoms
+  to about 1e-9 (a refuter's own implementation reproduced every number), is invariant to translation, wrapping, atom order, supercell and a
+  triclinic re-description of the same crystal (1e-14), returns nothing for a perfect crystal, and gives
+  exactly `f(q)^2` for one removed atom. FFT and direct agree to a median of 1e-5 inside the FFT range.
+- **Absolute scale** for uncorrelated displacements is consistent with the exact result at about +-1 % (2 sigma,
+  32 and 64 seeds).
+- **Against continuum particle models.** A spherical void of about 1200-2000 atoms differs from the sphere form
+  factor of equal volume by about 1-4 % at q R_eff of 1.5-3 (median of the worst point about 1.5 %; the error
+  grows with q). A void of 180-354 atoms differs by 17-47 %: a few hundred lattice sites are not a sphere, and
+  the code agrees with the exact sum there, so this is the physics of small defects, not an error. **For an
+  ellipsoidal void the agreement depends on where the void sits on the lattice and can exceed 10 %** (aspect 4,
+  2 nm: 6-39 % over seven centres). Treat continuum particle models as a few-percent to tens-of-percent
+  approximation for MD-scale defects, and the atomistic frame as the more reliable description.
+
+- **A relaxed vacancy Frank loop against the continuum loop amplitude** (gate G9; 4 placements of one construction, Cu
+  EAM potential of Mishin, 0 K, radius 2 nm, 1.8 million atoms each, elastic constants measured from the same potential).
+  The registered test returned **REFUTED**: the continuum's exact zero along the loop normal is not reproduced. The
+  median intensity ratio (atoms / isotropic continuum) over the pixels is 1.13 (four replicates 1.125-1.143), which is
+  inside the registered band, but the spread is large, and for q R above about 3.5 the loop-normal direction is the
+  *brightest* direction of the ring. Along the normal the relaxed atoms scatter 40-200 times less than the un-relaxed
+  vacancy disc alone, so the relaxation does cancel most of the Laue term, but not all of it. The collapse of the disc
+  is also a few percent short of the ideal half Burgers vector (0.95-0.99 A against 1.04 A); whether that is the cause was not tested.
+  *Post hoc and provisional:* using the measured cubic stiffness rotated into the box frame instead of an isotropic
+  average brings the in-plane ratio to 1.02-1.08 for q R below about 2 (isotropic: 1.25-1.33), and that continuum also has
+  an exact null, so anisotropic elasticity does not explain the missing null.
+
+### What has NOT been checked
+
+- **Anything about loops beyond that one construction:** other radii, interstitial loops, other Burgers vectors or
+  loop-normal orientations relative to the beam, other potentials, finite temperature, and any comparison with a measured
+  or ExaDiS-generated frame. Do not rely on the atomistic frame for loop signatures in those cases.
+- Any comparison with a measured SAXS frame.
+- CUDA parity and timings on large boxes (CPU, one laptop only).
+- **Defect-defect correlations.** The frame treats boxes as independent copies. A dense cascade or a dislocation
+  forest has an S(q) between its defects that this does not contain.
+- Anything beyond kinematic, single-scattering, neutral-atom scattering (no anomalous terms, absorption, Compton or resolution).
+
+Timing on one 8-thread laptop: a 107,631-atom box on a 1024 x 1024 panel takes about 8 s; the direct sum runs
+at about 2e8 atom-lattice-point pairs per second. Boxes of 4 million atoms ran with the FFT path.
+
 ## Scope
 
 **Three dislocation populations, treated differently.** Closed loops, the
@@ -144,6 +239,7 @@ reports the line length it left out.
 | wavelength, particle radii, electron density | angstroms |
 | `q` from `midas_saxs.geometry` | **inverse angstroms** |
 | `q` into the `midas_ddd` kernel | **inverse micrometers** |
+| atomic positions and cell from an MD dump | **angstroms** (LAMMPS metal or real units) |
 
 The 1e4 between the last two is easy to lose, so `inv_A_to_inv_um` /
 `inv_um_to_inv_A` exist and `strain_source` uses them rather than a literal.

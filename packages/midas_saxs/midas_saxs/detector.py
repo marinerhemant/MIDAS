@@ -61,6 +61,8 @@ def simulate_frame(
     stiffness=None,
     electron_density_e_per_A3: Optional[float] = None,
     particles: Sequence = (),
+    atoms=None,
+    atoms_options: Optional[dict] = None,
     sample_volume_A3: float = 1.0,
     incoherent_loops: bool = True,
     include_lines: bool = True,
@@ -99,6 +101,18 @@ def simulate_frame(
         :class:`midas_saxs.particles.SpherePopulation` instances -- voids,
         bubbles, precipitates. Their intensities are per A^3 of sample and are
         scaled by ``sample_volume_A3``.
+    atoms
+        An :class:`midas_saxs.md_io.AtomicFrame`, or a list of frames of the same box, from an MD
+        run (see :func:`midas_saxs.md_io.read_lammps_dump`). Scattered through
+        :func:`midas_saxs.atomistic.atomistic_intensity`: lattice-point amplitudes of the periodic
+        box, shown at pixels as a Gaussian window average at a stated resolution. The result is
+        per A^3 and scaled by ``sample_volume_A3``, which assumes defects in different boxes are
+        uncorrelated. ``components["atoms"]`` holds it; ``info["atoms"]`` has the method, window
+        and q floor.
+    atoms_options
+        Keyword arguments for ``atomistic_intensity``: ``resolution_fwhm_inv_A``,
+        ``lab_from_sample`` (sample orientation, default: the cell's x axis is the beam),
+        ``method`` (``"auto"``, ``"direct"``, ``"fft"``), ``fft_spacing_A``, ``fft_order``.
     incoherent_loops
         Default True: sum intensities across objects, which is what a
         conventional SAXS beam, much larger than the spacing between objects,
@@ -186,6 +200,16 @@ def simulate_frame(
             warnings.append(
                 "the network contributed neither closed loops nor lines, so the "
                 "dislocation term is identically zero.")
+
+    if atoms is not None:
+        from .atomistic import atomistic_intensity
+
+        I_a, a_info = atomistic_intensity(q_flat, atoms, device=device, **(atoms_options or {}))
+        I_a = I_a.to(dtype) * sample_volume_A3
+        components["atoms"] = _unflatten(I_a)
+        total = total + I_a
+        warnings.extend(a_info.pop("warnings"))
+        frame_info["atoms"] = a_info
 
     for k, pop in enumerate(particles):
         I_p = pop.intensity(q_flat) * sample_volume_A3

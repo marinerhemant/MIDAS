@@ -72,6 +72,13 @@ from .geometry import (
     q_magnitude_grid,
     two_theta_to_q,
 )
+from .md_io import (
+    AtomicFrame,
+    iter_lammps_dump,
+    read_lammps_dump,
+    read_lammps_trajectory,
+    write_lammps_dump,
+)
 from .model import SAXSModel, lognormal_quadrature_nodes
 from .particles import (
     SpherePopulation,
@@ -96,6 +103,9 @@ __all__ = [
     # geometry
     "SAXSGeometry", "pixel_to_q", "q_magnitude_grid", "two_theta_to_q",
     "inv_A_to_inv_um", "inv_um_to_inv_A",
+    # MD input
+    "AtomicFrame", "read_lammps_dump", "read_lammps_trajectory", "iter_lammps_dump",
+    "write_lammps_dump",
     # detector
     "Frame", "simulate_frame", "radial_average", "azimuthal_profile",
     # particles
