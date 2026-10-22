@@ -163,6 +163,45 @@ def build_mask(frames: np.ndarray, *,
 # 2. background
 # ---------------------------------------------------------------------------
 
+def _grouped_median(cell: np.ndarray, value: np.ndarray, n_cells: int,
+                    min_pixels_per_cell: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Per-group median of ``value``, grouped by the integer labels in
+    ``cell`` (each in ``[0, n_cells)``, neither sorted nor grouped on
+    input). Returns ``(med, have)``, both length ``n_cells``: ``med[i]`` is
+    ``np.median`` of every ``value[j]`` with ``cell[j] == i`` (``0.0`` if
+    fewer than ``min_pixels_per_cell`` such values), ``have[i]`` whether
+    that group met the minimum.
+
+    Replaces a ``for i in range(n_cells): np.median(value[cell == i])``
+    loop -- for :func:`polar_median_background`'s default bin/sector grid
+    that is tens of thousands of Python-level ``np.median`` calls per
+    frame, the single dominant cost of solve-cell ingest (see
+    ``midas_gui``'s ``solve_cell/pipeline.py``, ``choose_sectors``'s own
+    docstring).
+
+    Uses ``pandas.Series.groupby`` (hash-based, implemented in Cython;
+    ``pandas`` is already a hard dependency of this module) rather than a
+    ``cell``-and-``value`` ``lexsort``: at full-detector-resolution group
+    counts (hundreds of thousands of pixels over tens of thousands of
+    cells), a two-key sort over every pixel turned out to cost MORE than
+    the Python loop it was meant to replace, while a hash-based group-by
+    over the same data is close to an order of magnitude faster still --
+    measured, not assumed, see the equivalence/timing script this change
+    was validated with. Verified against ``np.median``'s own definition
+    (including its even-count ``0.5 * (lo + hi)`` averaging) bit-for-bit
+    over thousands of random groupings.
+    """
+    if value.size == 0:
+        return np.zeros(n_cells), np.zeros(n_cells, bool)
+    g = pd.Series(value).groupby(cell)
+    idx = np.arange(n_cells)
+    counts = g.size().reindex(idx, fill_value=0).to_numpy()
+    have = counts >= min_pixels_per_cell
+    med = g.median().reindex(idx, fill_value=0.0).to_numpy()
+    med = np.where(have, med, 0.0)
+    return med, have
+
+
 def polar_median_background(frame: np.ndarray,
                             tth_deg: np.ndarray,
                             azimuth_deg: np.ndarray,
@@ -207,18 +246,9 @@ def polar_median_background(frame: np.ndarray,
     good = ~np.asarray(mask, bool)
     cell = (ti * n_sectors + ai)[good]
     value = frame[good]
-    order = np.argsort(cell, kind="stable")
-    cell, value = cell[order], value[order]
 
     n_cells = n_tth * n_sectors
-    edges = np.searchsorted(cell, np.arange(n_cells + 1))
-    med = np.zeros(n_cells)
-    have = np.zeros(n_cells, bool)
-    for i in range(n_cells):
-        chunk = value[edges[i]:edges[i + 1]]
-        if chunk.size >= min_pixels_per_cell:
-            med[i] = np.median(chunk)
-            have[i] = True
+    med, have = _grouped_median(cell, value, n_cells, min_pixels_per_cell)
     med = med.reshape(n_tth, n_sectors)
     have = have.reshape(n_tth, n_sectors)
 
@@ -280,11 +310,19 @@ def count_signed_blobs(stack: np.ndarray, mask: np.ndarray, *,
         if not ids.size:
             out.append(0)
             continue
-        present = np.zeros((n + 1, stack.shape[0]), bool)
-        for k in range(stack.shape[0]):
-            u = np.unique(lab[k])
-            present[u[u > 0], k] = True
-        out.append(int((present[ids].sum(1) >= min_frames).sum()))
+        # Number of DISTINCT frames each label appears in -- equivalent to
+        # the `present` boolean matrix this replaced
+        # (`present[ids].sum(1) >= min_frames`), built from one global
+        # pairing of (label, frame) instead of an `np.unique` call per
+        # frame.
+        n_frames_total = stack.shape[0]
+        nz = lab > 0
+        frame_idx = np.broadcast_to(
+            np.arange(n_frames_total)[:, None, None], lab.shape)[nz]
+        pairs = lab[nz].astype(np.int64) * n_frames_total + frame_idx.astype(np.int64)
+        uniq_label_per_frame = np.unique(pairs) // n_frames_total
+        frames_per_label = np.bincount(uniq_label_per_frame, minlength=n + 1)
+        out.append(int((frames_per_label[ids] >= min_frames).sum()))
     return out[0], out[1]
 
 
@@ -344,11 +382,12 @@ def _bridge_gaps(binary: np.ndarray, mask: np.ndarray, size: int) -> np.ndarray:
     """
     if size <= 1:
         return binary
-    st = np.ones((size, size), bool)
-    out = binary.copy()
-    for k in range(binary.shape[0]):
-        out[k] = binary[k] | (mask & ndimage.binary_closing(binary[k], structure=st))
-    return out
+    # A structuring element with no extent along axis 0 (the frame axis)
+    # closes each frame independently of its neighbours -- same result as
+    # the per-frame loop this replaced, in one call instead of `n_frames`.
+    st = np.ones((1, size, size), bool)
+    closed = ndimage.binary_closing(binary, structure=st)
+    return binary | (mask[None, :, :] & closed)
 
 
 def _split_blob(sub_img: np.ndarray, sub_mask: np.ndarray,
