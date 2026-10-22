@@ -18,12 +18,14 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 import numpy as np
 import pytest
+from scipy import ndimage
 
 from midas_defect.ingest import (
     build_mask, polar_median_background, subtract_background,
     count_signed_blobs, choose_sectors, find_blobs_3d,
     detect_powder_rings, flag_powder, SPOT_COLUMNS,
 )
+from midas_defect.ingest import _bridge_gaps, _grouped_median
 
 RNG = np.random.default_rng(20260901)
 NR, NC, NF = 128, 140, 9
@@ -593,3 +595,156 @@ def test_powder_flag_spares_a_crystal_row_on_a_ring():
     tth = np.full(4, 10.0); eta = np.array([-20., -7., 6., 19.])
     rad = np.full(4, 300.0)
     assert not flag_powder(tth, eta, rad, rings, min_companions=8).any()
+
+
+# ---------------------------------------------------------------------------
+# equivalence: the 2026-10-22 performance rewrites must not move a single bit
+# ---------------------------------------------------------------------------
+# Each reference function below is a FROZEN COPY of the pre-rewrite
+# implementation (the version at this commit's parent), kept only as ground
+# truth -- never call it expecting it to be fast. The public functions above
+# must match it bit-for-bit over randomized trials, not just "look similar."
+
+
+def _reference_bridge_gaps(binary: np.ndarray, mask: np.ndarray, size: int) -> np.ndarray:
+    """Pre-rewrite ``_bridge_gaps``: unconditional box ``binary_closing``,
+    no separable fast path."""
+    if size <= 1:
+        return binary
+    st = np.ones((1, size, size), bool)
+    closed = ndimage.binary_closing(binary, structure=st)
+    return binary | (mask[None, :, :] & closed)
+
+
+def test_bridge_gaps_separable_fast_path_matches_box_closing():
+    """``_bridge_gaps``'s odd-size path (maximum/minimum_filter1d) must equal the box
+    ``binary_closing`` it replaces, bit-for-bit, not just visually similar."""
+    rng = np.random.default_rng(20261022)
+    for size in (1, 3, 5, 7, 9, 11, 21, 25):
+        for _ in range(8):
+            nf = int(rng.integers(2, 6))
+            ny = int(rng.integers(15, 50))
+            nx = int(rng.integers(15, 50))
+            binary = rng.random((nf, ny, nx)) < 0.05
+            mask = rng.random((ny, nx)) < 0.1
+            fast = _bridge_gaps(binary, mask, size)
+            ref = _reference_bridge_gaps(binary, mask, size)
+            assert np.array_equal(fast, ref), f"size={size} mismatch"
+
+
+def test_bridge_gaps_even_size_is_unchanged():
+    """Even sizes are deliberately NOT routed through the separable path (its filter-origin
+    convention does not line up with binary_closing's for a box structuring element) -- confirm
+    the fallback still matches the pre-rewrite box definition exactly."""
+    rng = np.random.default_rng(20261023)
+    for size in (2, 4, 6, 20):
+        binary = rng.random((4, 30, 30)) < 0.05
+        mask = rng.random((30, 30)) < 0.1
+        fast = _bridge_gaps(binary, mask, size)
+        ref = _reference_bridge_gaps(binary, mask, size)
+        assert np.array_equal(fast, ref)
+
+
+def _reference_polar_median_background(frame, tth_deg, azimuth_deg, mask, *,
+                                       n_sectors=8, tth_bin=0.02,
+                                       min_pixels_per_cell=8, smooth_bins=5):
+    """Pre-rewrite ``polar_median_background``: recomputes its own (ti, ai, good, cell) bin
+    geometry inline every call, rather than accepting it precomputed."""
+    frame = np.asarray(frame, dtype=np.float64)
+    lo, hi = float(np.nanmin(tth_deg)), float(np.nanmax(tth_deg))
+    n_tth = int((hi - lo) / tth_bin) + 1
+    ti = np.clip(((tth_deg - lo) / tth_bin).astype(np.int32), 0, n_tth - 1)
+    ai = np.clip(((azimuth_deg + 180.0) / (360.0 / n_sectors)).astype(np.int32),
+                 0, n_sectors - 1)
+    good = ~np.asarray(mask, bool)
+    cell = (ti * n_sectors + ai)[good]
+    value = frame[good]
+    n_cells = n_tth * n_sectors
+    med, have = _grouped_median(cell, value, n_cells, min_pixels_per_cell)
+    med = med.reshape(n_tth, n_sectors)
+    have = have.reshape(n_tth, n_sectors)
+    for j in range(n_sectors):
+        nz = np.flatnonzero(have[:, j])
+        if nz.size:
+            med[:, j] = np.interp(np.arange(n_tth), nz, med[nz, j])
+    if smooth_bins > 1:
+        med = ndimage.uniform_filter1d(med, int(smooth_bins), axis=0)
+    return med[ti, ai]
+
+
+def _reference_subtract_background(frames, tth_deg, azimuth_deg, mask, *,
+                                   n_sectors=8, tth_bin=0.02):
+    """Pre-rewrite ``subtract_background``: calls the per-frame-recomputing reference
+    background above fresh for every frame, instead of hoisting the frame-invariant bin
+    geometry out of the loop once."""
+    frames = np.asarray(frames)
+    mask = np.asarray(mask, bool)
+    out = np.empty(frames.shape, dtype=np.float32)
+    for k in range(frames.shape[0]):
+        a = frames[k].astype(np.float64, copy=True)
+        a[mask] = np.median(a[~mask]) if (~mask).any() else 0.0
+        s = a - _reference_polar_median_background(a, tth_deg, azimuth_deg, mask,
+                                                   n_sectors=n_sectors, tth_bin=tth_bin)
+        s[mask] = 0.0
+        out[k] = s.astype(np.float32)
+    return out
+
+
+def test_polar_median_background_matches_pre_hoist_reference():
+    tth, azi, _ = _geom()
+    frame = _blank()[0]
+    mask = build_mask(_blank()).mask
+    for n_sectors in (1, 8, 24, 96):
+        fast = polar_median_background(frame, tth, azi, mask, n_sectors=n_sectors)
+        ref = _reference_polar_median_background(frame, tth, azi, mask, n_sectors=n_sectors)
+        assert np.array_equal(fast, ref)
+
+
+def test_subtract_background_hoisted_bins_match_per_frame_recompute():
+    """The whole point of hoisting (ti, ai, good, cell) out of subtract_background's per-frame
+    loop is that it changes nothing about the result -- that geometry never depended on the
+    frame. Confirm it over real multi-frame data, not just the single-frame function above."""
+    tth, azi, _ = _geom()
+    frames = _add_spot(_blank(), 4, 60, 65, 900.0)
+    mask = build_mask(frames).mask
+    for n_sectors in (1, 8, 24, 96):
+        fast = subtract_background(frames, tth, azi, mask, n_sectors=n_sectors)
+        ref = _reference_subtract_background(frames, tth, azi, mask, n_sectors=n_sectors)
+        assert np.array_equal(fast, ref)
+
+
+def test_detect_powder_rings_grouped_median_matches_per_bin_loop_reference():
+    """``detect_powder_rings``'s radial profile used a Python ``for i in range(n_bin):
+    np.median(chunk)`` loop; it now reuses ``_grouped_median``. Confirm the profile -- and so
+    everything downstream of it (peaks, widths, occupancy) -- is unchanged."""
+    tth, azi, _ = _geom()
+    mask = np.zeros((NR, NC), bool)
+    img = _add_ring(_blank(bg=200.0), 30.0, 1200.0, sigma=2.0).sum(0)
+    good = ~mask
+    lo, hi = 0.2, 1.6
+    tth_bin = 0.02
+    sel = good & (tth >= lo) & (tth < hi)
+    n_bin = int((hi - lo) / tth_bin) + 1
+    idx = ((tth[sel] - lo) / tth_bin).astype(np.int32)
+    val = img[sel]
+
+    # reference: the original sort + searchsorted + per-bin np.median loop
+    order = np.argsort(idx, kind="stable")
+    idx_s, val_s = idx[order], val[order]
+    edges = np.searchsorted(idx_s, np.arange(n_bin + 1))
+    ref_prof = np.full(n_bin, np.nan)
+    for i in range(n_bin):
+        chunk = val_s[edges[i]:edges[i + 1]]
+        if chunk.size >= 8:
+            ref_prof[i] = np.median(chunk)
+
+    med, have = _grouped_median(idx, val, n_bin, min_pixels_per_cell=8)
+    fast_prof = np.where(have, med, np.nan)
+
+    assert np.array_equal(fast_prof, ref_prof, equal_nan=True)
+
+    # and the public function's own result, end to end, is unaffected (same data/params as
+    # test_continuity_keeps_a_real_ring, which already pins this exact ring being found)
+    rings = detect_powder_rings(img, tth, mask, azimuth_deg=azi,
+                                tth_bin=tth_bin, tth_range=(lo, hi))
+    assert np.min(np.abs(rings.centre_deg - 0.6)) < 0.05
