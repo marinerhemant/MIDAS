@@ -36,6 +36,29 @@ one, discard the rest" silently drove a result four separate times — the worst
 case discarded 43 of 45 reflections and then reported a rate over the surviving
 2 as if it were a rate over 45.
 
+Why ``max_workers`` means threads, not processes
+-------------------------------------------------
+:func:`subtract_background`, :func:`choose_sectors` and :func:`find_blobs_3d` (via
+:func:`_bridge_gaps`) accept a ``max_workers`` keyword, default ``1`` (today's serial
+behaviour, unchanged). Measured on frames/candidates/gap-bridge chunks: ``scipy.ndimage``'s
+filter/label C code and ``pandas``'s groupby-median Cython code both release the GIL for long
+enough that plain ``concurrent.futures.ThreadPoolExecutor`` gives real wall-clock parallelism,
+with no pickling, no ``multiprocessing.shared_memory`` bookkeeping, and no risk of the
+``spawn``-context "unguarded top-level code re-executes in every worker" trap. Each parallel
+unit of work (one frame, one sector-candidate, one frame-chunk) writes to a disjoint slice of a
+pre-allocated output array and touches no other shared state, so the result is bit-identical to
+the serial path *by construction* for any ``max_workers``, not merely "tested and passed" --
+confirmed over randomized trials in ``test_ingest.py`` regardless.
+
+Pass ``max_workers`` explicitly rather than defaulting to ``os.cpu_count()``: a caller already
+running inside its own worker pool (e.g. a raster-position-level
+:func:`midas_defect.bootstrap.parallel.bootstrap_pool` across many positions) must be able to
+keep these inner thread pools at 1 to avoid oversubscribing the same cores twice.
+:func:`choose_sectors` only threads its OWN candidate loop -- it always calls
+:func:`subtract_background` with ``max_workers=1`` internally, never forwarding its own
+``max_workers`` down, since nesting a frame-level pool inside each of its already-parallel
+candidate threads would oversubscribe rather than help.
+
 References
 ----------
 Extracted and generalised from the La₃Ni₂O₇ DAC analysis (HPCAT Sector 16,
@@ -43,6 +66,7 @@ Aug 2026); see that project's ``PORT_TO_MIDAS.md``.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -294,8 +318,15 @@ def subtract_background(frames: np.ndarray,
                         azimuth_deg: np.ndarray,
                         mask: np.ndarray, *,
                         n_sectors: int = 8,
-                        tth_bin: float = 0.02) -> np.ndarray:
-    """Polar-median-subtract every frame; masked pixels come back as zero."""
+                        tth_bin: float = 0.02,
+                        max_workers: int = 1) -> np.ndarray:
+    """Polar-median-subtract every frame; masked pixels come back as zero.
+
+    ``max_workers`` (default 1, i.e. today's serial behaviour) runs that many frames at once on
+    their own threads -- see the module docstring's "Why ``max_workers`` means threads, not
+    processes" for why this is both real parallelism and never changes the result: each frame
+    ``k`` writes only to its own ``out[k]`` row.
+    """
     frames = np.asarray(frames)
     mask = np.asarray(mask, bool)
     out = np.empty(frames.shape, dtype=np.float32)
@@ -305,7 +336,8 @@ def subtract_background(frames: np.ndarray,
     # match polar_median_background's own defaults, which this call relied on implicitly before.
     ti, ai, good, cell, n_tth, n_cells = _polar_bins(tth_deg, azimuth_deg, mask,
                                                      n_sectors, tth_bin)
-    for k in range(frames.shape[0]):
+
+    def _one_frame(k: int) -> None:
         a = frames[k].astype(np.float64, copy=True)
         # Masked pixels must not drag the median of their own cell.
         a[mask] = np.median(a[~mask]) if (~mask).any() else 0.0
@@ -314,6 +346,14 @@ def subtract_background(frames: np.ndarray,
         s = a - bg
         s[mask] = 0.0
         out[k] = s.astype(np.float32)
+
+    n_workers = max(1, min(int(max_workers), frames.shape[0]))
+    if n_workers <= 1:
+        for k in range(frames.shape[0]):
+            _one_frame(k)
+    else:
+        with ThreadPoolExecutor(max_workers=n_workers) as ex:
+            list(ex.map(_one_frame, range(frames.shape[0])))
     return out
 
 
@@ -379,19 +419,38 @@ def choose_sectors(frames: np.ndarray,
                    candidates: Sequence[int] = (1, 8, 24, 48, 96),
                    threshold: float = 200.0,
                    min_vol: int = 10,
-                   tth_bin: float = 0.02) -> BackgroundChoice:
+                   tth_bin: float = 0.02,
+                   max_workers: int = 1) -> BackgroundChoice:
     """Pick the azimuth-sector count by the negative-structure control.
 
     Returns the winning subtracted stack together with the full comparison
     table, so the choice is auditable rather than asserted.
+
+    ``max_workers`` (default 1, i.e. today's serial behaviour) runs that many candidates at once
+    on their own threads -- see the module docstring's "Why ``max_workers`` means threads, not
+    processes". Each candidate's own :func:`subtract_background` call is kept serial regardless
+    of this value: nesting a frame-level thread pool inside each already-parallel candidate
+    thread would oversubscribe the same cores twice rather than help. Candidates are reduced to
+    the winner in ``candidates``' own order, not completion order, so a tied ``neg_over_pos``
+    keeps the same winner as the serial loop for any ``max_workers``.
     """
-    rows = []
-    best: Optional[Tuple[float, int, np.ndarray]] = None
-    for n in candidates:
+    def _run_one(n: int) -> Tuple[np.ndarray, int, int]:
         stack = subtract_background(frames, tth_deg, azimuth_deg, mask,
-                                    n_sectors=int(n), tth_bin=tth_bin)
+                                    n_sectors=int(n), tth_bin=tth_bin, max_workers=1)
         pos, neg = count_signed_blobs(stack, mask, threshold=threshold,
                                       min_vol=min_vol)
+        return stack, pos, neg
+
+    n_workers = max(1, min(int(max_workers), len(candidates)))
+    if n_workers <= 1:
+        results = [_run_one(n) for n in candidates]
+    else:
+        with ThreadPoolExecutor(max_workers=n_workers) as ex:
+            results = list(ex.map(_run_one, candidates))   # map preserves input order
+
+    rows = []
+    best: Optional[Tuple[float, int, np.ndarray]] = None
+    for n, (stack, pos, neg) in zip(candidates, results):
         ratio = neg / max(pos, 1)
         rows.append({"n_sectors": int(n), "positive": pos, "negative": neg,
                      "neg_over_pos": ratio})
@@ -406,15 +465,16 @@ def choose_sectors(frames: np.ndarray,
 # 3. 3-D spot finding
 # ---------------------------------------------------------------------------
 
-def _bridge_gaps(binary: np.ndarray, mask: np.ndarray, size: int) -> np.ndarray:
-    """Reconnect a feature cut by a detector gap, frame by frame.
+def _close_one(binary: np.ndarray, size: int) -> np.ndarray:
+    """The box closing itself (odd ``size``: separable fast path; even: generic box path),
+    on whatever frame-axis extent ``binary`` happens to have -- including a single frame, or
+    any contiguous slice of the stack.
 
-    Connectivity is added **only at masked pixels**, and only where a binary
-    closing shows the feature continues on both sides. Nothing is invented in
-    blank regions: a closing that spans a gap requires signal on either side.
+    Correct on an arbitrary slice because the structuring element never has extent along axis 0
+    (see :func:`_bridge_gaps`'s own docstring): closing the whole stack in one call or closing
+    each of several frame-chunks separately and concatenating gives the identical result, which
+    is what lets :func:`_bridge_gaps` split this across threads.
     """
-    if size <= 1:
-        return binary
     if size % 2 == 1:
         # A box structuring element is separable: closing with the full
         # (1, size, size) box is IDENTICAL to dilating then eroding along
@@ -447,6 +507,39 @@ def _bridge_gaps(binary: np.ndarray, mask: np.ndarray, size: int) -> np.ndarray:
         # a per-frame loop, in one call instead of `n_frames`.
         st = np.ones((1, size, size), bool)
         closed = ndimage.binary_closing(binary, structure=st)
+    return closed
+
+
+def _bridge_gaps(binary: np.ndarray, mask: np.ndarray, size: int, *,
+                 max_workers: int = 1) -> np.ndarray:
+    """Reconnect a feature cut by a detector gap, frame by frame.
+
+    Connectivity is added **only at masked pixels**, and only where a binary
+    closing shows the feature continues on both sides. Nothing is invented in
+    blank regions: a closing that spans a gap requires signal on either side.
+
+    ``max_workers > 1`` splits the frame axis into that many contiguous chunks and closes each
+    on its own thread (``scipy.ndimage``'s filter/morphology C code releases the GIL for long
+    enough that this is real parallelism, not pickling-bound multiprocessing -- see the module
+    docstring's "Why ``max_workers`` means threads, not processes"). Each chunk is written to
+    its own disjoint slice of ``closed``, so the result is identical to the serial, unchunked
+    call for any ``max_workers``, not just usually-the-same.
+    """
+    if size <= 1:
+        return binary
+    n_workers = max(1, min(int(max_workers), binary.shape[0]))
+    if n_workers <= 1:
+        closed = _close_one(binary, size)
+    else:
+        closed = np.empty_like(binary)
+        bounds = np.linspace(0, binary.shape[0], n_workers + 1).astype(int)
+        slices = [slice(int(bounds[i]), int(bounds[i + 1])) for i in range(n_workers)]
+
+        def _work(sl: slice) -> None:
+            closed[sl] = _close_one(binary[sl], size)
+
+        with ThreadPoolExecutor(max_workers=n_workers) as ex:
+            list(ex.map(_work, slices))
     return binary | (mask[None, :, :] & closed)
 
 
@@ -566,7 +659,8 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
                   gap_bridge: int = 21,
                   core_frac: float = 0.5,
                   return_counts: bool = False,
-                  return_labels: bool = False):
+                  return_labels: bool = False,
+                  max_workers: int = 1):
     """Find reflections as 3-D objects in (ω, row, col).
 
     Steps: threshold → bridge detector gaps → label with 26-connectivity →
@@ -631,6 +725,11 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
     ``labels`` on the raw frames to check it split a genuine two-domain
     overlap and did not needlessly fragment one real peak, or the reverse.
     The two flags combine: with both, the order is ``(df, counts, labels)``.
+
+    ``max_workers`` (default 1, i.e. today's serial behaviour) is forwarded to
+    :func:`_bridge_gaps`, the single largest cost here at full-detector scale -- see the module
+    docstring's "Why ``max_workers`` means threads, not processes" for why threads and not
+    processes, and why this never changes the result.
     """
     stack = np.asarray(stack, dtype=np.float32)
     mask = np.asarray(mask, bool)
@@ -644,7 +743,7 @@ def find_blobs_3d(stack: np.ndarray, mask: np.ndarray, *,
     stack = stack.copy()
     stack[:, mask] = 0.0
 
-    binary = _bridge_gaps(stack > threshold, mask, int(gap_bridge))
+    binary = _bridge_gaps(stack > threshold, mask, int(gap_bridge), max_workers=max_workers)
     lab, n_lab = ndimage.label(binary, structure=_CONN3)
     real = ~np.broadcast_to(mask, stack.shape)
     vol = np.bincount(lab[real].ravel(), minlength=n_lab + 1)

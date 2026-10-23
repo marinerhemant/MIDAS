@@ -748,3 +748,61 @@ def test_detect_powder_rings_grouped_median_matches_per_bin_loop_reference():
     rings = detect_powder_rings(img, tth, mask, azimuth_deg=azi,
                                 tth_bin=tth_bin, tth_range=(lo, hi))
     assert np.min(np.abs(rings.centre_deg - 0.6)) < 0.05
+
+
+# ---------------------------------------------------------------------------
+# equivalence: `max_workers` (threads) must never change the result
+# ---------------------------------------------------------------------------
+# These are NOT performance tests -- they only need enough frames/candidates for a given
+# max_workers to actually split the work across more than one thread, so the claim "disjoint
+# output slices, so any max_workers gives the serial result" is checked rather than assumed.
+
+
+def test_bridge_gaps_max_workers_is_bit_identical():
+    rng = np.random.default_rng(20261024)
+    nf, ny, nx = 17, 24, 30     # deliberately not a multiple of any worker count below
+    binary = rng.random((nf, ny, nx)) < 0.05
+    mask = rng.random((ny, nx)) < 0.1
+    for size in (3, 21):
+        ref = _bridge_gaps(binary, mask, size, max_workers=1)
+        for max_workers in (2, 3, 5, 8, 100):   # 100 > nf exercises the min(max_workers, nf) clamp
+            out = _bridge_gaps(binary, mask, size, max_workers=max_workers)
+            assert np.array_equal(out, ref), f"size={size} max_workers={max_workers}"
+
+
+def test_subtract_background_max_workers_is_bit_identical():
+    tth, azi, _ = _geom()
+    frames = _add_spot(_blank(), 4, 60, 65, 900.0)
+    mask = build_mask(frames).mask
+    for n_sectors in (1, 24):
+        ref = subtract_background(frames, tth, azi, mask, n_sectors=n_sectors, max_workers=1)
+        for max_workers in (2, 3, NF, 2 * NF):
+            out = subtract_background(frames, tth, azi, mask, n_sectors=n_sectors,
+                                      max_workers=max_workers)
+            assert np.array_equal(out, ref), f"n_sectors={n_sectors} max_workers={max_workers}"
+
+
+def test_choose_sectors_max_workers_is_bit_identical():
+    tth, azi, _ = _geom()
+    frames = _add_spot(_blank(), 4, 60, 65, 900.0)
+    frames = _add_ring(frames, 20.0, 500.0, sigma=1.5)
+    mask = build_mask(frames).mask
+    ref = choose_sectors(frames, tth, azi, mask, max_workers=1)
+    for max_workers in (2, 3, 5, 10):
+        out = choose_sectors(frames, tth, azi, mask, max_workers=max_workers)
+        assert out.n_sectors == ref.n_sectors
+        assert out.table.equals(ref.table)
+        assert np.array_equal(out.stack, ref.stack)
+
+
+def test_find_blobs_3d_max_workers_is_bit_identical():
+    tth, azi, _ = _geom()
+    frames = _add_spot(_blank(), 4, 60, 65, 900.0)
+    mask = build_mask(frames).mask
+    sub = subtract_background(frames, tth, azi, mask)
+    ref, ref_counts = find_blobs_3d(sub, mask, gap_bridge=5, return_counts=True, max_workers=1)
+    for max_workers in (2, 4, 8):
+        out, counts = find_blobs_3d(sub, mask, gap_bridge=5, return_counts=True,
+                                    max_workers=max_workers)
+        assert counts == ref_counts
+        assert out.equals(ref)
