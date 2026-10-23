@@ -30,6 +30,7 @@ the data above the analytic sigma was ~2x the bootstrap one.
 from __future__ import annotations
 
 import math
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
@@ -176,6 +177,39 @@ def _residuals(x, doms, system, nfree, two_pi, weights=None):
     return np.concatenate(out)
 
 
+def _bootstrap_resample_indices(rng: np.random.Generator, doms: Sequence[DomainData],
+                                n_bootstrap: int) -> List[List[np.ndarray]]:
+    """Draw every resample's per-domain index array up front, sequentially, from ONE rng.
+
+    ``np.random.Generator`` is not thread-safe for concurrent draws, and pre-drawing here --
+    before any resample is actually fitted, in threads or not -- keeps the exact resample
+    sequence, and therefore the exact bootstrap result, identical for any ``max_workers``.
+    """
+    return [[rng.integers(0, len(d.hkl), len(d.hkl)) for d in doms]
+           for _ in range(int(n_bootstrap))]
+
+
+def _run_bootstrap_fits(fit_one, resamples: Sequence, max_workers: int) -> List:
+    """Run ``fit_one(idx)`` over every resample, serially or on ``max_workers`` threads.
+
+    ``scipy.optimize.least_squares(method="lm")`` (inside ``fit_one``, via :func:`_fit`/
+    :func:`_fit_radial`) repeatedly calls back into a pure-Python/numpy residual function, so
+    this is NOT the clean "C/Fortran code releases the GIL for the whole call" case
+    :mod:`midas_defect.ingest` documents, and the measured speedup is modest and does not keep
+    scaling with worker count: 500 resamples on one tetragonal domain (60 reflections) went
+    0.83s (``max_workers=1``) -> 0.73s (``2``) -> 0.74s (``4``) -> 0.77s (``10``) on a 12-core
+    Mac -- real but small, and GIL contention erases it past 2-4 threads. Each resample is
+    still fully independent (own local ``rs``/``w_rs``, no shared mutable state) and
+    ``ThreadPoolExecutor.map`` preserves input order, so the result is bit-identical to the
+    serial loop for any ``max_workers`` regardless of how much time it saves.
+    """
+    n_workers = max(1, min(int(max_workers), len(resamples)))
+    if n_workers <= 1:
+        return [fit_one(idx) for idx in resamples]
+    with ThreadPoolExecutor(max_workers=n_workers) as ex:
+        return list(ex.map(fit_one, resamples))
+
+
 def _fit(doms, system, cell0, rot0, two_pi, maxfev, weights=None):
     from scipy.optimize import least_squares
     nfree = len(FREE_PARAMS[system])
@@ -191,7 +225,8 @@ def refine_cell_joint(domains: Sequence[DomainData], *, system: str,
                       n_bootstrap: int = 0,
                       rng: Optional[np.random.Generator] = None,
                       maxfev: int = 20000,
-                      weights: Optional[Sequence[np.ndarray]] = None) -> ConstrainedFit:
+                      weights: Optional[Sequence[np.ndarray]] = None,
+                      max_workers: int = 1) -> ConstrainedFit:
     """Refine ONE cell of the given crystal system against several domains.
 
     Each domain gets its own orientation; all share the cell. ``cell0`` is the
@@ -209,6 +244,14 @@ def refine_cell_joint(domains: Sequence[DomainData], *, system: str,
     the data (an outlier that fits badly gets automatically downweighted), use
     :func:`refine_cell_joint_robust` instead, which calls this function
     repeatedly inside an IRLS loop.
+
+    ``max_workers`` (default 1, i.e. today's serial behaviour, unchanged) runs that many of the
+    ``n_bootstrap`` resample fits at once on their own threads -- see
+    :func:`_run_bootstrap_fits` for why this is still safe (bit-identical for any
+    ``max_workers``) even though each fit calls back into Python/numpy rather than running
+    pure C/Fortran. Pass it explicitly rather than defaulting to ``os.cpu_count()`` for the
+    same reason :mod:`midas_defect.ingest` does: a caller already running inside its own
+    worker pool across raster positions must be able to keep this at 1.
     """
     doms = list(domains)
     if not doms:
@@ -255,22 +298,21 @@ def refine_cell_joint(domains: Sequence[DomainData], *, system: str,
     keep_arr = None
     if n_bootstrap > 0:
         rng = rng or np.random.default_rng(0)
-        keep = []
-        for _ in range(int(n_bootstrap)):
-            rs = []
-            w_rs = [] if weights is not None else None
-            for j, d in enumerate(doms):
-                i = rng.integers(0, len(d.hkl), len(d.hkl))
-                rs.append(DomainData(d.hkl[i], d.g[i], d.label))
-                if weights is not None:
-                    w_rs.append(weights[j][i])
+        resamples = _bootstrap_resample_indices(rng, doms, n_bootstrap)
+        rot0_fit = [res.x[nfree+3*i:nfree+3*i+3] for i in range(len(doms))]
+
+        def _fit_one(idx):
+            rs = [DomainData(d.hkl[i], d.g[i], d.label) for d, i in zip(doms, idx)]
+            w_rs = ([weights[j][i] for j, i in enumerate(idx)]
+                   if weights is not None else None)
             try:
-                r2, _ = _fit(rs, system, cell, [res.x[nfree+3*i:nfree+3*i+3]
-                                                for i in range(len(doms))],
-                             two_pi, maxfev, w_rs)
-                keep.append(_expand(system, r2.x[:nfree]))
+                r2, _ = _fit(rs, system, cell, rot0_fit, two_pi, maxfev, w_rs)
+                return _expand(system, r2.x[:nfree])
             except Exception:
-                continue
+                return None
+
+        results = _run_bootstrap_fits(_fit_one, resamples, max_workers)
+        keep = [r for r in results if r is not None]
         if len(keep) > 4:
             keep_arr = np.array(keep)
             boot = tuple(float(v) for v in np.std(keep_arr, axis=0, ddof=1))
@@ -316,7 +358,8 @@ def refine_cell_radial(domains: Sequence[DomainData], *, system: str,
                        n_bootstrap: int = 0,
                        rng: Optional[np.random.Generator] = None,
                        maxfev: int = 20000,
-                       weights: Optional[Sequence[np.ndarray]] = None) -> ConstrainedFit:
+                       weights: Optional[Sequence[np.ndarray]] = None,
+                       max_workers: int = 1) -> ConstrainedFit:
     """Refine ONE cell from the RADIAL ``|g|`` residual only — orientation-free.
 
     Unlike :func:`refine_cell_joint`, no per-domain rotation is fitted (or
@@ -345,6 +388,8 @@ def refine_cell_radial(domains: Sequence[DomainData], *, system: str,
     ``weights``, same meaning as in :func:`refine_cell_joint`: one fixed
     array per domain, 1.0 trusts a reflection, 0.0 excludes it. For weights
     determined automatically from the data, see :func:`refine_cell_radial_robust`.
+
+    ``max_workers``, same meaning and default as :func:`refine_cell_joint`'s own.
     """
     doms = list(domains)
     if not doms:
@@ -383,20 +428,20 @@ def refine_cell_radial(domains: Sequence[DomainData], *, system: str,
     keep_arr = None
     if n_bootstrap > 0:
         rng = rng or np.random.default_rng(0)
-        keep = []
-        for _ in range(int(n_bootstrap)):
-            rs = []
-            w_rs = [] if weights is not None else None
-            for j, d in enumerate(doms):
-                i = rng.integers(0, len(d.hkl), len(d.hkl))
-                rs.append(DomainData(d.hkl[i], d.g[i], d.label))
-                if weights is not None:
-                    w_rs.append(weights[j][i])
+        resamples = _bootstrap_resample_indices(rng, doms, n_bootstrap)
+
+        def _fit_one(idx):
+            rs = [DomainData(d.hkl[i], d.g[i], d.label) for d, i in zip(doms, idx)]
+            w_rs = ([weights[j][i] for j, i in enumerate(idx)]
+                   if weights is not None else None)
             try:
                 r2, _ = _fit_radial(rs, system, cell, two_pi, maxfev, w_rs)
-                keep.append(_expand(system, r2.x[:nfree]))
+                return _expand(system, r2.x[:nfree])
             except Exception:
-                continue
+                return None
+
+        results = _run_bootstrap_fits(_fit_one, resamples, max_workers)
+        keep = [r for r in results if r is not None]
         if len(keep) > 4:
             keep_arr = np.array(keep)
             boot = tuple(float(v) for v in np.std(keep_arr, axis=0, ddof=1))
@@ -441,7 +486,8 @@ def refine_cell_joint_robust(domains: Sequence[DomainData], *, system: str,
                              maxfev: int = 20000,
                              tukey_c: float = 4.685,
                              max_iter: int = 10,
-                             weight_tol: float = 1e-3) -> ConstrainedFit:
+                             weight_tol: float = 1e-3,
+                             max_workers: int = 1) -> ConstrainedFit:
     """:func:`refine_cell_joint`, wrapped in an outer IRLS loop that lets the
     DATA decide which reflections to downweight, instead of a caller having
     to hand-pick a suspicious ``hkl``.
@@ -488,6 +534,10 @@ def refine_cell_joint_robust(domains: Sequence[DomainData], *, system: str,
     ``.robust_n_iter`` the number of IRLS iterations taken. Bootstrap
     uncertainty, if requested, is computed AT those final fixed weights (the
     weights are not re-derived inside each bootstrap resample).
+
+    ``max_workers`` is forwarded only to the final bootstrapped :func:`refine_cell_joint`
+    call -- the IRLS iterations above never bootstrap (``n_bootstrap`` defaults to 0 on
+    each), so threading would have nothing to parallelize there.
     """
     doms = list(domains)
     if not doms:
@@ -509,7 +559,8 @@ def refine_cell_joint_robust(domains: Sequence[DomainData], *, system: str,
         if delta < weight_tol:
             break
     fit = refine_cell_joint(doms, system=system, cell0=cell0, two_pi=two_pi,
-                            n_bootstrap=n_bootstrap, rng=rng, maxfev=maxfev, weights=w)
+                            n_bootstrap=n_bootstrap, rng=rng, maxfev=maxfev, weights=w,
+                            max_workers=max_workers)
     fit.robust_n_iter = n_iter
     return fit
 
@@ -522,7 +573,8 @@ def refine_cell_radial_robust(domains: Sequence[DomainData], *, system: str,
                               maxfev: int = 20000,
                               tukey_c: float = 4.685,
                               max_iter: int = 10,
-                              weight_tol: float = 1e-3) -> ConstrainedFit:
+                              weight_tol: float = 1e-3,
+                              max_workers: int = 1) -> ConstrainedFit:
     """:func:`refine_cell_radial`, with the same IRLS outer loop as
     :func:`refine_cell_joint_robust` -- see its docstring for the full
     explanation and the caveat about population-level bias, which applies
@@ -532,6 +584,9 @@ def refine_cell_radial_robust(domains: Sequence[DomainData], *, system: str,
     comparing the two `.weights` is itself informative (a reflection flagged
     by only one of the two residual definitions is a different kind of
     suspect than one flagged by both).
+
+    ``max_workers``, same meaning as :func:`refine_cell_joint_robust`'s own -- forwarded only
+    to the final bootstrapped :func:`refine_cell_radial` call.
     """
     doms = list(domains)
     if not doms:
@@ -554,7 +609,8 @@ def refine_cell_radial_robust(domains: Sequence[DomainData], *, system: str,
         if delta < weight_tol:
             break
     fit = refine_cell_radial(doms, system=system, cell0=cell0, two_pi=two_pi,
-                             n_bootstrap=n_bootstrap, rng=rng, maxfev=maxfev, weights=w)
+                             n_bootstrap=n_bootstrap, rng=rng, maxfev=maxfev, weights=w,
+                             max_workers=max_workers)
     fit.robust_n_iter = n_iter
     return fit
 

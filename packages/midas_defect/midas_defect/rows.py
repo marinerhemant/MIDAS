@@ -1224,24 +1224,30 @@ def index_from_pairs(q, I, B, *, a=3.6116, c=19.2516, exclude=None,
                 continue
             cos_obs = float(np.dot(q[ia], q[ib]))/(qn[ia]*qn[ib])
             ang_obs = math.degrees(math.acos(max(-1.0, min(1.0, cos_obs))))
-            for j1 in cand[ia]:
-                g1 = gvec[j1]; n1 = gmag[j1]
-                for j2 in cand[ib]:
-                    g2 = gvec[j2]; n2 = gmag[j2]
-                    cth = float(np.dot(g1, g2))/(n1*n2)
-                    ang = math.degrees(math.acos(max(-1.0, min(1.0, cth))))
-                    if abs(ang - ang_obs) > d_angle:
-                        continue
-                    U = _u_from_two_vectors(g1, g2, q[ia], q[ib])
-                    if U is None:
-                        continue
-                    cl, hk, rs = match_mask(q, U, B=B, a=a, c=c, tol_q=tol_q,
-                                            return_residual=True, space_group_number=space_group_number)
-                    cl &= avail
-                    n = int(unique_by_hkl(cl, hk, rs).sum())
-                    if n > best[1]:
-                        best = (U, n, (hkls[j1], hkls[j2]))
-                    cands.append((n, U))
+            # Angle-match the WHOLE cand[ia] x cand[ib] grid at once -- this was a Python
+            # double loop computing one scalar cosine/arccos at a time; the expensive part
+            # per surviving pair (_u_from_two_vectors + a full match_mask over every spot) is
+            # unchanged below, still one call per pair, since each needs its own U and its own
+            # whole-spot-list score. np.nonzero walks the grid in the same (j1-outer,
+            # j2-inner) row-major order the nested loop did, so the `n > best[1]` tie-break
+            # (keep the FIRST candidate reaching a given count) is unchanged.
+            j1_arr, j2_arr = cand[ia], cand[ib]
+            cth_mat = ((gvec[j1_arr] @ gvec[j2_arr].T)
+                      / np.outer(gmag[j1_arr], gmag[j2_arr]))
+            ang_mat = np.degrees(np.arccos(np.clip(cth_mat, -1.0, 1.0)))
+            for oi, oj in zip(*np.nonzero(np.abs(ang_mat - ang_obs) <= d_angle)):
+                j1 = j1_arr[oi]; j2 = j2_arr[oj]
+                g1 = gvec[j1]; g2 = gvec[j2]
+                U = _u_from_two_vectors(g1, g2, q[ia], q[ib])
+                if U is None:
+                    continue
+                cl, hk, rs = match_mask(q, U, B=B, a=a, c=c, tol_q=tol_q,
+                                        return_residual=True, space_group_number=space_group_number)
+                cl &= avail
+                n = int(unique_by_hkl(cl, hk, rs).sum())
+                if n > best[1]:
+                    best = (U, n, (hkls[j1], hkls[j2]))
+                cands.append((n, U))
     if best[1] < min_reflections:
         return None, best[1], best[2], 0
     # MARGIN, the same protection row seeding has and this branch lacked.
@@ -1494,18 +1500,26 @@ def match_mask(q, U, *, a=3.6116, c=19.2516, two_pi=True, tol=0.10,
         pred = (UB @ hi.T).T
         res = qa - pred
         nq = np.linalg.norm(qa, axis=1)
-        d2 = np.zeros(len(qa))
-        for i in range(len(qa)):
-            if nq[i] < 1e-12:
-                d2[i] = np.inf; continue
-            qh = qa[i]/nq[i]
-            t = np.cross(axis, qh); nt = np.linalg.norm(t)
-            if nt < 1e-9:
-                d2[i] = float(np.dot(res[i], res[i]))/s_r**2
-                continue
-            t = t/nt; n = np.cross(qh, t)
-            d2[i] = ((float(res[i] @ qh)/s_r)**2 + (float(res[i] @ t)/s_t)**2
-                     + (float(res[i] @ n)/s_n)**2)
+        # Vectorized over every spot at once (was a Python per-row loop, called once per
+        # candidate orientation from deep inside index_from_pairs's own search). Two
+        # degenerate cases, handled exactly as the original loop did: nq[i] < 1e-12
+        # (direction undefined -> inf, so that spot can never be claimed) and axis parallel
+        # to qh (cross(axis, qh) ~ 0, transverse/normal directions undefined at that singular
+        # point -> fall back to the isotropic full-residual-norm / s_r**2, same as the
+        # original branch).
+        nq_safe = np.where(nq < 1e-12, 1.0, nq)
+        qh = qa / nq_safe[:, None]
+        t_raw = np.cross(axis, qh)
+        nt = np.linalg.norm(t_raw, axis=1)
+        degenerate_axis = nt < 1e-9
+        t = t_raw / np.where(degenerate_axis, 1.0, nt)[:, None]
+        n = np.cross(qh, t)
+        d2_normal = ((res * qh).sum(axis=1) / s_r) ** 2 \
+                   + ((res * t).sum(axis=1) / s_t) ** 2 \
+                   + ((res * n).sum(axis=1) / s_n) ** 2
+        d2_isotropic = (res * res).sum(axis=1) / s_r ** 2
+        d2 = np.where(degenerate_axis, d2_isotropic, d2_normal)
+        d2 = np.where(nq < 1e-12, np.inf, d2)
         resid = np.sqrt(d2)
         within = resid < tol_sigma
     elif tol_q is None:
