@@ -352,3 +352,37 @@ def test_strain_default_agrees_with_midas_stress(tmp_path):
     g = read_grains(p)
     ms = ms_io.read_grains_csv(str(p))
     np.testing.assert_allclose(g.strain(), ms["strain"] * 1e6, rtol=1e-9)
+
+
+def test_pole_figure_plots_g_at_h_not_g_transpose_at_h(monkeypatch):
+    """Known answer: a grain whose crystal z axis points along lab t must show its (001) poles at g @ h."""
+    import types
+    import matplotlib.pyplot as plt
+    a, b = np.radians(40.0), np.radians(25.0)
+    t = np.array([np.sin(a) * np.cos(b), np.sin(a) * np.sin(b), np.cos(a)])
+    z = np.array([0.0, 0.0, 1.0])
+    v = np.cross(z, t)
+    s, c = np.linalg.norm(v), float(z @ t)
+    K = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0.0]])
+    g = np.eye(3) + K + K @ K * ((1 - c) / s ** 2)          # crystal -> lab, g @ z = t
+    assert np.allclose(g @ z, t)
+
+    class GL:
+        orient_mat = g[None]
+        completeness = None
+        space_group = 225
+        path = types.SimpleNamespace(name="known")
+        def __len__(self):
+            return 1
+
+    monkeypatch.setattr(ff, "_as_grains", lambda x: x)
+    fig, ax = plt.subplots()
+    ff.pole_figure(GL(), ax, hkl=(0, 0, 1), space_group=225, projection="equal_area", color="r")
+    got = np.unique(np.round(ax.collections[0].get_offsets(), 3), axis=0)
+    cub = np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, 0, 0], [0, -1, 0], [0, 0, -1]], float)
+    d = (g @ cub.T).T
+    d[d[:, 2] < 0] *= -1
+    f = np.sqrt(2 / (1 + d[:, 2]))
+    want = np.unique(np.round(np.c_[d[:, 0] * f / np.sqrt(2), d[:, 1] * f / np.sqrt(2)], 3), axis=0)
+    assert np.allclose(got, want, atol=2e-3)
+    plt.close(fig)

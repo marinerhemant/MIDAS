@@ -454,8 +454,12 @@ def pole_figure(grains, ax=None, *, hkl: Sequence[float] = (0, 0, 1),
     sym = sym_matrices(space_group)
     hs = np.einsum("sij,j->si", sym, h)                    # equivalents
 
-    # g maps sample -> crystal, so the sample-frame pole is g.T @ h_crystal.
-    d = np.einsum("nji,sj->nsi", om, hs).reshape(-1, 3)
+    # MIDAS orientation matrices map CRYSTAL -> LAB (v_lab = g v_crystal; see
+    # ipf.ipf_rgb_from_matrix), so the lab-frame pole of crystal direction h is
+    # g @ h. The first version used g.T @ h, which plots every pole at the wrong
+    # position (for a grain whose crystal z points along lab t it showed the
+    # pole of the inverse rotation); the tests only checked that it ran.
+    d = np.einsum("nij,sj->nsi", om, hs).reshape(-1, 3)
     d = d / np.linalg.norm(d, axis=1, keepdims=True)
     d[d[:, 2] < 0] *= -1.0                                 # upper hemisphere
 
