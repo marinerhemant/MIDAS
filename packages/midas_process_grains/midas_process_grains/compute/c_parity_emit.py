@@ -418,7 +418,11 @@ def write_grains_csv(
         e_ken_per_grain[gi, 1, 2] = e_ken_per_grain[gi, 2, 1] = ev[5]
     e_ken_per_grain *= 1e6                                           # microstrain
     rmse_per_grain = rmse_np * 1e6                                   # microstrain
-    rmse_per_grain[~np.asarray(valid_strain)] = float("nan")
+    # dtype=bool: with no kept grains ``valid_strain`` is an empty list, which
+    # numpy turns into a float64 array, and ``~`` on that raises TypeError --
+    # a run whose clustering keeps nothing must write an empty Grains.csv, not
+    # crash after the analysis has already finished.
+    rmse_per_grain[~np.asarray(valid_strain, dtype=bool)] = float("nan")
     print(f"[c-parity emit] batched solve done [{_time.time()-t1:.1f}s]",
           flush=True)
 
