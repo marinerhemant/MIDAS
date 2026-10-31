@@ -30,7 +30,8 @@ import tempfile
 from pathlib import Path
 from typing import Callable, Optional
 
-__all__ = ["available", "binary_path", "run_refiner", "CBackendUnavailableError"]
+__all__ = ["available", "binary_path", "run_refiner", "supports_multidet",
+           "CBackendUnavailableError"]
 
 _BIN = "midas_fitgrain"
 _PKG = "midas_fit_grain"
@@ -70,6 +71,24 @@ def available() -> bool:
     """``True`` if the bundled ``midas_fitgrain`` binary is present and executable."""
     p = binary_path()
     return p.is_file() and os.access(p, os.X_OK)
+
+
+#: Present in a binary that applies per-panel geometry (Phase 9b).
+_MULTIDET_MARKER = b"MIDAS_MULTIDET_SUPPORT_PHASE9B"
+
+
+def supports_multidet() -> bool:
+    """``True`` if the binary applies per-panel geometry to multi-detector runs.
+
+    The version string says nothing about this: C is compiled at install time,
+    so an old binary can sit under a new package. Grep the executable for the
+    marker the feature adds instead of trusting the version.
+    """
+    p = binary_path()
+    try:
+        return _MULTIDET_MARKER in p.read_bytes()
+    except OSError:
+        return False
 
 
 def run_refiner(

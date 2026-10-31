@@ -31,6 +31,7 @@
 #include "nelder_mead.h"
 #include <omp.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,7 +58,29 @@ int BigDetSize = 0;
 int *BigDetector;
 long long int totNrPixelsBigDetector;
 double pixelsize;
-double DetParams[4][10];
+double DetParams[10][10];   /* cfg.DetParams holds up to 10 panels */
+
+/* ---- Multi-detector: per-spot panel distance --------------------------------
+ * gSpotLsd[row] is the Lsd of the panel ExtraInfo.bin row `row` (= SpotID-1)
+ * came from, read from the Spots_det.bin side-car. NULL for a single-detector
+ * run, in which case every spot uses the global Lsd and the arithmetic below is
+ * exactly what it always was. An observation from a panel at another distance
+ * must have its grain-displacement correction and g-vector rebuilt with THAT
+ * distance, then be moved onto the reference plane (global Lsd) where the
+ * theoretical spots are computed. */
+static double *gSpotLsd = NULL;
+static size_t gSpotLsdN = 0;
+static inline double SpotLsdOf(double spotId, double LsdGlobal) {
+  if (gSpotLsd != NULL) {
+    long r = (long)spotId - 1;
+    if (r >= 0 && (size_t)r < gSpotLsdN && gSpotLsd[r] > 0.0)
+      return gSpotLsd[r];
+  }
+  return LsdGlobal;
+}
+/* Capability marker, see midas_fit_grain.backend_c.supports_multidet(). */
+__attribute__((used)) static const char midas_multidet_marker[] =
+    "MIDAS_MULTIDET_SUPPORT_PHASE9B";
 #define MAX_N_OMEGA_RANGES 2000
 double WeightMask = 1.0;
 double WeightFitRMSE = 0.0;
@@ -521,13 +544,15 @@ CalcAngleErrors(int nspots, int nhkls, int nOmegaRanges, double x[12],
   SpotsYZOGCorr = allocMatrix(nrMatchedIndexer, 7);
   double DisplY, DisplZ, ys, zs, Omega, Radius, Theta, lenK, yt, zt;
   for (nrSp = 0; nrSp < nrMatchedIndexer; nrSp++) {
-    DisplacementInTheSpot(x[0], x[1], x[2], Lsd, spotsYZO[nrSp][5],
+    const double Lk = SpotLsdOf(spotsYZO[nrSp][3], Lsd);
+    DisplacementInTheSpot(x[0], x[1], x[2], Lk, spotsYZO[nrSp][5],
                           spotsYZO[nrSp][6], spotsYZO[nrSp][4], wedge, chi,
                           &DisplY, &DisplZ);
     yt = spotsYZO[nrSp][5] - DisplY;
     zt = spotsYZO[nrSp][6] - DisplZ;
-    CorrectForOme(yt, zt, Lsd, spotsYZO[nrSp][4], Wavelength, wedge, &ys, &zs,
+    CorrectForOme(yt, zt, Lk, spotsYZO[nrSp][4], Wavelength, wedge, &ys, &zs,
                   &Omega);
+    if (Lk != Lsd) { ys *= Lsd / Lk; zs *= Lsd / Lk; } /* onto the reference plane */
     SpotsYZOGCorr[nrSp][0] = ys;
     SpotsYZOGCorr[nrSp][1] = zs;
     SpotsYZOGCorr[nrSp][2] = Omega;
@@ -717,13 +742,15 @@ static double FitErrors12D(double x[12], int nSpots, double **spotsYZO,
   int nMatched = 0;
   for (int sp = 0; sp < nSpots; sp++) {
     double DisplY, DisplZ, ys, zs, Omega;
-    DisplacementInTheSpot(x[0], x[1], x[2], Lsd, spotsYZO[sp][5],
+    const double Lk = SpotLsdOf(spotsYZO[sp][3], Lsd);
+    DisplacementInTheSpot(x[0], x[1], x[2], Lk, spotsYZO[sp][5],
                           spotsYZO[sp][6], spotsYZO[sp][4], wedge, chi, &DisplY,
                           &DisplZ);
     double yt = spotsYZO[sp][5] - DisplY;
     double zt = spotsYZO[sp][6] - DisplZ;
-    CorrectForOme(yt, zt, Lsd, spotsYZO[sp][4], Wavelength, wedge, &ys, &zs,
+    CorrectForOme(yt, zt, Lk, spotsYZO[sp][4], Wavelength, wedge, &ys, &zs,
                   &Omega);
+    if (Lk != Lsd) { ys *= Lsd / Lk; zs *= Lsd / Lk; } /* onto the reference plane */
     int spnr = (int)spotsYZO[sp][8];
     for (int k = 0; k < nTspots; k++) {
       if ((int)TheorSpots[k][8] == spnr) {
@@ -769,13 +796,15 @@ static double FitErrors3DOrient(double Euler[3], int nSpots, double **spotsYZO,
   double Error = 0;
   for (int sp = 0; sp < nSpots; sp++) {
     double DisplY, DisplZ, ys, zs, Omega_obs;
-    DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], Lsd, spotsYZO[sp][5],
+    const double Lk = SpotLsdOf(spotsYZO[sp][3], Lsd);
+    DisplacementInTheSpot(Pos[0], Pos[1], Pos[2], Lk, spotsYZO[sp][5],
                           spotsYZO[sp][6], spotsYZO[sp][4], wedge, chi, &DisplY,
                           &DisplZ);
     double yt = spotsYZO[sp][5] - DisplY;
     double zt = spotsYZO[sp][6] - DisplZ;
-    CorrectForOme(yt, zt, Lsd, spotsYZO[sp][4], Wavelength, wedge, &ys, &zs,
+    CorrectForOme(yt, zt, Lk, spotsYZO[sp][4], Wavelength, wedge, &ys, &zs,
                   &Omega_obs);
+    if (Lk != Lsd) { ys *= Lsd / Lk; zs *= Lsd / Lk; } /* onto the reference plane */
     double eta_obs = atan2(-ys, zs) * rad2deg;
     int spnr = (int)spotsYZO[sp][8];
     for (int k = 0; k < nTspots; k++) {
@@ -968,12 +997,14 @@ FitErrorsPosSec(double x[3], int nSpotsComp, double spotsYZOIn[nSpotsComp][11],
       spotsYZO[i][j] = spotsYZOIn[i][j];
   double DisplY, DisplZ, ys, zs, Omega;
   for (i = 0; i < nSpotsComp; i++) {
-    DisplacementInTheSpot(X, Y, Z, Lsd, spotsYZO[i][5], spotsYZO[i][6],
+    const double Lk = SpotLsdOf(spotsYZO[i][3], Lsd);
+    DisplacementInTheSpot(X, Y, Z, Lk, spotsYZO[i][5], spotsYZO[i][6],
                           spotsYZO[i][4], wedge, chi, &DisplY, &DisplZ);
     double yt = spotsYZO[i][5] - DisplY;
     double zt = spotsYZO[i][6] - DisplZ;
-    CorrectForOme(yt, zt, Lsd, spotsYZO[i][4], Wavelength, wedge, &ys, &zs,
+    CorrectForOme(yt, zt, Lk, spotsYZO[i][4], Wavelength, wedge, &ys, &zs,
                   &Omega);
+    if (Lk != Lsd) { ys *= Lsd / Lk; zs *= Lsd / Lk; } /* onto the reference plane */
     scratch->SpotsYZOGCorr[i][0] = ys;
     scratch->SpotsYZOGCorr[i][1] = zs;
     scratch->SpotsYZOGCorr[i][2] = spotsYZO[i][8]; // matched theor spotid
@@ -1608,6 +1639,50 @@ int main(int argc, char *argv[]) {
   check(AllSpots == MAP_FAILED, "mmap %s failed: %s", filename,
         strerror(errno));
   int nSpots = (int)size / (16 * sizeof(double));
+  /* Multi-detector: which panel (hence which Lsd) each ExtraInfo row is from.
+   * Spots_det.bin is one int32 det_id per merged spot row, same order as
+   * ExtraInfo.bin. Without it every spot keeps the global Lsd. */
+  if (cntrdet > 0) {
+    char detFN[2048];
+    sprintf(detFN, "%s/Spots_det.bin", cwd);
+    FILE *fdet = fopen(detFN, "rb");
+    if (fdet == NULL) {
+      printf("Multi-detector paramstest but no %s: every spot uses the global "
+             "Lsd.\n", detFN);
+    } else {
+      int32_t *detIds = (int32_t *)malloc((size_t)nSpots * sizeof(int32_t));
+      double *lsdRow = (double *)malloc((size_t)nSpots * sizeof(double));
+      if (detIds == NULL || lsdRow == NULL) {
+        printf("Spots_det.bin: out of memory; every spot uses the global Lsd.\n");
+        free(detIds);
+        free(lsdRow);
+      } else if (fread(detIds, sizeof(int32_t), (size_t)nSpots, fdet) !=
+                 (size_t)nSpots) {
+        printf("Spots_det.bin does not hold %d entries; every spot uses the "
+               "global Lsd.\n", nSpots);
+        free(detIds);
+        free(lsdRow);
+      } else {
+        int nMapped = 0;
+        for (int r = 0; r < nSpots; r++) {
+          lsdRow[r] = Lsd;
+          for (int k = 0; k < cntrdet; k++) {
+            if ((int)DetParams[k][0] == (int)detIds[r] && DetParams[k][1] > 0.0) {
+              lsdRow[r] = DetParams[k][1];
+              nMapped++;
+              break;
+            }
+          }
+        }
+        free(detIds);
+        gSpotLsd = lsdRow;
+        gSpotLsdN = (size_t)nSpots;
+        printf("Multi-detector: per-spot Lsd for %d of %d spots from %d "
+               "panels.\n", nMapped, nSpots, cntrdet);
+      }
+      fclose(fdet);
+    }
+  }
   if (cfg.RelFitRMSEWeightR0 > 0)
     LoadRelFitRMSEWeights(cwd, nSpots, cfg.RelFitRMSEWeightR0);
   if (cfg.SpotWeightsDirectional > 0)
