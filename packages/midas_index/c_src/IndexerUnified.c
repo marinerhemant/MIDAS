@@ -232,16 +232,23 @@ struct TParams {
    * shrink. Off => bit-identical to the historical path. */
   char VoxelGridFN[4096];
   int PFCoverageAwareCompleteness;
-  /* Multi-detector / pinwheel scaffolding (Phase 9). For single-detector
-   * runs nDetParams stays 0 and the indexer falls back to global geometry
-   * (RingRadii[], Distance) — preserves PF / FF parity bit-identically.
+  /* Multi-detector / pinwheel geometry (Phase 9). For single-detector
+   * runs nDetParams stays 0 and the indexer uses the global geometry
+   * (RingRadii[], Distance) — PF / FF parity is bit-identical.
    *
-   * Algorithmic per-panel forward simulation + per-panel η-coverage
-   * gating in CalcDiffrSpots / CompareSpots is NOT YET implemented:
-   * see "Phase 9 TODO" markers in those functions for the plug-in
-   * points. Parsing + Spots_det.bin loading are wired so a multi-det
-   * paramstest no longer warn-skips, and the data structure is ready
-   * for the algorithm port when a multi-det fixture lands. */
+   * FF multi-panel runs (nDetParams > 0 and a Spots_det.bin side-car):
+   *   - each SEED spot is turned into a direction with ITS panel's Lsd and
+   *     ring radius, and a Friedel partner on another panel is moved into
+   *     the seed's plane before the geometric tests (RowLsd / RowRingRadius);
+   *   - predicted spots are matched in (ring, eta, omega, radial deviation)
+   *     space, which does not depend on the panel distance: the observed
+   *     radial deviation (Spots.bin col 8) is already measured against the
+   *     panel's own ring radius;
+   *   - a predicted spot whose (ring, eta) lies on no panel (EtaCoverage_DetN
+   *     arcs) is "uncovered": it cannot be observed, so it leaves the
+   *     completeness denominator, the same way PFCoverageAwareCompleteness
+   *     treats a voxel that was not lit.
+   * PF modes are unchanged. */
   int nDetParams;                                /* # active panels */
   int DetIDs[MAX_N_DETS];                        /* per-slot det_id */
   RealType DetLsd[MAX_N_DETS];
@@ -272,6 +279,58 @@ size_t n_spots = 0;             /* PF type (size_t) — superset */
  * default emit). When non-NULL, length == n_spots, dtype int32. */
 int32_t *SpotsDetID = NULL;
 size_t SpotsDetID_size = 0;
+
+/* Capability marker: `strings midas_indexer | grep MIDAS_MULTIDET_SUPPORT`
+ * tells midas-pipeline whether this binary applies per-panel geometry. */
+__attribute__((used)) static const char midas_multidet_marker[] =
+    "MIDAS_MULTIDET_SUPPORT_PHASE9B";
+
+/* ---- Multi-detector (Phase 9b) helpers ------------------------------------
+ * Every helper falls back to the global geometry when the run is single
+ * detector or the row has no panel record, so single-detector runs execute the
+ * arithmetic they always did. */
+static inline int DetSlotOfId(const struct TParams *P, int detId) {
+  for (int k = 0; k < P->nDetParams; k++)
+    if (P->DetIDs[k] == detId) return k;
+  return -1;
+}
+static inline int RowPanelSlot(const struct TParams *P, size_t row) {
+  if (P->nDetParams <= 0 || SpotsDetID == NULL || row >= SpotsDetID_size)
+    return -1;
+  return DetSlotOfId(P, (int)SpotsDetID[row]);
+}
+/* Lsd of the panel an observed spot row came from (global Distance if none). */
+static inline RealType RowLsd(const struct TParams *P, size_t row) {
+  int s = RowPanelSlot(P, row);
+  return (s >= 0 && P->DetLsd[s] > 0.0) ? P->DetLsd[s] : P->Distance;
+}
+/* num / (Lsd of the panel row came from): moves a position between planes.
+ * Exactly 1.0 -- not a computed x/x -- when the run has no panel table, so a
+ * single-detector run never executes this arithmetic at all. */
+static inline RealType PlaneScale(const struct TParams *P, RealType num,
+                                  size_t row) {
+  if (P->nDetParams <= 0) return 1.0;
+  return num / RowLsd(P, row);
+}
+/* Ring radius on the panel an observed spot row came from. */
+static inline RealType RowRingRadius(const struct TParams *P, size_t row,
+                                     int ring) {
+  int s = RowPanelSlot(P, row);
+  if (s >= 0 && P->hasRingRadiiPerDet && ring >= 0 && ring < MAX_N_RINGS &&
+      P->RingRadiiPerDet[s][ring] > 0.0)
+    return P->RingRadiiPerDet[s][ring];
+  return P->RingRadii[ring];
+}
+/* 1 iff some panel's eta arcs for `ring` contain etaDeg. */
+static inline int PanelCovers(const struct TParams *P, int ring,
+                              RealType etaDeg) {
+  for (int k = 0; k < P->nDetParams; k++)
+    for (int a = 0; a < P->nEtaArcs[k]; a++)
+      if (P->EtaArcRing[k][a] == ring && etaDeg >= P->EtaArcLo[k][a] &&
+          etaDeg <= P->EtaArcHi[k][a])
+        return 1;
+  return 0;
+}
 
 /* hkls in PF format (11 cols: H K L Rnr Ds tht RRd sin(tht) v vSq F2).
  *
@@ -971,25 +1030,16 @@ static void CalcIA(RealType **GrainMatches, int ngrains,
  * Uses PF body (sin/cosOme written into cols 14, 15) plus FF's RingsToReject
  * fraction-tally semantics (plan ruling #3, ruling #4).
  *
- * TODO (Phase 9b — multi-detector algorithm port): when
- * `Params.nDetParams > 0`, loop over panels [0, nDetParams):
- *   1. Use `Params.DetLsd[k]` instead of `distance`.
- *   2. Use `Params.RingRadiiPerDet[k]` instead of `RingRadii` (with
- *      fallback to the global table for unmapped rings — see
- *      ParamsTest.panel_ring_radius() in the Python ref).
- *   3. For each `KeepSpot`, also gate by the panel's η-coverage arcs
- *      (Params.EtaArcRing[k] / EtaArcLo[k] / EtaArcHi[k]).
- *   4. Tag the emitted spot with its panel id (e.g. spots[*][16] —
- *      requires N_COL_THEORSPOTS = 17 and the matching reads in
- *      CompareSpots / DoIndexing_*).
- * Single-panel path stays the default (this function as-is) when
- * nDetParams == 0 — preserves current parity bit-for-bit.
- *
- * Scaffolding (Phase 9a, this commit): params are PARSED and stored in
- * Params.DetIDs[] / DetLsd[] / RingRadiiPerDet[] / EtaArc*[] but NOT
- * consumed by the algorithm. A multi-det paramstest runs as single-det
- * (uses global geometry); the warning suppression is the only
- * observable change.
+ * Multi-detector (Phase 9b): predictions stay on ONE reference plane (global
+ * Distance, global RingRadii). That is exact for what the matcher compares:
+ * observed spots are matched in (ring, eta, omega, radial deviation) space,
+ * and the radial deviation of an observed spot (Spots.bin col 8) is already
+ * measured against ITS panel's ring radius, with R / Lsd = tan(2 theta) the
+ * same on every panel. What does depend on the panel is applied elsewhere:
+ * the seed direction and Friedel geometry use the seed's panel (RowLsd,
+ * RowRingRadius), and predicted spots on no panel leave the denominators
+ * (PanelCovers in CompareSpots). A single-detector run (nDetParams == 0) takes
+ * exactly the arithmetic it always did.
  * --------------------------------------------------------------------------*/
 static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant,
                            RealType Wavelength, RealType distance,
@@ -1100,14 +1150,13 @@ static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant
 /* ----------------------------------------------------------------------------
  * CompareSpots — UNIFIED.
  *
- * TODO (Phase 9b — multi-detector algorithm port): when
- * `Params->nDetParams > 0` and the global `SpotsDetID` array is loaded,
- * gate each obs candidate row by panel: skip iff
- * `SpotsDetID[spotRow] != TheorSpots[sp][16]` (the theor spot's emitting
- * panel, tagged in CalcDiffrSpots). Per-panel MarginRad also lookup
- * Params->RingRadiiPerDet[k][RingNr] instead of the global RefRad.
- * Single-panel path stays the default — current behavior preserved
- * when nDetParams == 0.
+ * Multi-detector (Phase 9b): a predicted spot whose (ring, eta) lies on no
+ * panel (EtaCoverage_DetN arcs) is "uncovered": written as a non-matched row
+ * but removed from every denominator, as PFCoverageAwareCompleteness does for
+ * a voxel that was not lit. The observed position stored for a match is moved
+ * onto the reference plane (PlaneScale) so residuals and the internal
+ * angle compare like with like. A single-detector run (nDetParams == 0) takes
+ * exactly the arithmetic it always did.
  *
  * Plan §2.3 verbatim body. doRefRadFilter gated on nScans==1 (ruling #14).
  * doScanFilter gated on nScans>1. omemargin computed inline per ruling #15
@@ -1123,8 +1172,8 @@ static void CalcDiffrSpots(RealType OrientMatrix[3][3], RealType LatticeConstant
  * IndexBest_weights_all.bin, NOT through the 16-col record (which stays
  * unchanged).
  *
- * TODO (Phase 9 — multi-detector): per-panel gating happens in CalcDiffrSpots;
- * CompareSpots itself is unchanged.
+ * Multi-detector: the panel coverage gate lives in CompareSpots (PanelCovers);
+ * CalcDiffrSpots predicts on the reference plane. See the notes there.
  * --------------------------------------------------------------------------*/
 /* Sorted copy of ypos[] for the coverage test (PFCoverageAwareCompleteness).
  * Built once in main() after positions.csv is read; NULL in FF mode. */
@@ -1197,6 +1246,9 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
   else softWindow = scanTol;
   const int coverageOn =
       doScanFilter && Params->PFCoverageAwareCompleteness && yposSortedCov;
+  /* FF multi-panel: a predicted spot on no panel cannot be observed. */
+  const int panelCoverageOn =
+      doRefRadFilter && Params->nDetParams > 0 && Params->hasEtaCoverage;
 
   for (int sp = 0; sp < nTspots; sp++) {
     int RingNr = (int)TheorSpots[sp][9];
@@ -1226,6 +1278,11 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
         nUnc++;
         if (!skipRadialFilter) nUncFrac++;
       }
+    } else if (panelCoverageOn &&
+               !PanelCovers(Params, RingNr, TheorSpots[sp][12])) {
+      uncovered = 1;
+      nUnc++;
+      if (!skipRadialFilter) nUncFrac++;
     }
     if (!skipRadialFilter && !uncovered) wTspots += wThis;
     int iEta = (int)floor((180 + TheorSpots[sp][12]) * Params->InvEtaBinSize);
@@ -1326,13 +1383,18 @@ static void CompareSpots(RealType **TheorSpots, int nTspots, RealType RefRad,
       GrainSpots[nMatched][0] = nMatched;
       GrainSpots[nMatched][1] = 999.0;
       GrainSpots[nMatched][2] = TheorSpots[sp][10];
-      GrainSpots[nMatched][3] = ObsSpotsLab[spotRowBest * 10 + 0];
+      /* The prediction lives on the reference plane (global Distance); an
+       * observation from a panel at another Lsd is moved onto it, so the
+       * stored residual and the internal angle compare like with like.
+       * PlaneScale is exactly 1.0 for a single detector. */
+      const RealType scObs = PlaneScale(Params, Params->Distance, spotRowBest);
+      GrainSpots[nMatched][3] = ObsSpotsLab[spotRowBest * 10 + 0] * scObs;
       GrainSpots[nMatched][4] =
-          ObsSpotsLab[spotRowBest * 10 + 0] - TheorSpots[sp][10];
+          ObsSpotsLab[spotRowBest * 10 + 0] * scObs - TheorSpots[sp][10];
       GrainSpots[nMatched][5] = TheorSpots[sp][11];
-      GrainSpots[nMatched][6] = ObsSpotsLab[spotRowBest * 10 + 1];
+      GrainSpots[nMatched][6] = ObsSpotsLab[spotRowBest * 10 + 1] * scObs;
       GrainSpots[nMatched][7] =
-          ObsSpotsLab[spotRowBest * 10 + 1] - TheorSpots[sp][11];
+          ObsSpotsLab[spotRowBest * 10 + 1] * scObs - TheorSpots[sp][11];
       GrainSpots[nMatched][8] = TheorSpots[sp][6];
       GrainSpots[nMatched][9] = ObsSpotsLab[spotRowBest * 10 + 2];
       GrainSpots[nMatched][10] =
@@ -1677,7 +1739,9 @@ static void GenerateIdealSpotsFriedel(RealType ys, RealType zs, RealType ttheta,
                                       RealType Hbeam, RealType OmeTol,
                                       RealType RadiusTol,
                                       RealType y0_vector[],
-                                      RealType z0_vector[], int *NoOfSteps) {
+                                      RealType z0_vector[], int *NoOfSteps,
+                                      const struct TParams *Params,
+                                      RealType SeedLsd) {
   RealType EtaF;
   RealType OmeF;
   RealType EtaMinF, EtaMaxF, etaIdealF;
@@ -1696,8 +1760,11 @@ static void GenerateIdealSpotsFriedel(RealType ys, RealType zs, RealType ttheta,
     ome_obs = ObsSpotsLab[r * 10 + 2];
     if (rno_obs != ringno) continue;
     if (fabs(ome_obs - OmeF) > OmeTol) continue;
-    RealType yf = ObsSpotsLab[r * 10 + 0];
-    RealType zf = ObsSpotsLab[r * 10 + 1];
+    /* A partner on another panel lives on that panel's plane: move it into
+     * the seed's plane. PlaneScale is exactly 1.0 for one detector. */
+    RealType scPart = PlaneScale(Params, SeedLsd, r);
+    RealType yf = ObsSpotsLab[r * 10 + 0] * scPart;
+    RealType zf = ObsSpotsLab[r * 10 + 1] * scPart;
     RealType EtaTransf;
     CalcEtaAngle(yf + ys, zf - zs, &EtaTransf);
     RealType radius = sqrt((yf + ys) * (yf + ys) + (zf - zs) * (zf - zs));
@@ -1721,7 +1788,8 @@ static void GenerateIdealSpotsFriedelMixed(
     RealType ys, RealType zs, RealType Ttheta, RealType Eta, RealType Omega,
     int RingNr, RealType Ring_rad, RealType Lsd, RealType Rsample,
     RealType Hbeam, RealType StepSizePos, RealType OmeTol, RealType RadialTol,
-    RealType EtaTol, RealType spots_y[], RealType spots_z[], int *NoOfSteps) {
+    RealType EtaTol, RealType spots_y[], RealType spots_z[], int *NoOfSteps,
+    const struct TParams *Params) {
   const int MinEtaReject = 10;
   RealType omegasFP[4];
   RealType etasFP[4];
@@ -1792,8 +1860,10 @@ static void GenerateIdealSpotsFriedelMixed(
         if ((fabs(RadialPosFP - ObsSpotsLab[spotRow * 10 + 8]) < RadialTol) &&
             (fabs(OmegaFP - ObsSpotsLab[spotRow * 10 + 2]) < OmeTol) &&
             (fabs(EtaFPCorr - ObsSpotsLab[spotRow * 10 + 6]) < EtaTolDeg)) {
-          dy = (YFP - ObsSpotsLab[spotRow * 10 + 0]);
-          dz = (ZFP - ObsSpotsLab[spotRow * 10 + 1]);
+          /* Lsd here is the seed panel's; scale the partner into that plane. */
+          RealType scPart = PlaneScale(Params, Lsd, (size_t)spotRow);
+          dy = (YFP - ObsSpotsLab[spotRow * 10 + 0] * scPart);
+          dz = (ZFP - ObsSpotsLab[spotRow * 10 + 1] * scPart);
           diffPos2 = dy * dy + dz * dz;
           int i;
           int idx = nFPCandidates;
@@ -2481,23 +2551,27 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
   hkl[0] = RingHKL[ringnr][0];
   hkl[1] = RingHKL[ringnr][1];
   hkl[2] = RingHKL[ringnr][2];
+  /* The seed's own panel: its plane distance and ring radius. Both equal the
+   * global values for a single detector. */
+  const RealType seedLsd = RowLsd(Params, (size_t)SpotRowNo);
+  const RealType seedRad = RowRingRadius(Params, (size_t)SpotRowNo, ringnr);
 
   nPlaneNormals = 0;
   usingFriedelPair = 0;
   if (Params->UseFriedelPairs == 1) {
     usingFriedelPair = 1;
     GenerateIdealSpotsFriedel(ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
-                              Params->RingRadii[ringnr], Params->Rsample,
+                              seedRad, Params->Rsample,
                               Params->Hbeam, Params->MarginOme,
                               Params->MarginRadial, y0_vector, z0_vector,
-                              &nPlaneNormals);
+                              &nPlaneNormals, Params, seedLsd);
     if (nPlaneNormals == 0) {
       GenerateIdealSpotsFriedelMixed(
           ys, zs, RingTtheta[ringnr], eta, omega, ringnr,
-          Params->RingRadii[ringnr], Params->Distance, Params->Rsample,
+          seedRad, seedLsd, Params->Rsample,
           Params->Hbeam, Params->StepsizePos, Params->MarginOme,
           Params->MarginRadial, Params->MarginEta, y0_vector, z0_vector,
-          &nPlaneNormals);
+          &nPlaneNormals, Params);
     }
   }
   if (nPlaneNormals == 0) {
@@ -2507,7 +2581,7 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
     }
     usingFriedelPair = 0;
     GenerateIdealSpots(ys, zs, RingTtheta[ringnr], eta,
-                       Params->RingRadii[ringnr], Params->Rsample, Params->Hbeam,
+                       seedRad, Params->Rsample, Params->Hbeam,
                        Params->StepsizePos, y0_vector, z0_vector,
                        &nPlaneNormals);
   }
@@ -2521,7 +2595,7 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
   while (isp < nPlaneNormals) {
     y0 = y0_vector[isp];
     z0 = z0_vector[isp];
-    MakeUnitLength(Params->Distance, y0, z0, &xi, &yi, &zi);
+    MakeUnitLength(seedLsd, y0, z0, &xi, &yi, &zi);
     spot_to_gv(xi, yi, zi, omega, &g1, &g2, &g3);
     hklnormal[0] = g1;
     hklnormal[1] = g2;
@@ -2571,21 +2645,28 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
                                Params->RingRadii[(int)TheorSpots[sp][9]];
         }
         double wMatchesFrac = 0.0, wTspotsFrac = 0.0;
+        int nUncov = 0, nUncovFrac = 0;  /* predicted spots on no panel */
         CompareSpots(TheorSpots, nTspots, RefRad, Params->MarginRad,
                      Params->MarginRadial, etamargins, Params->MarginOme,
                      Params->StepsizeOrient, /*nScans=*/1, 0.0, 0.0, Params,
                      &nMatches, GrainSpots, &nMatchesFracCalc,
                      Params->RingsToReject, Params->nRingsToRejectCalc,
                      &wMatchesFrac, &wTspotsFrac,
-                    NULL, NULL);
+                    &nUncov, &nUncovFrac);
+        /* Completeness is measured against the spots a panel could record.
+         * nUncovFrac is 0 for a single detector, so every quantity below is
+         * then exactly what it always was. */
+        const int nTspotsCov = nTspotsFracCalc - nUncovFrac;
+        MinMatchesToAccept = nTspotsCov * Params->MinMatchesToAcceptFrac;
         if (nMatchesFracCalc > bestnMatchesPos) {
           bestnMatchesPos = nMatchesFracCalc;
-          bestnTspotsPos = nTspotsFracCalc;
+          bestnTspotsPos = nTspotsCov;
         }
         double fracMatchesThis = FracMatched(Params, nMatchesFracCalc,
-                                             nTspotsFracCalc, wMatchesFrac,
+                                             nTspotsCov, wMatchesFrac,
                                              wTspotsFrac);
-        if (nMatchesFracCalc >= MinMatchesToAccept &&
+        if ((nUncovFrac == 0 || nTspotsCov > 0) &&
+            nMatchesFracCalc >= MinMatchesToAccept &&
             fracMatchesThis >= bestFracTillNow) {
           bestMatchFound = 1;
           for (i = 0; i < 9; i++)
@@ -2593,7 +2674,7 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
           GrainMatchesT[0][9] = ga;
           GrainMatchesT[0][10] = gb;
           GrainMatchesT[0][11] = gc;
-          GrainMatchesT[0][12] = (double)nTspots;
+          GrainMatchesT[0][12] = (double)(nTspots - nUncov);
           GrainMatchesT[0][13] = (double)nMatches;
           GrainMatchesT[0][14] = 1;
           for (r = 0; r < nTspots; r++) {
@@ -2618,8 +2699,8 @@ static int DoIndexing_FF(int SpotID, int SpotRowNo, const struct TParams *Params
         /* Adaptive stride (legacy FF lines 1940-1947). FP-sensitive — copy
          * verbatim. */
         nDelta = 1;
-        if (nTspotsFracCalc != 0) {
-          fracMatches = (RealType)nMatchesFracCalc / nTspotsFracCalc;
+        if (nTspotsCov != 0) {
+          fracMatches = (RealType)nMatchesFracCalc / nTspotsCov;
           if (fracMatches < 0.5) {
             nDelta = 5 - (int)round(fracMatches * (5 - 1) / 0.5);
           }
