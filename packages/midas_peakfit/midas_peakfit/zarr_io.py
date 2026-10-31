@@ -447,6 +447,20 @@ def frame_omega(p: ZarrParams, frameNr: int) -> float:
     return p.omegaStart + p.omegaStep * frameNr
 
 
+def apply_omega_offset(p: ZarrParams, offset_deg: float) -> None:
+    """Shift every frame's omega by ``-offset_deg`` (true = recorded - offset).
+
+    Used for a detector whose omega record is known to run ``offset_deg``
+    ahead of the others (a trigger or readout lag). Acts on the parameters
+    ``frame_omega`` reads, so every spot written afterwards carries it.
+    """
+    if not offset_deg:
+        return
+    p.omegaStart = p.omegaStart - offset_deg
+    if p.omegaCenter is not None:
+        p.omegaCenter = np.asarray(p.omegaCenter, dtype=np.float64) - offset_deg
+
+
 __all__ = [
     "open_zarr",
     "parse_zarr_params",
@@ -456,5 +470,6 @@ __all__ = [
     "read_with_retry",
     "FrameReadError",
     "frame_omega",
+    "apply_omega_offset",
     "canonical_pixel_type",
 ]

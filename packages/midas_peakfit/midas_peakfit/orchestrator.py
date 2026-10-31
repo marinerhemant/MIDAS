@@ -39,7 +39,8 @@ from midas_peakfit.postfit import (
     build_saturated_rows, off_sensor_mask, sensor_extent,
 )
 from midas_peakfit.seeds import saturated_region, seed_region
-from midas_peakfit.zarr_io import frame_omega, load_corrections, parse_zarr_params, read_frame
+from midas_peakfit.zarr_io import (apply_omega_offset, frame_omega, load_corrections,
+                                   parse_zarr_params, read_frame)
 
 
 _CUDA_INIT_LOCK = threading.Lock()
@@ -227,8 +228,13 @@ def run(
     compute_uncertainty: bool = False,
     compute_moments: bool = False,
     progress_cb=None,
+    omega_offset_deg: float = 0.0,
 ) -> dict:
     """Run the full pipeline for ``[block_nr, n_blocks)`` slice of ``data_file``.
+
+    ``omega_offset_deg``: this detector's omega record runs that far ahead of
+    the true omega (true = recorded - offset); every spot's omega is shifted
+    by ``-omega_offset_deg``. The zip is not modified.
 
     Returns a dict with summary stats.
     """
@@ -236,6 +242,7 @@ def run(
 
     # ── 1. Parse parameters & set up corrections ──────────────────────
     p = parse_zarr_params(data_file)
+    apply_omega_offset(p, omega_offset_deg)
     p.ResultFolder = resolve_result_folder(result_folder_cli, p.ResultFolder)
     p.doPeakFit = resolve_do_peak_fit(fit_peaks_cli, p.doPeakFit)
 
