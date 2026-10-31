@@ -15,7 +15,10 @@ DEFAULT_BC = 1.0
 DEFAULT_INT_SAT = 14000.0
 DEFAULT_LSD = 1_000_000.0
 DEFAULT_PIXEL_SIZE = 200.0
-DEFAULT_WIDTH = 1000.0
+# Ring half-width (um). The C tool defaulted to 1000; raised to 1500 to match
+# the params registry, calc_radius, global_powder and eta_coverage, so every
+# stage uses the same band when an archive carries no Width.
+DEFAULT_WIDTH = 1500.0
 DEFAULT_WAVELENGTH = 0.189714
 MAX_OVERLAPS_PER_IMAGE = 10000
 
