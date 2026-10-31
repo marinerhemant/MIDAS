@@ -105,6 +105,10 @@ def check_inputs(cfg, layers: Optional[List[int]] = None) -> List[str]:
                     problems.append(
                         f"detector {d.det_id}: zarr_path not found: "
                         f"{d.zarr_path or '(empty)'}")
+            if not problems:
+                problems.extend(_geometry_mismatches(dets))
+                problems.extend(_zip_param_mismatches(
+                    pf, dets, accept=bool(getattr(cfg, "accept_zip_params", False))))
             return problems
 
     # ---- 2. a pre-built zarr/zip means raw data is not needed -----------
@@ -175,6 +179,107 @@ def check_inputs(cfg, layers: Optional[List[int]] = None) -> List[str]:
         problems.append(f"Dark file not found: {dark}")
 
     return problems
+
+
+# Tolerances for "the zip and detectors.json describe the same panel".
+# Looser than any real refinement step, tighter than any real difference.
+_GEOM_TOL = {"lsd": 10.0, "bc": 0.05, "tilt": 0.01}   # um, px, deg
+
+
+def _geometry_mismatches(dets) -> List[str]:
+    """Panels whose zip and ``detectors.json`` disagree on Lsd / BC / tilts.
+
+    The two feed different consumers: ``transforms`` turns each panel's spots
+    into lab coordinates with the geometry stored in ITS ZIP, while the merged
+    paramstest's ``DetParams`` rows (what the indexer and the coverage arcs
+    read) come from ``detectors.json``. When they differ nothing errors and
+    the spots are simply placed with one geometry and interpreted with
+    another. A zip that cannot be read here is skipped, not an error.
+    """
+    try:
+        import zarr
+    except ImportError:                                  # pragma: no cover
+        return []
+    out: List[str] = []
+    for d in dets:
+        try:
+            ap = zarr.open(str(d.zarr_path), mode="r")[
+                "analysis/process/analysis_parameters"]
+
+            def val(k, default=None):
+                return float(ap[k][...].ravel()[0]) if k in ap else default
+
+            got = {"Lsd": val("Lsd"), "y_bc": val("YCen"), "z_bc": val("ZCen"),
+                   "tx": val("tx", 0.0), "ty": val("ty"), "tz": val("tz")}
+        except Exception:
+            continue
+        want = {"Lsd": d.lsd, "y_bc": d.y_bc, "z_bc": d.z_bc,
+                "tx": d.tx, "ty": d.ty, "tz": d.tz}
+        tol = {"Lsd": _GEOM_TOL["lsd"], "y_bc": _GEOM_TOL["bc"],
+               "z_bc": _GEOM_TOL["bc"], "tx": _GEOM_TOL["tilt"],
+               "ty": _GEOM_TOL["tilt"], "tz": _GEOM_TOL["tilt"]}
+        bad = [f"{k}: zip {got[k]:.6g} vs detectors.json {want[k]:.6g}"
+               for k in want if got[k] is not None
+               and abs(got[k] - want[k]) > tol[k]]
+        if bad:
+            out.append(
+                f"detector {d.det_id}: the zip and detectors.json disagree on "
+                f"the panel geometry ({'; '.join(bad)}). transforms uses the "
+                f"zip, the indexer's DetParams use detectors.json; make them "
+                f"match (fix the json, or rebuild the zip from the right "
+                f"parameter file)")
+    return out
+
+
+def _zip_param_mismatches(params_file, dets, *, accept: bool = False) -> List[str]:
+    """Scan-level keys the parameter file sets that a panel zip does not hold.
+
+    With ``--detectors`` every panel zip is read as built and is not refreshed
+    from the parameter file, so a Wedge or OmegaStart in the file used to be
+    ignored with no message (every generated paramstest then read
+    ``Wedge 0.000000``). Returned as problems, so the run stops before any
+    stage works; ``accept`` (``--accept-zip-params``) logs them instead. Only
+    ``midas_zipper.param_refresh.SCAN_LEVEL_KEYS`` stop the run: a panel's own
+    Lsd / BC / tilts differ from the file by design, and ``PANEL_LEVEL_KEYS``
+    (RingThresh, MaxRingRad) only warn. A zip that cannot be read
+    is skipped.
+    """
+    try:
+        from midas_zipper.param_refresh import (PANEL_LEVEL_KEYS,
+                                                check_zip_vs_params,
+                                                mismatch_message)
+    except ImportError:                                  # pragma: no cover
+        LOG.warning("preflight: midas_zipper.param_refresh unavailable; zip "
+                    "parameters NOT compared with %s", params_file)
+        return []
+    found = {}
+    per_panel = {}
+    for d in dets:
+        try:
+            changes = check_zip_vs_params(d.zarr_path, params_file)
+            soft = check_zip_vs_params(d.zarr_path, params_file, keys=PANEL_LEVEL_KEYS)
+        except Exception as e:                           # noqa: BLE001 - unreadable zip
+            LOG.debug("preflight: zip parameters of %s not compared: %s", d.zarr_path, e)
+            continue
+        if changes:
+            found[str(d.zarr_path)] = changes
+        if soft:
+            per_panel[d.det_id] = sorted({c.source_key for c in soft})
+    if per_panel:
+        LOG.warning("preflight: %s differs between %s and the zips of detector(s) %s; "
+                    "the zip values are used (expected when thresholds or ring radii "
+                    "are set per panel)",
+                    "/".join(sorted({k for v in per_panel.values() for k in v})),
+                    Path(params_file).name, sorted(per_panel))
+    if not found:
+        return []
+    msg = mismatch_message(
+        found, params_file,
+        accept_hint="To run on the zip values anyway: --accept-zip-params.")
+    if accept:
+        LOG.warning("preflight: --accept-zip-params: running on the zip values.\n%s", msg)
+        return []
+    return [msg]
 
 
 def preflight(cfg, layers: Optional[List[int]] = None) -> None:

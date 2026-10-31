@@ -474,6 +474,19 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="single-detector .MIDAS.zip (overrides discovery)")
     run.add_argument("--detectors", default=None,
                      help="detectors.json for multi-detector run")
+    run.add_argument("--seed-rings", default="auto",
+                     help="multi-detector: which spots seed the indexer: 'auto' "
+                          "(default; all rings), 'transforms' (the single ring "
+                          "transforms chose), or comma-separated ring numbers")
+    run.add_argument("--dedup-panels", action="store_true",
+                     help="multi-detector: drop one record of each spot that two "
+                          "overlapping panels both recorded (the overlap is always "
+                          "measured and written to PanelOverlap.csv)")
+    run.add_argument("--accept-zip-params", action="store_true",
+                     help="multi-detector: run even when the parameter file sets "
+                          "Wedge / OmegaStart / ... to a value a panel zip does "
+                          "not hold. The zip value is what the stages use; this "
+                          "only turns the stop into a warning")
     run.add_argument("--raw-dir", default=None)
 
     # Batch mode (FF; mirrors legacy ff_MIDAS.py -batchMode)
@@ -717,6 +730,17 @@ def _resolve_group_size(device: str, shard_gpus: str | None,
     return max(1, int(baseline_gs / density))
 
 
+def _parse_seed_rings(text):
+    """``auto`` / ``transforms`` / ``1,2,3`` -> the config value."""
+    t = (text or "auto").strip().lower()
+    if t in ("auto", "transforms"):
+        return t
+    try:
+        return [int(x) for x in t.split(",") if x.strip()]
+    except ValueError:
+        raise SystemExit(f"--seed-rings: expected auto, transforms or ring numbers, got {text!r}")
+
+
 def build_config(args: argparse.Namespace) -> PipelineConfig:
     """Translate argparse Namespace → PipelineConfig.
 
@@ -874,6 +898,9 @@ def build_config(args: argparse.Namespace) -> PipelineConfig:
         scan=scan,
         zarr_path=args.zarr,
         detectors_json=args.detectors,
+        dedup_panels=args.dedup_panels,
+        accept_zip_params=getattr(args, "accept_zip_params", False),
+        seed_rings=_parse_seed_rings(args.seed_rings),
         refinement=refinement,
         recon=recon,
         fusion=fusion,

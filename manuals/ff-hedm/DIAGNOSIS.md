@@ -187,7 +187,7 @@ fit = refine_lattice_from_d_spacings(hkls, d_obs, "hexagonal")   # no starting c
 A mismatch beyond ~2000 µε is the cause. **Do not widen `MargStrain`** — the box
 is not the problem, and a wider one hides a bad reference instead of exposing it.
 
-**Cause.** `StrainTensorKenesei` (`FitUnified.c:1167`) gauges
+**Cause.** `StrainTensorKenesei` (`FitUnified.c:1198`) gauges
 `(dsObs − ds0)/ds0` against the `ds0` implied by `LatticeParameter`, inside
 `MargStrain` (default ±0.01 = ±10000 µε; a compiled-in constant before
 2026-08-21). A reference wrong by ~0.7 % — e.g. pristine values used for a

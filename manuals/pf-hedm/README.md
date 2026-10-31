@@ -197,7 +197,7 @@ Finish everything not blocked by it first.
 | **`RingNumber == 0` placeholder rows counted as spots** — failed transforms are written as all-zero rows, not dropped | 20.1 % of rows on the reference campaign; counting them manufactures a fake "20 % collapsed on merge" against a real 0.09 % | DIAGNOSIS |
 | **Two files named `UniqueOrientations.csv`** — layer-level = seeding's **seed list**, `Output/` = find_grains' **grain list** | (before the fix) fuse / voxelmap / em_refine paired grain `g` with seed row `g` — a different grain — in every seeded run | DIAGNOSIS: consistency.grain_list |
 | **Scoring MLEM against raw `fbp_recon`** without matching orientation | `mlem_recon`'s image is the transpose of raw `fbp_recon`'s; a phantom score collapses to chance and "MLEM fails" | phase-6 §6.7 |
-| **`argv[4]` (`nWork`) is ignored in PF mode** — `nVoxels = numScans²` from `positions.csv` (`IndexerUnified.c:3466` prints "argv ignored for PF") | a voxel-limited test run silently processes the whole layer; use `blockNr`/`nBlocks` to slice | phase-7 §7.8 |
+| **`argv[4]` (`nWork`) is ignored in PF mode** — `nVoxels = numScans²` from `positions.csv` (`IndexerUnified.c:3547` prints "argv ignored for PF") | a voxel-limited test run silently processes the whole layer; use `blockNr`/`nBlocks` to slice | phase-7 §7.8 |
 
 ## 0. Verify the install
 

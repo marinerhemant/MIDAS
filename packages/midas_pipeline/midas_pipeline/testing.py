@@ -17,12 +17,13 @@ binary is unavailable; the package install itself never requires the C build.
 """
 from __future__ import annotations
 
+import dataclasses
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from ._logging import LOG
 
@@ -339,6 +340,7 @@ def generate_pinwheel_synthetic_dataset(*,
                                          seed: int = 42,
                                          n_panels: int = 4,
                                          use_hydra_geometry: bool = True,
+                                         panel_lsd_um: Optional[Sequence[float]] = None,
                                          lattice_a: float = 4.08,
                                          wavelength_A: float = 0.22291,
                                          space_group: int = 225,
@@ -398,6 +400,14 @@ def generate_pinwheel_synthetic_dataset(*,
             )
             for i, det_id in enumerate(range(1, n_panels + 1))
         ]
+
+    if panel_lsd_um is not None:
+        # Per-panel sample-to-detector distance, e.g. two standoff groups.
+        if len(panel_lsd_um) != len(panels):
+            raise ValueError(f"panel_lsd_um has {len(panel_lsd_um)} entries "
+                             f"for {len(panels)} panels")
+        panels = [dataclasses.replace(pn, lsd=float(l))
+                  for pn, l in zip(panels, panel_lsd_um)]
 
     cfg = SimConfig(
         space_group=space_group,

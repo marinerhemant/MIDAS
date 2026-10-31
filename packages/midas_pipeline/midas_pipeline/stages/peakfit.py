@@ -81,12 +81,9 @@ def run(ctx: StageContext) -> StageResult:
 def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
     """FF: one zip at the layer dir, or one zip per panel in ``Det_<id>/``."""
     cfg = ctx.config
-    if ctx.is_multi_detector and cfg.run_sr:
-        # _sr_worker takes a directory holding the zip; per-panel zips live
-        # wherever detectors.json points, so this needs its own plumbing.
-        raise NotImplementedError(
-            "peakfit(FF): --run-sr is not supported with multiple detectors")
     jobs = ff_zip_jobs(ctx)
+    omega_offsets = ({Path(d.zarr_path): float(d.omega_offset_deg)
+                      for d in ctx.detectors} if ctx.is_multi_detector else {})
     written: list[Path] = []
     for zip_path, out_dir in jobs:
         if zip_path is None or not zip_path.exists():
@@ -94,14 +91,25 @@ def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
             return stub_run("peakfit", ctx)
         target = out_dir / "Temp" / "AllPeaks_PS.bin"
         written.append(target)
+        offset = omega_offsets.get(Path(zip_path), 0.0)
+        marker = out_dir / "Temp" / _OMEGA_OFFSET_MARKER
         if target.exists():
+            _check_offset_not_stale(marker, offset, out_dir)
             LOG.info("peakfit(FF): %s already exists; skip.", target)
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
+        if offset and cfg.run_sr:
+            raise NotImplementedError(
+                f"peakfit(FF): detector omega_offset_deg={offset:g} is not "
+                "supported with SR-MIDAS; drop one of them.")
 
         if cfg.run_sr:
             from .. import sr_midas
             sr_midas.log_status(LOG, run_sr=True)
+            if ctx.is_multi_detector:
+                # The SR worker takes a directory that HOLDS the zip; a panel's
+                # zip lives wherever detectors.json points, so put it in Det_N/.
+                _expose_zip(zip_path, out_dir)
             _run_sr_subprocess(ctx, out_dir)
             if not target.exists():
                 raise RuntimeError(
@@ -111,6 +119,9 @@ def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
             LOG.info("peakfit(FF): SR-MIDAS wrote %s", target)
             continue
 
+        if offset:
+            LOG.info("peakfit(FF): detector omega offset %+g deg "
+                     "(true omega = recorded - offset) for %s", offset, zip_path.name)
         peakfit_run(
             data_file=str(zip_path),
             block_nr=0, n_blocks=1, num_procs=max(1, cfg.n_cpus_local),
@@ -121,9 +132,47 @@ def _run_ff(ctx: StageContext, started: float, peakfit_run) -> StageResult:
             # gamma reconstruction); this is what makes that visible while it
             # runs.
             progress_cb=(ctx.progress.update if ctx.progress else None),
+            **({"omega_offset_deg": offset} if offset else {}),
         )
+        marker.write_text(f"{offset!r}\n")
         LOG.info("peakfit(FF): wrote %s", target)
     return _result(started, written, len(written), 0)
+
+
+_OMEGA_OFFSET_MARKER = "omega_offset_deg.txt"
+
+
+def _check_offset_not_stale(marker: Path, offset: float, out_dir: Path) -> None:
+    """Refuse to reuse peaks written with a different detector omega offset.
+
+    The offset lives in the spot omegas, so a resume with a changed
+    ``omega_offset_deg`` would keep the old ones, and every later stage with
+    them, while the run reports the new offset.
+    """
+    try:
+        done = float(marker.read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        done = 0.0                                       # written before offsets existed
+    if abs(done - offset) > 1e-12:
+        raise RuntimeError(
+            f"peakfit(FF): {out_dir.name} was peak-fitted with omega_offset_deg="
+            f"{done:g} but detectors.json now says {offset:g}; its spot omegas "
+            f"(and every later stage's output) still carry the old value. "
+            f"Delete {out_dir} (or the whole result folder) and re-run.")
+
+
+def _expose_zip(zip_path: Path, out_dir: Path) -> Path:
+    """Make ``zip_path`` visible inside ``out_dir`` (symlink, copy if that fails)."""
+    import os
+    import shutil
+    dst = out_dir / zip_path.name
+    if dst.exists() or dst.is_symlink():
+        return dst
+    try:
+        os.symlink(zip_path.resolve(), dst)
+    except OSError:
+        shutil.copy2(zip_path, dst)
+    return dst
 
 
 def _run_sr_subprocess(ctx: StageContext, layer_dir: Path) -> None:

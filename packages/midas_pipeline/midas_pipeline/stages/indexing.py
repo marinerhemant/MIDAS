@@ -195,6 +195,17 @@ def _run_ff(ctx: StageContext) -> StageResult:
                    layer_dir / "IndexBest.bin", layer_dir / "IndexBestFull.bin"):
         _stale.unlink(missing_ok=True)
 
+    if ctx.is_multi_detector and ctx.config.indexer_backend == "c-omp":
+        from midas_index import backend_c as _bc
+        if not getattr(_bc, "supports_multidet", lambda: False)():
+            LOG.warning(
+                "indexing(FF, c-omp): multi-detector run with %d panels, but "
+                "this midas_indexer binary predates per-panel support (it "
+                "parses the panel geometry and EtaCoverage rows and ignores "
+                "them): predicted spots are not gated to the panels and every "
+                "seed uses one global Lsd. Expect few or no grains unless the "
+                "panels share Lsd and cover most of each ring; reinstall "
+                "midas-index to rebuild the binary.", len(ctx.detectors))
     if ctx.config.indexer_backend == "c-omp":
         from midas_index import backend_c
         from ._comp_params import comp_backend_paramstest

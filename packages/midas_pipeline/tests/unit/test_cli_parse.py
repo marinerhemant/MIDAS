@@ -302,3 +302,26 @@ class TestFfShim:
 
     def test_empty_argv_defaults_to_run_ff(self):
         assert _inject_ff([]) == ["run", "--scan-mode", "ff"]
+
+
+def test_dedup_panels_flag_defaults_off_and_reaches_the_config(tmp_path):
+    params = tmp_path / "P.txt"
+    params.write_text("")
+    base = ["run", "--scan-mode", "ff", "--params", str(params),
+            "--result", str(tmp_path / "out")]
+    parser = _build_parser()
+    assert build_config(parser.parse_args(base)).dedup_panels is False
+    assert build_config(parser.parse_args(base + ["--dedup-panels"])).dedup_panels is True
+
+
+def test_seed_rings_flag_reaches_the_config(tmp_path):
+    params = tmp_path / "P.txt"
+    params.write_text("")
+    base = ["run", "--scan-mode", "ff", "--params", str(params),
+            "--result", str(tmp_path / "out")]
+    parser = _build_parser()
+    assert build_config(parser.parse_args(base)).seed_rings == "auto"
+    assert build_config(parser.parse_args(base + ["--seed-rings", "transforms"])).seed_rings == "transforms"
+    assert list(build_config(parser.parse_args(base + ["--seed-rings", "1,2,3"])).seed_rings) == [1, 2, 3]
+    with pytest.raises(SystemExit):
+        build_config(parser.parse_args(base + ["--seed-rings", "one"]))

@@ -7,7 +7,8 @@ and carried two calls that could not work:
 
 * ``pipe.layer_result`` and ``LayerResult.grains_df()``. ``Pipeline.run()``
   returns a ``list[LayerResult]``; there is no ``layer_result`` attribute, and
-  ``grains_df`` belongs to the deprecated ``midas_ff_pipeline``.
+  ``grains_df`` then belonged to the deprecated ``midas_ff_pipeline`` (it was
+  added to ``LayerResult`` later; the notebook still does not use it).
 * ``pd.read_csv(SpotMatrix.csv)`` with the DEFAULT COMMA separator on a TAB
   file, then indexing ``ObsZ``/``ObsY``/``PredZ``/``PredY``/``DetectorID`` --
   five column names no SpotMatrix layout has ever had.
@@ -82,8 +83,9 @@ def test_nb13_does_not_call_nonexistent_pipeline_api():
     from midas_pipeline.results import LayerResult
 
     attrs, _, names = _attrs_and_strings(_nb13_ast())
-    assert not hasattr(LayerResult, "grains_df"), (
-        "LayerResult grew a grains_df -- update this test and the notebook")
+    # LayerResult.grains_df() exists since the multi-panel follow-ups to #75,
+    # so the attribute is real; the notebook still reads Grains.csv itself.
+    assert hasattr(LayerResult, "grains_df")
     assert "grains_df" not in attrs
     assert "layer_result" not in attrs
     # What it must use instead.

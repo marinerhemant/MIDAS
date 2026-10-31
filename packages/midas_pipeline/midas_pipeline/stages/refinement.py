@@ -122,13 +122,26 @@ def _run_ff(ctx: StageContext) -> StageResult:
     loss = ctx.config.refinement.loss
 
     # Multi-detector: a pixel-based loss is per-panel (own beam centre + Lsd),
-    # so one global residual mixes incompatible frames. This stage's docstring
-    # has promised "the multi-detector pixel→angular loss swap" throughout,
-    # but the code was lost when 'pixel' was retired — and the default became
-    # 'full3d', which is pixel-based too (y_pixel, z_pixel, Δω·r_px). So every
-    # multi-panel run since has silently refined on a meaningless residual.
-    if loss in PANEL_DEPENDENT_LOSSES and "\nDetParams " in (
-            "\n" + paramstest.read_text()):
+    # so one global residual mixes incompatible frames. The Python refiner
+    # takes a --loss, so swap it there. The c-omp refiner (FitUnified) has no
+    # loss option and is never passed this one: it fits with its own objective
+    # and uses ONE global geometry for every panel (it parses DetParams and
+    # never reads them), so say that instead of logging a swap that does not
+    # happen.
+    multi_det = "\nDetParams " in ("\n" + paramstest.read_text())
+    if multi_det and ctx.config.refine_backend == "c-omp":
+        from midas_fit_grain import backend_c as _bc
+        if not getattr(_bc, "supports_multidet", lambda: False)():
+            LOG.warning(
+                "refinement(FF, c-omp): multi-detector run, but this "
+                "midas_fitgrain binary predates per-panel support: it uses ONE "
+                "global geometry (the first panel's) for every panel. "
+                "Orientations are fine; grain positions are biased when panels "
+                "differ in Lsd or beam centre (measured on a simulated 4-panel "
+                "set with two panels 120 mm further out: median position error "
+                "69 um). Reinstall midas-fit-grain to rebuild the binary."
+            )
+    elif multi_det and loss in PANEL_DEPENDENT_LOSSES:
         LOG.info("refinement(FF): multi-detector paramstest → switching loss "
                  "%r → %r (pixel-based losses are per-panel)",
                  loss, MULTIDET_LOSS)
@@ -173,6 +186,8 @@ def _run_ff(ctx: StageContext) -> StageResult:
                 "available. Re-install midas-fit-grain with an OpenMP toolchain "
                 "(macOS: `brew install libomp`), or use --refine-backend python."
             )
+        if multi_det:
+            _widen_refiner_position_window(fit_paramstest)
         _write_rel_fit_rmse_if_requested(fit_paramstest, layer_dir)
         LOG.info("refinement(FF, c-omp): %s  [%d seeds]",
                  backend_c.binary_path(), n_seeds)
@@ -458,6 +473,49 @@ def run(ctx: StageContext) -> StageResult:
                  "mode": cfg.mode},
     )
 
+
+
+# How far from its start the C refiner has to be able to reach, in indexer position
+# steps. The FF indexer does not estimate position: it scans a StepsizePos grid along
+# the seed's line and keeps the best-matching step, so its start can be off by a few
+# steps. FitUnified fits position twice, each time inside start +- Rsample/2, so it
+# reaches Rsample from the start. At Rsample == StepsizePos (the usual 100 and 100)
+# about 10% of multi-panel members start farther out than that and end on the box edge
+# (measured, #75: 3 steps left 0 of 2861 standoff and 2 of 3812 hydra members >15 um
+# off, from 62 and 276). Override with MIDAS_REFINER_POS_STEPS; 0 switches it off.
+REFINER_POS_REACH_STEPS = 3.0
+
+
+def _widen_refiner_position_window(paramstest) -> None:
+    """Raise the refiner's ``Rsample`` to at least ``REFINER_POS_REACH_STEPS x StepsizePos``.
+
+    Only the refiner's own comp paramstest is touched (the indexer reads a
+    different file and keeps its sample radius). The new value is appended as the
+    last ``Rsample`` line, which wins in the C parser. Used for multi-detector
+    runs only: a single detector keeps exactly the parameters it always had.
+    """
+    import os
+    steps = float(os.environ.get("MIDAS_REFINER_POS_STEPS", REFINER_POS_REACH_STEPS))
+    if steps <= 0:
+        return
+    path = Path(paramstest)
+    rsample = step = None
+    for line in path.read_text().splitlines():
+        tok = line.replace(";", " ").split()
+        if len(tok) >= 2 and tok[0] == "Rsample":
+            rsample = float(tok[1])
+        elif len(tok) >= 2 and tok[0].lower() == "stepsizepos":
+            step = float(tok[1])
+    if rsample is None or not step or step <= 0:
+        return
+    want = steps * step
+    if rsample >= want:
+        return
+    with open(path, "a") as fh:
+        fh.write(f"\nRsample {want:.6f};\n")
+    LOG.info("refinement(FF, c-omp): multi-detector run, refiner Rsample %g -> %g "
+             "(%g x StepsizePos %g) so the position fit can reach a start the "
+             "indexer placed on its %g um grid", rsample, want, steps, step, step)
 
 
 def _write_rel_fit_rmse_if_requested(paramstest, layer_dir) -> None:

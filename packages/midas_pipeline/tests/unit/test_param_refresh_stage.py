@@ -207,6 +207,7 @@ _PARAMS = "tx 0.0\nty -0.15\nLsd 1000000.0\nSkipFrame 1\nRingThresh 1 100\n"
 def _stage_ctx(tmp_path, pf, *, refresh=True, force=False):
     return types.SimpleNamespace(
         is_pf=False,
+        is_multi_detector=False,
         layer_nr=1,
         layer_dir=tmp_path,
         config=types.SimpleNamespace(

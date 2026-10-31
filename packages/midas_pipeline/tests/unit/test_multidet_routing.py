@@ -86,6 +86,23 @@ def test_jobs_panel_without_zarr_path_is_a_hard_error(tmp_path):
         ff_zip_jobs(ctx)
 
 
+def test_zip_convert_accepts_the_per_panel_zips_and_never_builds(tmp_path, monkeypatch):
+    from midas_pipeline.stages import zip_convert
+    monkeypatch.setattr(zip_convert, "_generate_zip",
+                        lambda **k: (_ for _ in ()).throw(AssertionError("must not build")))
+    ctx = _ctx(tmp_path)
+    res = zip_convert.run(ctx)
+    assert res.metrics["n_present"] == 2 and res.metrics["n_built"] == 0
+    assert res.outputs["zips"] == [d.zarr_path for d in ctx.detectors]
+
+
+def test_zip_convert_names_a_missing_panel_zip(tmp_path):
+    from midas_pipeline.stages import zip_convert
+    ctx = _ctx(tmp_path, make_zips=False)
+    with pytest.raises(FileNotFoundError, match="panel1.MIDAS.zip"):
+        zip_convert.run(ctx)
+
+
 # ---- stage routing --------------------------------------------------------
 
 def test_hkl_runs_per_panel_and_promotes_one_layer_list(tmp_path, monkeypatch):
@@ -134,6 +151,34 @@ def test_peakfit_runs_per_panel(tmp_path, monkeypatch):
     assert calls == []
 
 
+def test_peakfit_sr_runs_in_each_panels_directory(tmp_path, monkeypatch):
+    """--run-sr with several detectors: the SR worker takes a directory that
+    holds the zip, so each panel's zip is linked into its Det_N/ first."""
+    calls = []
+
+    def fake_sr(ctx, layer_dir):
+        calls.append((Path(layer_dir).name, sorted(p.name for p in Path(layer_dir).glob("*.zip"))))
+        t = Path(layer_dir) / "Temp"
+        t.mkdir(parents=True, exist_ok=True)
+        (t / "AllPeaks_PS.bin").write_bytes(b"x")
+
+    mod = types.ModuleType("midas_peakfit.orchestrator")
+    mod.run = lambda **kw: (_ for _ in ()).throw(AssertionError("not the SR path"))
+    monkeypatch.setitem(sys.modules, "midas_peakfit.orchestrator", mod)
+    monkeypatch.setitem(sys.modules, "midas_peakfit", types.ModuleType("midas_peakfit"))
+    sr = types.ModuleType("midas_pipeline.sr_midas")
+    sr.log_status = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "midas_pipeline.sr_midas", sr)
+    import midas_pipeline
+    monkeypatch.setattr(midas_pipeline, "sr_midas", sr, raising=False)
+    monkeypatch.setattr(peakfit, "_run_sr_subprocess", fake_sr)
+
+    ctx = _ctx(tmp_path)
+    ctx.config.run_sr = True
+    peakfit.run(ctx)
+    assert calls == [("Det_1", ["panel1.MIDAS.zip"]), ("Det_2", ["panel2.MIDAS.zip"])]
+
+
 def test_peakfit_resumes_per_panel(tmp_path, monkeypatch):
     """Panel 1 done, panel 2 not: only panel 2 is fitted (and panel 1 is not
     allowed to short-circuit the loop)."""
@@ -156,6 +201,53 @@ def test_peakfit_resumes_per_panel(tmp_path, monkeypatch):
     (done / "AllPeaks_PS.bin").write_bytes(b"x")
     peakfit.run(ctx)
     assert calls == ["Det_2"]
+
+
+def _fake_peakfit(monkeypatch, calls):
+    def fake_run(*, data_file, result_folder_cli, **kw):
+        calls.append((Path(result_folder_cli).name, kw.get("omega_offset_deg")))
+        t = Path(result_folder_cli) / "Temp"
+        t.mkdir(parents=True, exist_ok=True)
+        (t / "AllPeaks_PS.bin").write_bytes(b"x")
+
+    mod = types.ModuleType("midas_peakfit.orchestrator")
+    mod.run = fake_run
+    monkeypatch.setitem(sys.modules, "midas_peakfit.orchestrator", mod)
+    monkeypatch.setitem(sys.modules, "midas_peakfit", types.ModuleType("midas_peakfit"))
+
+
+def test_detector_omega_offset_is_passed_to_that_panels_peakfit_only(tmp_path, monkeypatch):
+    calls = []
+    _fake_peakfit(monkeypatch, calls)
+    ctx = _ctx(tmp_path)
+    ctx.detectors[1].omega_offset_deg = 0.65
+    peakfit.run(ctx)
+    # panel 1 is called exactly as before (no new keyword), panel 2 carries the offset
+    assert calls == [("Det_1", None), ("Det_2", 0.65)]
+    assert (ctx.layer_dir / "Det_2" / "Temp" / "omega_offset_deg.txt").read_text().strip() == "0.65"
+
+
+def test_resume_with_a_changed_omega_offset_is_refused(tmp_path, monkeypatch):
+    calls = []
+    _fake_peakfit(monkeypatch, calls)
+    ctx = _ctx(tmp_path)
+    ctx.detectors[1].omega_offset_deg = 0.65
+    peakfit.run(ctx)
+    calls.clear()
+    peakfit.run(ctx)                                  # same offsets: resumes, nothing recomputed
+    assert calls == []
+    ctx.detectors[1].omega_offset_deg = 0.53
+    with pytest.raises(RuntimeError, match="omega_offset_deg=0.65.*now says 0.53"):
+        peakfit.run(ctx)
+
+
+def test_omega_offset_survives_the_detectors_json_round_trip(tmp_path):
+    ctx = _ctx(tmp_path)
+    ctx.detectors[0].omega_offset_deg = -0.1
+    path = tmp_path / "detectors.json"
+    DetectorConfig.dump_many(ctx.detectors, path)
+    back = DetectorConfig.load_many(path)
+    assert [d.omega_offset_deg for d in back] == [-0.1, 0.0]
 
 
 def test_transforms_resumes_per_panel(tmp_path, monkeypatch):

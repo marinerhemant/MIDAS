@@ -623,7 +623,7 @@ rows; FBP reconstruction. Full record, every number with its script:
 
 | # | Finding | Status |
 |---|---|---|
-| 1 | Seeded PBP returns seed orientations **unmodified** (`DoIndexing_Seeded`, `IndexerUnified.c:4403-4417`): all 204 final orientations are seed rows. Attribute winners to seed rows **exactly**, never by tolerance | VERIFIED (source) |
+| 1 | Seeded PBP returns seed orientations **unmodified** (`DoIndexing_Seeded`, `IndexerUnified.c:4484-4498`): all 204 final orientations are seed rows. Attribute winners to seed rows **exactly**, never by tolerance | VERIFIED (source) |
 | 2 | The raw merged-FF indexer output **beats** its ω-shuffle null here (median IA 0.6331° vs ~0.918°, three shuffle seeds, Wilcoxon p ≈ 0) — unlike §8.5. Dataset-dependent | VERIFIED |
 | 3 | The map **misses real grains**: ImageD11-only orientations added to the seed win 314 voxels; three matched shuffled nulls win 0 / 0 / 1 | VERIFIED |
 | 4 | At completeness ≥ 0.8, **50.0 %** of the disc also fits an orientation that wins no voxel (65 % at ≥ 0.7 and 6 % at ≥ 0.9 with the same 87 orientations; 68 % if they are re-selected at 0.7); phantoms ≤ 1.3 %. The regions are several grains across (~19 µm) | PROVISIONAL |

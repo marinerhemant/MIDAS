@@ -309,9 +309,8 @@ def _coverage_from_geometry(text: str) -> Dict[int, List[CoverageArc]]:
     n_y = int(_kv_float(kv, "NrPixelsY", 0.0))
     n_z = int(_kv_float(kv, "NrPixelsZ", 0.0))
     n_pixels = n_y or n_z or int(_kv_float(kv, "NrPixels", 2048.0))
-    if n_y and n_z and n_y != n_z:
-        LOG.warning("  non-square panel (%d x %d): coverage enumeration "
-                    "assumes square and will use %d", n_y, n_z, n_pixels)
+    # Non-square panels (Eiger 1028 x 512) are enumerated at their real shape.
+    n_pixels_z = n_z if (n_y and n_z and n_y != n_z) else None
 
     width_um = _kv_float(kv, "Width", DEFAULT_WIDTH_UM)
 
@@ -344,7 +343,8 @@ def _coverage_from_geometry(text: str) -> Dict[int, List[CoverageArc]]:
                 except (IndexError, ValueError):
                     continue
             arcs_d = compute_panel_eta_coverage(
-                n_pixels=n_pixels, px_um=px_um, lsd_um=lsd_d,
+                n_pixels=n_pixels, n_pixels_z=n_pixels_z,
+                px_um=px_um, lsd_um=lsd_d,
                 y_bc_px=y_d, z_bc_px=z_d,
                 tx_deg=tx_d, ty_deg=ty_d, tz_deg=tz_d,
                 ring_radii_um=det_radii or ring_radii_um,
@@ -358,7 +358,7 @@ def _coverage_from_geometry(text: str) -> Dict[int, List[CoverageArc]]:
             return out
 
     arcs = compute_panel_eta_coverage(
-        n_pixels=n_pixels,
+        n_pixels=n_pixels, n_pixels_z=n_pixels_z,
         px_um=px_um,
         lsd_um=lsd,
         y_bc_px=_kv_float(kv, "YBCFit", _kv_float(kv, "YBC", 0.0)),

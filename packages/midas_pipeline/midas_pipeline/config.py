@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional, Sequence
+from typing import Literal, Optional, Sequence, Union
 
 import numpy as np
 
@@ -612,6 +612,24 @@ class PipelineConfig:
     # Detector discovery
     zarr_path: Optional[str] = None
     detectors_json: Optional[str] = None
+    # Multi-detector: panels that overlap record one reflection twice. The
+    # overlap is always measured and written to PanelOverlap.csv; True also
+    # drops one record of each duplicate pair (cross_det_merge).
+    dedup_panels: bool = False
+    # Multi-detector: each panel zip is read as built and never refreshed from
+    # Parameters.txt. Preflight stops when the file sets a scan-level key
+    # (Wedge, OmegaStart, ...) to a value a zip does not hold; True runs on the
+    # zip values and only warns.
+    accept_zip_params: bool = False
+    # Multi-detector: which spots seed the indexer. "auto" (default) = every
+    # spot of every ring inside the omega window; a list of ring numbers = those
+    # rings; "transforms" = the single ring transforms chose (the old behaviour).
+    # A panel layout shows only a few spots of any one ring per grain, and
+    # process_grains drops a cluster with fewer than MinNrSpots seeds, so one
+    # ring starves grains that are perfectly well measured (measured: 28 of 30
+    # standoff grains and 37 of 40 hydra grains with one ring, 30 of 30 and 40
+    # of 40 on every seed tried with all rings).
+    seed_rings: Union[str, Sequence[int]] = "auto"
 
     # Sub-configs
     refinement: RefinementConfig = field(default_factory=RefinementConfig)

@@ -36,6 +36,12 @@ class DetectorConfig:
     ty: float = 0.0                        # tilt about lab y-axis (deg)
     tz: float = 0.0                        # tilt about lab z-axis (deg)
     p_distortion: List[float] = field(default_factory=lambda: [0.0] * 11)
+    # This panel's omega record runs omega_offset_deg ahead of the true omega
+    # (true = recorded - offset), e.g. a trigger or readout lag between scans.
+    # Applied in peakfit, so every spot of this panel carries it; the zip is
+    # not modified. Differential: a common offset on all panels is absorbed by
+    # the grain poses, so give the offsets relative to a reference panel.
+    omega_offset_deg: float = 0.0
 
     @classmethod
     def load_many(cls, path: str | Path) -> List["DetectorConfig"]:

@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Optional, Iterable, List, Sequence, Tuple
 
 import numpy as np
 
@@ -94,8 +94,14 @@ def _pixel_rt_eta(
     y_bc_px: float,
     z_bc_px: float,
     tx_deg: float, ty_deg: float, tz_deg: float,
+    n_pixels_z: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Compute distortion-free per-pixel ``(R_panel_px, η_deg)``.
+
+    ``n_pixels`` is the pixel count along Y (the axis ``y_bc_px`` indexes) and
+    ``n_pixels_z`` the count along Z (``z_bc_px``); ``None`` means a square
+    panel. A 1028 x 512 Eiger is not square, and enumerating it as 1028 x 1028
+    credits the panel with pixels that do not exist.
 
     Returns
     -------
@@ -110,7 +116,9 @@ def _pixel_rt_eta(
     map.
     """
     a = np.arange(n_pixels, dtype=np.float64)
-    A, B = np.meshgrid(a, a, indexing="ij")     # A = row index, B = col index
+    b = np.arange(n_pixels if n_pixels_z is None else n_pixels_z,
+                  dtype=np.float64)
+    A, B = np.meshgrid(a, b, indexing="ij")     # A runs along Y, B along Z
     Yc = (-A + y_bc_px) * px_um                  # FF convention (flip_y=True)
     Zc = (B - z_bc_px) * px_um
 
@@ -204,13 +212,15 @@ def compute_panel_eta_coverage(
     width_um: float = 1500.0,
     gap_merge_deg: float = DEFAULT_GAP_MERGE_DEG,
     gap_arc_min_deg: float = 0.5,
+    n_pixels_z: Optional[int] = None,
 ) -> List[CoverageArc]:
     """Per-panel η coverage across all configured rings.
 
     Parameters
     ----------
-    n_pixels, px_um
-        Detector pixel count + pixel size (μm). Square panels assumed.
+    n_pixels, n_pixels_z, px_um
+        Detector pixel counts along Y and Z (``n_pixels_z=None``: square) and
+        the pixel size (μm).
     lsd_um, y_bc_px, z_bc_px, tx/ty/tz_deg
         Panel geometry (paramstest convention).
     ring_radii_um
@@ -230,7 +240,7 @@ def compute_panel_eta_coverage(
     """
     Rt_px, eta_deg = _pixel_rt_eta(
         n_pixels, px_um, lsd_um, y_bc_px, z_bc_px,
-        tx_deg, ty_deg, tz_deg,
+        tx_deg, ty_deg, tz_deg, n_pixels_z=n_pixels_z,
     )
     width_px = width_um / px_um
     flat_R = Rt_px.ravel()

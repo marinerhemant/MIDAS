@@ -236,11 +236,33 @@ class LayerResult:
 
     @property
     def n_grains(self) -> int:
-        if self.process_grains:
-            return self.process_grains.n_grains
-        if self.find_grains:
-            return self.find_grains.n_unique_grains
+        # The FF process_grains stage records its count in ``metrics`` on a plain
+        # StageResult (a skipped stage has none), so read the typed field when
+        # there is one and the metric otherwise.
+        for res, attr in ((self.process_grains, "n_grains"),
+                          (self.find_grains, "n_unique_grains")):
+            if res:
+                v = getattr(res, attr, None)
+                if v is None:
+                    v = (getattr(res, "metrics", None) or {}).get(attr)
+                return int(v or 0)
         return 0
+
+    def grains_df(self):
+        """``Grains.csv`` of this layer as a DataFrame (empty if there is none)."""
+        import pandas as pd
+        path = Path(self.layer_dir) / "Grains.csv"
+        if not path.exists():
+            return pd.DataFrame()
+        names = None
+        with open(path) as fp:
+            for line in fp:
+                if line.startswith("%GrainID"):
+                    names = line[1:].split()
+        try:
+            return pd.read_csv(path, comment="%", sep=r"\s+", header=None, names=names)
+        except pd.errors.EmptyDataError:
+            return pd.DataFrame(columns=names)
 
     def all_stage_results(self) -> List[StageResult]:
         out: list[StageResult] = []

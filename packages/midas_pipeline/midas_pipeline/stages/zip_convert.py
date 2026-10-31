@@ -163,6 +163,18 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
     """FF: single zip; build if missing and --convert-files is on."""
     cfg = ctx.config
     layer_dir = ctx.layer_dir
+    if ctx.is_multi_detector:
+        # detectors.json supplies one .MIDAS.zip per panel; they are not built
+        # from raw frames here, and the single-panel parameter-refresh is not
+        # applied (each zip carries its own panel's geometry).
+        zips = [Path(d.zarr_path) for d in ctx.detectors]
+        missing = [str(z) for z in zips if not z.is_file()]
+        if missing:
+            raise FileNotFoundError(
+                "zip_convert(FF): multi-detector runs take one .MIDAS.zip per "
+                "panel from detectors.json; not found: " + ", ".join(missing))
+        LOG.info("zip_convert(FF): %d per-panel zips from detectors.json", len(zips))
+        return _ff_result(started, zips, present=len(zips), built=0, failed=0)
     if cfg.zarr_path and Path(cfg.zarr_path).exists():
         LOG.info("zip_convert(FF): using --zarr %s", cfg.zarr_path)
         rep = _refresh(ctx, Path(cfg.zarr_path), layer_dir, "zip_convert(FF)")
