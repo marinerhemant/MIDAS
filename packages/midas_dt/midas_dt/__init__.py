@@ -143,6 +143,23 @@ __all__ = [
     "radial_coeffs",
     "sample_kernel",
     "uniaxial_design",
+    # node-basis texture tomography (same lazy extra)
+    "NodeBasis",
+    "NodeMerge",
+    "NodeOperator",
+    "Rings",
+    "SolveResult",
+    "TextureScan",
+    "VoxelODF",
+    "estimate_lipschitz",
+    "fista_nonneg",
+    "make_rings",
+    "merge_nodes",
+    "misorientation_matrix_deg",
+    "pole_figure_density",
+    "readout_table",
+    "ring_normalise",
+    "voxel_odf",
     "BranchResult",
     "CEO2",
     "DirectResult",
@@ -237,6 +254,13 @@ _TEXTURE_MODULES = {
                      "explained_by_polynomial", "fibre_cos_theta",
                      "fit_uniaxial_ladder", "hermans_parameter",
                      "legendre_even", "normalisation_c_l", "uniaxial_design"),
+    # node-basis texture tomography (non-negative weights on orientation nodes)
+    "texture_nodes": ("NodeBasis", "NodeMerge", "NodeOperator", "Rings",
+                      "TextureScan", "make_rings", "merge_nodes",
+                      "pole_figure_density", "ring_normalise"),
+    "texture_solve": ("SolveResult", "estimate_lipschitz", "fista_nonneg"),
+    "odf_readout": ("VoxelODF", "misorientation_matrix_deg", "readout_table",
+                    "voxel_odf"),
 }
 _TEXTURE_OWNER = {name: mod for mod, names in _TEXTURE_MODULES.items()
                   for name in names}

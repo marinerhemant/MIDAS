@@ -222,13 +222,69 @@ Attached to every result via `ScanKnownLimits` and written into
 - **a single-channel strain map** is one projection of the tensor along the
   scattering vector, not the tensor
 
+## Texture tomography on an orientation-node basis
+
+> **Status: checked on simulation only; not a measured result, and the engineering claim is PROVISIONAL.** A four-angle adversarial
+> check (2026-10-28) reproduced the numbers below and found no error in the physics, but left statistics, reproduction and artifacts
+> open; it found seed-fragile tests and tests that missed 9 of 21 deliberately broken variants of the code, which are fixed here and
+> have not been re-checked by a fresh adversarial pass. Validation was on a cubic (Cu-like) sample, noise-free, one generator.
+
+Per-voxel ODFs as **non-negative weights on a list of orientation nodes** (Gaussian kernels on SO(3), summed over the crystal symmetry),
+fitted to ring-binned rotation-series data `data[omega, translation, eta, ring]`. Needs `pip install midas-dt[texture]`; the names are
+imported lazily.
+
+```python
+import torch
+from midas_dt import (NodeBasis, NodeOperator, TextureScan, make_rings, ring_normalise,
+                      fista_nonneg, voxel_odf, merge_nodes)
+
+scan  = TextureScan(n_omega=360, omega_start_deg=0.0, omega_step_deg=0.5, n_eta=180, n_trans=103,
+                    wavelength_a=0.248)                       # MIDAS lab frame by default
+rings = make_rings([(1, 1, 1), (2, 0, 0), (2, 2, 0)], (4.0493,) * 3 + (90.0,) * 3, 225, scan.wavelength_a)
+basis = NodeBasis(node_orientations, sigma_deg=0.4, space_group=225)    # (K, 3, 3), crystal -> sample
+op    = NodeOperator(scan, rings, basis, size=99, mask=sample_mask,
+                     sub_omega=4, sub_eta=4, node_batch=128)           # bin-integrated sampling
+data, _ = ring_normalise(data, q99=71.9)
+res   = fista_nonneg(op, data, n_iter=100, loss="huber", delta=30.0)   # c >= 0; the iteration count is part of the model
+odf   = voxel_odf(res.coef[v], basis.orientations, space_group=225, floor=0.05)   # the floor is required
+odf.medoid(), odf.mass_within(reference, 1.5), odf.w1(reference)
+```
+
+* **Batched over nodes.** `NodeOperator` radon-projects the weight maps of `node_batch` nodes at a time (the sparse operator of
+  `direct.projection_matrix`) and scatters them through a sparse, omega-block-diagonal pole-figure matrix, so working memory does not
+  grow with `K`. The matrix itself is cached (`cache=True`) at `~K x spots-per-node x footprint` entries; `cache=False` rebuilds it per call.
+* **Sample each bin more than once.** The pole figure is averaged over `sub_omega x sub_eta` points per detector bin. With one point
+  per bin and a node narrower than the bin, a node's response depends on where its spot falls inside the bin: the operator aliases.
+  Use about `bin / sigma` sub-samples.
+* **The weight floor is an argument, not a default.** A recovered node ODF is a cloud of small atoms; W1 and the atom count depend
+  strongly on the floor. `voxel_odf(..., floor=...)` has none by default, `readout_table` takes several. Merge near-duplicate nodes
+  (`merge_nodes`, `NodeBasis.merge`, `VoxelODF.merged`) before counting atoms.
+* **Limits.** Cubic only (other symmetries are wired through midas-hkls but untested). The kernel is a von Mises-Fisher density per
+  normal, the first-order pole figure of a rotation-vector Gaussian, so it is an approximation for kernels wider than tens of degrees.
+  No Lorentz or Jacobian factor is modelled (they cancel in ring-normalised data; ring normalisation is exact only for an untextured
+  sample). The Radon projection is taken at the frame centre (translation smear within one frame is ignored). Kernels are cut off at
+  `cutoff_sigma` = 4.5 sigma, which costs about 4e-5 of the mass in bulk bins but ~2e-3 relative in the bins of slow, grazing
+  crossings (raise `cutoff_sigma` if those matter). The iteration count of the solver is the other regulariser: report it.
+* **How it was checked.** The operator was compared with a brute-force Ewald solution (same convention, so a check of the code, not
+  of the convention), with crystallites sampled from the Gaussian (Monte Carlo pole figure), with the exact kernel sampled on the same
+  grid, and numerically with the released diffractom operator in a development script that is not part of this package (0.63 %
+  relative L2 difference over all bins with 3 random nodes per voxel, 0.94-1.05 % with one node per voxel). The design was written after reading
+  diffractom's documented frame conventions; no code was copied. The tests in `tests/test_texture_nodes.py` and
+  `tests/test_odf_readout.py` are the gates that ship.
+* **Not in this release:** strain, more than one phase, node discovery from spotty data, and any change to the GSH operator.
+
+Conventions are in the docstring of `midas_dt.texture_nodes`: lengths in voxels (one voxel = one translation bin), angles in degrees,
+wavelength in angstrom, orientation matrices map crystal -> sample, `omega` an active right-handed rotation of the sample about the
+rotation axis.
+
 ## Installing
 
 ```bash
 pip install midas-dt            # the full workflow: frames -> sinograms -> maps
 pip install midas-dt[direct]    # + branch C, SIRT/TV, absorption (midas-invert)
 pip install midas-dt[indexing]  # + ring indexing against candidate phases
-pip install midas-dt[full]      # both extras
+pip install midas-dt[texture]   # + GSH / node-basis texture modules (midas-hkls, midas-stress)
+pip install midas-dt[full]      # all extras
 ```
 
 The base install does the documented workflow end to end. `midas-integrate-v2`

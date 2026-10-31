@@ -58,7 +58,9 @@ direct = [
 indexing = [
     "midas-hkls>=0.6.0",
 ]
-# Texture / ODF: midas_dt.gsh, midas_dt.texture_kernel, midas_dt.odf_uniaxial.
+# Texture / ODF: midas_dt.gsh, midas_dt.texture_kernel, midas_dt.odf_uniaxial and the
+# node-basis tomography modules midas_dt.texture_nodes, midas_dt.texture_solve,
+# midas_dt.odf_readout.
 # These are imported LAZILY by __init__ (PEP 562) because their floors sit above
 # the core ones and every reconstruction path works without them.
 #
@@ -73,7 +75,18 @@ indexing = [
 #   * midas-hkls>=0.7.3 -- point_group.proper_rotations_from_space_group, i.e.
 #     symmetry for anything but cubic. 0.7.3 is the release that adds it; below
 #     that, SymGSH.families raises ImportError rather than guessing.
+#   * midas-stress>=0.14.0 -- ALL orientation math of the node-basis modules (symmetry
+#     operators, symmetry-reduced misorientation, grouping) is delegated to it rather than
+#     re-implemented. 0.14.0 is the oldest release the node-basis tests (tests/test_texture_nodes.py,
+#     tests/test_odf_readout.py) pass on: 30 passed + 1 skipped (from_grid, needs 0.16) on 0.14.0,
+#     0.14.1 and 0.15.0, 31 passed on 0.16.0; on 0.13.0 the odf_readout test fails to import group_orientations. The misorientation ANGLES the
+#     modules use are bit-identical across 0.14.0 / 0.14.1 / 0.15.0 / 0.16.0 on 4050 pairs, incl.
+#     50 pairs 60 deg about <111> apart (the node-basis code uses angles, not axes). NodeBasis.from_grid additionally
+#     needs orientation_grid (0.16.0) and says so when it is missing (0.16.0 is not on PyPI yet).
+#   * torch is not listed: it arrives with the core midas-integrate-v2 dependency, and the
+#     node operator is built on midas_dt.direct.projection_matrix (torch sparse).
 texture = [
+    "midas-stress>=0.14.0",
     "midas-hkls>=0.7.3",
     "scipy>=1.15",
     "numpy>=2.0",
@@ -84,6 +97,7 @@ texture = [
 # scipy.optimize directly. Dropped rather than carried as dead weight.
 full = [
     "midas-invert>=0.1.1",
+    "midas-stress>=0.14.0",
     "midas-hkls>=0.7.3",
     "scipy>=1.15",
     "numpy>=2.0",
