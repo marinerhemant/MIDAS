@@ -404,6 +404,29 @@ def cross_validation_gate(
     )
 
 
+def adopted_iterate(history):
+    """The iterate whose geometry ``autocalibrate`` (pipelines/single.py) returned.
+
+    Only for histories of that pipeline.  ``autocalibrate_pv`` (single_pv.py) returns its LAST iterate, so the
+    gates keep ``history[-1]`` unless the caller says ``use_adopted=True`` (auto.py does).
+
+    ``autocalibrate`` keeps the best iterate by mean strain (the first one reaching the minimum), and only
+    leaves the last in place when it is itself the minimum.  The gates must describe THAT iterate: reading
+    ``history[-1]`` scored the rejected one (real GE frame: adopted 380.5 ue / 0.49 px, last 1755.7 ue / 1.88 px,
+    and the strain-cap gate failed on the 1.88 px of the geometry that was thrown away).
+    """
+    if not history:
+        return None
+    def key(h):
+        v = float(getattr(h, "mean_strain_uE", float("nan")))
+        return float("inf") if v != v else v
+    last = history[-1]
+    lo = min(key(h) for h in history)
+    if key(last) == lo:
+        return last
+    return next(h for h in history if key(h) == lo)
+
+
 def strain_cap_check(
     history,                              # list of IterRecord with mean_strain_uE
     *,
@@ -411,6 +434,7 @@ def strain_cap_check(
     warn_uE: float = 50.0,
     n_rings: Optional[int] = None,
     min_rings_for_ok: int = 3,
+    use_adopted: bool = False,
 ) -> DiagnosticResult:
     """Strain-cap rejection.  B6 showed that all 24 basin-escape failures
     have converged strain ≥ 800 μϵ.  A 100 μϵ cap rejects every escape
@@ -439,7 +463,7 @@ def strain_cap_check(
             message="no iterations recorded",
             metrics={"strain_uE": float("nan")},
         )
-    final = history[-1]
+    final = adopted_iterate(history) if use_adopted else history[-1]
     strain = float(getattr(final, "mean_strain_uE", float("nan")))
     if strain != strain:                   # NaN
         return DiagnosticResult(
@@ -497,6 +521,7 @@ def pointing_precision_check(
     n_rings: Optional[int] = None,
     min_rings_for_ok: int = 3,
     px_um: Optional[float] = None,
+    use_adopted: bool = False,
 ) -> DiagnosticResult:
     """Absolute-residual replacement for :func:`strain_cap_check`'s
     fractional 100 μϵ cap.
@@ -515,7 +540,7 @@ def pointing_precision_check(
     "fail" under the old cap — despite a good ring overlay and per-ring
     absolute deviations of 0.1-1.0 px, within normal centroiding precision.
 
-    This gate thresholds ``history[-1].mean_abs_px`` (pixels) instead, which
+    This gate thresholds the ADOPTED iterate's ``mean_abs_px`` (pixels, see :func:`adopted_iterate`) instead, which
     does not have that scale dependence. ``fail_px``/``warn_px`` default to
     2x / 1x the top of the 0.2-0.5 px measured centroiding-precision range —
     a principled first cut, NOT YET validated against the B6 basin-escape
@@ -527,7 +552,7 @@ def pointing_precision_check(
     and ``run_robust_smoke.py`` key their own accept-logic off that string —
     this is a metric change under the same gate identity, not a new gate.
     See :func:`run_all_gates`, which dispatches to this function only when
-    ``history[-1]`` actually carries ``mean_abs_px`` (i.e. it was produced by
+    the adopted iterate actually carries ``mean_abs_px`` (i.e. it was produced by
     a pipeline that has been updated to compute it); older/other pipelines
     still get :func:`strain_cap_check` unchanged.
     """
@@ -538,7 +563,7 @@ def pointing_precision_check(
             message="no iterations recorded",
             metrics={"abs_px": float("nan")},
         )
-    final = history[-1]
+    final = adopted_iterate(history) if use_adopted else history[-1]
     d_px = float(getattr(final, "mean_abs_px", float("nan")))
     strain_uE = float(getattr(final, "mean_strain_uE", float("nan")))
     um_note = f" ({d_px * px_um:.1f} µm)" if px_um else ""
@@ -989,6 +1014,7 @@ def run_all_gates(
     strain_warn_uE: float = 50.0,
     pointing_fail_px: float = 1.0,
     pointing_warn_px: float = 0.5,
+    use_adopted: bool = False,
     retention=None,
 ) -> List[DiagnosticResult]:
     """Run every gate, returning a list of DiagnosticResult.  The gates that
@@ -1005,7 +1031,7 @@ def run_all_gates(
     # the legacy fractional strain_cap_check unchanged. See
     # pointing_precision_check's docstring for why the fractional metric is
     # not comparable across detector distances.
-    final = history[-1] if history else None
+    final = (adopted_iterate(history) if use_adopted else (history[-1] if history else None))
     # NOTE: `is not None`, not a truthy check -- mean_abs_px's own dataclass
     # default is 0.0 (single.py IterRecord), which is falsy but a perfectly
     # legitimate (if implausibly good) real value. A truthy check would
@@ -1024,12 +1050,14 @@ def run_all_gates(
                                               fail_px=pointing_fail_px,
                                               warn_px=pointing_warn_px,
                                               n_rings=n_rings_used,
-                                              px_um=px_um))
+                                              px_um=px_um,
+                                              use_adopted=use_adopted))
     else:
         out.append(strain_cap_check(history,
                                       threshold_uE=strain_threshold_uE,
                                       warn_uE=strain_warn_uE,
-                                      n_rings=n_rings_used))
+                                      n_rings=n_rings_used,
+                                      use_adopted=use_adopted))
     out.append(basin_check(v1_init, unpacked))
     if retention is not None:
         out.append(fit_retention_gate(retention))

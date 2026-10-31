@@ -64,6 +64,15 @@ class CalibrationResult:
     # dg_residual_corr_lookup).  None when ``build_residual_corr=False``.
     residual_corr_map: Optional[torch.Tensor] = None
     post_residual_strain_uE: Optional[float] = None
+    #: Median / 5 %-trimmed mean of the SAME residuals as ``post_residual_strain_uE``
+    #: (after the residual map when it is kept, else the adopted iterate's).
+    post_residual_strain_median_uE: Optional[float] = None
+    post_residual_strain_trim_uE: Optional[float] = None
+
+
+def _summary_of(rec):
+    """(median, 5 %-trimmed mean) of one iterate, in microstrain."""
+    return rec.median_strain_uE, rec.trim_strain_uE
 
 
 def autocalibrate(
@@ -134,6 +143,7 @@ def autocalibrate(
     best_strain = float("inf")
     best_unpacked = None
     best_fits = None
+    best_rec = None
 
     for it in range(n_iter):
         # E-step (v1, proven).  Uses current v1_params geometry.
@@ -268,6 +278,7 @@ def autocalibrate(
         fits_final = fits_scored
         if mean_strain_uE < best_strain:
             best_strain = mean_strain_uE
+            best_rec = rec
             best_unpacked = {k: v.detach().clone() for k, v in unpacked.items()}
             best_fits = fits_scored
         if verbose:
@@ -338,6 +349,8 @@ def autocalibrate(
     # ---- Post-MAP empirical residual-correction map (v1 parity stage).
     residual_map = None
     post_strain = None
+    post_med = None
+    post_trim = None
     if build_residual_corr and fits_final is not None and unpacked:
         from ..forward.residual_corr import (
             build_residual_corr_map, save_residual_corr_bin,
@@ -425,15 +438,19 @@ def autocalibrate(
                                   f"discarding it", flush=True)
                         residual_map = None
                         post_strain = pre_strain
+                        post_med, post_trim = _summary_of(best_rec or history[-1])
 
     # Always report the achieved strain, even when no residual map was applied.
     if post_strain is None and history:
         post_strain = best_strain
+        post_med, post_trim = _summary_of(best_rec or history[-1])
 
     return CalibrationResult(spec=spec, unpacked=unpacked or {},
                               history=history, fits_final=fits_final,
                               residual_corr_map=residual_map,
-                              post_residual_strain_uE=post_strain)
+                              post_residual_strain_uE=post_strain,
+                              post_residual_strain_median_uE=post_med,
+                              post_residual_strain_trim_uE=post_trim)
 
 
 __all__ = ["IterRecord", "CalibrationResult", "autocalibrate"]

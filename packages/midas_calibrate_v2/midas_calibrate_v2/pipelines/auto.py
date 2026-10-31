@@ -933,7 +933,8 @@ def calibrate(
             from .diagnostics import run_all_gates
             diag_results = run_all_gates(
                 v1_init=v1_seed, unpacked=u, history=cr.history, fits=fd,
-                spec=cr.spec, panel_layout=panel_layout)
+                spec=cr.spec, panel_layout=panel_layout,
+                use_adopted=True)          # single.py returns its best iterate, not its last
             from .diagnostics import seed_provenance_gate
             diag_results.insert(0, seed_provenance_gate(
                 seed_method=seed_method, seed_note=seed_note,
@@ -1031,9 +1032,13 @@ def calibrate(
         wavelength_A=wavelength, im_trans=tuple(im_trans),
         post_residual_strain_uE=cr.post_residual_strain_uE,
         post_residual_strain_median_uE=(
-            cr.history[-1].median_strain_uE if cr.history else None),
+            cr.post_residual_strain_median_uE
+            if cr.post_residual_strain_median_uE is not None
+            else (cr.history[-1].median_strain_uE if cr.history else None)),
         post_residual_strain_trim_uE=(
-            cr.history[-1].trim_strain_uE if cr.history else None),
+            cr.post_residual_strain_trim_uE
+            if cr.post_residual_strain_trim_uE is not None
+            else (cr.history[-1].trim_strain_uE if cr.history else None)),
         in_loop_strain_uE=(min(h.mean_strain_uE for h in cr.history)
                             if cr.history else None),
         residual_corr_map=cr.residual_corr_map,
