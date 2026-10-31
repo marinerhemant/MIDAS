@@ -64,6 +64,18 @@ class PanelGeom:
     ty: float = 0.0                       # tilt (deg)
     tz: float = 0.0                       # tilt (deg)
     p_distortion: List[float] = field(default_factory=lambda: [0.0] * 11)
+    # Misalignment to inject: what the zarr / detectors.json RECORD differs from
+    # the geometry that produced the spots by (d_y_bc px, d_z_bc px, d_lsd um).
+    # (0, 0, 0) (default) records the truth. Lets a test give the pipeline a
+    # wrong panel geometry of known size and check an alignment estimate.
+    recorded_offset: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    def recorded(self) -> "PanelGeom":
+        """The geometry as written to the zarr and detectors.json."""
+        dy, dz, dl = self.recorded_offset
+        return PanelGeom(det_id=self.det_id, lsd=self.lsd + dl, y_bc=self.y_bc + dy,
+                         z_bc=self.z_bc + dz, tx=self.tx, ty=self.ty, tz=self.tz,
+                         p_distortion=list(self.p_distortion))
 
 
 @dataclass
@@ -104,6 +116,12 @@ class SimConfig:
     pos_noise_px: float = 0.0             # extra Gaussian noise on (y, z) per spot
     # ring threshold for analysis_parameters/RingThresh (matches FF defaults)
     ring_thresh: int = 10
+    # ``False`` (default, unchanged): a spot that lands on two panels is
+    # recorded on the FIRST only (pinwheel layouts do not overlap). ``True``:
+    # every panel records every spot that lands on it, so panels that overlap
+    # in space produce the same reflection twice, as a real overlapping array
+    # does. The per-spot truth (``spot_truth.npz``) then lists both records.
+    allow_overlap: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -739,7 +757,7 @@ def simulate_panel_zarrs(
         flat_valid = valid_np.reshape(-1)
         if panel_claim is None:
             panel_claim = np.zeros_like(flat_valid)
-        flat_take = flat_valid & (~panel_claim)
+        flat_take = flat_valid if cfg.allow_overlap else flat_valid & (~panel_claim)
         panel_claim = panel_claim | flat_take
         flat_idx = np.where(flat_take)[0]
         n_p = flat_idx.size
@@ -792,6 +810,11 @@ def simulate_panel_zarrs(
         for panel_idx, r in enumerate(per_panel_records)
     ])
     log(f"total spots across panels: {spot_records['y_pix'].size}")
+    # Per-spot truth: which grain / ring / (omega, eta) every recorded spot is,
+    # and on which panel (index into ``panels``). Lets a test check dedup and
+    # panel-alignment estimates against what was actually simulated.
+    spot_truth_npz = out_dir / "spot_truth.npz"
+    np.savez(spot_truth_npz, **spot_records)
 
     # ---- Per-panel rasterisation -------------------------------------
     zip_paths: list[Path] = []
@@ -825,7 +848,7 @@ def simulate_panel_zarrs(
                 yield img
 
         zip_path = out_dir / f"{out_stem}_det{panel.det_id}.analysis.MIDAS.zip"
-        _write_panel_zarr(zip_path, _frame_iter(), cfg, panel, n_frames)
+        _write_panel_zarr(zip_path, _frame_iter(), cfg, panel.recorded(), n_frames)
         zip_paths.append(zip_path)
 
     # ---- GrainsSim.csv (truth, MIDAS Au-FCC format) ------------------
@@ -861,7 +884,8 @@ def simulate_panel_zarrs(
     detectors_json = out_dir / "detectors.json"
     detectors_records = []
     for panel, zip_path in zip(panels, zip_paths):
-        rec = asdict(panel)
+        rec = asdict(panel.recorded())
+        rec.pop('recorded_offset', None)
         rec["zarr_path"] = str(zip_path)
         detectors_records.append(rec)
     with detectors_json.open("w") as fp:
@@ -892,5 +916,6 @@ def simulate_panel_zarrs(
         "grains_csv": grains_csv,
         "setup_truth_json": setup_truth_json,
         "n_spots_per_panel": n_spots_per_panel,
+        "spot_truth": spot_truth_npz,
         "n_frames": n_frames,
     }
