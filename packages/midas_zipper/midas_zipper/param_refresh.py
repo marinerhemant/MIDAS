@@ -57,6 +57,11 @@ __all__ = [
     "coerce_analysis_params",
     "diff_analysis_params",
     "refresh_analysis_params",
+    "SCAN_LEVEL_KEYS",
+    "PANEL_LEVEL_KEYS",
+    "ZipParamMismatch",
+    "check_zip_vs_params",
+    "mismatch_message",
 ]
 
 # ── zarr layout ──────────────────────────────────────────────────────────────
@@ -349,7 +354,38 @@ def diff_analysis_params(
             baked_in.append(change)
         else:
             refreshable.append(change)
+
+    # peakfit takes a spot's omega from ``scan_parameters/start`` and never
+    # reads ``analysis_parameters/OmegaStart``; ff_zip derives ``start`` from
+    # OmegaStart at build time. Refreshing OmegaStart alone would therefore
+    # change nothing a spot sees, so the derived value is diffed with it.
+    derived = _derived_start_change(params, root)
+    if derived is not None:
+        refreshable.append(derived)
     return refreshable, baked_in, warnings
+
+
+def _derived_start_change(params: Sequence[CoercedParam], root) -> Optional[ParamChange]:
+    """``scan_parameters/start`` implied by the file's OmegaStart, if it differs."""
+    by_key = {p.source_key: p for p in params}
+    if "OmegaStart" not in by_key:
+        return None
+
+    def _num(key: str, stored_path: str, default: float) -> float:
+        if key in by_key:
+            return float(np.asarray(by_key[key].value).flat[0])
+        old = _read_stored(root, stored_path)
+        return float(old.flat[0]) if old is not None and old.size else default
+
+    omega_start = float(np.asarray(by_key["OmegaStart"].value).flat[0])
+    step = _num("OmegaStep", f"{MEASUREMENT_PATH}/step", 0.0)
+    skip = _num("SkipFrame", f"{ANALYSIS_PATH}/SkipFrame", 0.0)
+    new = np.array([omega_start - skip * step], dtype=np.double)
+    full_key = f"{MEASUREMENT_PATH}/start"
+    old = _read_stored(root, full_key)
+    if not _differs(old, new):
+        return None
+    return ParamChange("OmegaStart", full_key, old, new)
 
 
 # ── applying ─────────────────────────────────────────────────────────────────
@@ -392,6 +428,7 @@ def refresh_analysis_params(
     *,
     dry_run: bool = False,
     allow_baked_in: bool = False,
+    keys: Optional[Sequence[str]] = None,
 ) -> RefreshReport:
     """Rewrite an existing ``.MIDAS.zip``'s analysis parameters from the params file.
 
@@ -399,12 +436,20 @@ def refresh_analysis_params(
     has changed (unless ``allow_baked_in``), and :class:`ParamRefreshError` if
     the rewrite did not take. Returns a :class:`RefreshReport` describing what
     changed; an empty ``applied`` list means the archive already agreed and no
-    ``zip`` call was made.
+    ``zip`` call was made. ``keys`` restricts the refresh to those
+    parameter-file keys.
     """
     import zarr
 
     zip_path = Path(zip_path).resolve()
     refreshable, baked_in, warnings = diff_analysis_params(zip_path, param_file)
+    if keys is not None:
+        # Only these parameter-file keys are touched; everything else in the
+        # file is left unread. This is what makes refreshing a multi-panel
+        # archive safe: the file's Lsd / BC / tilts are not that panel's.
+        wanted = set(keys)
+        refreshable = [c for c in refreshable if c.source_key in wanted]
+        baked_in = [c for c in baked_in if c.source_key in wanted]
 
     if baked_in and not allow_baked_in:
         listing = "\n".join(f"    {c.describe()}" for c in baked_in)
@@ -512,6 +557,106 @@ def _verify(zip_path: Path, changes: Sequence[ParamChange]) -> None:
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
+#: Keys that describe the SCAN and the sample, not one detector panel. A
+#: multi-panel run takes each panel's geometry from its own zip on purpose, so
+#: only these are expected to agree between the parameter file and every zip.
+#: The stages read them from the zip, silently ahead of the parameter file.
+SCAN_LEVEL_KEYS = (
+    "Wedge", "OmegaStart", "OmegaStep", "SkipFrame", "Wavelength",
+    "LatticeConstant", "LatticeParameter", "SpaceGroup", "MinEta",
+)
+
+#: Keys that are legitimately set per panel (thresholds tuned to each panel,
+#: a ring radius that depends on the panel's own beam centre). A difference is
+#: reported but does not stop a run.
+PANEL_LEVEL_KEYS = ("RingThresh", "MaxRingRad")
+
+
+class ZipParamMismatch(RuntimeError):
+    """A zip's stored parameters disagree with the parameter file.
+
+    Carries :attr:`mismatches`, a ``{zip_path: [ParamChange, ...]}`` mapping.
+    """
+
+    def __init__(self, message: str, mismatches: Dict[str, List[ParamChange]]):
+        super().__init__(message)
+        self.mismatches = mismatches
+
+
+def _numerically_equal(old: Optional[np.ndarray], new: np.ndarray, rtol: float) -> bool:
+    if old is None or old.shape != new.shape:
+        return False
+    if old.dtype.kind not in "fiu" or new.dtype.kind not in "fiu":
+        return not _differs(old, new)
+    return bool(np.allclose(old.astype(float), new.astype(float),
+                            rtol=rtol, atol=rtol))
+
+
+def check_zip_vs_params(
+    zip_path: os.PathLike | str,
+    param_file: os.PathLike | str,
+    keys: Optional[Sequence[str]] = SCAN_LEVEL_KEYS,
+    rtol: float = 1e-9,
+) -> List[ParamChange]:
+    """Parameters the file sets to a value the archive does not hold.
+
+    Read-only. ``keys=None`` checks every key (a single-panel archive, whose
+    geometry is meant to match the file); the default checks only the scan-level
+    keys. A key the file does not set is never reported, and values equal to
+    ``rtol`` are not differences (text round-tripping, not an edit).
+    """
+    refreshable, baked_in, _warn = diff_analysis_params(zip_path, param_file)
+    wanted = None if keys is None else set(keys)
+    out = []
+    for c in list(refreshable) + list(baked_in):
+        if wanted is not None and c.source_key not in wanted:
+            continue
+        if _numerically_equal(c.old, c.new, rtol):
+            continue
+        out.append(c)
+    return out
+
+
+def mismatch_message(
+    mismatches: Dict[str, List[ParamChange]],
+    param_file: os.PathLike | str,
+    *,
+    accept_hint: str = "",
+) -> str:
+    """The text every caller shows: what differs, and the two ways out."""
+    pf = Path(param_file)
+    all_keys: List[str] = []
+    for changes in mismatches.values():
+        for c in changes:
+            if c.source_key not in all_keys:
+                all_keys.append(c.source_key)
+    lines = [f"{len(all_keys)} parameter(s) in {pf.name} differ from the value "
+             f"stored in the zip(s) that the stages will actually read "
+             f"(shown as zip -> file):"]
+    for zp, changes in mismatches.items():
+        lines.append(f"  {Path(zp).name}:")
+        for c in changes:
+            old = "<absent>" if c.old is None else _fmt(c.old)
+            where = ("  [scan_parameters/start: the dataset peakfit reads for omega]"
+                     if c.key_tail == "start" else "")
+            lines.append(f"    {c.source_key}: {old} -> {_fmt(c.new)}{where}")
+    keys = ",".join(all_keys)
+    lines += [
+        "",
+        "Nothing was run. The stages use the ZIP value and ignore the file, so",
+        "decide which one is right, then either:",
+        f"  1. update the zip(s) to the file's value (previews with --dry-run):",
+        *[f"       midas-refresh-zarr-params -fn {zp} -paramFN {pf} --keys {keys} [--dry-run]"
+          for zp in mismatches],
+        f"     (--keys limits it to these parameters; the file's other keys, e.g. a",
+        f"     panel's Lsd / BC / tilts, are not touched), or",
+        f"  2. edit {pf.name} so these keys hold the zip's value.",
+    ]
+    if accept_hint:
+        lines += ["", accept_hint]
+    return "\n".join(lines)
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """``midas-refresh-zarr-params`` — fix a stale archive outside a pipeline run."""
     import argparse
@@ -538,12 +683,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                           "frames are NOT re-read, so the archive will "
                           "describe data it does not contain -- rebuild "
                           "instead unless you know exactly why you want this"))
+    ap.add_argument("--keys", default=None,
+                    help=("comma-separated parameter-file keys to refresh; "
+                          "all other keys in the file are ignored (use this "
+                          "on a panel of a multi-detector run, whose "
+                          "geometry is not the file's)"))
     args = ap.parse_args(argv)
 
     try:
         report = refresh_analysis_params(
             args.zip_path, args.param_file,
             dry_run=args.dry_run, allow_baked_in=args.allow_baked_in,
+            keys=[k for k in args.keys.split(",") if k] if args.keys else None,
         )
     except BakedInParamChanged as e:
         print(f"error: {e}", file=__import__("sys").stderr)
