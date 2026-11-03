@@ -67,7 +67,8 @@ def test_vibration_resolution_monotone_and_saturates():
     res = resolution_vs_exposure(sigma, base, FREQS, taus)
     r = res.tolist()
     assert all(r[i] <= r[i + 1] + 1e-9 for i in range(len(r) - 1))   # monotone in exposure
-    assert res[-1] == pytest.approx(res[-2], rel=0.02)               # saturates past 1 s
+    # float(): pytest >= 9.2 iterates a 0-d tensor passed as the expected value.
+    assert float(res[-1]) == pytest.approx(float(res[-2]), rel=0.02)  # saturates past 1 s
     assert res[-1] > 1.7 * res[0]                                    # ~2x long/short degradation
 
 
