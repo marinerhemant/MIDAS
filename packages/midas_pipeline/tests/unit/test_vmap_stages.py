@@ -50,7 +50,13 @@ def _locate_ceo2_cif() -> Path:
     )
 
 
-CEO2_CIF = _locate_ceo2_cif()
+try:
+    CEO2_CIF = _locate_ceo2_cif()
+except FileNotFoundError as exc:
+    # Installed-wheel or partial-tree layouts do not carry midas_hkls' test
+    # data. test_diagnostics_vmap imports this module's helpers inside its
+    # tests, so the skip reaches them too; a full checkout always has the file.
+    pytest.skip(str(exc), allow_module_level=True)
 
 
 # -------------------------------------------------------------- helpers
