@@ -56,6 +56,18 @@ def _binning_device(ctx: StageContext) -> str:
 
 
 
+def _seed_ring(ctx: StageContext) -> dict:
+    """Is the seed ring (OverAllRingToIndex) a weak reflection? Reports only; never fails the stage."""
+    try:
+        from .._pf_scans import _int_field, parse_params_kv
+        from ..diagnostics.seed_ring import report_seed_ring
+        kv = parse_params_kv(ctx.config.params_file)
+        return report_seed_ring(ctx.layer_dir, _int_field(kv, "OverAllRingToIndex"))
+    except Exception as e:                                # noqa: BLE001 - diagnostic only
+        LOG.warning("binning(ff): seed ring check failed (%s)", e)
+        return {}
+
+
 def _omega_coverage(res, out_dir: Path, tag: str) -> list:
     """Blocked-omega-window check on the binned spots (never fails the stage)."""
     try:
@@ -107,6 +119,7 @@ def _run_ff(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
             skipped=True,
         )
 
+    seed = _seed_ring(ctx)
     res = bin_data(
         result_folder=ctx.layer_dir,
         out_dir=out_dir,
@@ -141,6 +154,7 @@ def _run_ff(ctx: StageContext, started: float, out_dir: Path) -> BinningResult:
             "scan_mode": "ff",
             "n_spots": int(res.spots.shape[0]),
             "blocked_omega_windows": blocked,
+            "seed_ring_warning": bool(seed.get("warn")),
             "n_ring_bins": int(res.n_ring_bins),
             "n_eta_bins": int(res.n_eta_bins),
             "n_ome_bins": int(res.n_ome_bins),
