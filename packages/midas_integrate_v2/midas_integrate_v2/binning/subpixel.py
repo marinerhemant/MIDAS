@@ -216,7 +216,7 @@ class SubpixelBinGeometry:
         dt, dev = spec.dtype(), spec.device()
         mask_np = normalise_mask(mask, NrPixelsY=NY, NrPixelsZ=NZ)
         mask_flat_t = (None if mask_np is None
-                       else torch.from_numpy(mask_np.reshape(-1)))
+                       else torch.from_numpy(mask_np.reshape(-1)).to(dev))
 
         if pixel_shape == "hexagon":
             offsets = _hex_cell_subpixel_offsets(K, dtype=dt, device=dev)

@@ -97,7 +97,7 @@ class HardBinGeometry:
         mask_np = normalise_mask(mask, NrPixelsY=spec.NrPixelsY,
                                   NrPixelsZ=spec.NrPixelsZ)
         if mask_np is not None:
-            mask_t = torch.from_numpy(mask_np.reshape(-1))
+            mask_t = torch.from_numpy(mask_np.reshape(-1)).to(valid.device)
             valid = valid & ~mask_t
         # Clamp out-of-range to 0 to keep the flat index well-defined;
         # the `valid` mask is the source of truth.
