@@ -41,6 +41,25 @@ def test_lorentz_polarization_limits():
     assert lp[0] == pytest.approx((1 - s ** 2) / s)
 
 
+@pytest.mark.parametrize("f", [0.0, 0.5, 0.99, 1.0])
+def test_lorentz_polarization_is_the_partially_polarized_mixture(f):
+    """P must be the Thomson mixture of the two transverse states, not a scaled f=1 form."""
+    tt = np.radians(np.linspace(3.0, 60.0, 20))[:, None]
+    eta = np.radians(np.linspace(-170.0, 170.0, 36))[None, :]   # even count: no eta = 0
+    # beam along +x, eta measured from +z: s = (cos 2t, -sin 2t sin eta, sin 2t cos eta)
+    sy, sz = -np.sin(tt) * np.sin(eta), np.sin(tt) * np.cos(eta)
+    P = 0.5 * (1 + f) * (1 - sy ** 2) + 0.5 * (1 - f) * (1 - sz ** 2)   # horizontal eps = y
+    L = 1.0 / (np.sin(tt) * np.abs(np.sin(eta)))
+    assert np.allclose(lorentz_polarization(tt, eta, f), L * P, rtol=1e-12)
+
+
+def test_lorentz_polarization_unpolarized_has_no_eta_dependence():
+    tt = np.radians([30.0] * 5)
+    eta = np.radians([20.0, 50.0, 90.0, 130.0, 160.0])
+    pol = lorentz_polarization(tt, eta, 0.0) * np.sin(tt) * np.abs(np.sin(eta))   # strip L
+    assert np.allclose(pol, pol[0], rtol=1e-13)
+
+
 def test_support_mass_conserved():
     rng = np.random.default_rng(1)
     t = _table(rng)

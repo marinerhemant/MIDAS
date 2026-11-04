@@ -31,6 +31,8 @@ dependencies = [
     # >=0.7.0: HEDMGeometry.omega_ranges/box_sizes, the paired OmegaRange/BoxSize
     # gate soft_overlap.build_forward_model passes unconditionally.
     "midas-diffract>=0.9.0",
+    # >=0.17.0: midas_hkls.corrections (polarization_factor, rotation_lorentz)
+    "midas-hkls>=0.17.0",
     "midas-stress>=0.6.0",
 ]
 

@@ -49,6 +49,8 @@ from typing import Callable, Optional, Sequence
 import numpy as np
 import torch
 
+from midas_hkls.corrections import polarization_factor, rotation_lorentz, scattered_direction
+
 __all__ = [
     "ContributionTable",
     "lorentz_polarization",
@@ -67,16 +69,29 @@ __all__ = [
 
 def lorentz_polarization(two_theta: np.ndarray, eta: np.ndarray,
                          pol_fraction: float = 1.0) -> np.ndarray:
-    """Rotation Lorentz factor times polarization, per spot.
+    """Rotation Lorentz factor times polarization, per spot (radians in).
 
-    ``L = 1 / (sin 2θ |sin η|)`` for rotation about the vertical axis, with η
-    measured from +z (the MIDAS convention). ``P = 1 - f (sin 2θ sin η)^2`` for a
-    beam polarized in the horizontal plane (f = 1 fully polarized).
+    Both factors come from :mod:`midas_hkls.corrections`: ``L = 1/|ê·(s0×s)|``
+    for rotation about the vertical axis (``1/(sin 2θ |sin η|)``, η from +z, the
+    MIDAS convention) and the partially-polarized mixture
+    ``P = ½(1 + cos²2θ − f cos 2(η−90°) sin²2θ)`` for a horizontally polarized
+    beam with linear polarization fraction ``f`` (1 = fully polarized).
+
+    Before 2026-10-15 this carried its own copy, ``P = 1 − f (sin 2θ sin η)²``,
+    which scales the fully-polarized correction instead of mixing the two
+    transverse states: identical at f = 1 (the default here, agreeing to 2e-12)
+    and wrong below it. Maximum over η of |old/new − 1|, measured 2026-10-15:
+    0.17 % at f = 0.99 and 2θ = 30°, 1.48 % at 2θ = 60°, 3.6 % at 2θ = 70°;
+    6.98 % at f = 0.95 and 2θ = 60°. An unpolarized beam (f = 0) now has no η
+    dependence, as it must.
+
+    ``L`` is capped at 1e12 where the spot lies on the rotation axis (as before);
+    callers should drop such spots first (``min_abs_sin_eta``).
     """
-    s2t = np.sin(two_theta)
-    se = np.abs(np.sin(eta))
-    L = 1.0 / np.maximum(s2t * se, 1e-12)
-    P = 1.0 - pol_fraction * (s2t * np.sin(eta)) ** 2
+    tt = np.degrees(np.asarray(two_theta, dtype=float))
+    eta_d = np.degrees(np.asarray(eta, dtype=float))
+    L = np.minimum(rotation_lorentz(scattered_direction(tt, eta_d), min_abs=0.0), 1e12)
+    P = polarization_factor(tt, eta_d, pol_fraction=pol_fraction, pol_plane_eta_deg=90.0)
     return L * P
 
 
