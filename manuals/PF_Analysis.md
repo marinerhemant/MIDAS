@@ -338,7 +338,7 @@ The output CSV contains one row per indexed voxel with the following columns:
 | 26 | `Radius` | Equivalent grain radius |
 | 27 | `Completeness` | Fraction of expected spots matched |
 | 28–36 | `E11`–`E33` | Strain tensor (6 unique components) |
-| 37–39 | `Eul1`, `Eul2`, `Eul3` | Euler angles (Bunge convention, degrees) |
+| 37–39 | `Eul1`, `Eul2`, `Eul3` | Euler angles (Bunge convention), **radians** (`OrientMat2Euler` returns radians; same as `Grains.csv`) |
 | 40–43 | `Quat1`–`Quat4` | Quaternion (fundamental region) |
 
 ### microstructure.hdf

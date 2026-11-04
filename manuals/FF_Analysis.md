@@ -376,7 +376,7 @@ $$
 The final merging step cleans up the results and computes derived quantities.
 *   **Deduplication:** Grains from the indexing step are compared for similarity. If two grains have very close orientations (misorientation angle $< 0.1^\circ$) and spatial positions ($< 5 \mu m$), they are merged.
     *   **Quaternion Math:** Distances between orientations are computed using quaternion algebra for numerical stability.
-*   **Twin Detection:** The code checks for twin relationships (e.g., $60^\circ$ rotation around $<111>$ axes for FCC) if the `Twins` parameter is enabled.
+*   **Twin Detection:** The C code checks for twin relationships (e.g., $60^\circ$ rotation around $<111>$ axes for FCC) if the `Twins` parameter is enabled. The Python `midas-process-grains` package has twin operators for cubic/FCC/BCC (CSL), HCP (five twin systems, six K₁ variants each), tetragonal and trigonal (60° about c) crystals (`compute/twins.py`, selected from the space group and `c/a`), a `Twin` switch and a `TwinRelations` file for user-defined relations. **For hexagonal crystals read the frame-convention note under "Grains.csv Column Format" first: the default HCP operators are currently built in the textbook frame, not the frame `Grains.csv` orientations live in.**
 *   **Strain Tensor Calculation:**
     *   **Fable-Beaudoin Method:** Uses the refined lattice parameters to compute the strain tensor relative to the unstrained lattice.
     *   **Kenesei Method:** An alternative strain calculation that uses individual spot vectors.
@@ -456,11 +456,69 @@ The `Grains.csv` file has a multi-line header (lines starting with `%`) followed
 | 22 | `DiffAngle` | Misorientation angle metric |
 | 23 | `GrainRadius` | Equivalent grain radius (μm) |
 | 24 | `Confidence` | Indexing confidence metric |
-| 25–33 | `eFab11`–`eFab33` | Strain tensor (Fable-Beaudoin method, ×10⁶) |
-| 34–42 | `eKen11`–`eKen33` | Strain tensor (Kenesei method, ×10⁶) |
-| 43 | `RMSErrorStrain` | RMS error of strain fit (×10⁶) |
+| 25–33 | `eFab11`–`eFab33` | Strain tensor (Fable-Beaudoin method), **microstrain** (×10⁻⁶ strain), in the lab/sample frame |
+| 34–42 | `eKen11`–`eKen33` | Strain tensor (Kenesei method), microstrain, in the lab/sample frame |
+| 43 | `RMSErrorStrain` | RMS error of strain fit (microstrain) |
 | 44 | `PhaseNr` | Phase number |
-| 45–47 | `Eul0`, `Eul1`, `Eul2` | Euler angles (Bunge convention, degrees) |
+| 45–47 | `Eul0`, `Eul1`, `Eul2` | Euler angles (Bunge φ₁, Φ, φ₂), **radians** |
+
+#### Orientation, crystal-frame and strain conventions
+
+These are easy to get wrong, and a wrong in-plane crystal frame silently
+gives plausible-looking but meaningless slip, twin or Schmid-factor results for
+hexagonal and lower-symmetry crystals. Each statement below was checked
+against a real `Grains.csv` (CP-Ti, SG 194, 1-ID, 1470 grains).
+
+* **`O11`–`O33` map crystal → lab.** The columns of `O` are the crystal axes
+  expressed in the lab frame, so `v_lab = O · v_crystal` and a lab-frame
+  tensor goes to the crystal frame as `εc = Oᵀ ε O`. `O` is the transpose of the
+  passive Bunge matrix built from `Eul0..2` (`O = (Rz(φ₂)·Rx(Φ)·Rz(φ₁))ᵀ` with
+  passive rotations); this holds to ~1e-6 on the real file.
+* **The crystal Cartesian frame is the MIDAS reciprocal-basis frame, not the
+  textbook `a₁ ∥ x` frame.** It is the one defined by the `B` matrix of
+  `midas_hkls` (`nf_hkls._b_matrix`, a port of `CorrectHKLsLatC`):
+  `G_cart = B · (h, k, l)ᵀ`, with **`a*` along `x`**, `b*` in the xy plane and
+  `c*` along `z`. For a hexagonal cell (γ = 120°) this puts the real-space
+  axes at **a ≈ −30° (equivalently 150°) and b at 90° from `x`**, `c ∥ z`, and
+  a plane normal is `n ∝ ((2h + k)/√3, k, l/(c/a))` (with `a = 1`). It is
+  rotated 30° about `c` from the usual `a₁ = (1, 0, 0)`, `a₂ = (−½, √3/2, 0)`
+  convention, which gives `n ∝ (h, (h + 2k)/√3, l/(c/a))`. Do not mix them.
+  The 12 proper hexagonal symmetry operators are the same set in both frames
+  (D₆ has 2-fold axes every 30°), so symmetry-reduced **disorientation angles
+  are unaffected**; what the frame changes is any **axis, plane or direction**
+  (twin K₁ normals, slip planes and directions, CSL axes), which end up 30°
+  off.
+* **How to confirm the frame on your own file.** With `εc = Oᵀ ε O`, the
+  strain along an in-plane crystal direction at 150° from `x` correlates with
+  the fitted `a` lattice strain and the strain along 90° with the fitted `b`
+  strain (correlation ≈ 1.00 on the reference file), and `εc[zz]` correlates
+  1.00 with the `c` lattice strain. If those peaks sit at 0° and 120° you are
+  in the textbook frame, not the MIDAS frame.
+* **Units.** Euler angles are **radians** (a file with `Eul0 ≤ 2π` is not in
+  degrees), strains are microstrain, positions and `GrainRadius` are µm.
+* **`GrainRadius` is a relative scale.** It is computed from an intensity
+  ratio against a fixed gauge volume (`Vsample`, or `Hbeam·π·Rsample²` when
+  `Vsample` is not set, both of which are search bounds, not the specimen), so
+  radii from runs with a different beam height, `Hbeam`/`Rsample`/`Vsample`, or
+  `NImgs` are not comparable. A step change in all radii between two load steps
+  is a processing/parameter change until shown otherwise.
+
+> **Frame fix (2026-10-20/21).** The HCP helpers in the Python packages
+> (the twin relations, now `midas_stress.twin_relations`, re-exported by
+> `midas_process_grains.compute.twins`; `midas_stress.plasticity.get_slip_systems`;
+> `midas_defect.phases.hcp.hcp_systems` and its Σ3 pair/partner helpers) used to build their
+> operators in the textbook `a₁ ∥ x` frame, 30° off about `c` from the frame `Grains.csv`
+> orientations live in: exact twins built in the MIDAS frame were found 0 of 24 times by
+> the old default relations, 24 of 24 by MIDAS-frame ones. All of them now take
+> `frame="midas"` (default) or `"crystallographic"`; `midas_hkls.frame_rotation(cell)`
+> gives the rotation between the two for any cell, and `midas_dct_tt.reciprocal_basis`
+> takes the same option. `midas_defect`'s own seed path now also uses the MIDAS frame.
+> If you build HCP operators yourself, use the `midas_hkls` `B` matrix. Verified against the
+> compiled C `GetHKLList` for hexagonal, trigonal,
+> tetragonal, orthorhombic, monoclinic, triclinic and rhombohedral cells
+> (`midas_hkls/tests/data/c_golden`): the `B` matrix reproduces its g vectors to 4e-16.
+> Note that `GetHKLList` hard-codes an hkl box of 0..10, so for a long axis (e.g. c = 13 Å)
+> it omits high-index reflections such as (0 0 12) that the Python generator includes.
 
 > **Decomposing `DiffPos`/`DiffOme` (Python midas-process-grains ≥ 0.6.0):**
 > when grain processing runs through the Python `midas-process-grains`
@@ -587,7 +645,7 @@ The pipeline generates a `<filestem>_consolidated.h5` file when `-generateH5 1` 
 │       ├── grain_id                 # (int) Grain ID
 │       ├── orientation              # (float[3×3]) Orientation matrix
 │       ├── position                 # (float[3]) X, Y, Z position (μm)
-│       ├── euler_angles             # (float[3]) Euler angles (Bunge, degrees)
+│       ├── euler_angles             # (float[3]) Euler angles (Bunge), radians
 │       ├── lattice_params_fit       # (float[6]) Fitted a, b, c, α, β, γ
 │       ├── strain_fable             # (float[3×3]) Strain tensor (Fable method)
 │       ├── strain_kenesei           # (float[3×3]) Strain tensor (Kenesei method)
@@ -627,6 +685,19 @@ The pipeline generates a `<filestem>_consolidated.h5` file when `-generateH5 1` 
 └── /raw_data_ref/                   # Reference to source data
     └── zarr_path                    # (str) Absolute path to the Zarr-ZIP file
 ```
+> **Units and a column-layout caveat for the per-grain datasets (units checked against a real `Grains.csv`; the layout caveat read from the writer's code on 2026-10-21, `-generateH5` itself not re-run).** Euler angles in
+> `/grains/summary` and `grain_*/euler_angles` are **radians**: the writer copies the `Grains.csv` columns
+> unchanged and `Grains.csv` Euler angles are radians (`OrientMat2Euler` returns radians). Strains are
+> microstrain, positions and radii µm. **However**, `generate_consolidated_hdf5` in
+> `FF_HEDM/workflows/ff_MIDAS.py` slices a row of `Grains.csv` and labels the `/grains/summary` columns with an
+> older 46-column layout (no `DiffPos`, `DiffOme`, `DiffAngle` at columns 19-21, strain at 19-36, Euler at
+> 43-45). The current 47-column `Grains.csv` (table above: `eFab11` at column 24, `eKen11` at 33,
+> `RMSErrorStrain` 42, `PhaseNr` 43, Euler 44-46) is therefore mis-sliced for every dataset after
+> `orientation`, `position` and `lattice_params_fit` (columns 1-18, which are unchanged), and the
+> `column_names` attribute of `/grains/summary` is shifted the same way. Until the writer is updated, read the
+> strain, confidence, radius and Euler angles from `Grains.csv` directly (or from `/grains/summary` by the column
+> positions of the 47-column table), not from the named per-grain datasets.
+
 
 #### Python Example: Reading the Consolidated HDF5
 
