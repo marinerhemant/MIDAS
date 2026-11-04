@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "midas-sx"
+version = "0.0.1"
+description = "Single-crystal structure-factor reduction and refinement for MIDAS: rotation-series spots (mono beam, DAC) to corrected, merged F^2 with honest uncertainties and a SHELX .hkl, then least-squares refinement."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+authors = [
+    {name = "Hemant Sharma", email = "hsharma@anl.gov"},
+]
+keywords = ["MIDAS", "single crystal", "structure factor", "structure refinement", "diamond anvil cell", "X-ray diffraction", "SHELX"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "numpy>=1.22",
+    "scipy>=1.10",
+    "pandas>=1.5",
+    "torch>=2.0",
+    # >=0.17.0: midas_hkls.corrections (polarization, rotation Lorentz, anvil/plate absorption).
+    # Never re-implement a correction here; SpaceGroup/Lattice supply the symmetry and the B matrix.
+    "midas-hkls>=0.17.0",
+    # Front end (mask, polar background, 3-D spot finding) and the MIDAS pixel -> q geometry.
+    # Reused, not re-ported.
+    "midas-defect>=0.9.1",
+]
+
+[project.optional-dependencies]
+io = ["fabio>=2023.6"]                    # CBF / Bruker SFRM readers (midas_sx.io_frames)
+dev = ["pytest>=7.0", "gemmi>=0.6", "fabio>=2023.6"]
+
+[project.urls]
+Homepage = "https://github.com/marinerhemant/MIDAS"
+Documentation = "https://github.com/marinerhemant/MIDAS/tree/master/packages/midas_sx"
+Issues = "https://github.com/marinerhemant/MIDAS/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["midas_sx*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
