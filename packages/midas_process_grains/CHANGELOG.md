@@ -4,6 +4,104 @@ All notable changes to midas-process-grains. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+**Numbers that can change for existing HCP users:** the default HCP twin operators now live in the MIDAS
+crystal frame, so HCP twin labels and twin-mode merges change (they were silently finding almost nothing).
+Cubic, tetragonal and trigonal paths are unchanged.
+
+### Fixed — HCP twin operators were in the wrong crystal frame
+
+- `default_hcp_twin_relations` / `hcp_hkil_to_cartesian_normal` built the K1 normals in the textbook frame
+  (real a1 along x, `n ∝ (h, (h+2k)/√3, l/(c/a))`). `Grains.csv` orientation matrices (crystal→lab) live in the
+  `midas_hkls` B-matrix frame (a* along x, b* in the xy plane, c* along z, real a at 150°, b at 90°), which is
+  rotated 30° about c from it. The 12 hexagonal symmetry operators and every disorientation ANGLE are identical in the two
+  frames, so no angle-only check could see it; the operator AXES are 30° off, and exact twins built in the MIDAS
+  frame were found 0 of 24 times (24 of 24 with the corrected operators). `find_twin_pairs`, `label_twins` and the
+  `cluster_merge` twin mode all use these operators.
+- New keyword `frame="midas"` (default) or `"crystallographic"` on `hcp_hkil_to_cartesian_normal`,
+  `default_hcp_twin_relations` and `default_twin_relations_for(hcp_frame=...)`; `HCP_FRAMES` is exported.
+  `frame="crystallographic"` reproduces the old operators for data that really are in the textbook frame.
+- `compression_2112` was defined with the plane (2 1 -3 2), which is not a twin plane (49.6° about an axis inclined
+  65° from c); the comment said {2-1-12}, which is the same family as {11-22}. It is now (2 -1 -1 2), still
+  selectable by name, and is **no longer in the default list** (it duplicates `compression_1122`; the default is 4 systems
+  × 6 variants = 24 operators, was 30). Docstring axes corrected: {10-11} is 57.24° (not 57.4°) about <11-20>,
+  {11-21} is 34.98° about <10-10> (not <1-210>), {11-22} is 64.43° about <10-10>.
+- Tests: `tests/test_hcp_twin_frame.py` builds the truth from `midas_hkls` (B matrix), checks angle AND axis, recall
+  of exact twins, and that the frame switch is real. The existing planted-twin tests built their twins from the
+  package's own operator and could not see a frame error.
+
+### Fixed — `label_twins` missed most twins (symmetry-blind prefilter)
+
+- Its bucket prefilter compared raw quaternions, so a twin was only found when the two grains' stored
+  representatives happened to line up; the exact symmetry-aware check after it was never the limit. Planted
+  twins with a random twin-side symmetry operator: HCP {10-12} 5/40 found on raw quaternions and 0/40 on
+  fundamental-zone quaternions (what `v4_pipeline` passes); FCC Σ3 on fundamental-zone quaternions had the same
+  hole. The prefilter now compares `q_j·T` against every symmetry-equivalent representative of `q_i`
+  (`q_i·S_k`); all planted pairs are found (HCP four systems × raw/FZ, FCC Σ3), and 300 random orientations
+  give ≤ 6 chance pairs. Cost: the searched population is `1 + n_sym` times larger per relation.
+  Stage 5 labels on real data will therefore find more twins than before; compare before/after on a known sample.
+
+### Fixed — hkl symmetry permutation was wrong for non-cubic cells
+
+- `build_symmetry_table` and `extend_symmetry_table_with_twin` built `hkl_perm` by rotating the INTEGER Miller indices
+  with a Cartesian rotation (`apply_sym_to_hkl_int`). That is exact for a cubic cell and wrong whenever the reciprocal
+  basis is not orthonormal: the image of (h, k, l) is `B⁻¹ R B (h, k, l)`. For SG 194 it put 5242 of 7224 (operator,
+  reflection) images on the wrong row (73%; the 12 operators of a closed 342-reflection set, c/a = 1.587); cubic and
+  the 2-fold monoclinic case were exact. `hkl_perm` now rotates the Cartesian g vectors in `HklTable.real[:, :3]`
+  (`symmetry.rotated_g_rows`, `symmetry.hkl_row_images`), matching an image to a table row within
+  `1e-5·|g| + 5e-6` (hkls.csv carries g to 6 decimals; looser matching would accept near-coincident reflections as
+  images of twin operators). A table whose g columns are all zero falls back to the old integer path with a warning
+  (valid for cubic only). `apply_sym_to_hkl_int` is kept for API compatibility with a warning in its docstring.
+- Affects Phase-2 cluster alignment and merging (`pipeline.py`, `refine_cluster.py`, `canonicalize.py`) for
+  hexagonal, trigonal and triclinic samples; grain counts and merges for those can change. The Python
+  `c_parity` default is a replica of the C path, which does not use this table; check before/after on a hexagonal
+  sample.
+- Tests: `tests/test_symmetry_noncubic.py` checks the defining property `g[perm[s, k]] = R_s g[k]`, the group
+  homomorphism, bijectivity, and agreement with the exact `B⁻¹ R B` image, for cubic, tetragonal, orthorhombic,
+  hexagonal, trigonal and monoclinic cells (which also confirms the `make_symmetries` operators sit in the MIDAS
+  frame for all of them). The old `test_hkl_perm_is_a_permutation_for_complete_orbit` fixture had `g = 0 0 0`; it now
+  carries real g values.
+
+### Fixed — `cluster_merge` twin path (operator on the wrong side, no symmetry)
+
+- `compute_cluster_merges(mode="twin"|"combined")` tested `|<q_I, T·q_J>|`: the twin operator on the LAB side and no
+  crystal-symmetry reduction. A twin relation is `O_J = O_I · T · S` (T in the crystal frame, S any symmetry
+  operator), so the test only worked when the parent happened to be the identity, which is the only case its test
+  used. FCC Σ3 pairs with a random parent and a random symmetry representative merged 0 of 40. It now tests
+  `misorientation(q_I, q_J·T)` and the reverse, reduced over the point group (`midas_stress`
+  `misorientation_quat_batch`, chunked at 200k pairs), for every twin operator; 40 of 40 merge, HCP twins built from the
+  `midas_hkls` B matrix (four systems, 20 each) all merge, and 80 random cubic clusters (3160 pairs) give 1 chance
+  merge. The `direct` branch still compares raw quaternions (valid only when both are canonicalised to the same
+  fundamental zone; an FZ-boundary pair can be missed): not changed here. Used by `v4_pipeline` Pass-1.5
+  (`twin_aware_merge`), so twin-aware merging there finds more pairs than before.
+- Tests: `tests/test_cluster_merge_symmetry.py`.
+
+### Changed — twin relation definitions moved to `midas_stress`
+
+- `TwinRelation`, `default_{fcc,cubic,hcp,tetragonal,trigonal}_twin_relations`, `default_twin_relations_for`,
+  `HCP_FRAMES`, `hcp_hkil_to_cartesian_normal` and `tetragonal_hkl_to_cartesian_normal` now live in
+  `midas_stress.twin_relations` (orientation code belongs there; `midas_defect` uses the same module). They are
+  re-exported from `midas_process_grains.compute.twins`, so existing imports keep working and the objects are
+  identical. `find_twin_pairs` and `extend_symmetry_table_with_twin` stay here. Needs a `midas-stress` release that
+  contains `twin_relations` (raise the `midas-stress` floor in `pyproject.toml` at release time).
+
+### Fixed — `cluster_merge` direct branch compared raw quaternions
+
+- `compute_cluster_merges(mode="direct" | "combined")` merged alt-indexings with `2 arccos|<q_I, q_J>|`, i.e.
+  with no crystal-symmetry reduction, so it only caught two representatives of the same grain when they happened to
+  sit in the same symmetry representative / the same side of a fundamental-zone boundary. Same grain, 1 deg of
+  noise, random symmetry representative: merged 4/40 (SG 225), 5/40 (SG 194), 20/40 (SG 14); now 40/40 each. The
+  direct and twin branches share one chunked, symmetry-reduced misorientation helper (`_sym_misori_rad`). Used by
+  `v4_pipeline` Pass-1.5; direct merges there can increase for cubic and hexagonal samples.
+- Tests: `tests/test_cluster_merge_symmetry.py` (direct branch cases added).
+
+### Open
+
+- `compute/stress.py` `stiffness_file`: the crystal frame of a user stiffness is unstated (hexagonal is
+  frame-invariant; trigonal, monoclinic and triclinic are not). `midas_stress.elastic_inverse` has `trigonal_a` for
+  the P321/R-3c family, see that package.
+
 ## [0.13.0] – 2026-09-29
 
 **Numbers that can change for existing users:** `/residuals` in the sidecar is now the post-fit table (the

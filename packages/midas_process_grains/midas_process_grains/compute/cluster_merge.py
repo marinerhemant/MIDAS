@@ -86,6 +86,28 @@ def _qmul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     ])
 
 
+def _sym_misori_rad(qa: np.ndarray, qb: np.ndarray, space_group: int,
+                    chunk: int = 200_000) -> np.ndarray:
+    """Crystal-symmetry-reduced misorientation (rad) of paired quaternion rows, chunked.
+
+    ``midas_stress.orientation.misorientation_quat_batch`` reduces over the point group of
+    ``space_group`` on the crystal side, so two orientations that are the same grain under
+    different symmetry representatives (or on opposite sides of a fundamental-zone boundary)
+    compare as ~0, which a raw quaternion dot product does not.
+    """
+    import torch
+    from midas_stress.orientation import misorientation_quat_batch
+    n = qa.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    for lo in range(0, n, chunk):
+        sl = slice(lo, lo + chunk)
+        out[sl] = misorientation_quat_batch(
+            torch.from_numpy(np.ascontiguousarray(qa[sl])),
+            torch.from_numpy(np.ascontiguousarray(qb[sl])),
+            space_group).numpy()
+    return out
+
+
 def _qmul_batch(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Quaternion multiply for arrays. ``a`` and ``b`` are (...,4) and
     broadcast against each other. Returns (...,4)."""
@@ -229,10 +251,11 @@ def compute_cluster_merges(
         roots = list(range(N_c))
     else:
         I, J = pair_list[:, 0], pair_list[:, 1]
-        # Direct misori (vectorised): batched quaternion dot product.
+        # Direct misori, symmetry-reduced (the raw quaternion dot product this replaced
+        # missed alt-indexings that sit in different symmetry representatives / across a
+        # fundamental-zone boundary).
         qI = qs[I]; qJ = qs[J]
-        d_dir = np.abs(np.sum(qI * qJ, axis=1)).clip(max=1.0)
-        misori_direct_rad = 2.0 * np.arccos(d_dir)
+        misori_direct_rad = _sym_misori_rad(qI, qJ, space_group)
 
         if mode in ("direct", "combined"):
             mask_dir = misori_direct_rad < tol_rad
@@ -244,24 +267,24 @@ def compute_cluster_merges(
         else:
             remaining = np.ones(pair_list.shape[0], dtype=bool)
 
-        # Twin-operator misori (vectorised across pairs × operators).
-        # We loop over T to keep peak memory at O(N_pairs × 4) instead of
-        # O(N_T × N_pairs × 4); for 4 FCC twin ops and 60M pairs that's
-        # 2 GB vs 8 GB. Take the running-min across ops.
+        # Twin-operator misori, SYMMETRY-AWARE, with the operator on the CRYSTAL side.
+        # A twin relation is O_J = O_I . T . S (T in the crystal frame, S any crystal
+        # symmetry operator), so the test is  misorientation(q_I, q_J . T)  reduced over
+        # the point group, in both directions (T need not be an involution, and neither
+        # cluster is the "parent"). The earlier version tested |<q_I, T.q_J>| with T on the
+        # LAB side and no symmetry reduction: it found a twin only when the parent was the
+        # identity (the only test) and merged 0 of 40 random FCC Sigma3 twin pairs.
+        # Loop over T and chunk the pairs to keep peak memory flat.
         if mode in ("twin", "combined") and twin_qs and remaining.any():
             I_r = I[remaining]; J_r = J[remaining]
             qI_r = qs[I_r]; qJ_r = qs[J_r]
-            best_dot = np.zeros(I_r.shape[0], dtype=np.float64)
+            n_r = I_r.shape[0]
+            misori_best = np.full(n_r, np.inf, dtype=np.float64)
             for T in twin_qs:
-                T_b = T[None, :]
-                # _qmul_batch broadcasts: (1,4) ⊗ (N_p,4) → (N_p,4)
-                T_qJ = _qmul_batch(T_b, qJ_r)
-                T_qI = _qmul_batch(T_b, qI_r)
-                dot_a = np.abs((qI_r * T_qJ).sum(axis=1))
-                dot_b = np.abs((T_qI * qJ_r).sum(axis=1))
-                np.maximum(best_dot, np.maximum(dot_a, dot_b), out=best_dot)
-            np.clip(best_dot, a_min=None, a_max=1.0, out=best_dot)
-            misori_best = 2.0 * np.arccos(best_dot)
+                T_b = np.asarray(T, dtype=np.float64)[None, :]
+                m_a = _sym_misori_rad(qI_r, _qmul_batch(qJ_r, T_b), space_group)
+                m_b = _sym_misori_rad(qJ_r, _qmul_batch(qI_r, T_b), space_group)
+                np.minimum(misori_best, np.minimum(m_a, m_b), out=misori_best)
             mask_twin = misori_best < tol_rad
             for k in np.flatnonzero(mask_twin):
                 uf.union(int(I_r[k]), int(J_r[k]))

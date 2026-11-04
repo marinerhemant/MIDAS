@@ -77,13 +77,35 @@ def test_hcp_hkil_normal_rejects_inconsistent_i_index():
 
 
 def test_hcp_hkil_normal_1012_for_ti():
-    """{10-12} K1 normal for Ti c/a = 1.587 — verify cartesian direction."""
+    """{10-12} K1 normal for Ti c/a = 1.587 in the default (MIDAS) frame.
+
+    The MIDAS frame has a* along x, b* at 60 deg, c* along z, so
+    n ∝ ((2h + k)/√3, k, l/(c/a)). (The old default was the textbook a1-along-x
+    formula; it is still available as frame="crystallographic".)
+    """
     n = hcp_hkil_to_cartesian_normal(1, 0, -1, 2, c_over_a=1.587)
-    # Manually: (h, (h + 2k)/√3, l/(c/a)) = (1, 1/√3, 2/1.587)
-    expected = np.array([1.0, 1.0 / math.sqrt(3), 2.0 / 1.587])
+    expected = np.array([2.0 / math.sqrt(3), 0.0, 2.0 / 1.587])
     expected /= np.linalg.norm(expected)
     np.testing.assert_allclose(n, expected, atol=1e-9)
     assert abs(np.linalg.norm(n) - 1.0) < 1e-9
+
+
+def test_hcp_hkil_normal_1012_crystallographic_frame_is_30deg_off():
+    n_t = hcp_hkil_to_cartesian_normal(1, 0, -1, 2, c_over_a=1.587,
+                                       frame="crystallographic")
+    expected = np.array([1.0, 1.0 / math.sqrt(3), 2.0 / 1.587])
+    expected /= np.linalg.norm(expected)
+    np.testing.assert_allclose(n_t, expected, atol=1e-9)
+    n_m = hcp_hkil_to_cartesian_normal(1, 0, -1, 2, c_over_a=1.587)
+    # same polar angle from c, azimuth differs by exactly 30 deg (mod 60)
+    az = lambda v: math.degrees(math.atan2(v[1], v[0]))
+    assert abs(n_t[2] - n_m[2]) < 1e-12
+    assert abs(((az(n_t) - az(n_m)) % 60.0) - 30.0) < 1e-9
+
+
+def test_hcp_hkil_normal_rejects_unknown_frame():
+    with pytest.raises(ValueError):
+        hcp_hkil_to_cartesian_normal(1, 0, -1, 2, c_over_a=1.587, frame="bogus")
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +219,7 @@ def test_dispatcher_hcp_sg194_requires_c_over_a():
 
 def test_dispatcher_hcp_sg194_with_c_over_a():
     tw = default_twin_relations_for(194, c_over_a=1.587)
-    assert len(tw) == 30   # 5 systems × 6 K1 variants
+    assert len(tw) == 24   # 4 default systems × 6 K1 variants (compression_2112 duplicates compression_1122)
     assert all("HCP_" in t.name for t in tw)
 
 

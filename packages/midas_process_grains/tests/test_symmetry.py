@@ -59,7 +59,9 @@ def test_hkl_perm_is_a_permutation_for_complete_orbit(tmp_path):
     for h in (-1, 1):
         for k in (-1, 1):
             for l in (-1, 1):
-                text += f"{h} {k} {l} 2.0754 1 0 0 0 2.39 4.78 60000.0\n"
+                # real g vectors (|g| = 1/d, FCC a = 3.6 A): (h, k, l)·0.27819
+                text += (f"{h} {k} {l} 2.0754 1 {h*0.27819} {k*0.27819} {l*0.27819} "
+                         f"2.39 4.78 60000.0\n")
     p.write_text(text)
 
     from midas_process_grains.io.hkls import load_hkl_table

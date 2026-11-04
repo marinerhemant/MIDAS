@@ -137,19 +137,35 @@ def label_twins(
     tol_rad = math.radians(tol_deg)
 
     # Search: for each twin operator T, find pairs (i, j) where
-    # rotate(quats[i], T) is bucket-close to quats[j].
-    # cell size ~ chord of 2·tol_deg
+    #     q_i · S_k  ≈  q_j · T        for SOME crystal symmetry operator S_k.
+    # The raw-quaternion bucket must see every symmetry-equivalent
+    # representative of grain i. Without that expansion it only finds a twin
+    # whose stored representatives happen to line up (planted twins with a
+    # random twin-side symmetry operator: 5/40 found for HCP {10-12}, 0/40 on
+    # fundamental-zone quaternions, which is what v4_pipeline passes; the exact
+    # symmetry-aware check below was never the limit). cell size ~ chord of
+    # 2·tol_deg.
+    from midas_stress.orientation import make_symmetries
+    n_sym, sym_list = make_symmetries(space_group)
+    sym = np.asarray(sym_list, dtype=np.float64).reshape(-1, 4)[:n_sym]
+    n_sym = sym.shape[0]
     bucket_deg = max(2.0, 4.0 * tol_deg)
     cell_size = 2.0 * math.sin(math.radians(bucket_deg) / 2.0)
 
     found_pairs: List[Tuple[int, int, str, float]] = []
 
+    # Symmetry-equivalent representatives of every grain: row g*n_sym + k is
+    # q_g · S_k, owner = g.
+    equiv = _qmul(grain_quats[:, None, :], sym[None, :, :]).reshape(-1, 4)
+    equiv_owner = np.repeat(np.arange(N, dtype=np.int64), n_sym)
+
     for tw in twin_relations:
         T = tw.quaternion
-        rotated = _qmul(grain_quats, T[None, :])
-        # Search rotated vs original via bucket: stack both halves
-        stack = np.vstack([grain_quats, rotated])
-        labels = np.concatenate([np.zeros(N, dtype=np.int8), np.ones(N, dtype=np.int8)])
+        rotated = _qmul(grain_quats, T[None, :])           # q_j · T
+        # Search the T-rotated population against the symmetry-expanded one
+        stack = np.vstack([rotated, equiv])
+        labels = np.concatenate([np.zeros(N, dtype=np.int8),
+                                 np.ones(len(equiv), dtype=np.int8)])
         pairs_all = _bucket_pairs(stack, cell_size)
         if len(pairs_all) == 0:
             continue
@@ -158,15 +174,19 @@ def label_twins(
         pairs = pairs_all[mixed]
         if len(pairs) == 0:
             continue
-        # Map back to original grain indices: pop-0 → i; pop-1 → j
-        first = pairs[:, 0]; second = pairs[:, 1]
-        gi = np.where(first < N, first, first - N)
-        gj = np.where(second < N, second, second - N)
-        # Don't self-pair
+        a_idx, b_idx = pairs[:, 0], pairs[:, 1]
+        a_is_rot = a_idx < N
+        j_rot = np.where(a_is_rot, a_idx, b_idx)               # index into `rotated`
+        e_row = np.where(a_is_rot, b_idx, a_idx) - N           # row into `equiv`
+        gj = j_rot
+        gi = equiv_owner[e_row]
+        # Don't self-pair; each (gi, gj) once however many S_k matched
         keep = gi != gj
         gi = gi[keep]; gj = gj[keep]
         if len(gi) == 0:
             continue
+        uniq = np.unique(np.stack([gi, gj], axis=1), axis=0)
+        gi, gj = uniq[:, 0], uniq[:, 1]
         # Spatial filter
         if grain_positions is not None and spatial_max_um is not None:
             d = np.linalg.norm(

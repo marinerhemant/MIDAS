@@ -79,6 +79,72 @@ class SymmetryTable:
 # ---------------------------------------------------------------------------
 
 
+def rotated_g_rows(
+    R: np.ndarray,
+    g: np.ndarray,
+    ring_nr: Optional[np.ndarray] = None,
+    *,
+    rel_tol: float = 1e-5,
+    abs_tol: float = 5e-6,
+) -> np.ndarray:
+    """Row of ``R · g_k`` in the table, for every row ``k`` (``-1`` if absent).
+
+    ``g`` is the ``(n, 3)`` array of CARTESIAN reciprocal vectors in the crystal
+    frame (``HklTable.real[:, :3]``, i.e. ``B · (h, k, l)`` in the MIDAS frame),
+    which is the frame the operators ``R`` and the orientation matrices live in.
+    A rotation acts on those vectors directly; it acts on the integer Miller
+    indices only as ``B⁻¹ R B``, which is not ``R`` unless the basis is
+    orthonormal up to one common scale (see :func:`apply_sym_to_hkl_int`).
+
+    An image counts as present when it lies within ``rel_tol · |g| + abs_tol`` of
+    a table row (and, if ``ring_nr`` is given, on the same ring). ``hkls.csv``
+    carries g to 6 decimals (error <= 1e-6), so a true lattice-symmetry image is
+    matched to ~1e-6; the default is tight on purpose, because a looser one
+    accepts near-coincident reflections as images of operators that are NOT
+    lattice symmetries (twin operators), which is what ``extend_symmetry_table_with_twin``
+    feeds in.
+    """
+    from scipy.spatial import cKDTree
+
+    g = np.asarray(g, dtype=np.float64)
+    if g.ndim != 2 or g.shape[1] != 3:
+        raise ValueError(f"g shape must be (n, 3); got {g.shape}")
+    rotated = g @ np.asarray(R, dtype=np.float64).T
+    dist, idx = cKDTree(g).query(rotated)
+    ok = dist <= rel_tol * np.linalg.norm(g, axis=1) + abs_tol
+    if ring_nr is not None:
+        ring_nr = np.asarray(ring_nr)
+        ok &= ring_nr[idx] == ring_nr
+    return np.where(ok, idx, -1).astype(np.int64)
+
+
+def hkl_row_images(
+    R: np.ndarray,
+    hkl_real: np.ndarray,
+    hkl_integers: np.ndarray,
+    hkl_to_row: dict,
+) -> np.ndarray:
+    """Row index of the image of every table row under rotation ``R``.
+
+    Uses the Cartesian g vectors (``hkl_real[:, :3]``). A table whose g columns
+    are all zero (a hand-written stub) cannot be rotated that way, so it falls
+    back to rotating the integer indices, which is correct only for a cubic
+    cell, and warns.
+    """
+    g = np.asarray(hkl_real[:, :3], dtype=np.float64)
+    if not np.any(np.abs(g) > 1e-12):
+        import warnings
+        warnings.warn(
+            "hkl table has no Cartesian g vectors (g1..g3 all zero): rotating the "
+            "integer Miller indices instead, which is only valid for cubic cells.",
+            stacklevel=3,
+        )
+        rot = apply_sym_to_hkl_int(R, np.asarray(hkl_integers[:, :3], dtype=np.int64))
+        return np.array([hkl_to_row.get((int(a), int(b), int(c)), -1)
+                         for a, b, c in rot], dtype=np.int64)
+    return rotated_g_rows(R, g, np.asarray(hkl_integers[:, 3]))
+
+
 def apply_sym_to_hkl_int(
     R: np.ndarray,
     hkl_int: np.ndarray,
@@ -87,6 +153,16 @@ def apply_sym_to_hkl_int(
 
     Returns rounded integer ``(n, 3)`` so caller can look up the resulting
     triples in an ``hkl_to_row`` dict.
+
+    .. warning::
+       ``R`` is a Cartesian rotation, but ``(h, k, l)`` are coordinates in the
+       reciprocal lattice basis. The two agree only when that basis is
+       orthonormal up to one common scale (cubic). For hexagonal cells it maps
+       3052 of 4104 test images (SG 194, 342 hkl × 12 operators) to the wrong
+       hkl; the correct image is ``B⁻¹ R B (h, k, l)``. Kept for API
+       compatibility; :func:`build_symmetry_table` and
+       :func:`midas_process_grains.compute.twins.extend_symmetry_table_with_twin`
+       no longer use it (they use :func:`rotated_g_rows`).
     """
     if hkl_int.ndim != 2 or hkl_int.shape[1] != 3:
         raise ValueError(f"hkl_int shape must be (n, 3); got {hkl_int.shape}")
@@ -149,19 +225,16 @@ def build_symmetry_table(
             R = U @ Vt
         ops_R_np[s] = R
 
-    # Build the hkl row permutation.
-    hkl_int = np.asarray(hkl_table.integers[:, :3], dtype=np.int64)   # (n_hkls, 3)
-    n_hkls = hkl_int.shape[0]
+    # Build the hkl row permutation by rotating the CARTESIAN g vectors (not the
+    # integer indices: a Cartesian rotation is not an integer-index map unless
+    # the basis is orthonormal, i.e. cubic).
+    n_hkls = int(hkl_table.integers.shape[0])
     hkl_perm = np.full((n_sym, n_hkls), -1, dtype=np.int64)
     n_missing = 0
     for s in range(n_sym):
-        rotated = apply_sym_to_hkl_int(ops_R_np[s], hkl_int)
-        for k in range(n_hkls):
-            key = (int(rotated[k, 0]), int(rotated[k, 1]), int(rotated[k, 2]))
-            row = hkl_table.hkl_to_row.get(key, -1)
-            if row < 0:
-                n_missing += 1
-            hkl_perm[s, k] = row
+        hkl_perm[s] = hkl_row_images(ops_R_np[s], hkl_table.real,
+                                     hkl_table.integers, hkl_table.hkl_to_row)
+        n_missing += int((hkl_perm[s] < 0).sum())
 
     if warn_missing and n_missing > 0:
         # Use stdlib warnings to be importable without extra deps.
