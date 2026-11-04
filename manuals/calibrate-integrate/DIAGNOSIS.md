@@ -322,6 +322,14 @@ cause: the pv path succeeds with a *gap-capped* window (0.45 × the ring gap,
 `_capture_windows_px`), and that variant has never been tried on the centroid path. Use
 `autocalibrate_pv` today; the gap-capped centroid window is the next experiment.
 
+**Lever as of 2026-10-15: `calibrate_tilted` ([`phase-4c-tilted.md`](phase-4c-tilted.md)).** It does
+not trust a stable parameter vector: it grades the geometry with the ring-position gate (pixels,
+independent of the fit) and falls back to `autocalibrate_pv` when the gate FAILs. Test it applies
+to your own geometry in two seconds: `ring_position_gate(img, tth_map, rings, ...)`; a FAIL with
+"few of the populated cells found a ring" means the rings are not where the geometry says, whatever
+the strain reads. On the 5° frame it separated a self-consistent wrong solution (`converged=False`,
+9,495 µε, 29 % of cells) from the right one (0.042 px).
+
 **If the tilt moved but stopped at a round number** → you are on a bound, not at a
 minimum. v1 bounds arrive as `init ± tolTilts` centred on the seed, so a tilt-blind
 seed caps the travel: a `tz = 0` seed at the default `tolTilts` of 3 rails at exactly

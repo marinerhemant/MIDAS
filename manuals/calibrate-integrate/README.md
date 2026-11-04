@@ -177,6 +177,14 @@ Two independent axes. Pick one cell from each.
 | many frames | one-shot `--device cuda`, or batch |
 | live during acquisition | server on port 60439 (§5c) |
 
+**Geometry** (a third axis; decide it before §4):
+
+| the detector is | calibration | integration |
+|---|---|---|
+| square-on (tilt < ~1°) | §4 below | §5 |
+| **tilted** by more than ~1–2°, or `calibrate()` returned a near-zero tilt on one you know is tilted | **[`phase-4c-tilted.md`](phase-4c-tilted.md)** — `calibrate_tilted`, graded by the ring-position gate (§6); never the default `calibrate()` (rule 16) | §5 with `--mode polygon` (4c §6) |
+| tiled / multi-panel **and** tilted | **not exercised — stop and ask** (§7) | — |
+
 CPU and GPU agree **exactly** on this path — v2 is float64 throughout, so there is
 no reduction-order noise (measured: max abs difference 0 on 648 000 bins). Choose
 on throughput, not on accuracy.
@@ -188,6 +196,11 @@ on throughput, not on accuracy.
 **The recipe now lives in [`phase-4-calibrate.md`](phase-4-calibrate.md)**, together
 with §4b (two calibrants on one exposure). It is one read, in this order: clean the
 frame (both sentinel conventions), seed *after* cleaning, then the four-stage fit.
+
+**Tilted detector: [`phase-4c-tilted.md`](phase-4c-tilted.md) instead of this section.** One call,
+`calibrate_tilted(image, wavelength_A=..., px_um=..., calibrant=...)`, returns a geometry with an
+independent PASS/WARN/FAIL (hard rules 16, 17); it chains `make_seed`, the iterated frozen-point
+route, one radial-distortion pass and, if the gate FAILs, `autocalibrate_pv`.
 
 The three things that belong in the spine, because skipping them invalidates the run:
 **never seed from an existing geometry block**, **never substitute
@@ -267,13 +280,31 @@ distortion and panel shifts:
 
 ```python
 from midas_integrate_v2.forward.pixels import eval_pixel_REta
-from midas_integrate_v2.compat.from_v1 import spec_from_v1_params
-R = eval_pixel_REta(spec_from_v1_params(p, requires_grad=False))[0].detach().numpy()
+from midas_integrate_v2.compat.from_v1 import spec_from_v1_paramstest
+spec = spec_from_v1_paramstest("paramstest_v2.txt")            # the file you are about to integrate with
+R = eval_pixel_REta(spec)[0].detach().numpy()
+ideal_radii_px = [Lsd_um * np.tan(np.radians(t)) / PX for t in ring_two_theta_deg]    # Lsd along the beam
 ax.contour(R, levels=ideal_radii_px, colors="#00E5FF", linewidths=0.6)
 ```
 
 Contours must sit **on** the ring crests. Sitting uniformly inside or outside
 means the distance is wrong — see DIAGNOSIS "rings uniformly offset".
+
+**Ring positions in pixels — the numeric check (required on a tilted detector, cheap on any).**
+The overlay is a look; this is a number, and it is independent of the fit:
+
+```python
+from midas_calibrate_v2.ring_position_gate import ring_position_gate
+g = ring_position_gate(img, tth_map_deg, ring_two_theta_deg, lsd_um=LSD, px_um=PX, mask=bad)
+print(g)    # PASS: median < 0.3 px, p95 < 1 px, >= half the populated ring cells found their ring
+```
+
+`tth_map_deg` is the 2θ of every pixel for the geometry under test, with distortion
+(`atan(R_px·px/Lsd)` from `pixel_to_REta_from_spec`, as in the overlay above);
+`ring_two_theta_deg` from `seed.auto_seed._ring_table`. A fraction of found cells below 50 % is
+a FAIL whatever the median says (a wrong geometry loses the cells and the survivors look fine,
+rule 17). It is blind to `Lsd` and to the wavelength (a free `Lsd` absorbs a wrong λ and the gate still PASSes, rule 9);
+a global scale off by more than 0.1 % is a WARN and means the map and the ring list disagree.
 
 **Ring positions in the lineout.** Match measured crests to ideal radii *by
 position*, never by rank — the ranking differs between kernels and will
@@ -321,8 +352,14 @@ manufacture a false discrepancy (Lab Notebook §3).
   ```python
   from midas_calibrate_v2.pipelines.diagnostics import detector_scope_gate
   g = detector_scope_gate(wavelength_A=LAMBDA, Lsd_um=LSD, pxY_um=PX,
-                          NrPixelsY=NY, NrPixelsZ=NZ)      # 'fail' ⇒ halt
+                          NrPixelsY=NY, NrPixelsZ=NZ,
+                          lattice_a_A=A_CAL, space_group=SG_CAL)      # 'fail' ⇒ halt
   ```
+
+  The lattice arguments default to **CeO₂ (5.41153 Å, space group 225)**: pass your calibrant's
+  (LaB₆: 4.1569, 221), or the gate silently counts the wrong rings. `Lsd` here is the recorded
+  stage distance (it does not exist yet on a blind first calibration, and the gate ignores tilt, so
+  use it as a go/no-go before calibrating and again with the fitted distance after).
 
   A ring lands at `R = Lsd·tan(2θ)`; the panel reaches only its
   beam-centre-to-farthest-corner distance. When nothing reaches it the fitter
@@ -333,11 +370,18 @@ manufacture a false discrepancy (Lab Notebook §3).
   scope (§9, "a SAXS detector in a powder archive") and a GE quad parked at
   3300 mm that fitted 480–573 mm.
 
+- **H13** The ring-position gate FAILs on a tilted detector after `calibrate_tilted` has also tried
+  `autocalibrate_pv`, or any tilted-detector geometry is about to be used without a PASS
+  (rules 16, 17). `converged=True` and a low strain do not override this: the 5° frame reported
+  `converged=False` at 9,495 µε from one seed and `converged=True` at 150 µε from another, and
+  only the gate told the two apart. Supply `nominal_tilt_deg` once; if that also FAILs, stop and
+  ask.
+
 ---
 
 ## §8. Hard rules
 
-**Moved to [`HARD_RULES.md`](HARD_RULES.md)** — 20 rules, each written after a silent
+**Moved to [`HARD_RULES.md`](HARD_RULES.md)** — 17 rules, each written after a silent
 wrong answer. Read it once before your first run on a new detector.
 ## §9. Traps that silently corrupt results
 
@@ -369,6 +413,11 @@ wrong answer. Read it once before your first run on a new detector.
 | harmonics refined on a narrow azimuthal wedge | coefficients on their bounds, loop oscillates, "best iterate" is luck | rule 11; azimuth gate; H10 |
 | two calibrants, exact hkl degeneracies treated as blends | good rings silently excluded as "zero-separation doublets" | merge by d-spacing — `_dedup_by_d`, `rings.py:129` — before any blend rule |
 | two calibrants agreeing at a high residual | read as validation; it is two phases on a common noise floor | §4b.4 — absolute number first, ratio second |
+| the default `calibrate()` on a tilted detector | returns a near-zero tilt and a plausible strain; on the 5° frame 2,478 µε with distortion railed | `calibrate_tilted` (phase 4c), rule 16 |
+| `converged=True` from the iterated frozen-point route read as a calibration | 5° frame: `converged=False`/9,495 µε from one seed, `converged=True`/150 µε from another | the ring-position gate decides, rule 17 |
+| a median ring-position residual quoted without the cell fraction | a wrong geometry loses its cells; the survivors look sub-pixel | `gate.n_fits / gate.n_cells_expected`, rule 17 |
+| ring arcs cut by the detector edge fitted as if complete | centre biased by tens to hundreds of µε in every integrator | mask or drop them (rule 17) |
+| `tx` left free, or an arbitrary `tx` kept, on a tilted detector | invisible to the 2θ map, but it rotates the η origin and with it the polarization plane: 13.5° and 39.4° off in the test that found it, 0.7 % spurious modulation | hold `tx = 0` in the calibration (4c §6) |
 | `tx` set to 0 on a panel that is physically mounted rotated | ring radii barely move so the fit converges; the exported file then carries an azimuthal frame rotated from the detector, and `ty`/`tz` are expressed in it | `tx` is not refined — carry it from the panel; downstream η is wrong otherwise |
 | a geometry-only paramstest treated as a runnable parameter file | missing `MaxRingRad`, `ImTransOpt`, file/scan keys; a missing `MaxRingRad` is the indexer's ring-array overflow | export from a template, or check the key list before handing it on |
 

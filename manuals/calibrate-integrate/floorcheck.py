@@ -58,6 +58,24 @@ def check_sidecar_written() -> bool:
         return _ok("calibrate-v2 writes the panelshifts sidecar", False, repr(e))
 
 
+def check_tilted_entry() -> bool:
+    """The tilted-detector entry point and its independent gate must exist (phase 4c)."""
+    try:
+        from midas_calibrate_v2.pipelines import tilted
+        from midas_calibrate_v2 import ring_position_gate as rpg
+        params = inspect.signature(tilted.calibrate_tilted).parameters
+        return _ok(
+            "calibrate-v2 has calibrate_tilted and the ring-position gate",
+            "fallback_pv" in params and hasattr(rpg, "ring_position_gate")
+            and hasattr(tilted.TiltedCalibration, "write_paramstest"),
+            "this build has no independent pixel gate: on a tilted detector the default "
+            "calibrate() returns a near-zero tilt and nothing graded by the fit can say so "
+            "(phase-4c-tilted.md; install the release that contains pipelines/tilted.py)",
+        )
+    except Exception as e:                                   # pragma: no cover
+        return _ok("calibrate-v2 has calibrate_tilted and the ring-position gate", False, repr(e))
+
+
 def check_map_buffer() -> bool:
     """v1's map buffer must be geometry-derived and warn unconditionally."""
     try:
@@ -168,6 +186,7 @@ def main() -> int:
         check_mask_and_device(),
         check_high_sentinel(),
         check_hdf5_filter_plugins(),
+        check_tilted_entry(),
     ]
     print()
     if all(results):

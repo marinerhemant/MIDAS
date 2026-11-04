@@ -30,6 +30,24 @@ untested path does not get promoted to a recommendation. Written 2026-08-19.
 | v1 one-shot CPU/GPU, v1 server, v1 batch pipeline | run; C parity 2.2e-07 |
 | v2 vs v1-with-panels geometry | 9.1e-13 px after the panel fix |
 
+## Now exercised: tilted detector, single panel, LaB6 (2026-10-15) — PROVISIONAL
+
+Recipe and status table: [`phase-4c-tilted.md`](phase-4c-tilted.md). Two real frames, one calibrant,
+`calibrate_tilted` blind (no tilt given). Not /verify'd as a pipeline; the pieces carry their own
+verdicts.
+
+| frame | result | evidence |
+|---|---|---|
+| 45° tilt, 0.10798 Å (115 keV), 200 µm, 2048², dead columns + negative pixels | PASS: gate 0.059 / 0.237 px (494/497 cells), 558 µε, 121 s; polygon-mode profile crests within 0.024 px median (max 0.40, 25 rings) of the ideal radii | `$ANALYSIS/real_cal_others/tilted_45_none.json`, `e2e_integrate_only.py` |
+| 5° tilt, 0.72808 Å, 200 µm, 2048² | the iterated route **did not settle** (60 iterations, 9,495 µε), gate FAIL; `autocalibrate_pv` fallback PASS: 0.042 / 0.543 px (544/544 cells), tilt 5.10°, 248.19 mm perpendicular, 301 s total | `$ANALYSIS/real_cal_others/tilted_5_none.json` |
+| the same two frames, MIDAS iterated route from 10 displaced seeds each | 7 of 10 reach the reference geometry; fails with the distance 3 % too long and with a tilt-0 start whose beam centre is at the image centre | `$ANALYSIS/real_cal_others/RESULTS.md` |
+
+| 20-ID-D HT-HEDM Varex (2880², 150 µm), CeO2 and LaB6, 43 files of a detector tilt series (tz −10.5…+9.4°) | blind 37/43 gate PASS (first gate version); with `lsd_um` = the 900 mm stage readback 42 PASS and file 000261 WARN under the revised gate; tz linear in file number to 0.005–0.009° rms; wavelength 63.000 keV assumed from the file name and NOT verified | `$ANALYSIS/ai_tune_rot_series/RESULTS.md` |
+
+Tilted detectors **not** exercised: tiled/multi-panel + tilted, a calibrant other than LaB6, depth
+or parallax, EIGER2, a start whose tilt is over ~14° and whose distance is off by more than a few
+percent.
+
 ## Not exercised — stop and ask rather than improvise
 
 | path | why it is not covered |

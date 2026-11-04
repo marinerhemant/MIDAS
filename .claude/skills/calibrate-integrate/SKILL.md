@@ -10,7 +10,8 @@ description: >-
   set up a live integration server, or when integrated patterns look wrong
   (spiky near cardinal angles, rings offset, panels railed), or when reprocessing
   an archive of past beamtimes unattended. Covers tiled Pilatus, GE single and
-  Hydra quad, Varex and Dexela frames through the midas_calibrate_v2 +
+  Hydra quad, Varex and Dexela frames, and a single-panel TILTED detector
+  (calibrate_tilted, graded by a pixel gate), through the midas_calibrate_v2 +
   midas_integrate_v2 chain; EIGER2 geometry is recoverable but NOT yet
   verified to spec (0 of 6 verified), so treat it as unproven and check
   ENVELOPE.md first; stops and asks outside that.
@@ -27,12 +28,13 @@ Read **`manuals/calibrate-integrate/README.md`** — the spine. It is the only f
 meant to stay loaded: the scope gate, the install gate, the survey, the dispatch
 matrix, integration, verification, the halt conditions and the traps table.
 Unlike the FF/NF spines it **carries the commands inline**, so a reduction can
-run from it alone. Four files hang off it, and each is loaded on demand:
+run from it alone. Five files hang off it, and each is loaded on demand:
 
 | file | when |
 |---|---|
-| `HARD_RULES.md` | applies to every phase; 13 rules, each written after something silently produced a wrong answer |
+| `HARD_RULES.md` | applies to every phase; 17 rules, each written after something silently produced a wrong answer |
 | `phase-4-calibrate.md` | the calibration recipe itself (the spine keeps the gates, this keeps the code) |
+| `phase-4c-tilted.md` | **the detector is tilted** (more than ~1–2°, or `calibrate()` returned a near-zero tilt on one you know is tilted): the one-call recipe, `calibrate_tilted`, with the independent pixel gate |
 | `ENVELOPE.md` | **before trusting a detector class** — what has actually been calibrated, per class, with numbers |
 | `RUNBOOK.md` | the pick-up point: what is true right now, and what is still not exercised |
 
@@ -67,15 +69,22 @@ Everything else is worked out from the files.
    pixel; measured 24.3× on in-band bins. `0` is bit-identical to `1`. Hard
    rule 1.
 
-4. **A strongly tilted detector breaks the default entry point.** On a CeO₂ frame
-   whose detector sits at `tz` ≈ 14°, the default `calibrate()` returns `tz` ≈ −0.014°
-   — essentially the untilted seed — and reports no error; the ring checker FAILs and
-   the rings are still a median 2.6 px off. `autocalibrate_pv` reaches that geometry
-   (28 µε, matching the reference in `tz` to inside the checker's ~0.2° resolution)
-   because it runs a wide capture window first. So on
-   a detector you know to be tilted, use `autocalibrate_pv`, verify with a ring
-   overlay, and treat a near-zero tilt from `calibrate()` as suspect rather than as a
-   measurement. Hard rule 15's bounded exception; open defect, not a detector property.
+4. **A tilted detector breaks the default entry point, and the optimiser cannot grade itself.**
+   On a CeO₂ frame at `tz` ≈ 14° the default `calibrate()` returns `tz` ≈ −0.014° and reports
+   no error; on a 5° LaB₆ frame it returned about 0.3° and 2,478 µε with the distortion railed.
+   Use `calibrate_tilted` (`manuals/calibrate-integrate/phase-4c-tilted.md`):
+
+   ```python
+   from midas_calibrate_v2.pipelines.tilted import calibrate_tilted
+   tc = calibrate_tilted(raw_image, wavelength_A=LAMBDA, px_um=PX, calibrant="LaB6")
+   print(tc)        # PASS / WARN / FAIL from an independent ring-position gate, in pixels
+   tc.write_paramstest("paramstest_v2.txt")      # refuses a FAIL geometry; then integrate --mode polygon
+   ```
+
+   The verdict is the gate's, never `converged=True`: the same iterated route on the same 5° frame
+   converged at 150 µε from one seed and did not settle (9,495 µε) from another, 0.45 % from the true
+   distance. Hard rules 16 and 17. Evidence is two real frames and synthetic images, PROVISIONAL;
+   tiled + tilted detectors are not exercised, stop and ask.
 
 5. **λ comes from the beamline and never from the fit.** Wavelength and `Lsd`
    are degenerate, and with the default `refine_distortion=True` the degeneracy

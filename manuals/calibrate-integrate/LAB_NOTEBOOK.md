@@ -666,3 +666,45 @@ here.
 Also in 0.16.0: distortion phases get a ±180 box instead of ±90. The LM clamps at a bound
 rather than wrapping, and ±90 is exactly the seam between the (a, φ) and (−a, φ + 180)
 representations, so a real phase near ±90 railed there.
+
+---
+
+## §18. Tilted detectors: what the iterated route does and does not do — PROVISIONAL (2026-10-15)
+
+Sources: `$ANALYSIS/real_cal_others/` (PREREGISTER.md with seven dated amendments, RESULTS.md),
+`$ANALYSIS/tilt45_lab6/`, `$ANALYSIS/tilt_2_4_lab6/`, `$ANALYSIS/tilt4way*/`.
+
+- **Established enough to build on.** On two real LaB6 frames the ring-position gate agrees with an
+  independent scorer within 0.03 px on five good geometries and rejects four wrong ones, because it
+  counts the cells that found a ring (18–31 % for the wrong ones). Hard rules 16, 17.
+- **The iterated frozen-point route is seed-dependent on a low-tilt frame.** 5° frame: converged at
+  150 µε in 16 iterations from one seed and did not settle (60 iterations, 9,495 µε, gate 1.39–1.57 px)
+  from another that was closer in distance. The 45° frame converged from the same kind of start. In the
+  displaced-seed ladder it reached the reference from 7 of 10 starts on each frame and failed with the
+  distance 3 % too long and with a tilt-0, centre-of-image start.
+- **Not a ranking of codes.** pyFAI and GSAS-II `ImageRecalibrate` need the tilt roughly right on the
+  45° frame (they failed from a 20° / 10 % tilt error); GSAS-II `ImageCalibrate` (a person clicks ≥ 5
+  points on the first ring) reached the same optimum in ~1.6 s from 37 of 40 simulated click sets; MIDAS
+  has no click step. Different inputs, so no ranking; calibration time (seconds to minutes) is a
+  once-per-geometry cost and not what decides a beamtime.
+- **A tilt-aware click seed (prototype, not in the package).** From 5 simulated clicks a multi-start
+  ellipse solve gave 10/10 on the 45° frame and 7/10 on the 5° frame (a near-circular ring carries no
+  tilt information); circle-only seeds (what the existing pickers return) gave 0/2 and 0/10. One
+  calibration pass from that seed took 4–11 s on the 45° frame and was not reliable on its own (3/10
+  unsettled). Parked: it would help strongly tilted frames only.
+- **Refuted along the way (mine).** A claim that MIDAS polarization modulation was 0.77 % at tilt was
+  an arbitrary `tx` rotating the η origin (corrected: 0.005–0.017 %). A claim of "matched cells" across
+  codes compared sector indices that were 180° and a flip apart. A "GSAS-II 7–9 % intensity spread" was
+  my own double polarization correction. Details in the analysis directories' correction blocks.
+- **`make_seed` picks the wrong innermost ring in about 1 file in 7 on tilted 2880² Varex frames**
+  (6 of 43: seed distance 2.4×, 0.85×, 0.68× the truth). The iterated route then fails whatever the
+  tilt start, and the gate catches it every time. A distance hint (`lsd_um`, the stage readback) fixes
+  5 of the 6; `nominal_tilt_deg` alone does not. The failure message used to ask for a distance
+  argument that did not exist (found by a context-free run of the docs). Added.
+- **A context-free run of the docs** (a fresh agent with only the skill and manuals) reproduced both
+  real frames and found: the CLI could not write a paramstest or the mask (added `--paramstest`,
+  `--mask-out`, `--im-trans`, `tc.write_mask`); the scope-gate snippet silently defaults to CeO2; the
+  overlay snippet used undefined names; `read_image`'s mask is empty for float TIFFs with negative
+  pixels. One of its CLI calls on the 5° frame FAILed (seed 1204.965 mm) while the same command rerun
+  here and the Python call both PASSed through the `autocalibrate_pv` fallback: not reproduced, cause
+  unknown.

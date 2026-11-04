@@ -205,4 +205,23 @@
    verified by that property alone; it still needs the ring-overlay and gate
    checks above run against whichever pipeline actually produced it.
 
+16. **On a tilted detector, `converged=True` is not evidence; the ring-position gate is.**
+    Calibrate with `midas_calibrate_v2.pipelines.tilted.calibrate_tilted` (phase 4c), never the
+    default `calibrate()`, and accept a geometry only if `tc.verdict` is PASS (median < 0.3 px,
+    p95 < 1 px, at least half the populated ring cells finding their ring). The iterated frozen-point
+    route reported `converged=False` and 9,495 µε on the 5° frame from one seed and converged at
+    150 µε from another, 0.45 % vs 1.8 % from the true distance, so its basin on a low-tilt frame is
+    not a function of how close the seed looks. The gate caught the failed one: 1.39 px with 29 % of
+    populated cells finding a ring (`$ANALYSIS/real_cal_others/tilted_5_none.json`). A strain, a
+    residual or a stable parameter vector graded by the fit itself cannot catch a wrong but
+    self-consistent solution.
+
+17. **A ring-position test cannot see wavelength or distance, and must not be fooled by the
+    survivors.** The gate removes one global scale (reports it; a scale off by > 0.1 % means the map and the
+    ring list disagree, nothing about λ: a wavelength 1.9 % too high gave PASS, 0.060 px, scale 1.00002,
+    with the distance 1.8 % short, because a free `Lsd` absorbs it, rule 9), and it counts the cells that FOUND their ring against those that could
+    have, because a wrong geometry loses cells and the few that remain look fine. Do not quote a
+    median without the cell fraction. Ring arcs cut by the detector edge or a panel gap are biased by
+    tens to hundreds of µε in every integrator tested: mask or drop them before a peak fit.
+
 ---
