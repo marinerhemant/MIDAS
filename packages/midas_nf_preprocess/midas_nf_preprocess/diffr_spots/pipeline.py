@@ -18,10 +18,11 @@ from typing import Optional, Sequence, Union
 
 import logging
 
+import numpy as np
 import torch
 
 from ..device import resolve_device, resolve_dtype
-from .binary_io import write_all
+from .binary_io import write_all, write_key_bin, write_orient_mat_bin
 from .geometry import bragg_omega_eta, calc_spot_position
 from .hkls import read_hkls_csv, read_seed_orientations
 from .orientations import quat_to_orient_matrix
@@ -75,20 +76,18 @@ class DiffrSpotsResult:
         within an orientation appearing in the order they are listed in the
         input HKL table, two solutions per HKL.
         """
-        # Iterate orientation-by-orientation to preserve C ordering.
+        # One boolean mask over the (N, 2M) view: row-major selection is orientation-major with the HKLs in
+        # input order, exactly the order of the former per-orientation loop, but with no per-orientation Python
+        # loop and no second copy of the data (the loop + torch.cat needed ~3x the output size on the device:
+        # 972,439 orientations x 442 hkls ran out of a 47 GB card here).
         N = self.n_orientations
-        out_blocks: list[torch.Tensor] = []
-        for j in range(N):
-            mask = self.valid[j].reshape(-1)
-            yl = self.yls[j].reshape(-1)[mask]
-            zl = self.zls[j].reshape(-1)[mask]
-            om = self.omegas[j].reshape(-1)[mask]
-            out_blocks.append(torch.stack([yl, zl, om], dim=1))
-        if not out_blocks:
-            return torch.empty(
-                (0, 3), dtype=self.yls.dtype, device=self.yls.device
-            )
-        return torch.cat(out_blocks, dim=0)
+        if N == 0:
+            return torch.empty((0, 3), dtype=self.yls.dtype, device=self.yls.device)
+        mask = self.valid.reshape(N, -1)
+        return torch.stack(
+            [self.yls.reshape(N, -1)[mask], self.zls.reshape(N, -1)[mask], self.omegas.reshape(N, -1)[mask]],
+            dim=1,
+        )
 
 
 LOGGER = logging.getLogger(__name__)
@@ -428,6 +427,38 @@ class DiffrSpotsPipeline:
             # silently 0 -- the parameter was never parsed here.
             wedge_deg=self.params.wedge,
         )
+
+    def run_to_disk(
+        self, *, output_dir: Optional[Union[str, Path]] = None, batch_size: Optional[int] = None
+    ) -> tuple[int, dict]:
+        """Like :meth:`run` (same three files; Key.bin and OrientMat.bin byte-identical, DiffractionSpots.bin equal to
+        floating-point rounding, max |diff| 3e-14 um measured, because batching changes the vectorised kernels' rounding) but with device memory bounded by ``batch_size``
+        orientations: each chunk is predicted, its valid spots are appended to ``DiffractionSpots.bin`` as float64 and
+        freed. :meth:`run` keeps every (N, M, 2) tensor of the whole problem on the device and so cannot do a large
+        seed set (972,439 orientations x 442 hkls, a trigonal cache for a long-c cell). Returns ``(total_spots, paths)``."""
+        out_dir = Path(output_dir or self.params.output_directory)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        n_or = self.n_orientations
+        if batch_size is None:
+            batch_size = _auto_batch_orientations(n_or, self.n_hkls, self.device, self.dtype)
+        batch_size = max(1, min(int(batch_size), max(n_or, 1)))
+        counts, mats, total = [], [], 0
+        spots_path = out_dir / "DiffractionSpots.bin"
+        with torch.no_grad(), open(spots_path, "wb") as fh:
+            for lo in range(0, n_or, batch_size):
+                hi = min(lo + batch_size, n_or)
+                r = _predict_spots_chunk(
+                    self.quaternions[lo:hi], self.hkls, self.thetas_deg, distance=self.params.primary_distance,
+                    omega_ranges=self.params.omega_ranges, box_sizes=self.params.box_sizes,
+                    exclude_pole_angle=self.params.exclude_pole_angle, wedge_deg=self.params.wedge)
+                flat = r.flat_spots()
+                flat.detach().cpu().numpy().astype(np.float64).tofile(fh)
+                total += int(flat.shape[0])
+                counts.append(r.counts.cpu()); mats.append(r.orient_mats.detach().cpu())
+                del r, flat
+        write_key_bin(torch.cat(counts) if counts else torch.zeros(0, dtype=torch.int64), out_dir / "Key.bin")
+        write_orient_mat_bin(torch.cat(mats) if mats else torch.zeros((0, 3, 3), dtype=self.dtype), out_dir / "OrientMat.bin")
+        return total, {"Key.bin": out_dir / "Key.bin", "DiffractionSpots.bin": spots_path, "OrientMat.bin": out_dir / "OrientMat.bin"}
 
     def run(
         self, *, output_dir: Optional[Union[str, Path]] = None

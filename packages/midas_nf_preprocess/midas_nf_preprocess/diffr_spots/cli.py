@@ -34,6 +34,13 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         help="Override SeedOrientations path (default: from parameter file).",
     )
     parser.add_argument(
+        "--batch-orientations",
+        type=int,
+        default=None,
+        help="Orientations per chunk (bounds device AND host memory; default: sized from free device memory, which can be too large for "
+             "a host with a tight address-space limit: 972,439 orientations x 442 hkls needs <= ~50000 under ulimit -v 64 GB).",
+    )
+    parser.add_argument(
         "--output-dir",
         default=None,
         help="Override output directory for Key.bin / DiffractionSpots.bin / OrientMat.bin.",
@@ -51,8 +58,8 @@ def run(args: argparse.Namespace) -> int:
         output_dir=args.output_dir,
     )
     print(f"hkls.csv: {pipe.hkls_csv_path}")
-    result, paths = pipe.run(output_dir=args.output_dir)
-    total = int(result.counts.sum().item())
+    # run_to_disk: bounded device memory (chunks of orientations); same files as pipe.run() up to rounding (<1e-13 um)
+    total, paths = pipe.run_to_disk(output_dir=args.output_dir, batch_size=args.batch_orientations)
     print(
         f"Wrote {len(paths)} files to {Path(paths['Key.bin']).parent} "
         f"({pipe.n_orientations} orientations, {total} total spots)"

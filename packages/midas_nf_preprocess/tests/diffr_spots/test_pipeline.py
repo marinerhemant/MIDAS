@@ -416,3 +416,53 @@ def test_hkls_csv_cli_reports_path(tmp_path, capsys):
     data_dir, out_dir, pf = _hkls_resolution_setup(tmp_path)
     assert main([str(pf), "--device", "cpu"]) == 0
     assert f"hkls.csv: {out_dir / 'hkls.csv'}" in capsys.readouterr().out
+
+
+# -----------------------------------------------------------------------------
+# Memory-bounded run_to_disk / vectorised flat_spots (found on the Ruby NF: 972,439 seeds x 442 hkls
+# ran out of a 47 GB card in flat_spots(): per-orientation loop + torch.cat = ~3x the output on the device)
+# -----------------------------------------------------------------------------
+
+
+def _random_scene(tmp_path, n_or=11):
+    rng = np.random.default_rng(3)
+    q = rng.normal(size=(n_or, 4)); q /= np.linalg.norm(q, axis=1, keepdims=True)
+    seeds_path = tmp_path / "seeds.csv"; _write_seeds(seeds_path, [tuple(r) for r in q])
+    hkls_path = tmp_path / "hkls.csv"
+    _write_hkls_csv(hkls_path, [(1, 0, 0, 1, 5.0), (0, 1, 0, 1, 5.0), (1, 1, 0, 2, 7.0), (1, 1, 1, 3, 8.5), (2, 0, 0, 4, 9.5), (2, 1, 0, 5, 11.0)])
+    pf = tmp_path / "params.txt"
+    pf.write_text(f"DataDirectory {tmp_path}\nOutputDirectory {tmp_path}\nSeedOrientations {seeds_path}\nNrOrientations {n_or}\nLsd 1000.0\npx 1.0\nMaxRingRad 1000\n"
+                  "OmegaRange -180 180\nBoxSize -1000 1000 -1000 1000\nExcludePoleAngle 2\n")
+    return DiffrSpotsPipeline(DiffrSpotsParams.from_paramfile(pf), device="cpu")
+
+
+def test_flat_spots_equals_per_orientation_loop(tmp_path):
+    pipe = _random_scene(tmp_path)
+    r = pipe.predict()
+    ref = torch.cat([torch.stack([r.yls[j].reshape(-1)[r.valid[j].reshape(-1)], r.zls[j].reshape(-1)[r.valid[j].reshape(-1)],
+                                  r.omegas[j].reshape(-1)[r.valid[j].reshape(-1)]], dim=1) for j in range(r.n_orientations)], dim=0)
+    assert ref.shape[0] > 0 and torch.equal(r.flat_spots(), ref)
+
+
+@pytest.mark.parametrize("batch", [1, 2, 4, None])
+def test_run_to_disk_matches_run(tmp_path, batch):
+    pipe = _random_scene(tmp_path)
+    a, b = tmp_path / "a", tmp_path / "b"
+    result, pa = pipe.run(output_dir=a)
+    total, pb = pipe.run_to_disk(output_dir=b, batch_size=batch)
+    assert total == int(result.counts.sum().item()) > 0
+    for name in ("Key.bin", "OrientMat.bin"):                       # counts and orientation matrices are exact
+        assert pa[name].read_bytes() == pb[name].read_bytes(), name
+    A = np.fromfile(pa["DiffractionSpots.bin"], np.float64); B = np.fromfile(pb["DiffractionSpots.bin"], np.float64)
+    assert A.shape == B.shape and np.allclose(A, B, rtol=0, atol=1e-10)   # batching changes the vectorised rounding (3e-14 measured), never the spots
+
+
+def test_cli_batch_orientations_option(tmp_path):
+    from midas_nf_preprocess.diffr_spots.cli import main
+    pipe = _random_scene(tmp_path)
+    result, pa = pipe.run(output_dir=tmp_path / "a")
+    out = tmp_path / "b"
+    assert main([str(tmp_path / "params.txt"), "--device", "cpu", "--batch-orientations", "3", "--output-dir", str(out)]) == 0
+    assert (tmp_path / "a" / "Key.bin").read_bytes() == (out / "Key.bin").read_bytes()
+    A = np.fromfile(pa["DiffractionSpots.bin"], np.float64); B = np.fromfile(out / "DiffractionSpots.bin", np.float64)
+    assert A.shape == B.shape and np.allclose(A, B, rtol=0, atol=1e-10)
