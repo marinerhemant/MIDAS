@@ -49,6 +49,11 @@ class CrystalTensor:
     occ_asu: "torch.Tensor"                 # (n_asu,)
     B_iso_asu: "torch.Tensor"               # (n_asu,)
     U_aniso_asu: Optional["torch.Tensor"]   # (n_asu, 6) or None
+    # Which atoms are anisotropic: an EXPLICIT per-atom flag, built from ``Atom.U_aniso is not None``. The Debye-Waller factor used to decide this from the
+    # data (an all-zero row meant "isotropic"), which made it discontinuous at U = 0 (zero gradient for an atom refined from U = 0) and misread a genuine
+    # all-zero tensor. ``None`` (tensors built outside ``crystal_to_tensor``) falls back to the zero-row test.
+    aniso_mask_asu: Optional["torch.Tensor"] = None          # (n_asu,) bool
+    _aniso_mask_snapshot: Optional["torch.Tensor"] = None    # (N,) bool, link_to_asu=False
     # Snapshot unit-cell tensors (only used when link_to_asu=False):
     _fract_snapshot: Optional["torch.Tensor"] = None
     _occ_snapshot: Optional["torch.Tensor"] = None
@@ -80,6 +85,14 @@ class CrystalTensor:
             self._B_iso_snapshot,
             self._U_aniso_snapshot,
         )
+
+    def aniso_mask(self):
+        """(N,) bool over the unit-cell atoms: True for anisotropic atoms; ``None`` when the tensor has no mask (legacy construction)."""
+        if self.aniso_mask_asu is None:
+            return None
+        if self.link_to_asu:
+            return self.aniso_mask_asu[self.sym_atom_idx]
+        return self._aniso_mask_snapshot
 
     # ----------------------------- backward-compatible attribute shims
 
@@ -159,6 +172,7 @@ def crystal_to_tensor(
         )
     else:
         asu_U = None
+    asu_mask = torch.tensor([a.U_aniso is not None for a in crystal.atoms], dtype=torch.bool, device=device) if has_aniso else None
 
     if rg.get("fract", False):
         asu_fract = asu_fract.clone().detach().requires_grad_(True)
@@ -172,7 +186,7 @@ def crystal_to_tensor(
     elements = [crystal.atoms[i].element for i in expansion["asu_idx"]]
     asu_elements = [a.element for a in crystal.atoms]
 
-    fract_snap = occ_snap = B_snap = U_snap = None
+    fract_snap = occ_snap = B_snap = U_snap = mask_snap = None
     if not link_to_asu:
         uc_atoms = crystal.unit_cell_atoms(dedupe_tol=dedupe_tol)
         fract_snap = torch.tensor(
@@ -192,6 +206,7 @@ def crystal_to_tensor(
                 np.array([list(a.U_aniso) if a.U_aniso else [0.0] * 6 for a in uc_atoms]),
                 dtype=dtype, device=device,
             )
+            mask_snap = torch.tensor([a.U_aniso is not None for a in uc_atoms], dtype=torch.bool, device=device)
 
     return CrystalTensor(
         lattice_params=lattice_params,
@@ -204,6 +219,8 @@ def crystal_to_tensor(
         occ_asu=asu_occ,
         B_iso_asu=asu_B,
         U_aniso_asu=asu_U,
+        aniso_mask_asu=asu_mask,
+        _aniso_mask_snapshot=mask_snap,
         _fract_snapshot=fract_snap,
         _occ_snapshot=occ_snap,
         _B_iso_snapshot=B_snap,

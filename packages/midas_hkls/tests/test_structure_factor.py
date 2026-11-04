@@ -195,3 +195,81 @@ def test_gradcheck_atom_position(torch_only):
     fract = torch.tensor([list(a1.fract), list(a2.fract)], dtype=torch.float64,
                          requires_grad=True)
     assert torch.autograd.gradcheck(fn, (fract,), atol=1e-4, eps=1e-5)
+
+
+def test_mixed_anisotropic_and_isotropic_atoms_keep_their_isotropic_debye_waller_factor():
+    """An atom without U_aniso must keep exp(-B s^2) when another atom is anisotropic (it used to get a factor of 1: ~1 % wrong F^2)."""
+    gemmi = pytest.importorskip("gemmi")
+    import numpy as _np
+    import torch as _t
+    from midas_hkls import Atom, Crystal, Lattice, SpaceGroup, structure_factors
+    cell = (3.83, 3.83, 20.5, 90, 90, 90)
+    sites = [("La", (0, 0, 0.319), 0.006, (0.004, 0.004, 0.012, 0, 0, 0)), ("O", (0, 0.5, 0.095), 0.010, None),
+             ("Ni", (0, 0, 0.095), 0.005, None)]
+    hk = [(0, 0, 2), (1, 0, 4), (1, 1, 6), (2, 0, 3), (0, 0, 8), (2, 1, 5)]
+    ss = gemmi.SmallStructure(); ss.cell = gemmi.UnitCell(*cell); ss.spacegroup = gemmi.find_spacegroup_by_name("P 1")
+    for el, fr, ui, u6 in sites:
+        g = gemmi.SmallStructure.Site(); g.label = el; g.element = gemmi.Element(el); g.fract = gemmi.Fractional(*fr)
+        g.occ = 1.0; g.u_iso = ui
+        if u6 is not None:
+            g.aniso = gemmi.SMat33d(*u6)
+        ss.add_site(g)
+    ss.setup_cell_images(); ss.change_occupancies_to_crystallographic()
+    calc = gemmi.StructureFactorCalculatorX(ss.cell)
+    f2_g = _np.array([abs(calc.calculate_sf_from_small_structure(ss, list(h))) ** 2 for h in hk])
+    atoms = [Atom(el, fr, 1.0, 8 * _np.pi ** 2 * ui, U_aniso=(tuple(u6) if u6 is not None else None), label=el + str(i))
+             for i, (el, fr, ui, u6) in enumerate(sites)]
+    c = Crystal(Lattice(*cell), SpaceGroup.from_hm("P 1"), atoms, "t")
+    F = structure_factors(c.to_torch(dtype=_t.float64), _t.as_tensor(_np.array(hk)))
+    f2_m = (F.real ** 2 + F.imag ** 2).numpy()
+    assert _np.allclose(f2_g / f2_m, 1.0, atol=2e-4), f2_g / f2_m
+
+
+def _mixed_cell(la_u6):
+    import numpy as _np
+    from midas_hkls import Atom, Crystal, Lattice, SpaceGroup
+    atoms = [Atom("La", (0, 0, 0.319), 1.0, 8 * _np.pi ** 2 * 0.006, U_aniso=la_u6, label="La"),
+             Atom("O", (0, 0.5, 0.095), 1.0, 8 * _np.pi ** 2 * 0.010, label="O"),
+             Atom("Ni", (0, 0, 0.095), 1.0, 8 * _np.pi ** 2 * 0.005, label="Ni")]
+    return Crystal(Lattice(3.83, 3.83, 20.5, 90, 90, 90), SpaceGroup.from_hm("P 1"), atoms, "t")
+
+
+def test_mixed_cell_works_in_float32_and_agrees_with_float64():
+    """float32 on a mixed aniso/iso cell used to fail with 'expected scalar type Double but found Float'."""
+    import numpy as _np
+    import torch as _t
+    from midas_hkls import structure_factors
+    hk = _t.as_tensor(_np.array([(0, 0, 2), (1, 0, 4), (1, 1, 6), (2, 0, 3), (0, 0, 8)]))
+    c = _mixed_cell((0.004, 0.004, 0.012, 0, 0, 0))
+    f64 = structure_factors(c.to_torch(dtype=_t.float64), hk)
+    f32 = structure_factors(c.to_torch(dtype=_t.float32), hk)
+    assert _np.allclose((f32.real ** 2 + f32.imag ** 2).numpy(), (f64.real ** 2 + f64.imag ** 2).numpy(), rtol=2e-5)
+
+
+def test_the_anisotropic_flag_is_explicit_per_atom_and_the_gradient_exists_at_u_zero():
+    """Anisotropic or not is decided by Atom.U_aniso (a mask on the tensor crystal), not by whether the six numbers happen to be zero: an anisotropic atom at
+    U = 0 used to be read as isotropic, which cut its gradient (zero) and silently changed its Debye-Waller factor from exp(-B s^2) to 1 when it became non-zero."""
+    import numpy as _np
+    import torch as _t
+    from midas_hkls import structure_factors
+    ct = _mixed_cell((0.0, 0.0, 0.0, 0.0, 0.0, 0.0)).to_torch(dtype=_t.float64)
+    assert ct.aniso_mask().tolist() == [True, False, False]
+    ct.U_aniso_asu = ct.U_aniso_asu.clone().detach().requires_grad_(True)
+    hk = _t.as_tensor(_np.array([(0, 0, 2), (1, 0, 4), (1, 1, 6)]))
+    F = structure_factors(ct, hk)
+    (F.real ** 2 + F.imag ** 2).sum().backward()
+    assert float(ct.U_aniso_asu.grad[0].abs().sum()) > 0.0                        # the anisotropic La responds to its U at U = 0
+    assert float(ct.U_aniso_asu.grad[1:].abs().sum()) == 0.0                      # the isotropic atoms have no anisotropic parameters
+
+
+def test_tensor_crystals_without_a_mask_keep_the_zero_row_rule():
+    """Tensors built outside crystal_to_tensor (no aniso_mask) behave as before."""
+    import numpy as _np
+    import torch as _t
+    from midas_hkls import structure_factors
+    ct = _mixed_cell((0.004, 0.004, 0.012, 0, 0, 0)).to_torch(dtype=_t.float64)
+    hk = _t.as_tensor(_np.array([(0, 0, 2), (1, 0, 4)]))
+    with_mask = structure_factors(ct, hk)
+    ct.aniso_mask_asu = None
+    without = structure_factors(ct, hk)
+    assert _t.allclose(with_mask, without, rtol=1e-13)

@@ -11,15 +11,21 @@ is what this package is for.
 anomalous transmission, the Laue/Bragg asymmetry, or the redistribution of
 intensity within a reflection. Takagi-Taupin is the honest treatment for a
 near-perfect crystal and is deliberately out of scope. Treat ``t/Lambda >~ 0.5``
-as "kinematical results are quantitatively wrong here", not as "apply the factor
-and proceed".
+as "kinematical results are quantitatively wrong here" (for a perfect slab the 10 % loss is already at
+``t/Lambda = 0.1785``), not as "apply the factor and proceed".
 
 What the three pieces are for
 -----------------------------
 * :func:`extinction_length_um` -- ``Lambda``, the length scale. A path much
   shorter than it is kinematical; much longer is dynamical.
-* :func:`primary_extinction_factor` -- ``y = tanh(x)/x``, ``x = t/Lambda``
-  (Darwin/Zachariasen, Laue case). Multiplies a kinematical intensity.
+* :func:`laue_extinction_factor` -- the EXACT angle-integrated factor of a perfect
+  crystal slab, symmetric Laue, ``(1/2A) int_0^{2A} J0``, ``A = pi t / Lambda``;
+  :func:`laue_kinematical_path_limit_um` is its validity bound (10 % at
+  ``0.1785 Lambda``). Multiplies a kinematical intensity.
+* :func:`primary_extinction_factor` -- ``y = tanh(x)/x`` with ``x = t/Lambda``.
+  **Not** the perfect-crystal Laue factor: at the same ``t/Lambda`` it loses ``pi^2``
+  less intensity for small ``t/Lambda`` (see its docstring). Kept for models that
+  supply their own ``x``.
 * :func:`refraction_shift_deg` -- the constant angular offset between the
   dynamical and kinematical Bragg conditions.
 
@@ -59,6 +65,8 @@ __all__ = [
     "CLASSICAL_ELECTRON_RADIUS_A",
     "extinction_length_um",
     "kinematical_path_limit_um",
+    "laue_extinction_factor",
+    "laue_kinematical_path_limit_um",
     "primary_extinction_factor",
     "refraction_shift_deg",
     "susceptibility_chi0",
@@ -140,6 +148,14 @@ def extinction_length_um(
 def primary_extinction_factor(path_um, extinction_length_um):
     """Primary extinction factor ``y = tanh(x)/x`` with ``x = path / Lambda``.
 
+    .. warning::
+       With ``Lambda`` from :func:`extinction_length_um` (the Pendelloesung period) this is **not** the angle-integrated
+       reflectivity of a perfect crystal slab in the Laue case. That is :func:`laue_extinction_factor`, with
+       ``A = pi path / Lambda``. At the same ``path / Lambda`` the tanh form loses ``pi^2`` less intensity for small
+       ``path / Lambda`` (0.84 % against 8.0 % at 0.159, 3.2 % against 28.7 % at 0.318; PREREGISTER A21 and
+       ``midas_sx/validation/extinction_convention_check.py``). Use this function only for a model whose own ``x`` you
+       supply (a Darwin mosaic block, where ``x`` is quadratic in ``|F|``), never as the perfect-crystal Laue factor.
+
     Multiplies a kinematical intensity. ``y -> 1`` as ``x -> 0`` (kinematical) and
     ``y -> 1/x`` for a thick perfect crystal (dynamical saturation: it cannot
     reflect more than the Darwin width allows).
@@ -167,7 +183,10 @@ def primary_extinction_factor(path_um, extinction_length_um):
 
 
 def kinematical_path_limit_um(extinction_length_um, *, tolerance: float = 0.1):
-    """Longest path for which extinction costs less than ``tolerance`` of intensity.
+    """Longest path for which the **tanh** model (:func:`primary_extinction_factor`) costs less than ``tolerance``.
+
+    For a perfect crystal slab in the Laue case use :func:`laue_kinematical_path_limit_um`: its 10 % bound is
+    ``0.1785 Lambda``, a factor 3.3 below the 0.5838 Lambda given here.
 
     Solves ``1 - y(x) = tolerance`` **exactly**, by bisection on the strictly
     decreasing ``y``, and returns ``x * Lambda``. For a 10% tolerance
@@ -191,6 +210,109 @@ def kinematical_path_limit_um(extinction_length_um, *, tolerance: float = 0.1):
     if _is_torch(extinction_length_um):
         return extinction_length_um * x
     return float(extinction_length_um) * x
+
+
+_J0_FN = None
+
+
+def _torch_j0():
+    """``torch.special.bessel_j0`` is neither differentiable nor accurate (3.8e-7 near x = 5), so J0 goes through scipy with the
+    analytic derivative -J1 (differentiable once, which is all the fits need)."""
+    global _J0_FN
+    if _J0_FN is not None:
+        return _J0_FN
+    import torch
+    from scipy.special import j0, j1
+
+    class _J0(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            ctx.save_for_backward(x)
+            return torch.as_tensor(j0(x.detach().cpu().numpy()), dtype=x.dtype, device=x.device)
+
+        @staticmethod
+        def backward(ctx, g):
+            (x,) = ctx.saved_tensors
+            return g * torch.as_tensor(-j1(x.detach().cpu().numpy()), dtype=x.dtype, device=x.device)
+
+    _J0_FN = _J0.apply
+    return _J0_FN
+
+
+def _gl_nodes(n_per_panel: int = 16):
+    import numpy as np
+    x, w = np.polynomial.legendre.leggauss(n_per_panel)
+    return 0.5 * (x + 1.0), 0.5 * w                      # nodes / weights on [0, 1]
+
+
+def laue_extinction_factor(path_um, extinction_length_um):
+    """Exact angle-integrated primary-extinction factor of a perfect crystal slab, symmetric Laue, no absorption.
+
+    ``R(A) = (1/2A) int_0^{2A} J0(u) du = int_0^1 J0(2 A s) ds`` with ``A = pi * path / Lambda`` and ``Lambda`` the
+    Pendelloesung length of :func:`extinction_length_um`. It equals the integral over the deviation parameter ``y`` of the
+    Takagi-Taupin intensity ``sin^2(A sqrt(1+y^2)) / (1+y^2)`` divided by its kinematic limit ``pi A`` (checked against that
+    integral and against ``midas_dfxm.takagi_taupin`` in the tests and in ``midas_sx/validation``). Multiplies a kinematical
+    integrated intensity. ``R -> 1 - A^2/3`` for small ``A`` and ``-> 1/(2A)`` (oscillating) for large ``A``.
+
+    NOT the same function as :func:`primary_extinction_factor`: that one has ``tanh(x)/x`` with ``x = path/Lambda``, whose
+    small-x loss is ``pi^2`` smaller than this one at the same ``path / Lambda``. Use this when ``Lambda`` is the Pendelloesung
+    length and the crystal is a perfect block of thickness ``path``.
+
+    Differentiable in both arguments for torch tensors (fixed Gauss-Legendre panels, 16 nodes per half period of the
+    integrand). ``path_um = 0`` gives exactly 1 with a finite gradient. J0 comes from scipy in both paths
+    (torch's own ``bessel_j0`` is not differentiable and is off by 4e-7 near x = 5), with -J1 as the backward.
+    """
+    import numpy as np
+    n_per = 16
+    s0, w0 = _gl_nodes(n_per)
+    if _is_torch(path_um) or _is_torch(extinction_length_um):
+        import torch
+        t = path_um if _is_torch(path_um) else torch.as_tensor(path_um, dtype=torch.float64)
+        if not torch.is_floating_point(t):
+            t = t.to(torch.float64)
+        L = (extinction_length_um if _is_torch(extinction_length_um)
+             else torch.as_tensor(extinction_length_um, dtype=t.dtype, device=t.device))
+        L = L.to(dtype=t.dtype, device=t.device)
+        A = torch.broadcast_tensors(math.pi * t / L, t)[0]
+        n_pan = max(1, int(math.ceil(float(torch.max(torch.abs(2.0 * A)).detach()) / math.pi))) if A.numel() else 1
+        s = torch.as_tensor(np.concatenate([(k + s0) / n_pan for k in range(n_pan)]), dtype=A.dtype, device=A.device)
+        w = torch.as_tensor(np.tile(w0 / n_pan, n_pan), dtype=A.dtype, device=A.device)
+        flat = A.reshape(-1)
+        chunk = max(1, (1 << 22) // len(s))                  # bound the (elements x nodes) intermediate to ~4M doubles
+        out = [(_torch_j0()(2.0 * flat[i:i + chunk].unsqueeze(-1) * s) * w).sum(-1) for i in range(0, flat.numel(), chunk)]
+        return (torch.cat(out) if out else flat.new_empty(0)).reshape(A.shape)
+    from scipy.special import j0
+    A = math.pi * np.asarray(path_um, float) / np.asarray(extinction_length_um, float)
+    n_pan = max(1, int(math.ceil(float(np.max(np.abs(2.0 * A))) / math.pi)))
+    s = np.concatenate([(k + s0) / n_pan for k in range(n_pan)])
+    w = np.tile(w0 / n_pan, n_pan)
+    out = (j0(2.0 * A[..., None] * s) * w).sum(-1)
+    return float(out) if np.ndim(out) == 0 else out
+
+
+def laue_kinematical_path_limit_um(extinction_length_um, *, tolerance: float = 0.1):
+    """Longest path for which the exact Laue extinction (:func:`laue_extinction_factor`) costs less than ``tolerance``.
+
+    Solves ``1 - R(pi t / Lambda) = tolerance`` on the first, monotonic branch of R by bisection. For 10 % this is
+    ``t = 0.1785 Lambda`` (the tanh bound of :func:`kinematical_path_limit_um` is 0.5838 Lambda). ``R`` first reaches its
+    smallest values only for ``A > 1``, so the first crossing is unique; tolerances above ~0.5 are refused.
+    """
+    if not 0.0 < tolerance <= 0.5:
+        raise ValueError("tolerance must be in (0, 0.5]")
+    lo, hi = 0.0, 1.0                                    # A in [0, 1]: R(1) = 0.7129 > 0.5, monotonic
+    if 1.0 - float(laue_extinction_factor(hi / math.pi, 1.0)) < tolerance:
+        hi = 2.0                                         # R(2) = 0.2562, still first crossing (R decreasing to 2.4)
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if 1.0 - float(laue_extinction_factor(mid / math.pi, 1.0)) < tolerance:
+            lo = mid
+        else:
+            hi = mid
+    A = 0.5 * (lo + hi)
+    t_over_L = A / math.pi
+    if _is_torch(extinction_length_um):
+        return extinction_length_um * t_over_L
+    return float(extinction_length_um) * t_over_L
 
 
 def susceptibility_chi0(crystal_t, wavelength_A, *, anomalous: bool = True):

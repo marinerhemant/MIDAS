@@ -31,6 +31,7 @@ from .lattice import (
     Lattice, PowderLatticeFit, refine_lattice_from_d_spacings,
 )
 from .nf_hkls import emit_nf_hkls_csv, write_nf_hkls_csv
+from .frames import frame_rotation, midas_b_matrix
 from .point_group import (
     LAUE_TO_PROPER_GROUP,
     laue_class,
@@ -123,6 +124,8 @@ __all__ = [
     "CLASSICAL_ELECTRON_RADIUS_A",
     "extinction_length_um",
     "kinematical_path_limit_um",
+    "laue_extinction_factor",
+    "laue_kinematical_path_limit_um",
     "primary_extinction_factor",
     "refraction_shift_deg",
     "susceptibility_chi0",
@@ -157,6 +160,7 @@ __all__ = [
     "proper_rotations_from_space_group",
     "reflections_to_dataframe",
     "write_nf_hkls_csv",
+    "frame_rotation", "midas_b_matrix",
 ]
 
 
@@ -164,6 +168,8 @@ from .extinction import (
     CLASSICAL_ELECTRON_RADIUS_A,
     extinction_length_um,
     kinematical_path_limit_um,
+    laue_extinction_factor,
+    laue_kinematical_path_limit_um,
     primary_extinction_factor,
     refraction_shift_deg,
 )

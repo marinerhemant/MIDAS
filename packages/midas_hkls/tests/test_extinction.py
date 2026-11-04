@@ -203,3 +203,85 @@ def test_refraction_shift_accepts_a_complex_chi0():
     a = refraction_shift_deg(complex(-2.2e-5, 1e-7), 20.0)
     b = refraction_shift_deg(2.2e-5, 20.0)
     assert abs(a - b) / b < 1e-3
+
+
+# ---------------------------------------------------------------------------
+# exact perfect-crystal symmetric-Laue factor (laue_extinction_factor)
+# ---------------------------------------------------------------------------
+def _ty_integral(A):
+    """Independent route: integral over the deviation y of the Takagi-Taupin intensity sin^2(A sqrt(1+y^2))/(1+y^2), over its kinematic
+    limit pi A, with y = sinh(th). Shares no code with laue_extinction_factor."""
+    np = pytest.importorskip("numpy")
+    from scipy.integrate import simpson
+    th = np.linspace(0.0, 18.0, 400_001)
+    return 2.0 * simpson(np.sin(A * np.cosh(th)) ** 2 / np.cosh(th), x=th) / (math.pi * A)
+
+
+from midas_hkls import laue_extinction_factor, laue_kinematical_path_limit_um  # noqa: E402
+
+
+@pytest.mark.parametrize("A", [0.1, 0.5, 1.0, 2.0, 3.0, 8.0])
+def test_laue_factor_matches_the_taupin_intensity_integral(A):
+    got = laue_extinction_factor(A / math.pi, 1.0)
+    assert abs(got - _ty_integral(A)) < 5e-6
+
+
+def test_laue_factor_limits_and_known_values():
+    assert laue_extinction_factor(0.0, 30.0) == 1.0
+    A = 1e-3
+    assert abs((1.0 - laue_extinction_factor(A / math.pi, 1.0)) - A * A / 3.0) < 1e-12
+    # (1/2A) int_0^{2A} J0 at A = 0.5 and 1.0 (scipy.special.itj0y0 route)
+    from scipy.special import itj0y0
+    for A in (0.5, 1.0, 2.0, 3.0, 20.0):
+        ref = itj0y0(2 * A)[0] / (2 * A)
+        assert abs(laue_extinction_factor(A / math.pi, 1.0) - ref) < 1e-12
+    # large A: oscillating about 1/(2A)
+    assert abs(laue_extinction_factor(50.0 / math.pi, 1.0) * 100.0 - 1.0) < 0.2
+
+
+def test_laue_factor_is_not_the_tanh_function_and_is_stronger():
+    for x in (0.05, 0.16, 0.3):
+        assert 1.0 - laue_extinction_factor(x, 1.0) > 5.0 * (1.0 - primary_extinction_factor(x, 1.0))
+    x = 1e-3
+    ratio = (1.0 - laue_extinction_factor(x, 1.0)) / (1.0 - primary_extinction_factor(x, 1.0))
+    assert abs(ratio - math.pi ** 2) < 1e-4
+
+
+def test_laue_factor_torch_matches_numpy_and_has_a_finite_gradient_at_zero():
+    ts = torch.tensor([0.0, 0.5, 5.0, 12.0, 60.0], dtype=torch.float64)
+    a = laue_extinction_factor(ts, 20.0)
+    b = laue_extinction_factor([float(v) for v in ts][0], 20.0)
+    assert abs(float(a[0]) - b) < 1e-15
+    for t in ts:
+        assert abs(float(laue_extinction_factor(t, 20.0)) - laue_extinction_factor(float(t), 20.0)) < 1e-13
+    t0 = torch.tensor(0.0, dtype=torch.float64, requires_grad=True)
+    laue_extinction_factor(t0, 20.0).backward()
+    assert math.isfinite(float(t0.grad)) and abs(float(t0.grad)) < 1e-9
+    tt = torch.tensor([0.7, 3.1, 9.0], dtype=torch.float64, requires_grad=True)
+    assert torch.autograd.gradcheck(lambda x: laue_extinction_factor(x, 20.0), (tt,))
+    LL = torch.tensor([15.0, 30.0], dtype=torch.float64, requires_grad=True)
+    assert torch.autograd.gradcheck(lambda L: laue_extinction_factor(8.0, L), (LL,))
+
+
+def test_laue_path_limit_solves_the_tolerance_and_is_about_pi_below_the_tanh_bound():
+    L = 40.0
+    for tol in (0.01, 0.1, 0.3, 0.5):
+        t = laue_kinematical_path_limit_um(L, tolerance=tol)
+        assert abs(1.0 - laue_extinction_factor(t, L) - tol) < 1e-9
+    assert abs(laue_kinematical_path_limit_um(1.0, tolerance=0.1) - 0.1785) < 5e-4
+    assert 3.0 < kinematical_path_limit_um(1.0, tolerance=0.1) / laue_kinematical_path_limit_um(1.0, tolerance=0.1) < 3.5
+    for bad in (0.0, 0.6, 1.0):
+        with pytest.raises(ValueError):
+            laue_kinematical_path_limit_um(L, tolerance=bad)
+
+
+def test_laue_factor_chunked_torch_path_keeps_shape_and_matches_per_element():
+    t = torch.linspace(0.0, 30.0, 6000, dtype=torch.float64).reshape(60, 100)
+    L = torch.full_like(t, 25.0)
+    a = laue_extinction_factor(t, 25.0)                  # scalar Lambda is broadcast
+    b = laue_extinction_factor(t, L)
+    assert a.shape == t.shape and torch.equal(a, b)
+    idx = [(0, 0), (7, 31), (59, 99)]
+    for i, j in idx:
+        assert abs(float(a[i, j]) - laue_extinction_factor(float(t[i, j]), 25.0)) < 1e-13
+    assert laue_extinction_factor(torch.zeros(0, dtype=torch.float64), 25.0).shape == (0,)

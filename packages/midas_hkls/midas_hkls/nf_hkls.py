@@ -83,6 +83,15 @@ def _b_matrix(lattice: Lattice) -> np.ndarray:
 #  Equivalent HKLs + Friedel pair expansion
 # ---------------------------------------------------------------------------
 
+def _auto_box(lattice: Lattice, d_min: float | None, floor: int = 10) -> Tuple[int, int, int]:
+    """Smallest integer half-extents (h_max, k_max, l_max) that cannot truncate a reflection
+    with d >= d_min: h = G.a so |h| <= |G||a| = |a|/d <= a/d_min (same for k with b, l with c).
+    Never below ``floor`` (the C source's fixed 10), so every case the old box already covered is unchanged."""
+    if d_min is None or not d_min > 0:
+        return floor, floor, floor
+    return tuple(max(floor, int(math.ceil(x / d_min - 1e-9))) for x in (lattice.a, lattice.b, lattice.c))
+
+
 def _expanded_hkl_set(
     space_group: SpaceGroup,
     h_max: int = 10,
@@ -129,9 +138,9 @@ def emit_nf_hkls_csv(
     lsd_um: float,
     max_ring_rad_um: float,
     epsilon: float = 1e-4,
-    h_max: int = 10,
-    k_max: int = 10,
-    l_max: int = 10,
+    h_max: int | None = None,
+    k_max: int | None = None,
+    l_max: int | None = None,
     fp: TextIO | None = None,
     atoms: "Sequence | None" = None,
 ) -> List[Tuple[float, ...]]:
@@ -150,9 +159,13 @@ def emit_nf_hkls_csv(
     epsilon : float
         D-spacing tolerance (Å) for grouping reflections into rings
         (matches ``Epsilon = 0.0001`` in the C source).
-    h_max, k_max, l_max : int
-        Half-extent of the integer HKL search box (default 10, matching
-        the C source's ``Maxh = Maxk = Maxl = 10``).
+    h_max, k_max, l_max : int, optional
+        Half-extent of the integer HKL search box. Default ``None`` = automatic:
+        ``max(10, ceil(a / d_min))`` (b for k, c for l) with ``d_min`` from the ring-radius cutoff, so no
+        reflection inside the cutoff is lost. The C source's fixed ``Maxh = Maxk = Maxl = 10`` silently dropped
+        reflections for long axes (corundum c = 12.99 A at Rmax 1600 um / Lsd 6525 um loses (0 0 12), (1 0 -14),
+        (2 -1 12), (3 -1 -11): 32 of 442 rows); results are unchanged wherever the 10-box already covered the cutoff.
+        Pass an explicit int to reproduce the old truncation.
     fp : TextIO, optional
         Open file (or other text-writable). If ``None``, no file is
         written — only the in-memory rows are returned.
@@ -166,6 +179,13 @@ def emit_nf_hkls_csv(
     B = _b_matrix(lattice)
 
     # 1. Walk box, expand orbit + Friedel pair, dedup.
+    d_cut = None
+    if max_ring_rad_um > 0 and lsd_um > 0:
+        d_cut = wavelength_A / (2.0 * math.sin(math.atan(max_ring_rad_um / lsd_um) / 2.0))
+    auto = _auto_box(lattice, d_cut)
+    h_max = auto[0] if h_max is None else h_max
+    k_max = auto[1] if k_max is None else k_max
+    l_max = auto[2] if l_max is None else l_max
     hkl_set = _expanded_hkl_set(space_group, h_max, k_max, l_max)
 
     # 2. Compute G_cart and d-spacing for each.
@@ -273,9 +293,9 @@ def write_nf_hkls_csv(
     lsd_um: float,
     max_ring_rad_um: float,
     epsilon: float = 1e-4,
-    h_max: int = 10,
-    k_max: int = 10,
-    l_max: int = 10,
+    h_max: int | None = None,
+    k_max: int | None = None,
+    l_max: int | None = None,
     atoms: "Sequence | None" = None,
 ) -> int:
     """Convenience wrapper: write ``hkls.csv`` to ``path`` and return row count.

@@ -12,6 +12,7 @@ parameters, wavelength, and the polarization fraction is preserved.
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import replace
 from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 
@@ -37,21 +38,35 @@ __all__ = [
 # ----------------------------------------------------------------- LP factor
 
 def lorentz_polarization(two_theta_rad, *, polarization: float = 0.5):
-    """Lorentz-polarization factor for *powder* (Bragg-Brentano-equivalent) geometry.
+    """Lorentz-polarization factor for a *full Debye ring* (azimuthally averaged).
 
-    Lp(2θ) = (1 - K + K cos²2θ) / (sin²θ cosθ)
+    Lp(2θ) = ½(1 + cos²2θ) / (sin²θ cosθ)
 
-    where K is the polarization fraction (K=0.5 → unpolarized, K=1 → fully
-    σ-polarized synchrotron beam).  Inputs and outputs are torch tensors;
-    radians for 2θ.
+    The polarization term is the average over the whole ring, and the ring
+    average does NOT depend on how polarized the beam is: for any linear
+    polarization fraction f, ⟨½(1 + cos²2θ − f cos 2η sin²2θ)⟩_η = ½(1 + cos²2θ).
+    So ``polarization`` only has one meaningful value here, 0.5, and anything
+    else warns. (Before 2026-10-15 the term was ``(1-K) + K cos²2θ``; for
+    K != 0.5 that is the value in ONE direction, the scattering plane
+    containing the polarization vector, not the ring average, and at K=1 it
+    under-weighted 2θ=60° by 2.5x. No caller in the repo passed K != 0.5.)
+
+    For a single reflection at a known azimuth (rotation-method, DFXM, any
+    spot-wise use) use :func:`midas_hkls.corrections.polarization_factor`,
+    which takes η. Inputs and outputs are torch tensors; radians for 2θ.
     """
     import torch
     tt = torch.as_tensor(two_theta_rad)
+    if float(polarization) != 0.5:
+        warnings.warn(
+            "lorentz_polarization is the full-ring average, which does not depend on "
+            f"the polarization fraction; polarization={polarization} is ignored. "
+            "Use midas_hkls.corrections.polarization_factor(two_theta, eta, ...) "
+            "for a per-azimuth factor.", UserWarning, stacklevel=2)
     cos_tt = torch.cos(tt)
     sin_th = torch.sin(tt / 2.0)
     cos_th = torch.cos(tt / 2.0)
-    K = float(polarization)
-    pol = (1.0 - K) + K * cos_tt * cos_tt
+    pol = 0.5 + 0.5 * cos_tt * cos_tt
     lor = 1.0 / (sin_th * sin_th * cos_th)
     return pol * lor
 

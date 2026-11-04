@@ -138,3 +138,37 @@ def test_ring_numbering_monotonic_and_starts_at_one():
     # RingNr is non-decreasing and increments by at most 1 between rows.
     for prev, curr in zip(ring_nrs, ring_nrs[1:]):
         assert curr in (prev, prev + 1)
+
+
+# --- the Miller box must not truncate long-axis cells (found on Ruby/corundum, 2026-10-18) ----------------
+def _corundum_inputs():
+    # HS-brief ruby cell, SG 167 (R-3c, hexagonal axes), 60 keV, NF geometry of the P21.2 Ruby scan
+    return {
+        "space_group": SpaceGroup.from_number(167),
+        "lattice": Lattice(4.7607, 4.7607, 12.9947, 90.0, 90.0, 120.0),
+        "wavelength_A": 12.398419843320026 / 60.0,
+        "lsd_um": 6525.0,
+        "max_ring_rad_um": 1600.0,
+    }
+
+
+def test_default_box_does_not_truncate_long_c_axis():
+    """With the old fixed +-10 box (0 0 12), (1 0 -14), (2 -1 12), (3 -1 -11) (all strong, all inside the ring cutoff)
+    were silently dropped. The default (automatic) box must return exactly the set a very large explicit box returns."""
+    auto = emit_nf_hkls_csv(**_corundum_inputs())
+    big = emit_nf_hkls_csv(**_corundum_inputs(), h_max=30, k_max=30, l_max=30)
+    old = emit_nf_hkls_csv(**_corundum_inputs(), h_max=10, k_max=10, l_max=10)
+    hkls = lambda rows: {tuple(int(x) for x in r[:3]) for r in rows}
+    assert hkls(auto) == hkls(big)
+    assert len(auto) == len(big) == 442
+    for t in ((0, 0, 12), (0, 0, -12), (1, 0, -14), (2, -1, 12), (3, -1, -11)):
+        assert t in hkls(auto), t
+        assert t not in hkls(old), t          # documents the old truncation
+    assert len(old) == 410 and len(auto) - len(old) == 32
+
+
+def test_default_box_equals_old_box_when_old_box_was_enough():
+    """cubic Au (the C-parity case): d_min is large enough that a/d_min < 10, so the automatic box is the old box."""
+    auto = emit_nf_hkls_csv(**_au_inputs())
+    old = emit_nf_hkls_csv(**_au_inputs(), h_max=10, k_max=10, l_max=10)
+    assert [r[:5] for r in auto] == [r[:5] for r in old]

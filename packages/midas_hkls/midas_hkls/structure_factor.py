@@ -166,29 +166,33 @@ def _coerce_hkl(hkl, crystal_t: CrystalTensor):
 
 
 def _debye_waller(s2, hkl_t, crystal_t: CrystalTensor, B_iso, U_aniso):
-    """Per-atom DWF: shape (M, N).  Anisotropic if U_aniso is set, else isotropic."""
-    import torch
-    if U_aniso is not None and U_aniso.abs().sum() > 0:
-        # T = exp(-2π² hᵀ U* h) where U* is the reciprocal-basis ADP tensor.
-        # CIF U is in *fractional* basis already; combine with hkl directly:
-        #   2π² · Σᵢⱼ hᵢ Uᵢⱼ hⱼ                 (Trueblood et al. 1996 convention β-form)
-        # Note: this matches the cctbx / gemmi "U_cif" convention.
-        h = hkl_t.to(U_aniso.dtype)                          # (M, 3)
-        U = _u6_to_mat3(U_aniso)                              # (N, 3, 3)
-        # exponent = 2π² · h^T · U_cart · h  with h in reciprocal lattice units
-        # CIF stores U_ij in fractional basis; the standard structure-factor form is:
-        #   T = exp(-2π² Σᵢⱼ hᵢhⱼ Uᵢⱼ aᵢ* aⱼ*)
-        # so we need the reciprocal-axis lengths.
-        Gstar = reciprocal_metric_tensor(crystal_t.lattice_params)
-        a_star = torch.sqrt(torch.diag(Gstar))                # (3,)
-        h_scaled = h * a_star                                 # (M, 3) in Å⁻¹ axis units
-        # exponent[m, n] = 2π² · h_scaled[m] · U[n] · h_scaled[m]
-        exponent = 2.0 * (math.pi ** 2) * torch.einsum('mi,nij,mj->mn', h_scaled, U, h_scaled)
-        return torch.exp(-exponent)
+    """Per-atom DWF: shape (M, N).  Anisotropic for the atoms flagged anisotropic (``CrystalTensor.aniso_mask``), isotropic exp(-B s^2) for the others.
 
-    # Isotropic: exp(-B s²)
-    B = B_iso.to(s2.dtype)                                    # (N,)
-    return torch.exp(-B.unsqueeze(0) * s2.unsqueeze(1))       # (M, N)
+    The flag is explicit (``Atom.U_aniso is not None``). It used to be read from the data (an all-zero U row meant isotropic), which was discontinuous at U = 0
+    (an anisotropic atom refined from U = 0 had a zero gradient) and misread a genuinely zero tensor; tensors built outside ``crystal_to_tensor`` have no mask
+    and keep the zero-row test."""
+    import torch
+    iso = torch.exp(-B_iso.to(s2.dtype).unsqueeze(0) * s2.unsqueeze(1))          # (M, N)
+    if U_aniso is None:
+        return iso
+    mask = crystal_t.aniso_mask() if hasattr(crystal_t, "aniso_mask") else None
+    has_aniso = (U_aniso.abs().sum(dim=-1) > 0) if mask is None else mask         # (N,)
+    if not bool(has_aniso.any()):
+        return iso
+    # T = exp(-2π² hᵀ U* h) where U* is the reciprocal-basis ADP tensor.
+    # CIF U is in *fractional* basis already; combine with hkl directly:
+    #   2π² · Σᵢⱼ hᵢ Uᵢⱼ hⱼ                 (Trueblood et al. 1996 convention β-form)
+    # Note: this matches the cctbx / gemmi "U_cif" convention.
+    #   T = exp(-2π² Σᵢⱼ hᵢhⱼ Uᵢⱼ aᵢ* aⱼ*)  so the reciprocal-axis lengths are needed. Everything is cast to the dtype of s2 (float32 crystals on a
+    #   mixed cell used to fail with 'expected scalar type Double but found Float').
+    dt = s2.dtype
+    h = hkl_t.to(dt)                                                              # (M, 3)
+    U = _u6_to_mat3(U_aniso.to(dt))                                               # (N, 3, 3)
+    Gstar = reciprocal_metric_tensor(crystal_t.lattice_params).to(dt)
+    a_star = torch.sqrt(torch.diag(Gstar))                                        # (3,)
+    h_scaled = h * a_star                                                         # (M, 3) in Å⁻¹ axis units
+    exponent = 2.0 * (math.pi ** 2) * torch.einsum('mi,nij,mj->mn', h_scaled, U, h_scaled)
+    return torch.where(has_aniso.unsqueeze(0), torch.exp(-exponent), iso)
 
 
 def _u6_to_mat3(u6):

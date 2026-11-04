@@ -26,6 +26,49 @@ def test_lorentz_polarization_unpolarized(torch_only):
     assert torch.isfinite(Lp).all()
 
 
+def test_lorentz_polarization_k05_is_unchanged_bitwise(torch_only):
+    """K=0.5 values recorded before the 2026-10-15 ring-average fix."""
+    import torch
+    from midas_hkls import lorentz_polarization
+
+    tt = torch.tensor([0.05, 0.3, 0.5, 1.0, 2.0, 3.0], dtype=torch.float64)
+    before = [
+        "0x1.8fb56418c39b9p+10", "0x1.5a7b711f650f1p+5", "0x1.dd90a5fd12b94p+3",
+        "0x1.99e8b6ac7256dp+1", "0x1.88846fdeeea6fp+0", "0x1.c2205ec145307p+3",
+    ]
+    got = [float(x).hex() for x in lorentz_polarization(tt, polarization=0.5)]
+    assert got == before
+
+
+@pytest.mark.parametrize("two_theta_deg", [10.0, 30.0, 60.0])
+@pytest.mark.parametrize("f", [0.0, 0.5, 0.99, 1.0])
+def test_lorentz_polarization_is_the_ring_average(torch_only, two_theta_deg, f):
+    """The polarization term must equal the numerical azimuthal mean of the
+    partially-polarized factor, for every polarization fraction f."""
+    import math
+    import torch
+    from midas_hkls import lorentz_polarization
+
+    t = math.radians(two_theta_deg)
+    n = 4000
+    ring = sum(0.5 * (1 + math.cos(t) ** 2 - f * math.cos(2 * 2 * math.pi * i / n) * math.sin(t) ** 2)
+               for i in range(n)) / n
+    th = t / 2
+    expected = ring / (math.sin(th) ** 2 * math.cos(th))
+    got = float(lorentz_polarization(torch.tensor(t, dtype=torch.float64), polarization=0.5))
+    assert got == pytest.approx(expected, rel=1e-12)
+
+
+def test_lorentz_polarization_warns_when_k_is_not_half(torch_only):
+    import torch
+    from midas_hkls import lorentz_polarization
+
+    tt = torch.tensor([1.0], dtype=torch.float64)
+    with pytest.warns(UserWarning, match="ring average"):
+        out = lorentz_polarization(tt, polarization=1.0)
+    assert float(out) == float(lorentz_polarization(tt, polarization=0.5))
+
+
 def test_powder_intensity_basic(torch_only):
     import torch
     from midas_hkls import (
