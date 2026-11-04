@@ -30,7 +30,7 @@ dependencies = [
     "midas-hkls>=0.17.0",
     # Front end (mask, polar background, 3-D spot finding) and the MIDAS pixel -> q geometry.
     # Reused, not re-ported.
-    "midas-defect>=0.9.1",
+    "midas-defect>=0.10.0",
 ]
 
 [project.optional-dependencies]

@@ -90,7 +90,7 @@ from .niggli import NiggliCell, niggli_reduce, same_lattice
 from .space_group import SpaceGroup, list_space_groups, centring_allowed
 from .symops import SymOp
 
-__version__ = "0.16.0"
+__version__ = "0.17.0"
 
 __all__ = [
     "hkl_box_from_geometry", "distortion_rank", "distortion_condition",
