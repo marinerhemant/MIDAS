@@ -144,6 +144,8 @@ def _run_pf(ctx: StageContext, started: float) -> StageResult:
             device=device, dtype=dtype,
             write=True,
         )
+        for line in rad.match_stats.get("summary", "").splitlines():
+            LOG.info("transforms(PF): scan %d: %s", s.scan_nr, line)
         # ── fit_setup ──────────────────────────────────────────────
         fs = fit_setup(
             result_folder=s.scan_dir,
@@ -301,7 +303,10 @@ def _run_ff(ctx: StageContext, started: float) -> StageResult:
             result_folder=out_dir,
             device=cfg.device, dtype=cfg.dtype,
         )
-        pipe.run()
+        res = pipe.run()
+        if res is not None and res.radius is not None:
+            for line in res.radius.match_stats.get("summary", "").splitlines():
+                LOG.info("transforms(FF): %s", line)
         pipe.dump(out_dir)
         LOG.info("transforms(FF): pipeline.dump → %s", out_dir)
     return _result(started, written, len(written), 0)
