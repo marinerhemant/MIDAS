@@ -145,10 +145,20 @@ _BCC_123_111_RAW = _systems_from_plane_direction((1, 2, 3), (1, 1, 1))
 # index arithmetic) to sidestep the numerous sign-convention pitfalls
 # when converting 4-index notation to Cartesian.
 #
-# Crystal frame convention:
+# Crystal frame convention. The systems below are BUILT in the textbook frame
 #   a1 = (1, 0, 0)  a
 #   a2 = (-1/2, sqrt(3)/2, 0)  a
 #   c  = (0, 0, c/a)
+# and :func:`get_slip_systems` then rotates them by -30 deg about c into the
+# MIDAS frame (the default), because the orientation matrices MIDAS writes
+# (Grains.csv O11..O33, crystal -> lab) live in the ``midas_hkls`` B-matrix
+# frame: a* along x, b* in the xy plane, c* along z, i.e. real-space a at -30 deg
+# (150 deg) and b at 90 deg. The two frames are rotated 30 deg about c from each
+# other; the 12 hexagonal symmetry operators and all disorientation angles are the
+# same in both, but every plane normal and slip direction is not, so applying
+# textbook-frame systems to MIDAS orientations puts them on the wrong planes
+# (basal and pyramidal <c+a> still share the c axis, prismatic planes and every
+# <a> direction do not).
 #
 # The three equivalent basal <a> directions are a1, a2, and -(a1+a2),
 # 120° apart in the basal plane. Prismatic-plane normals are the three
@@ -187,33 +197,24 @@ def _pyramidal_a_systems(c_over_a: float) -> np.ndarray:
     of the three <a> directions has two associated pyramidal planes
     (tilted toward +c and -c).
     """
-    a = 1.0
     c = c_over_a
+    z = _basal_normal()
     out = []
     for d in _HCP_A_DIRS:
-        # Prismatic normal perpendicular to d (in basal plane)
-        m = np.cross(_basal_normal(), d) / np.linalg.norm(
-            np.cross(_basal_normal(), d)
-        )
-        # Pyramidal plane contains d and is tilted such that its
-        # normal is m (in basal plane) combined with ±c component.
-        # Mathematically, normal = cos(phi)*m ± sin(phi)*c, where
-        # phi is determined by the plane's geometry. For the
-        # {10-11} family, the plane passes through (0,0,c) and an
-        # a-vertex at (a/sqrt(3), 0, 0) scaled by the prismatic
-        # distance — giving tan(phi) = (a * sqrt(3)/2) / c.
-        # We construct n directly by requiring orthogonality to d
-        # and to a specific in-plane vector (d x c rotated).
-        #
-        # Simpler construction: pyramidal plane contains d and the
-        # c-axis-shifted version d' = d + (a*sqrt(3)/c) * c (pyramid
-        # apex). Normal = d × d'.
-        d_tilted = d + np.array([0.0, 0.0, np.sqrt(3) * a / c])
-        n_plus = np.cross(d, d_tilted)
+        # In-basal-plane unit normal perpendicular to the <a> direction d
+        # (this is the PRISMATIC plane normal that contains d).
+        m = np.cross(z, d)
+        m /= np.linalg.norm(m)
+        # The {10-11} plane containing d: its reciprocal vector is the
+        # in-plane {10-10} one, |g| = 2/(sqrt(3) a), plus ±1/c along z, so
+        #     n ∝ (2/sqrt3) m ± (1/c) z        (a = 1, c = c/a)
+        # (polar angle from c = atan(2 c/a / sqrt3) = 61.4 deg for Ti).
+        # An earlier version built n = d x (d ± k z), which is k (d x z): the
+        # prismatic normal again, so "pyramidal <a>" returned the prismatic
+        # planes twice.
+        n_plus = (2.0 / np.sqrt(3.0)) * m + (1.0 / c) * z
         n_plus /= np.linalg.norm(n_plus)
-        # The -c tilted variant:
-        d_tilted_neg = d - np.array([0.0, 0.0, np.sqrt(3) * a / c])
-        n_minus = np.cross(d, d_tilted_neg)
+        n_minus = (2.0 / np.sqrt(3.0)) * m - (1.0 / c) * z
         n_minus /= np.linalg.norm(n_minus)
         out.append((n_plus, d))
         out.append((n_minus, d))
@@ -221,7 +222,11 @@ def _pyramidal_a_systems(c_over_a: float) -> np.ndarray:
 
 
 def _pyramidal_ca_systems(c_over_a: float) -> np.ndarray:
-    """Second-order pyramidal <c+a> systems ({11-22}<11-23>, 12 systems).
+    """First-order pyramidal <c+a> systems ({10-11}<11-23>, 12 systems).
+
+    (Documented as second-order {11-22} before 2026-10-20; the construction
+    below has always produced the {10-11} planes, normal at 61.4 deg from c for
+    Ti, and {11-22}<11-23> has only 6 systems, not 12.)
 
     Construction:
     - 6 <c+a> Burgers vectors: each of the 6 basal <a> directions
@@ -230,7 +235,7 @@ def _pyramidal_ca_systems(c_over_a: float) -> np.ndarray:
       combined with ``+c`` to give 6 distinct <c+a> slip directions.
       (The ``-c`` versions are antiparallel duplicates and thus the
       same slip *system*.)
-    - 6 {11-22}-type planes: for each pair of adjacent <a> vectors,
+    - 6 {10-11}-type planes: for each pair of adjacent <a> vectors,
       the plane containing both of their <c+a> variants. Each such
       plane contains 2 distinct <c+a> Burgers vectors, giving
       6 × 2 = 12 systems.
@@ -319,6 +324,26 @@ _CUBIC_FAMILIES = {
 }
 
 
+#: Crystal Cartesian frames an HCP orientation matrix can live in; see the
+#: "Crystal frame convention" note above. ``"midas"`` (default) is the frame of
+#: MIDAS ``Grains.csv`` orientations; ``"crystallographic"`` is the textbook
+#: a1-along-x frame in which the systems are built.
+HCP_FRAMES = ("midas", "crystallographic")
+
+_RZ_M30 = np.array([[np.cos(np.pi / 6),  np.sin(np.pi / 6), 0.0],
+                    [-np.sin(np.pi / 6), np.cos(np.pi / 6), 0.0],
+                    [0.0, 0.0, 1.0]])      # rotation by -30 deg about z
+
+
+def _hcp_to_frame(n, b, frame: str):
+    """Rotate textbook-frame HCP systems into ``frame`` (row vectors)."""
+    if frame not in HCP_FRAMES:
+        raise ValueError(f"frame must be one of {HCP_FRAMES}, got {frame!r}")
+    if frame == "crystallographic":
+        return n, b
+    return n @ _RZ_M30.T, b @ _RZ_M30.T
+
+
 HCP_RATIOS = {
     # Common room-temperature c/a values (dimensionless)
     "Ti":  1.587,
@@ -333,6 +358,8 @@ HCP_RATIOS = {
 def get_slip_systems(
     family: str,
     c_over_a: Optional[float] = None,
+    *,
+    frame: str = "midas",
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Return slip-system normals and directions in the crystal frame.
 
@@ -349,13 +376,22 @@ def get_slip_systems(
         - ``'hcp_basal'``           — 3 (0001)<11-20>.
         - ``'hcp_prismatic'``       — 3 {10-10}<11-20>.
         - ``'hcp_pyramidal_a'``     — 6 {10-11}<11-20>.
-        - ``'hcp_pyramidal_ca'``    — 12 {11-22}<11-23>.
+        - ``'hcp_pyramidal_ca'``    — 12 {10-11}<11-23>.
         - ``'hcp'``                 — basal + prismatic + pyramidal<a>
                                       + pyramidal<c+a> (24 systems).
     c_over_a : float, optional
         HCP c/a ratio (required for any ``hcp*`` family). For convenience
         the name of a metal in :data:`HCP_RATIOS` can be passed via
         :func:`get_slip_systems_for_material`.
+    frame : {"midas", "crystallographic"}, keyword-only
+        Crystal Cartesian frame of the returned HCP systems (ignored for
+        cubic families). ``"midas"`` (default) is the frame of MIDAS
+        ``Grains.csv`` orientation matrices (a* along x; real-space a at
+        150 deg, b at 90 deg), so the systems can be rotated into the lab
+        with those matrices directly. ``"crystallographic"`` is the textbook
+        a1-along-x frame. They differ by a 30 deg rotation about c; using the
+        wrong one with a given orientation puts the systems on the wrong
+        planes. Before 2026-10-20 only the textbook frame was available.
 
     Returns
     -------
@@ -384,7 +420,7 @@ def get_slip_systems(
         arr = hcp_funcs[name](c_over_a)
         n = _normalise_rows(arr[:, 0, :])
         b = _normalise_rows(arr[:, 1, :])
-        return n, b
+        return _hcp_to_frame(n, b, frame)
 
     if name == "hcp":
         if c_over_a is None:
@@ -398,7 +434,7 @@ def get_slip_systems(
         arr = np.concatenate(parts, axis=0)
         n = _normalise_rows(arr[:, 0, :])
         b = _normalise_rows(arr[:, 1, :])
-        return n, b
+        return _hcp_to_frame(n, b, frame)
 
     raise ValueError(f"Unknown slip family '{family}'.")
 
@@ -406,6 +442,8 @@ def get_slip_systems(
 def get_slip_systems_for_material(
     material: str,
     family: Optional[str] = None,
+    *,
+    frame: str = "midas",
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Convenience wrapper: pick default families by material name.
 
@@ -417,6 +455,8 @@ def get_slip_systems_for_material(
         Mg, Zn, etc.) default to ``'hcp'``.
     family : str, optional
         Override the default family.
+    frame : {"midas", "crystallographic"}, keyword-only
+        HCP crystal frame; see :func:`get_slip_systems`.
 
     Returns
     -------
@@ -442,7 +482,7 @@ def get_slip_systems_for_material(
             raise ValueError(f"Unknown material '{material}'.")
 
     c_over_a = HCP_RATIOS.get(material)
-    return get_slip_systems(family, c_over_a=c_over_a)
+    return get_slip_systems(family, c_over_a=c_over_a, frame=frame)
 
 
 # ===================================================================

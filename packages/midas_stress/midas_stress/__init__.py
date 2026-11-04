@@ -30,7 +30,7 @@ except ImportError:  # HDF5 files with no plugin filter still read fine
 
 import importlib
 
-__version__ = "0.15.0"
+__version__ = "0.16.0"
 
 # public name -> submodule it lives in. Loaded lazily on first access, so
 # importing the package pulls in nothing heavy (and no torch).
@@ -77,6 +77,9 @@ _EXPORTS = {
     "medoid_orientation": "orientation_maps", "grod": "orientation_maps",
     "kam": "orientation_maps", "grid_neighbours": "orientation_maps",
     "group_orientations": "orientation_maps",
+    # orientation-space sampling (numpy only)
+    "orientation_grid": "orientation_sampling", "uniform_rotations": "orientation_sampling",
+    "laue_rotations": "orientation_sampling",
     # diffraction
     "calc_eta_angle_all": "diffraction",
     # frames
@@ -98,6 +101,7 @@ _EXPORTS = {
     # elastic-constant inverse (NumPy)
     "fit_single_crystal_stiffness": "elastic_inverse",
     "symmetry_parameterisation": "elastic_inverse",
+    "trigonal_setting_for_space_group": "elastic_inverse",
     "stiffness_from_cij": "elastic_inverse", "build_stage_matrix": "elastic_inverse",
     "build_stage_matrix_voigt": "elastic_inverse",
     "build_stage_matrix_reuss": "elastic_inverse",
@@ -110,7 +114,16 @@ _EXPORTS = {
     "schmid_factor": "plasticity", "resolved_shear_stress": "plasticity",
     "dominant_slip_system": "plasticity", "active_systems_from_crss": "plasticity",
     "yield_proximity": "plasticity", "taylor_factor": "plasticity",
-    "HCP_RATIOS": "plasticity",
+    "HCP_RATIOS": "plasticity", "HCP_FRAMES": "plasticity",
+    # twin / coincidence-site relations and pair finding
+    "TwinRelation": "twin_relations",
+    "default_fcc_twin_relations": "twin_relations", "default_cubic_twin_relations": "twin_relations",
+    "default_hcp_twin_relations": "twin_relations", "default_tetragonal_twin_relations": "twin_relations",
+    "default_trigonal_twin_relations": "twin_relations", "default_twin_relations_for": "twin_relations",
+    "hcp_hkil_to_cartesian_normal": "twin_relations", "tetragonal_hkl_to_cartesian_normal": "twin_relations",
+    "relation_rotation_matrix": "twin_relations", "relation_disorientation": "twin_relations",
+    "relation_axis_family": "twin_relations", "build_twin_pair": "twin_relations",
+    "find_twin_partners": "twin_relations",
 }
 
 __all__ = sorted(_EXPORTS)

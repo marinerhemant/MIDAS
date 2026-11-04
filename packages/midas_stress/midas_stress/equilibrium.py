@@ -929,6 +929,24 @@ def recover_d0_anisotropic(
 
     lattice_params = np.asarray(lattice_params, dtype=np.float64)
     assumed_reference = np.asarray(assumed_reference, dtype=np.float64)
+    # Strain basis of each reference length, in the grain (MIDAS crystal) frame. Scaling the
+    # reference axis k with the angles held fixed moves the cell by sym(A e_k e_k^T A^-1)
+    # (A = the assumed reference cell). For tetragonal/hexagonal/orthorhombic/cubic cells that
+    # is the diagonal indicator in `_D0_BASES`. For monoclinic and triclinic cells the real-space
+    # a, b, c are not along x, y, z (a* is along x, not a), so the diagonal was only an
+    # approximation: it mixes in |beta - 90| of the wrong axis (e.g. ~7% of the a-length
+    # response at beta = 105 deg). Build the exact tensors there.
+    B_list = [np.diag(np.asarray(diag, dtype=np.float64)) for _n, diag, _i in bases]
+    if key in ("monoclinic", "triclinic"):
+        from .tensor import lattice_params_to_A_matrix
+        A_ref = np.asarray(lattice_params_to_A_matrix(assumed_reference), dtype=np.float64)
+        A_inv = np.linalg.inv(A_ref)
+        B_list = []
+        for k in range(3):
+            e = np.zeros((3, 3))
+            e[k, k] = 1.0
+            M = A_ref @ e @ A_inv
+            B_list.append(0.5 * (M + M.T))
     orientations = np.asarray(orientations, dtype=np.float64)
     stiffness = np.asarray(stiffness, dtype=np.float64)
     N = lattice_params.shape[0]
@@ -965,9 +983,8 @@ def recover_d0_anisotropic(
     M_all = rotation_voigt_mandel(orientations)          # lab -> grain
     Mt_avg = np.sum(w[:, None, None] * np.swapaxes(M_all, -1, -2)[mask], axis=0)
     A = np.zeros((6, len(bases)))
-    for k, (_name, diag, _idx) in enumerate(bases):
-        B_k = np.diag(np.asarray(diag, dtype=np.float64))
-        A[:, k] = Mt_avg @ (stiffness @ tensor_to_voigt(B_k))
+    for k in range(len(bases)):
+        A[:, k] = Mt_avg @ (stiffness @ tensor_to_voigt(B_list[k]))
 
     delta, *_ = np.linalg.lstsq(A, b, rcond=None)
     sv = np.linalg.svd(A, compute_uv=False)
@@ -980,7 +997,7 @@ def recover_d0_anisotropic(
     for k, (name, diag, idx) in enumerate(bases):
         d = float(delta[k])
         deltas[name] = d
-        corr += d * np.diag(np.asarray(diag, dtype=np.float64))
+        corr += d * B_list[k]
         for i in idx:
             reference_recovered[i] = assumed_reference[i] / (1.0 - d)
 

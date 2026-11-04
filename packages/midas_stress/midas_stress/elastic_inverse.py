@@ -182,6 +182,11 @@ def _trigonal_basis() -> tuple[list[str], np.ndarray]:
 
     Includes the C14 shear-coupling term characteristic of trigonal
     symmetry.  ``C66 = (C11 - C12) / 2`` as in hexagonal.
+
+    2-fold axis along x (IEEE/Nye), which in the MIDAS crystal frame is the a* direction:
+    correct for the P312 / P31m family (SG 149, 151, 153, 157, 159, 162, 163). For the
+    other trigonal groups (P321, P3m1, R32, R3m, R-3m, R-3c, ...) use ``"trigonal_a"``;
+    :func:`trigonal_setting_for_space_group` picks the right one.
     Trigonal low-symmetry classes (3, -3) add a seventh constant
     ``C15``; use :func:`_trigonal_low_basis` for those.
     """
@@ -197,6 +202,43 @@ def _trigonal_basis() -> tuple[list[str], np.ndarray]:
     return [n for n, _ in defs], np.stack(
         [_make_P_from_voigt_entries(e) for _, e in defs], axis=0
     )
+
+
+def _rotate_mandel_basis(P: np.ndarray, theta_deg: float) -> np.ndarray:
+    """Rotate a stack of (6, 6) Mandel matrices ``[xx, yy, zz, xy, xz, yz]`` by
+    ``theta_deg`` about z (``C' = Q C Q^T`` with ``Q`` the Mandel rotation)."""
+    t = np.radians(theta_deg)
+    R = np.array([[np.cos(t), -np.sin(t), 0.0], [np.sin(t), np.cos(t), 0.0], [0.0, 0.0, 1.0]])
+    s2 = 1.0 / np.sqrt(2.0)
+    E = np.zeros((6, 3, 3))
+    for I, (i, j) in enumerate([(0, 0), (1, 1), (2, 2), (0, 1), (0, 2), (1, 2)]):
+        if i == j:
+            E[I, i, i] = 1.0
+        else:
+            E[I, i, j] = E[I, j, i] = s2
+    Q = np.einsum("Iab,ac,Jcd,bd->IJ", E, R, E, R)      # E_I : (R E_J R^T)
+    return np.einsum("IJ,nJK,LK->nIL", Q, np.asarray(P, dtype=float), Q)
+
+
+def _trigonal_a_basis() -> tuple[list[str], np.ndarray]:
+    """Trigonal with the 2-fold axes along a (P321, P3m1-type, R32, R3m, R-3m, R-3c, ...).
+
+    ``_trigonal_basis`` puts the 2-fold axis along x (IEEE/Nye standard). In the MIDAS
+    crystal frame (a* along x, real a at -30/150 deg, b at 90 deg) that is the P312 /
+    P31m family (2-fold along a*: SG 149, 151, 153, 157, 159, 162, 163); every other
+    trigonal group (150, 152, 154, 155, 156, 158, 160, 161, 164, 165, 166, 167, e.g.
+    sapphire R-3c) has its 2-folds along a, i.e. along y among others, which is the
+    standard basis rotated by 90 deg about c (any of 30, 90, 150 deg is equivalent).
+    """
+    names, P = _trigonal_basis()
+    return names, _rotate_mandel_basis(P, 90.0)
+
+
+def trigonal_setting_for_space_group(space_group: int) -> str:
+    """``"trigonal"`` or ``"trigonal_a"``: the stiffness basis whose 2-fold axes match the
+    MIDAS-frame symmetry operators of ``space_group`` (143-167)."""
+    from .orientation import _TrigType2SGs
+    return "trigonal" if int(space_group) in _TrigType2SGs else "trigonal_a"
 
 
 def _tetragonal_basis() -> tuple[list[str], np.ndarray]:
@@ -274,6 +316,7 @@ _SYMMETRY_DISPATCH = {
     "cubic":        _cubic_basis,
     "hexagonal":    _hexagonal_basis,
     "trigonal":     _trigonal_basis,
+    "trigonal_a":   _trigonal_a_basis,
     "tetragonal":   _tetragonal_basis,
     "orthorhombic": _orthorhombic_basis,
     "monoclinic":   _monoclinic_basis,
@@ -287,9 +330,12 @@ def symmetry_parameterisation(symmetry: str) -> tuple[list[str], np.ndarray]:
     Parameters
     ----------
     symmetry : str
-        One of ``"cubic"``, ``"hexagonal"``, ``"trigonal"``,
+        One of ``"cubic"``, ``"hexagonal"``, ``"trigonal"``, ``"trigonal_a"``,
         ``"tetragonal"``, ``"orthorhombic"``, ``"monoclinic"``,
-        ``"triclinic"``.
+        ``"triclinic"``. The bases are in the MIDAS crystal frame (a* along x). The two
+        trigonal keys differ by where the 2-fold axes lie: ``"trigonal"`` along a* (SG 149,
+        151, 153, 157, 159, 162, 163), ``"trigonal_a"`` along a (all other trigonal groups,
+        e.g. R-3c); :func:`trigonal_setting_for_space_group` picks one.
 
     Returns
     -------
