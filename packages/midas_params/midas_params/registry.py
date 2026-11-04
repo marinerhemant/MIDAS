@@ -719,6 +719,16 @@ PARAMS: list[ParamSpec] = [
         name="Width", type=ParamType.FLOAT, category="Peak search",
         description="Ring half-width in radial (2θ) direction.",
         applies_to=ALL, default=1500, units="um", stages=S_PEAK | S_INDEX,
+        notes="Used twice: the peak-search ring band, and calc_radius's "
+              "ring-assignment window |R - R_ring| < Width. In both, R is "
+              "the tilt- and distortion-corrected radius of the spot, on the "
+              "plane at Lsd, so the window means the same thing at every "
+              "ring. (calc_radius used the flat distance from the beam "
+              "centre until then, which is off by about |tilt|*R^2/Lsd on a "
+              "tilted detector: ~1.5 mm on an outer ring at 1.3 deg, so "
+              "Width 600 dropped every spot there.) Absent from the "
+              "archive, every stage uses 1500. `WidthTthPx` overrides it "
+              "for the calc_radius window only.",
     ),
 
     # ─── Radial integration bounds (RI + calibration) ──────────────────────
@@ -2780,10 +2790,12 @@ PARAMS: list[ParamSpec] = [
               "of its own: the C initialises it to the sentinel -1 and falls "
               "back to `Width` (default 1500 µm) when it is absent "
               "(CalcRadiusAllZarr.c:114, :239; FitSetupParamsAllZarr.c:652, "
-              ":1084). C-vs-PYTHON DIVERGENCE: midas_transforms has no "
-              "WidthTthPx field, so today's Python pipeline always uses "
-              "`Width` and silently ignores this key "
-              "(midas_transforms/radius/core.py:348).",
+              ":1084). PARTIAL C-vs-PYTHON DIVERGENCE: Python's calc_radius "
+              "honours it as the ring-assignment window "
+              "(midas_transforms/radius/match.py, resolve_width_um: "
+              "WidthTthPx, then Width, then WidthOrig, then 1500 um), but "
+              "peak search still uses `Width` and Python's fit_setup does "
+              "not read it, where the C fit_setup used it as a 2θ tolerance.",
     ),
 
     # ─── File discovery ─────────────────────────────────────────────────────

@@ -565,6 +565,9 @@ class ZarrParams:
     RingThresh: List[Tuple[int, float]] = field(default_factory=list)
     Width: float = -1.0
     WidthOrig: float = -1.0
+    # Override for the |R_obs - R_ring| ring-assignment window (um, despite the
+    # name); -1 = absent, fall back to Width. See radius.match.resolve_width_um.
+    WidthTthPx: float = -1.0
 
     # margins / bin sizes
     MarginRadius: float = 500.0

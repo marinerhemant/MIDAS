@@ -504,8 +504,9 @@ def test_dead_but_real_keys_say_they_are_dead():
 
 
 def test_c_vs_python_divergences_are_recorded():
-    """MaxNFrames and WidthTthPx are honoured by the C reference and ignored
-    by the Python pipeline that actually runs. Registering them without that
+    """MaxNFrames is honoured by the C reference and ignored by the Python
+    pipeline that actually runs; WidthTthPx is honoured by Python's calc_radius
+    only (peak search and fit_setup ignore it). Registering them without that
     caveat would overstate what setting them does."""
     specs = by_name()
     for name in ("MaxNFrames", "WidthTthPx"):

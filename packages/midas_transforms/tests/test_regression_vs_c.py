@@ -149,11 +149,33 @@ def test_calc_radius_close_to_c(tmp_path: Path, goldens_dir: Path):
 
     new = csv_io.read_radius_csv(tmp_path / "Radius_StartNr_1_EndNr_1440.csv")
     ref = csv_io.read_radius_csv(goldens_dir / "Radius_StartNr_1_EndNr_1440.csv")
-    # Row count must match exactly (ring filter is identical).
-    assert new.shape == ref.shape, f"shape mismatch: {new.shape} vs {ref.shape}"
+    # The C reference assigns a spot to a ring by its FLAT distance from the
+    # beam centre. calc_radius now uses the tilt- and distortion-corrected
+    # radius, the quantity peak search thresholds on. On this dataset (no tilt;
+    # distortion shifts the radius by -289 .. +112 um) that admits exactly 3
+    # borderline spots the C rule dropped (flat 1552-1611 um from a ring,
+    # corrected 1303-1462 um, Width 1500) and rejects none. Every other row
+    # must be the C row: the new table is the C table with those rows inserted.
+    N_RECOVERED = 3
+
+    def key(row):
+        return tuple(np.round(row[[1, 2, 3, 4, 5, 13]], 4))
+
+    kept, j = [], 0
+    for i in range(new.shape[0]):
+        if j < ref.shape[0] and key(new[i]) == key(ref[j]):
+            kept.append(i)
+            j += 1
+    assert j == ref.shape[0], (
+        f"{ref.shape[0] - j} C rows were dropped or reordered by calc_radius")
+    assert new.shape[0] - ref.shape[0] == N_RECOVERED, (
+        f"expected {N_RECOVERED} recovered rows, got {new.shape[0] - ref.shape[0]}")
+    new_k = new[kept]
+    # Column 0 (SpotID) is renumbered 1..N, so it shifts after an insertion.
+    np.testing.assert_array_equal(new[:, 0], np.arange(1, new.shape[0] + 1))
     # Column-wise tolerance (looser on derived columns 14, 15 = GrainVolume/Radius).
-    np.testing.assert_allclose(new[:, :14], ref[:, :14], atol=1e-3, rtol=1e-5,
-        err_msg="Radius cols 0..13 (geometry + ring) must match C within tight tolerance.")
+    np.testing.assert_allclose(new_k[:, 1:14], ref[:, 1:14], atol=1e-3, rtol=1e-5,
+        err_msg="Radius cols 1..13 (geometry + ring) must match C within tight tolerance.")
 
 
 # ---------------------------------------------------------------------------

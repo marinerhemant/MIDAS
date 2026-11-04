@@ -19,6 +19,7 @@ import torch
 from ..device import resolve_device, resolve_dtype
 from ..io import csv as csv_io
 from ..params import ZarrParams
+from . import match
 
 _DEG2RAD = math.pi / 180.0
 _RAD2DEG = 180.0 / math.pi
@@ -32,6 +33,9 @@ class RadiusResult:
     ring_radii: torch.Tensor           # (n_configured_rings,) float64
     ring_numbers: List[int] = field(default_factory=list)
     n_frames: int = 0
+    # How many peaks matched which ring and how many matched none; see
+    # ``match.build_match_report``. ``stats["summary"]`` is a printable text.
+    match_stats: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +58,7 @@ def _filter_and_compute_radius(
     DiscArea: float,
     n_frames: int,
     top_layer: bool = False,
+    R_match_um: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Vectorised port of ``CalcRadiusAllZarr.c:347-434``.
 
@@ -70,6 +75,12 @@ def _filter_and_compute_radius(
     ``Width`` of two rings emits a row per matching ring (with a fresh
     sequential SpotID for each). We replicate that here: every (spot, ring)
     pair where ``|R_obs - ring_rad| < width`` produces one output row.
+
+    ``R_obs`` is ``R_match_um`` when given: the tilt- and distortion-corrected
+    radius of each spot, which is the quantity ``hkls.csv`` radii describe on a
+    tilted detector. Without it the flat ``Radius`` column (distance from the
+    beam centre) is used, which is only a ring radius when the detector is
+    untilted. The ``Radius`` column written to the output stays the flat one.
     """
     device = result_arr.device
     dtype = result_arr.dtype
@@ -80,7 +91,10 @@ def _filter_and_compute_radius(
     # 0=SpotID, 1=IntegratedIntensity, 2=Omega, 3=YCen, 4=ZCen, 5=IMax,
     # 6=MinOme, 7=MaxOme, 8=SigmaR, 9=SigmaEta, 10=NrPx, 11=NrPxTot,
     # 12=Radius, 13=Eta, 14=RawSumIntensity, 15=maskTouched, 16=FitRMSE
-    R_obs_um = result_arr[:, 12] * px_um  # observed radius in µm
+    if R_match_um is None:
+        R_obs_um = result_arr[:, 12] * px_um  # flat radius in µm
+    else:
+        R_obs_um = R_match_um.to(device=device, dtype=dtype)
 
     # Per-spot, per-ring window: emit a row per matching pair.
     rad_um = ring_radii_um.to(device=device, dtype=dtype)
@@ -341,11 +355,23 @@ def calc_radius(
     eff_DiscModel = DiscModel if DiscModel else int(getattr(zarr_params, "DiscModel", 0))
     eff_DiscArea = DiscArea if DiscArea else float(getattr(zarr_params, "DiscArea", 0.0))
 
+    # Ring assignment compares the tilt-corrected spot radius with the hkls.csv
+    # ring radius (see match.py), inside the user's Width.
+    width_um, width_source = match.resolve_width_um(zarr_params)
+    R_flat_um = spots_t[:, 12] * zarr_params.PixelSize
+    R_match_um = match.corrected_radius_um(zarr_params, spots_t[:, 3], spots_t[:, 4])
+    match_stats = match.build_match_report(
+        R_match_um if R_match_um is not None else R_flat_um, R_flat_um,
+        ring_numbers, rr_t, width_um, width_source,
+        geometry_corrected=R_match_um is not None,
+    )
+    match.log_match_report(match_stats)
+
     out, powder_int, _mhkl_default = _filter_and_compute_radius(
         spots_t,
         ring_numbers=rn_t,
         ring_radii_um=rr_t,
-        width_px=zarr_params.Width if zarr_params.Width > 0 else (zarr_params.WidthOrig or 1.0),
+        width_px=width_um,
         px_um=zarr_params.PixelSize,
         Lsd_um=zarr_params.Lsd,
         OmegaStep=zarr_params.OmegaStep if zarr_params.OmegaStep else 1.0,
@@ -356,6 +382,7 @@ def calc_radius(
         DiscArea=eff_DiscArea,
         n_frames=n_frames,
         top_layer=top_layer,
+        R_match_um=R_match_um,
     )
 
     # Re-apply m_hkl from hkls.csv.
@@ -389,4 +416,5 @@ def calc_radius(
         ring_radii=rr_t,
         ring_numbers=list(ring_numbers),
         n_frames=n_frames,
+        match_stats=match_stats,
     )
