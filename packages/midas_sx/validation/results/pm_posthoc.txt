@@ -1,0 +1,36 @@
+# POST HOC: the A26 convergence gate counts a bound hit of an UNDETERMINED oxygen U (O1a.U, O1b.U, O2.U, O3.U) as non-convergence
+P11 arm U: gate-converged 20/50; converged apart from oxygen-U bound hits 49/50; other failures 1: on bound: Ni.U
+P11 arm T: gate-converged 25/50; converged apart from oxygen-U bound hits 50/50; other failures 0: 
+   P11 arm T on those 50 seeds: m median 0.2851 (IQR 0.2573-0.3101), pull of m mean -0.28 sd 1.20
+param  pull_mean  pull_sd  U_bias_sig_T
+La2.z     0.0348     1.11       0.00137
+ Ni.z     -0.499     1.12         -1.16
+O1a.z     -0.389    0.956         -2.37
+O1b.z      0.385     1.07           1.7
+ O2.z     -0.416     1.24        -0.441
+La1.U      0.377     1.11           1.8
+La2.U       1.33     1.07         0.973
+ Ni.U     -0.772     1.12        -0.114
+P30 arm U: gate-converged 23/50; converged apart from oxygen-U bound hits 40/50; other failures 10: on bound: La1.U,O1a.U,O1b.U,O2.U,O3.U; on bound: La1.U,O1b.U,O2.U,O3.U; on bound: La2.U,O2.U,O3.U
+P30 arm T: gate-converged 26/50; converged apart from oxygen-U bound hits 43/50; other failures 7: on bound: La1.U,Ni.U,O1b.U; on bound: Ni.U,O1a.U; on bound: Ni.U,O1a.U,O1b.U
+   P30 arm T on those 43 seeds: m median 0.2999 (IQR 0.2948-0.3033), pull of m mean +0.25 sd 2.06
+param  pull_mean  pull_sd  U_bias_sig_T
+La2.z      0.232    0.997          -1.2
+ Ni.z       0.25      1.2         -2.81
+O1a.z     -0.292    0.966         -5.02
+O1b.z    -0.0322     1.36          1.22
+ O2.z      0.127    0.927        -0.974
+La1.U      0.066     2.27         0.602
+La2.U     0.0702      1.7          3.17
+ Ni.U     -0.656     1.49          3.74
+P00 arm U: gate-converged 45/50; converged apart from oxygen-U bound hits 50/50; other failures 0: 
+P00 arm T: gate-converged 44/50; converged apart from oxygen-U bound hits 50/50; other failures 0: 
+param  pull_mean  pull_sd  U_bias_sig_T
+La2.z       0.23    0.913         0.281
+ Ni.z     -0.339    0.997        -0.464
+O1a.z      0.131      1.1      -0.00626
+O1b.z     -0.106     1.08       -0.0363
+ O2.z      0.273     0.92         0.315
+La1.U     0.0807    0.949         0.102
+La2.U      0.297     1.24         0.768
+ Ni.U    -0.0983     1.03        -0.198

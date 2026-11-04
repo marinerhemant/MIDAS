@@ -1,0 +1,16 @@
+# A36 T1: noise-free (clean) frames, true U and geometry, mean vs quadratic shell background
+
+## P11: 5 seeds ([np.int64(50), np.int64(51), np.int64(52), np.int64(53), np.int64(54)]), 2335 blend rows per variant
+  mean       exp<3000: n= 1912  median (I - exp)   -43.35 counts  median n_box 5415  fit I = 0.9691 exp -69.43
+  quadratic  exp<3000: n= 1912  median (I - exp)    -0.04 counts  median n_box 5415  fit I = 0.9984 exp -22.15
+  -> T1 criteria for P11: NOT MET
+## P30: 5 seeds ([np.int64(50), np.int64(51), np.int64(52), np.int64(53), np.int64(54)]), 2015 blend rows per variant
+  mean       exp<3000: n= 1810  median (I - exp)    -5.52 counts  median n_box 1331  fit I = 0.9969 exp -5.61
+  quadratic  exp<3000: n= 1810  median (I - exp)    +0.00 counts  median n_box 1331  fit I = 1.0000 exp -0.04
+  -> T1 criteria for P30: MET
+## P00: 5 seeds ([np.int64(50), np.int64(51), np.int64(52), np.int64(53), np.int64(54)]), 2402 blend rows per variant
+  mean       exp<3000: n= 2092  median (I - exp)    -1.94 counts  median n_box 567  fit I = 0.9987 exp -1.73
+  quadratic  exp<3000: n= 2092  median (I - exp)    +0.00 counts  median n_box 567  fit I = 1.0000 exp -0.01
+  -> T1 criteria for P00: MET
+
+REGISTERED READING (T1): INCONCLUSIVE

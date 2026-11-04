@@ -1,0 +1,40 @@
+C3 paired shifts refined(wrong) - refined(correct) on the same spots; baseline formal sigma and tolerance per parameter:
+  La2.z: sig 0.00088 tol 0.02  Ni.z: sig 0.0026 tol 0.02  O1.z: sig 0.0065 tol 0.02  O2.z: sig 0.0097 tol 0.02  La1.U: sig 0.00041 tol 0.0013  La2.U: sig 0.00025 tol 0.0013  Ni.U: sig 0.00036 tol 0.0013  O1.U: sig 0.0012 tol 0.0013  O2.U: sig 0.0021 tol 0.0013  O3.U: sig 0.0035 tol 0.0013
+
+                               variant  converged   GooF     La2.z      Ni.z      O1.z      O2.z     La1.U     La2.U      Ni.U      O1.U      O2.U      O3.U
+                 anvil thickness +20 %       True  1.609 +1.03e-04 -1.17e-04 -1.65e-05 +3.29e-03 -6.17e-05 -4.78e-05 -5.40e-05 -1.24e-03 +5.06e-04 +1.54e-04
+                 anvil thickness -20 %       True  1.291 +1.04e-04 +6.26e-04 -3.59e-04 -5.74e-03 +1.22e-05 +3.48e-05 +1.54e-04 +1.05e-03 -8.14e-04 -6.74e-05
+                              mu x1.25       True  1.666 +1.52e-04 -4.41e-05 -1.77e-04 +3.72e-03 -7.96e-05 -6.64e-05 -7.80e-05 -1.54e-03 +5.93e-04 +2.95e-04
+                              mu x0.80       True  1.291 +1.04e-04 +6.26e-04 -3.59e-04 -5.74e-03 +1.22e-05 +3.48e-05 +1.54e-04 +1.05e-03 -8.14e-04 -6.74e-05
+  DAC axis tilt absent (truth 2,1 deg)       True  1.260 +1.51e-04 +4.93e-04 -1.50e-03 -2.14e-03 -6.90e-05 +7.26e-05 +1.34e-04 +2.03e-03 -3.13e-04 +3.37e-04
+            DAC axis tilt +2 deg wrong       True  1.421 +2.16e-05 +2.83e-05 +1.84e-04 -1.63e-04 -7.55e-05 +1.98e-06 +9.06e-06 -4.62e-04 -2.35e-04 -7.81e-04
+polarization fraction 0.90 (true 0.99)       True  1.406 +2.26e-04 +1.90e-03 +9.92e-04 -3.77e-04 -2.16e-04 +1.96e-06 -1.63e-04 -2.81e-04 -5.47e-04 -2.59e-05
+            polarization fraction 0.50       True  1.644 +1.32e-03 +1.12e-02 +6.92e-03 -1.70e-03 -1.26e-03 +1.45e-04 -1.08e-03 -1.57e-03 -1.71e-03 -8.39e-04
+         polarization plane 10 deg off       True  1.363 -1.48e-04 -3.31e-03 +3.33e-03 -8.02e-04 -7.42e-05 -1.67e-04 +3.37e-04 -3.79e-05 -5.22e-04 -2.35e-03
+             omega zero-point +0.1 deg       True  1.419 -2.40e-05 +7.35e-05 +2.36e-04 -1.93e-04 -4.77e-06 -1.23e-05 -1.28e-05 -9.34e-05 +3.96e-05 +2.44e-04
+             omega zero-point +0.3 deg       True  1.442 -3.77e-05 +1.51e-04 +2.71e-04 -4.28e-04 -2.51e-05 -3.24e-05 -4.46e-05 -3.17e-04 +2.63e-04 +5.79e-04
+             beam centre +0.5 px (col)       True  1.262 +8.52e-04 -1.06e-03 -5.26e-03 -1.34e-03 +4.13e-04 +7.17e-05 +9.38e-04 +3.44e-03 -1.42e-03 +1.83e-04
+             beam centre +1.0 px (col)       True  1.510 +8.13e-05 -3.40e-03 -1.83e-02 -9.67e-03 +2.04e-03 +9.82e-05 +1.60e-03 +7.23e-03 +8.47e-04 +6.01e-03
+              detector distance +0.5 %       True  1.407 +2.29e-05 +1.64e-04 +6.71e-05 -5.58e-05 -1.64e-05 +6.93e-07 -1.23e-05 -1.81e-05 -5.68e-05 -1.16e-05
+              NO absorption correction       True  1.624 +2.27e-04 +2.11e-03 +1.87e-03 -2.19e-02 -2.69e-05 +3.45e-05 +6.46e-04 +4.79e-03 -4.33e-03 -4.02e-04
+            NO polarization correction       True  2.219 +2.55e-03 +1.97e-02 +1.17e-02 -4.70e-03 -1.91e-04 +2.32e-03 -3.61e-04 -3.89e-04 -3.08e-03 -2.21e-03
+                 NO Lorentz correction      False 32.168     0.398     0.260    -0.304     0.222 -8.57e-04     0.191 +1.13e-02 +6.25e-03 -1.11e-02 +5.49e-02
+
+Parameters that MATTER (shift > min(formal sigma, tolerance)):
+  anvil thickness +20 %                      O1.U
+  anvil thickness -20 %                      -
+  mu x1.25                                   O1.U
+  mu x0.80                                   -
+  DAC axis tilt absent (truth 2,1 deg)       O1.U
+  DAC axis tilt +2 deg wrong                 -
+  polarization fraction 0.90 (true 0.99)     -
+  polarization fraction 0.50                 La2.z, Ni.z, O1.z, La1.U, Ni.U, O1.U, O2.U
+  polarization plane 10 deg off              Ni.z, O3.U
+  omega zero-point +0.1 deg                  -
+  omega zero-point +0.3 deg                  -
+  beam centre +0.5 px (col)                  La1.U, Ni.U, O1.U, O2.U
+  beam centre +1.0 px (col)                  Ni.z, O1.z, La1.U, Ni.U, O1.U, O3.U
+  detector distance +0.5 %                   -
+  NO absorption correction                   O2.z, Ni.U, O1.U, O2.U
+  NO polarization correction                 La2.z, Ni.z, O1.z, La2.U, O2.U, O3.U
+  NO Lorentz correction                      La2.z, Ni.z, O1.z, O2.z, La1.U, La2.U, Ni.U, O1.U, O2.U, O3.U

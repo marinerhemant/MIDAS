@@ -1,0 +1,30 @@
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+
+== shared geometry: 922 hkl groups kept (2 trimmed), 895 with a pair spanning runs; rms 0.00084, robust scale 0.00073
+param    value  sigma_formal  sigma_boot
+   tx  -0.0311        0.0038      0.0045
+   ty  -0.1832        0.0058      0.0052
+   tz -20.1582        0.0085      0.0101
+wedge   0.3309        0.0039      0.0061
+  bcz 861.9352        0.0193      0.0288
+  bcy 401.7106        0.0190      0.0309
+  lsd 170.8584        0.0338      0.0466
+   P_r03: rotation 154.789 deg
+   P_r04: rotation 154.894 deg
+
+== tx and wedge per run: 922 hkl groups kept (2 trimmed), 895 with a pair spanning runs; rms 0.00077, robust scale 0.00065
+param    value  sigma_formal  sigma_boot
+   tx  -0.0920        0.0056      0.0067
+   ty  -0.1785        0.0052      0.0043
+   tz -20.1520        0.0077      0.0080
+wedge   0.4460        0.0059      0.0098
+  bcz 861.9134        0.0172      0.0237
+  bcy 401.6816        0.0170      0.0261
+  lsd 170.8320        0.0305      0.0394
+   P_r03: rotation 154.703 deg
+   P_r04: rotation 154.762 deg
+   tx: run r02 (reference) -0.0920; deviations r03 +0.1165 +/- 0.0091, r04 +0.0352 +/- 0.0071
+   wedge: run r02 (reference) +0.4460; deviations r03 -0.1062 +/- 0.0111, r04 -0.1854 +/- 0.0128
+
+orientation-fit values per run (reduction.json): r02: tx -0.103 ty -0.197 tz -20.072 wedge +0.413 bcz 861.92 bcy 401.32 lsd 171.144; r03: tx +0.023 ty -0.186 tz -20.091 wedge +0.310 bcz 862.02 bcy 401.54 lsd 171.109; r04: tx -0.036 ty -0.183 tz -20.083 wedge +0.291 bcz 861.84 bcy 401.62 lsd 171.082

@@ -1,0 +1,3 @@
+label error 0.00: n=20 pairs median 100 | tx bias -0.0002 sd 0.0065 rms-err 0.0064 | wedge bias -0.0026 sd 0.0100 rms-err 0.0101
+label error 0.05: n=20 pairs median 90 | tx bias -0.0002 sd 0.0079 rms-err 0.0077 | wedge bias -0.0038 sd 0.0102 rms-err 0.0106
+label error 0.15: n=20 pairs median 72 | tx bias +0.0010 sd 0.0080 rms-err 0.0078 | wedge bias -0.0035 sd 0.0094 rms-err 0.0098

@@ -1,0 +1,13 @@
+noise-free refinements, N3p-like start (shift 0.10 A, seed 3): CHAIN converged=True GooF=0.532; ORACLE converged=True GooF=0.485; ORACLE_MCLorentz converged=True GooF=0.016; n_unique 54
+errors = estimate - truth (A for z, A^2 for U); compare noisefree_* with c2v2_mean_error (+- SE over 50 noisy seeds)
+param  c2v2_mean_error   c2v2_SE  noisefree_CHAIN  noisefree_ORACLE  noisefree_ORACLE_MCLorentz  formal_sigma_one_seed
+La2.z       -5.161e-04 1.164e-04       -5.587e-04        -5.117e-04                   1.124e-05              8.509e-04
+ Ni.z       -2.983e-03 4.396e-04       -3.350e-03        -2.535e-03                   4.103e-05              2.413e-03
+ O1.z        3.058e-03 1.175e-03        3.135e-03         4.703e-03                   6.790e-05              6.192e-03
+ O2.z        1.159e-02 1.315e-03        1.237e-02         1.369e-02                   5.290e-05              9.262e-03
+La1.U        2.099e-04 6.530e-05        1.738e-04        -6.178e-05                  -7.616e-07              3.801e-04
+La2.U       -1.976e-04 4.160e-05       -1.593e-04        -1.011e-04                   4.532e-06              2.402e-04
+ Ni.U        1.737e-04 5.135e-05        1.994e-04         6.109e-05                   8.260e-06              3.415e-04
+ O1.U       -1.056e-03 1.808e-04       -1.047e-03        -1.533e-03                  -3.672e-06              1.116e-03
+ O2.U        1.269e-03 3.407e-04        1.380e-03         9.218e-04                   2.453e-05              1.944e-03
+ O3.U       -1.147e-03 5.337e-04       -1.868e-03        -2.616e-03                   1.966e-05              3.266e-03

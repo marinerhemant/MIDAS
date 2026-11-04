@@ -1,0 +1,64 @@
+/Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_sx/validation/analyse_joint.py:24: RuntimeWarning: All-NaN slice encountered
+  det = [p for p in names if np.nanmedian(conv[f"s:{p}"].replace([np.inf, -np.inf], np.nan)) < thr(p)]
+# A33 joint (S2OA: aniso cations + twin m 0.30 + per-domain extinction t_b 5 um): 30 seeds
+
+arm   converged  GooF median  n_par  n_unique
+F      20/30       0.946     21     73
+FmE     0/30       2.606     20     73
+FmA    30/30       2.537     15     73
+FmT    28/30       1.393     20     73
+K      12/30       3.156     13     73
+
+determinable (median formal sigma below threshold): 8: ['La2.z', 'Ni.z', 'O1a.z', 'O1b.z', 'O2.z', 'La2.Uzz', 'Ni.Uzz', 't_b']
+not determined: ['La1.Uxx', 'La1.Uyy', 'La1.Uzz', 'La2.Uxx', 'La2.Uyy', 'Ni.Uxx', 'Ni.Uyy', 'O1a.U', 'O1b.U', 'O2.U', 'O3.U', 'twin.m', 'La1.U', 'La2.U', 'Ni.U']
+
+Arm F, per parameter (error = estimate - truth):
+  param   det  n  mean_err  med_sigma  pull_mean  pull_sd  wrong_gt3
+  La2.z  True 20    0.0002     0.0010     0.1558   0.8863          0
+   Ni.z  True 20    0.0007     0.0031     0.1691   1.0391          0
+  O1a.z  True 20   -0.0011     0.0126    -0.0670   0.9987          0
+  O1b.z  True 20    0.0036     0.0131     0.2200   0.8834          0
+   O2.z  True 20   -0.0006     0.0097    -0.0662   0.8509          0
+La1.Uxx False 20    0.0001     0.0036     0.0121   0.5171          0
+La1.Uyy False 20    0.0004     0.0030     0.0989   0.5149          0
+La1.Uzz False 20   -0.0003     0.0015    -0.1341   0.9627          0
+La2.Uxx False 20   -0.0003     0.0027    -0.1125   0.8289          0
+La2.Uyy False 20    0.0001     0.0021     0.0305   0.7953          0
+La2.Uzz  True 20    0.0000     0.0007    -0.0033   1.0339          0
+ Ni.Uxx False 20    0.0007     0.0033     0.1874   0.5021          0
+ Ni.Uyy False 20   -0.0002     0.0029    -0.0251   0.5707          0
+ Ni.Uzz  True 20   -0.0002     0.0010    -0.2231   0.9751          0
+  O1a.U False 20    0.0020     0.0036     0.5021   1.2100          1
+  O1b.U False 20    0.0002     0.0037     0.0194   1.2141          0
+   O2.U False 20   -0.0003     0.0020    -0.1841   0.9589          0
+   O3.U False 20    0.0006     0.0041     0.0848   0.7945          0
+ twin.m False 20    0.0018     0.0237     0.1887   1.2193          0
+    t_b  True 20   -0.0339     0.1317    -0.2133   0.8242          0
+  La1.U False  0       NaN        NaN        NaN      NaN          0
+  La2.U False  0       NaN        NaN        NaN      NaN          0
+   Ni.U False  0       NaN        NaN        NaN      NaN          0
+
+m: median 0.3073 (true 0.30), sigma_m median 0.0237;  t_b: median 4.939 um (true 5.0), sigma median 0.132
+
+correlations (arm F, converged seeds): median / fraction of seeds with |corr| > 0.98
+  c:twin.m|ext.t2              median -0.087   |corr|>0.98 in 0 %
+  c:twin.m|scale               median -0.047   |corr|>0.98 in 0 %
+  c:ext.t2|scale               median +0.941   |corr|>0.98 in 0 %
+  c:La1.Uzz|twin.m             median -0.059   |corr|>0.98 in 0 %
+  c:La1.Uzz|ext.t2             median +0.347   |corr|>0.98 in 0 %
+  c:La1.Uzz|scale              median +0.407   |corr|>0.98 in 0 %
+  c:La2.Uzz|twin.m             median +0.037   |corr|>0.98 in 0 %
+  c:La2.Uzz|ext.t2             median +0.164   |corr|>0.98 in 0 %
+  c:La2.Uzz|scale              median +0.136   |corr|>0.98 in 0 %
+  c:Ni.Uzz|twin.m              median -0.014   |corr|>0.98 in 0 %
+  c:Ni.Uzz|ext.t2              median +0.147   |corr|>0.98 in 0 %
+  c:Ni.Uzz|scale               median +0.160   |corr|>0.98 in 0 %
+  seeds with ANY |corr| > 0.98 among these pairs: 0 %
+
+Necessity of each effect (ablated arm vs arm F; 'needs' = GooF >= 1.5 x F's OR a determined parameter of F with |mean ablated-arm error| > 1 sigma_F):
+  FmE  (no extinction   ): converged 0/30, GooF 2.61 (x2.75), largest |mean error|/sigma_F nan (None) -> NEEDED
+  FmA  (no anisotropic U): converged 30/30, GooF 2.54 (x2.68), largest |mean error|/sigma_F 12.79 (Ni.z) -> NEEDED
+  FmT  (no twin fraction): converged 28/30, GooF 1.39 (x1.47), largest |mean error|/sigma_F 7.60 (O1b.z) -> NEEDED
+  K    (no all three    ): converged 12/30, GooF 3.16 (x3.34), largest |mean error|/sigma_F 14.61 (Ni.z) -> NEEDED
+
+REGISTERED READING: REFUTED

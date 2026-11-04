@@ -1,0 +1,49 @@
+# A22 analysis. Determined set (rule: median formal sigma in arm A on T0 below 0.02 A / 0.00127 A^2): ['La2.z', 'Ni.z', 'O1.z', 'O2.z', 'La1.Uxx', 'La2.Uxx', 'La2.Uzz', 'Ni.Uxx', 'Ni.Uzz']
+  undetermined: ['La1.U', 'La2.U', 'Ni.U', 'O1.U', 'O2.U', 'O3.U', 'La1.Uzz']
+
+## S2A (anisotropic truth): 50 seeds
+   arm I: converged 49/50; GooF median 3.26 (IQR 3.14-3.37); poor_fit 39
+      not converged: on bound: Ni.Ux1
+   arm A: converged 50/50; GooF median 0.96 (IQR 0.87-1.04); poor_fit 0
+  param  sigma_A  A_bias_sig  A_pull_mean  A_pull_sd  I_bias_sig_A  sigA_over_sigI  AminusI_rms_sigI
+  La2.z    0.001      -0.183       -0.207      0.965          4.67            1.03              5.03
+   Ni.z  0.00323       0.102       0.0726       1.12          11.7             1.4              16.3
+   O1.z  0.00724      -0.341       -0.342      0.964        -0.241            1.01              1.07
+   O2.z   0.0106      -0.142       -0.143      0.896         -1.65            1.02              2.22
+La1.Uxx 0.000638       0.166        0.157      0.961           NaN             NaN               NaN
+La2.Uxx 0.000424     -0.0189      -0.0296       1.05           NaN             NaN               NaN
+La2.Uzz 0.000835     -0.0563      -0.0864      0.934           NaN             NaN               NaN
+ Ni.Uxx 0.000637    -0.00717      -0.0205      0.881           NaN             NaN               NaN
+ Ni.Uzz  0.00107      0.0562       0.0897      0.897           NaN             NaN               NaN
+   U_eq La1: A bias +1.29e-04 (sd 4.5e-04); I bias -2.07e-03 (sd 5.8e-04)
+   U_eq La2: A bias -2.10e-05 (sd 2.7e-04); I bias +1.61e-03 (sd 3.1e-04)
+   U_eq Ni: A bias +1.70e-05 (sd 3.7e-04); I bias -3.59e-03 (sd 6.0e-04)
+   |corr(Uxx,Uzz)| median: La1 0.55 (>0.98 in 0 %), La2 0.50 (>0.98 in 0 %), Ni 0.46 (>0.98 in 0 %); smallest Cartesian-U eigenvalue min over seeds 2.17e-03
+
+E1 S2A: informative (I: coordinate mean shift >1 sigma_A or GooF_I >= 1.5 GooF_A): True; A converged >= 90 %: True (100 %); pull sd in [0.7,1.4] and |mean pull| <= 0.5 for all determined: True; GooF median <= 1.2: True  => CONFIRM
+   REFUTE checks: pull sd outside [0.5,2]: False; A converged < 80 %: False; corr>0.98 in > half the seeds for some site: False; mean |coordinate bias|/sigma_A: A 0.19 vs I 4.57 (A no closer while I informative: False)
+
+## T0 (isotropic truth, null): 50 seeds
+   arm I: converged 50/50; GooF median 0.95 (IQR 0.90-1.05); poor_fit 0
+   arm A: converged 50/50; GooF median 0.93 (IQR 0.88-1.05); poor_fit 0
+  param  sigma_A  A_bias_sig  A_pull_mean  A_pull_sd  I_bias_sig_A  sigA_over_sigI  AminusI_rms_sigI
+  La2.z 0.000973      0.0224       0.0033      0.786        -0.097            1.04             0.269
+   Ni.z  0.00316      0.0331       0.0218       1.07        -0.181            1.22             0.699
+   O1.z  0.00716     -0.0171      0.00195       1.14        -0.111            1.02             0.216
+   O2.z   0.0101     -0.0738      -0.0775      0.891        0.0425            1.02             0.234
+La1.Uxx 0.000636       0.498        0.477      0.954           NaN             NaN               NaN
+La2.Uxx 0.000418      -0.359       -0.367       1.09           NaN             NaN               NaN
+La2.Uzz 0.000802       0.321        0.293      0.895           NaN             NaN               NaN
+ Ni.Uxx 0.000637     -0.0227     -0.00622       1.01           NaN             NaN               NaN
+ Ni.Uzz 0.000983      -0.103       -0.108       1.03           NaN             NaN               NaN
+   U_eq La1: A bias +3.33e-05 (sd 4.5e-04); I bias +1.19e-04 (sd 4.5e-04)
+   U_eq La2: A bias -1.44e-05 (sd 2.9e-04); I bias -6.14e-05 (sd 2.8e-04)
+   U_eq Ni: A bias -4.32e-05 (sd 3.6e-04); I bias +1.38e-05 (sd 3.4e-04)
+   |corr(Uxx,Uzz)| median: La1 0.53 (>0.98 in 0 %), La2 0.49 (>0.98 in 0 %), Ni 0.46 (>0.98 in 0 %); smallest Cartesian-U eigenvalue min over seeds 1.72e-03
+
+E2 T0: (Uzz-Uxx)/sigma within 2 in La1 98 %, La2 94 %, Ni 92 % (need >= 90 % each: True); sigma_A/sigma_I of determined coordinates <= 1.5: True (max 1.22); A-I paired rms <= 1.2 x nested expectation + 0.1: True
+      La2.z: A-I rms 0.269 vs bound 0.430
+      Ni.z: A-I rms 0.699 vs bound 0.932
+      O1.z: A-I rms 0.216 vs bound 0.315
+      O2.z: A-I rms 0.234 vs bound 0.358
+   => CONFIRM; REFUTE check (inflation > 2): False

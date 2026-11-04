@@ -1,0 +1,26 @@
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+600 blobs of the first 100 frames; real best 274/600 = 0.457 at identity|omega- ('cols', -1, -1)
+draw 0: best scrambled 108/600 = 0.180
+draw 1: best scrambled 111/600 = 0.185
+draw 2: best scrambled 118/600 = 0.197
+draw 3: best scrambled 113/600 = 0.188
+draw 4: best scrambled 91/600 = 0.152
+draw 5: best scrambled 101/600 = 0.168
+draw 6: best scrambled 115/600 = 0.192
+draw 7: best scrambled 112/600 = 0.187
+max scrambled / real = 0.431 -> null FAILS (registered: < 0.3)

@@ -1,0 +1,17 @@
+noise-free refinements, N3p-like start (shift 0.10 A, seed 3): CHAIN converged=True GooF=0.183; ORACLE converged=True GooF=0.181; ORACLE_MCLorentz converged=True GooF=0.002; PREDICTED_CROSSING converged=True GooF=0.183; n_unique 54
+errors = estimate - truth (A for z, A^2 for U); compare noisefree_* with c2v2_mean_error (+- SE over 50 noisy seeds)
+param  c2v2_mean_error   c2v2_SE  noisefree_CHAIN  noisefree_ORACLE  noisefree_ORACLE_MCLorentz  noisefree_PREDICTED_CROSSING  formal_sigma_one_seed  CHAIN/sigma  PRED/sigma
+La2.z       -5.161e-04 1.164e-04       -9.901e-05        -2.033e-05                   2.281e-06                    -9.901e-05              8.509e-04    1.164e-01   1.164e-01
+ Ni.z       -2.983e-03 4.396e-04       -5.896e-04         2.911e-04                   8.644e-07                    -5.896e-04              2.390e-03    2.467e-01   2.467e-01
+ O1.z        3.058e-03 1.175e-03       -1.831e-04         1.308e-03                  -1.002e-05                    -1.831e-04              6.272e-03    2.919e-02   2.919e-02
+ O2.z        1.159e-02 1.315e-03        2.410e-04         1.673e-03                  -2.855e-05                     2.410e-04              9.221e-03    2.613e-02   2.613e-02
+La1.U        2.099e-04 6.530e-05        3.821e-05        -1.706e-04                  -8.704e-07                     3.821e-05              3.769e-04    1.014e-01   1.014e-01
+La2.U       -1.976e-04 4.160e-05       -8.341e-06         3.260e-05                   5.460e-07                    -8.341e-06              2.394e-04    3.484e-02   3.484e-02
+ Ni.U        1.737e-04 5.135e-05       -1.814e-05        -1.734e-04                   3.287e-08                    -1.814e-05              3.401e-04    5.333e-02   5.333e-02
+ O1.U       -1.056e-03 1.808e-04       -1.352e-04        -6.119e-04                   3.991e-06                    -1.352e-04              1.130e-03    1.197e-01   1.197e-01
+ O2.U        1.269e-03 3.407e-04        3.209e-04        -1.697e-04                  -2.378e-06                     3.209e-04              1.958e-03    1.639e-01   1.639e-01
+ O3.U       -1.147e-03 5.337e-04        2.089e-04        -6.055e-04                   2.037e-05                     2.089e-04              3.465e-03    6.028e-02   6.028e-02
+
+A15 ACCEPTANCE (v3 package default = corrections at the calculated crossing): every determined parameter |error| <= 0.1 x formal sigma of one seed
+  worst |CHAIN|/sigma over the 8 determined parameters: 0.247 (Ni.z) -> NOT MET
+  per parameter: La2.z 0.116, Ni.z 0.247, O1.z 0.029, O2.z 0.026, La1.U 0.101, La2.U 0.035, Ni.U 0.053, O1.U 0.120

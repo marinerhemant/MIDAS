@@ -1,0 +1,63 @@
+# A26 analysis. Determined set (rule: arm T on P00): ['La2.z', 'Ni.z', 'O1a.z', 'O1b.z', 'O2.z', 'La1.U', 'La2.U', 'Ni.U']
+
+## P11 (b/a = 1.011, m = 0.3): 50 seeds
+   targets/obs per seed (median): obs 472 = blend 471 + c1 1 + c2 0; median separation of resolved/blended pairs 0.38 px
+   domain-1 orientation after refinement: median 0.0491 deg, p90 0.0534, max 0.0605; > 0.10 deg in 0 %; optimiser converged 100 %
+   arm U: converged 20/50; GooF median 1.07 (IQR 1.04-1.14)
+   arm T: converged 25/50; GooF median 1.04 (IQR 1.00-1.08); m median 0.2851 sigma_m 0.0428
+   arm X: converged 21/50; GooF median 1.07 (IQR 1.03-1.14); m median 0.2576 sigma_m 0.0786
+   arm T m: median 0.2851 (IQR 0.2573-0.3101); m > 2 sigma_m in 88 %; m <= 0.05 in 6 %; m > 0.10 in 92 %; pull of m mean -0.54 sd 0.94
+   |corr(m, other)| max per seed median 0.424; > 0.98 in 0 % of seeds
+param  sigma_T  T_bias_sig  T_pull_mean  T_pull_sd  U_bias_sig_T  X_bias_sig_T  sigT_over_sigU  TminusU_rms_sigU
+La2.z  0.00239     -0.0269       -0.121       1.11       0.00163        -0.224            1.01             0.851
+ Ni.z  0.00648      -0.848       -0.322       1.24         -1.36         -1.57            1.01              1.18
+O1a.z   0.0325      -0.637       -0.629        1.1         -2.85        -0.877            1.27              2.57
+O1b.z   0.0401       0.673        0.535      0.918           1.8         0.226            1.17              2.64
+ O2.z   0.0253      -0.578       -0.184       1.05        -0.501        -0.666            1.02             0.381
+La1.U  0.00111       0.711        0.377       1.17          2.12          2.33            1.02              2.24
+La2.U 0.000678        2.07        0.975       1.18          1.23          1.47            1.04              1.28
+ Ni.U  0.00106      -0.966       -0.861       1.11        -0.132         0.327            1.01              1.87
+
+## P30 (b/a = 1.03, m = 0.3): 50 seeds
+   targets/obs per seed (median): obs 466 = blend 405 + c1 29 + c2 31; median separation of resolved/blended pairs 0.99 px
+   domain-1 orientation after refinement: median 0.0287 deg, p90 0.0333, max 0.1166; > 0.10 deg in 6 %; optimiser converged 100 %
+   arm U: converged 23/50; GooF median 1.50 (IQR 1.19-1.69)
+   arm T: converged 26/50; GooF median 1.01 (IQR 0.99-1.09); m median 0.2990 sigma_m 0.0039
+   arm X: converged 11/50; GooF median 1.50 (IQR 1.18-1.69); m median 0.0000 sigma_m 0.3834
+   arm T m: median 0.2990 (IQR 0.2895-0.3028); m > 2 sigma_m in 92 %; m <= 0.05 in 4 %; m > 0.10 in 94 %; pull of m mean +0.24 sd 1.01
+   |corr(m, other)| max per seed median 0.295; > 0.98 in 0 % of seeds
+param  sigma_T  T_bias_sig  T_pull_mean  T_pull_sd  U_bias_sig_T  X_bias_sig_T  sigT_over_sigU  TminusU_rms_sigU
+La2.z  0.00195      -0.022      -0.0076      0.938         -1.59         -1.51           0.876              2.84
+ Ni.z  0.00514       0.565      -0.0112      0.905         -2.68         -2.72           0.822              3.26
+O1a.z   0.0249       -1.66       -0.281       1.07         -5.47         -6.09            0.44              2.46
+O1b.z   0.0297        1.05        0.111      0.907          1.54         -0.17           0.561              4.73
+ O2.z   0.0224       -1.09      -0.0639      0.843         -2.04         -3.85           0.533              1.58
+La1.U 0.000964      -0.274       -0.203       0.92           0.6         0.669            1.02              3.17
+La2.U 0.000596       0.776        0.242       1.31          3.12           3.1           0.958              4.63
+ Ni.U  0.00104       -1.18       -0.112      0.828          3.15          3.08           0.958               5.5
+
+## P00 (b/a = 1.011, m = 0.0): 50 seeds
+   targets/obs per seed (median): obs 486 = blend 483 + c1 1 + c2 1; median separation of resolved/blended pairs 0.38 px
+   domain-1 orientation after refinement: median 0.0062 deg, p90 0.0095, max 0.0129; > 0.10 deg in 0 %; optimiser converged 100 %
+   arm U: converged 45/50; GooF median 1.01 (IQR 0.99-1.03)
+   arm T: converged 44/50; GooF median 1.01 (IQR 0.99-1.03); m median 0.0027 sigma_m 0.0126
+   arm X: converged 44/50; GooF median 1.01 (IQR 0.99-1.03); m median 0.0048 sigma_m 0.0428
+   arm T m: median 0.0027 (IQR 0.0000-0.0116); m > 2 sigma_m in 2 %; m <= 0.05 in 94 %; m > 0.10 in 4 %
+   |corr(m, other)| max per seed median 0.382; > 0.98 in 0 % of seeds
+param  sigma_T  T_bias_sig  T_pull_mean  T_pull_sd  U_bias_sig_T  X_bias_sig_T  sigT_over_sigU  TminusU_rms_sigU
+La2.z  0.00114       0.263        0.279      0.937         0.281         0.231               1            0.0959
+ Ni.z  0.00302      -0.453       -0.271      0.993        -0.467        -0.504            1.01            0.0849
+O1a.z   0.0105       0.213         0.13       1.12      -0.00626         0.321            1.03             0.482
+O1b.z   0.0135      -0.108      -0.0824       1.14       -0.0363        -0.191               1              0.21
+ O2.z   0.0127       0.314        0.205      0.889         0.316         0.299               1             0.048
+La1.U 0.000543      0.0468       0.0312      0.975         0.102          0.15            1.01             0.133
+La2.U 0.000334       0.815        0.276       1.21         0.769         0.806               1            0.0718
+ Ni.U 0.000561      -0.213       -0.124       1.06        -0.199        -0.148            1.01             0.138
+
+# Verdicts against A26
+E P11: converged >= 90 % False (50 %); |median m - 0.30| <= 0.02 True (0.2851); pulls calibrated False; GooF median <= 1.2 True; informative True; U1 within 0.10 deg in >= 90 % True (100 %)  => NOT MET
+   REFUTE conditions: ['T converged < 80 %']
+E P30: converged >= 90 % False (52 %); |median m - 0.30| <= 0.02 True (0.2990); pulls calibrated True; GooF median <= 1.2 True; informative True; U1 within 0.10 deg in >= 90 % True (94 %)  => NOT MET
+   REFUTE conditions: ['T converged < 80 %']
+E P00 (null): m <= 0.05 in 94 % True; sigma inflation <= 1.5 True (max 1.03); T-U under nested bound False  => NOT MET
+   REFUTE conditions: none

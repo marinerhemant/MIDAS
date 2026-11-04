@@ -1,0 +1,14 @@
+pgw240050_03_: (850, 1679, 1475) omega 155.0+-0.2n, convention identity|omega-, swing cols tz -1 off -1; Lsd 170.268; centre [862.41 401.77]; pol 0.99 plane 0.0; read 19 s
+spots reused from lalanine/out_p0m1/r03/spots_blind.csv: 12642 blobs
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+blind lattice: cell 5.7927±0.0021, 5.9297±0.0040, 12.2601±0.0155 | 90.110±0.082, 89.819±0.075, 89.895±0.044 | indexed 276/600 (46%)
+  this cell owns 276 of 600 spots (46%); the rest belong to other domains, the gasket, the anvils or noise. A subset is the expected outcome on real DAC data, not a failure.
+  grid: shortest resolvable 0.340 A, longest findable 43.5 A.  (12642 blobs)
+setting match: orthogonality error 0.0098; found cell [ 5.793  5.93  12.26  90.11  89.819 89.895] vs COD [ 5.803  5.96  12.298 90.    90.    90.   ]
+/gdata/dm/MPE/OrthrosJr/analysis/sharma_work/midas_sx_real/code/midas_sx/midas_sx/workflow.py:113: RuntimeWarning: build_profile: the integrated intensity of the strong spots is still growing with the support margin (median I(m)/I(m=6) = [(0, 0.717), (1, 0.784), (2, 0.834), (3, 0.878), (4, 0.922), (6, 1.0)]): broad tails, a neighbouring signal or a curved background. The largest margin is used; the box is large and the weak reflections carry its noise.
+  return build_profile(raw, spots[["frame", "row", "col"]].to_numpy(float)[ok], L[ok], mask=mask,
+geometry after refinement: tilts (tx,ty,tz) +0.023 -0.186 -20.091 deg (start +0.000 +0.000 -20.000), wedge +0.310 deg
+orientation: converged True (ok); n_used 2421/12642; rms 0.710 px, 0.486 frames; centre 862.02,401.54; Lsd 171.109 mm; rotation sigma [0.0005 0.0007 0.0012] deg
+counts: {'low_angle': 1122, 'no_hkl': 9100, 'no_crossing': 141, 'frames_edge': 27, 'detector_edge': 41, 'masked_pixels': 313, 'no_background': 0, 'near_axis': 0, 'outside_opening': 0, 'factor_variation': 0, 'crowded': 333, 'input': 12642, 'kept': 1565}; merged within run: 721 unique, R_int 0.2376; profile ProfileModel(sigma_px=2.1430361649393275, sf0=0.9142742610466712, sf1=0.1176535998262279, k=3.0, shell_px=3, shell_frames=2, ext_f0=2.7428227831400136, ext_f1=0.3529607994786837, ext_p=7.07201934429978, margin=1, background='mean')
+done in 3636 s

@@ -1,0 +1,58 @@
+# C4 forecast, detectability cut c_min = 1138 counts   (C2 comparison prefix: c2v2)
+parameters: La2.z, Ni.z, O1.z, O2.z, La1.U, La2.U, Ni.U, O1.U, O2.U, O3.U | determined = formal sigma below 0.02 A (coordinates) / 0.00127 A^2 (U_iso)
+
+== A5 check: forecast (orientation 1, nominal) vs C2 c2v2 N3p median formal sigma over 50 converged seeds; forecast n_unique 54 vs C2 median 54
+param  forecast  c2_formal  ratio  c2_rms_error  within30  determined_c2
+La2.z  0.000832  0.0009448 0.8806     0.0009645      True           True
+ Ni.z  0.002341   0.002637 0.8878      0.004286      True           True
+ O1.z  0.006212   0.006864 0.9049      0.008775      True           True
+ O2.z  0.008943    0.01017 0.8792        0.0148      True           True
+La1.U 0.0003772  0.0004123 0.9148      0.000503      True           True
+La2.U 0.0002358  0.0002571 0.9171     0.0003519      True           True
+ Ni.U 0.0003338  0.0003763  0.887     0.0003992      True           True
+ O1.U  0.001133   0.001252 0.9056      0.001648      True           True
+ O2.U  0.001925   0.002182 0.8824      0.002701      True          False
+ O3.U  0.003374   0.003785 0.8914      0.003908      True          False
+   forecast within 30 % of the C2 formal sigma for all 8 determined parameters: YES
+   C2 median GooF 1.06: actual errors exceed formal sigma by about that factor if the reduction has systematics; actual RMS error / forecast sigma (determined): La2.z 1.16, Ni.z 1.83, O1.z 1.41, O2.z 1.65, La1.U 1.33, La2.U 1.49, Ni.U 1.20, O1.U 1.45
+
+== coverage, strongest-reflection integrated counts 100000 (median over 8 orientations; formal sigma, A for z, A^2 for U)
+ alpha  W  n_unique  n_orient  full_rank     La2.z     Ni.z     O1.z     O2.z     La1.U     La2.U      Ni.U      O1.U     O2.U     O3.U  n_determined undetermined
+    25 30      54.5         8          1 0.0006849 0.001992 0.005394 0.006839 0.0003719 0.0002169 0.0003007 0.0009679 0.001652 0.002789             8    O2.U,O3.U
+    25 45      54.5         8          1 0.0006849 0.001992 0.005394 0.006839 0.0003719 0.0002169 0.0003007 0.0009679 0.001652 0.002789             8    O2.U,O3.U
+    25 60      54.5         8          1 0.0006849 0.001992 0.005394 0.006839 0.0003719 0.0002169 0.0003007 0.0009679 0.001652 0.002789             8    O2.U,O3.U
+    30 30        67         8          1 0.0006539   0.0018 0.005609  0.00678 0.0003308  0.000191 0.0002722  0.000884  0.00143 0.002529             8    O2.U,O3.U
+    30 45        67         8          1 0.0006539   0.0018 0.005609  0.00678 0.0003308  0.000191 0.0002722  0.000884  0.00143 0.002529             8    O2.U,O3.U
+    30 60        67         8          1 0.0006539   0.0018 0.005609  0.00678 0.0003308  0.000191 0.0002722  0.000884  0.00143 0.002529             8    O2.U,O3.U
+    35 30        77         8          1 0.0005575 0.001427 0.004894 0.006074 0.0002694 0.0001573 0.0002437 0.0008118 0.001206 0.002133             9         O3.U
+    35 40        77         8          1 0.0005468 0.001402 0.004752 0.006006 0.0002666 0.0001555   0.00024 0.0007829 0.001171 0.002049             9         O3.U
+    35 45        77         8          1 0.0005468 0.001402 0.004752 0.006006 0.0002666 0.0001555   0.00024 0.0007829 0.001171 0.002049             9         O3.U
+    35 60        77         8          1 0.0005468 0.001402 0.004752 0.006006 0.0002666 0.0001555   0.00024 0.0007829 0.001171 0.002049             9         O3.U
+    40 30      86.5         8          1 0.0005134 0.001367 0.004774 0.005824 0.0002412 0.0001391 0.0002107 0.0007406 0.001118 0.001941             9         O3.U
+    40 45        87         8          1 0.0004799 0.001265 0.004238 0.005396 0.0002221 0.0001295 0.0001978 0.0006837 0.001041  0.00182             9         O3.U
+    40 60        87         8          1 0.0004799 0.001265 0.004238 0.005396 0.0002221 0.0001295 0.0001978 0.0006837 0.001041  0.00182             9         O3.U
+   alpha=25: unique reflections at W=30/45/60: 54/54/54
+   alpha=30: unique reflections at W=30/45/60: 67/67/67
+   alpha=40: unique reflections at W=30/45/60: 86/87/87
+
+== coverage, strongest-reflection integrated counts 10000 (median over 8 orientations; formal sigma, A for z, A^2 for U)
+ alpha  W  n_unique  n_orient  full_rank   La2.z    Ni.z    O1.z   O2.z    La1.U    La2.U     Ni.U     O1.U    O2.U    O3.U  n_determined                                         undetermined
+    25 30        13         8      0.625 0.02031 0.04103  0.0617  0.121 0.009895 0.006693 0.006105 0.009627 0.02516 0.05228             0 La2.z,Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    25 45        13         8      0.625 0.02031 0.04103  0.0617  0.121 0.009895 0.006693 0.006105 0.009627 0.02516 0.05228             0 La2.z,Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    25 60        13         8      0.625 0.02031 0.04103  0.0617  0.121 0.009895 0.006693 0.006105 0.009627 0.02516 0.05228             0 La2.z,Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    30 30        14         8       0.75 0.02225  0.0691 0.07954 0.1883  0.01138 0.005076  0.01068  0.01853 0.02329 0.05728             0 La2.z,Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    30 45        14         8       0.75 0.02225  0.0691 0.07954 0.1883  0.01138 0.005076  0.01068  0.01853 0.02329 0.05728             0 La2.z,Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    30 60        14         8       0.75 0.02225  0.0691 0.07954 0.1883  0.01138 0.005076  0.01068  0.01853 0.02329 0.05728             0 La2.z,Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    35 30        16         8       0.75 0.01622 0.05074 0.07954 0.1473  0.01051 0.005129 0.009922  0.01363 0.02051 0.03974             1       Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    35 45        16         8       0.75 0.01581 0.04893   0.079 0.1424 0.009816 0.004862 0.009917  0.01241 0.02015 0.03896             1       Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    35 60        16         8       0.75 0.01581 0.04893   0.079 0.1424 0.009816 0.004862 0.009917  0.01241 0.02015 0.03896             1       Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    40 30      17.5         8       0.75 0.01393 0.04549 0.06998 0.1428  0.00968  0.00453   0.0087   0.0133 0.01955 0.03868             1       Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    40 45      17.5         8       0.75 0.01315 0.04146 0.06107 0.1297 0.008487 0.004214  0.00804  0.01069 0.01819 0.03728             1       Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+    40 60      17.5         8       0.75 0.01315 0.04146 0.06107 0.1297 0.008487 0.004214  0.00804  0.01069 0.01819 0.03728             1       Ni.z,O1.z,O2.z,La1.U,La2.U,Ni.U,O1.U,O2.U,O3.U
+   alpha=25: unique reflections at W=30/45/60: 13/13/13
+   alpha=30: unique reflections at W=30/45/60: 14/14/14
+   alpha=35: unique reflections at W=30/45/60: 16/16/16
+   alpha=40: unique reflections at W=30/45/60: 18/18/18
+
+== coverage, strongest-reflection integrated counts 1000 (median over 8 orientations; formal sigma, A for z, A^2 for U)
+   (no reflection reaches the detectability cut at these counts)

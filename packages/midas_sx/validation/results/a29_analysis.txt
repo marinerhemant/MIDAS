@@ -1,0 +1,65 @@
+# A29 analysis (PREREGISTER A29). z = (I - exp_tot) / sigI, sigI from the noisy reduction of the same row.
+
+## P11: 10 seeds, 9402 rows
+  clean c2    exp_tot < 3000   n=   6  median z -0.106 (se 0.510)  median ratio I/exp 0.9526  median I-exp -62.3
+  clean blend exp_tot < 3000   n=3838  median z -0.078 (se 0.020)  median ratio I/exp 0.7996  median I-exp -43.0
+  clean blend exp_tot >= 3000  n= 840  median z -0.222 (se 0.043)  median ratio I/exp 0.9811  median I-exp -141.3
+  noisy c2    exp_tot < 3000   n=   6  median z +0.126 (se 0.510)  median ratio I/exp 1.0561  median I-exp +73.7
+  noisy blend exp_tot < 3000   n=3838  median z -0.153 (se 0.020)  median ratio I/exp 0.8637  median I-exp -85.7
+  noisy blend exp_tot >= 3000  n= 840  median z -0.388 (se 0.043)  median ratio I/exp 0.9774  median I-exp -259.4
+  fraction of rows with NO truth match (exp = 0), clean frames: {'blend': 0.002, 'c1': 0.0, 'c2': 0.0}
+  blend rows, clean, exp_tot < 3000, by separation (px):
+         count  median
+sep_bin               
+(0, 1]    3421   -0.08
+(1, 2]     252   -0.07
+(2, 3]      22   -0.03
+
+## P30: 10 seeds, 9350 rows
+  clean c1    exp_tot < 3000   n= 280  median z -0.013 (se 0.075)  median ratio I/exp 0.9924  median I-exp -2.3
+  clean c1    exp_tot >= 3000  n=  34  median z -0.037 (se 0.214)  median ratio I/exp 0.9992  median I-exp -9.1
+  clean c2    exp_tot < 3000   n= 293  median z -0.009 (se 0.073)  median ratio I/exp 0.9829  median I-exp -1.4
+  clean c2    exp_tot >= 3000  n=  21  median z -0.052 (se 0.273)  median ratio I/exp 0.9985  median I-exp -11.7
+  clean blend exp_tot < 3000   n=3630  median z -0.022 (se 0.021)  median ratio I/exp 0.9709  median I-exp -5.5
+  clean blend exp_tot >= 3000  n= 417  median z -0.066 (se 0.061)  median ratio I/exp 0.9967  median I-exp -20.5
+  noisy c1    exp_tot < 3000   n= 280  median z -0.007 (se 0.075)  median ratio I/exp 0.9954  median I-exp -1.0
+  noisy c1    exp_tot >= 3000  n=  34  median z -0.562 (se 0.214)  median ratio I/exp 0.9885  median I-exp -114.8
+  noisy c2    exp_tot < 3000   n= 293  median z +0.062 (se 0.073)  median ratio I/exp 1.0331  median I-exp +10.7
+  noisy c2    exp_tot >= 3000  n=  21  median z -0.227 (se 0.273)  median ratio I/exp 0.9940  median I-exp -51.8
+  noisy blend exp_tot < 3000   n=3630  median z +0.002 (se 0.021)  median ratio I/exp 1.0006  median I-exp +0.4
+  noisy blend exp_tot >= 3000  n= 417  median z -0.120 (se 0.061)  median ratio I/exp 0.9958  median I-exp -32.1
+  fraction of rows with NO truth match (exp = 0), clean frames: {'blend': 0.0, 'c1': 0.0, 'c2': 0.0}
+  blend rows, clean, exp_tot < 3000, by separation (px):
+         count  median
+sep_bin               
+(0, 1]    1560  -0.022
+(1, 2]    1390  -0.025
+(2, 3]     410  -0.016
+(3, 5]     110  -0.019
+
+## P00: 10 seeds, 9706 rows
+  clean c1    exp_tot < 3000   n=   5  median z -0.019 (se 0.559)  median ratio I/exp 0.9973  median I-exp -3.0
+  clean c1    exp_tot >= 3000  n=  14  median z -0.031 (se 0.334)  median ratio I/exp 0.9994  median I-exp -6.6
+  clean blend exp_tot < 3000   n=4205  median z -0.012 (se 0.019)  median ratio I/exp 0.9907  median I-exp -1.9
+  clean blend exp_tot >= 3000  n= 619  median z -0.035 (se 0.050)  median ratio I/exp 0.9989  median I-exp -7.5
+  noisy c1    exp_tot < 3000   n=   5  median z -0.380 (se 0.559)  median ratio I/exp 0.9460  median I-exp -58.9
+  noisy c1    exp_tot >= 3000  n=  14  median z -0.322 (se 0.334)  median ratio I/exp 0.9948  median I-exp -60.8
+  noisy blend exp_tot < 3000   n=4205  median z +0.003 (se 0.019)  median ratio I/exp 1.0007  median I-exp +0.4
+  noisy blend exp_tot >= 3000  n= 619  median z -0.106 (se 0.050)  median ratio I/exp 0.9978  median I-exp -21.6
+  fraction of rows with NO truth match (exp = 0), clean frames: {'blend': 0.002, 'c1': 0.0}
+  blend rows, clean, exp_tot < 3000, by separation (px):
+         count  median
+sep_bin               
+(0, 1]    3774  -0.013
+(1, 2]     250  -0.007
+(2, 3]      30  -0.007
+
+# D1 readings against A29
+P00 control: c1 clean median z -0.019 (n=5) -> control OK
+P11: blend clean -0.078 (se 0.020, n=3838), blend noisy -0.153 (se 0.020, n=3838), c1 clean +nan  =>  INCONCLUSIVE
+P30: blend clean -0.022 (se 0.021, n=3630), blend noisy +0.002 (se 0.021, n=3630), c1 clean -0.013  =>  H-C (not the reduction)
+
+# D2 orientation: domain-1 error after index_and_refine, noisy vs clean frames (same blobs positions NOT shared; clean frames use their own spot list)
+P11: n=10 seeds, noisy median 0.0482 deg, clean median 0.0511 deg, ratio 1.06, difference -0.0029 deg  =>  H-E (bias floor)
+P30: n=10 seeds, noisy median 0.0273 deg, clean median 0.0272 deg, ratio 1.00, difference +0.0001 deg  =>  H-E (bias floor)
+P00: n=10 seeds, noisy median 0.0063 deg, clean median 0.0056 deg, ratio 0.90, difference +0.0007 deg  =>  H-E (bias floor)

@@ -1,0 +1,15 @@
+EXPLORATORY U refinement from MEASURED positions: 142 assigned spots, pixel = 0.172 deg
+start offset -> refined misorientation from truth [deg] (n_steps 400 / 2000 / 6000, Adam lr 5e-3)
+  0.1 deg (1,1,1)        start 0.100 -> 0.0163 / 0.0163 / 0.0163
+  0.3 deg (1,1,1)        start 0.300 -> 0.0163 / 0.0103 / 0.0163
+  0.6 deg (1,1,1)        start 0.600 -> 0.0163 / 0.0163 / 0.0227
+  0.3 deg about beam     start 0.300 -> 0.0163 / 0.0163 / 0.0158
+  0.3 deg random axis    start 0.300 -> 0.0163 / 0.0163 / 0.0162
+  bootstrap (70 % of spots, 20 draws): rms spread of refined U about the full-data refined U 0.0143 deg; full-data refined U is 0.0163 deg from truth
+
+structure-parameter ERROR in units of that run's formal sigma (estimate - truth)/sigma, same spots and noise:
+                                                                  La2.z    Ni.z    O1.z    O2.z   La1.U   La2.U    Ni.U    O1.U    O2.U    O3.U   GooF kept conv
+  exact U                                                         -1.47   -1.80   -0.78   +0.38   +1.01   +0.42   +0.68   -1.47   -0.35   -0.62   1.22  137 True
+  U refined from measured spots, start 0.3 deg (0.0163 deg off)   -1.74   -1.73   -0.57   +0.56   +0.70   +0.48   +0.58   -1.99   -0.44   -1.30   1.23  137 True
+  U 0.3 deg off, NOT refined                                      +0.64   +1.29   -0.48   -0.84   -3.94   +2.62   -0.70   -2.34   -1.36   +1.20   1.22  132 True
+  U 0.05 deg off, NOT refined                                     -0.70   -1.56   -1.11   +0.08   +1.05   +0.11   +0.87   -0.89   -0.55   +0.18   1.23  137 True

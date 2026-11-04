@@ -1,0 +1,22 @@
+# A25 analysis. sigma_rtn used (calibrated on unscored seeds 100-109): [0.0221, 0.0374, 0.0398]
+
+## two-domain frames: 50 seeds
+domains found per seed: 2: 47, 3: 3
+two largest found domains match DIFFERENT truth domains: 100 %
+both within 1 deg (after D4 folding): 100 %; any matched domain beyond 2 deg: 0 %
+fold angle, largest domain: median 0.212 deg (p90 0.273); second: median 0.360 deg (p90 0.525)
+reflections claimed: largest 140, second 66 (median)
+cell a and c both within 1 % of 3.83 / 20.5 for both domains: 14 % (c relative error: -0.0075 median, range -0.0110..+0.0115); b/a median 1.0003
+convention: both domains' U (not U^T) fold best in 100 % of seeds
+after index_and_refine from the found U: domain 1 error median 0.0093 deg, domain 2 0.0063 deg; both <= 0.05 deg and different truth domains in 94 % of all seeds (94 % of those refined, 50 refined)
+
+C1 (both domains found, each within 1 deg, >= 90 %): 100 %  => MET
+C2 (cell within 1 %): 14 %  => NOT MET  [the start geometry has a +-1 % distance error, which scales the recovered cell]
+C3 (<= 0.05 deg after refinement, >= 90 %): 94 %  => MET
+
+## single-domain frames (null): 25 seeds; domains found: 1: 25
+C4 exactly one domain in 100 % (>= 90 % needed)  => MET
+   the domain found in the single-domain frames lies within 1 deg of the truth in 100 %
+
+REFUTE conditions triggered: none
+OVERALL: NOT MET (see items)

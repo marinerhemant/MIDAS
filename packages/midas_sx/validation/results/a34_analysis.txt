@@ -1,0 +1,16 @@
+# A34: blend rows (kind == blend, exp_tot > 0): estimated shell background vs the oracle (signal-only frames, background 0)
+
+## P11: 5 seeds, 2335 blend rows per variant
+  est_bg      exp<3000: n= 1912  median (I - exp)    -43.3 counts   median ratio 0.799   per voxel -0.0081   median n_box 5415   fit I = 0.9691 exp -69.4
+  oracle_bg0  exp<3000: n= 1912  median (I - exp)     -0.0 counts   median ratio 1.000   per voxel -0.0000   median n_box 5415   fit I = 1.0064 exp +0.7
+## P30: 5 seeds, 2015 blend rows per variant
+  est_bg      exp<3000: n= 1810  median (I - exp)     -5.5 counts   median ratio 0.971   per voxel -0.0041   median n_box 1331   fit I = 0.9969 exp -5.6
+  oracle_bg0  exp<3000: n= 1810  median (I - exp)     +0.0 counts   median ratio 1.000   per voxel +0.0000   median n_box 1331   fit I = 1.0000 exp +0.0
+## P00: 5 seeds, 2402 blend rows per variant
+  est_bg      exp<3000: n= 2092  median (I - exp)     -1.9 counts   median ratio 0.991   per voxel -0.0030   median n_box 567   fit I = 0.9987 exp -1.7
+  oracle_bg0  exp<3000: n= 2092  median (I - exp)     -0.0 counts   median ratio 1.000   per voxel -0.0000   median n_box 567   fit I = 1.0000 exp -0.0
+
+Readings against A34:
+  (a) estimated bg reproduces A29 in P11: b = -69.4 counts (A29: -79)
+  (b) oracle P11: median offset -0.0, slope 1.0064; P30 +0.0, P00 -0.0
+  REGISTERED READING: CONFIRMED (the shell background estimate causes the P11 blend deficit)

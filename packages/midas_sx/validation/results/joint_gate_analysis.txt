@@ -1,0 +1,12 @@
+POST HOC revised gate (gate_free = oxygen U + cation in-plane U): converged 30/30; GooF median 0.946; m median 0.2995 (sigma 0.0243); t_b median 4.948 um (sigma 0.136)
+  La2.z    n=30 pull mean +0.077 sd 0.861  mean err +0.00008  median sigma 0.00098
+  Ni.z     n=30 pull mean +0.048 sd 0.926  mean err +0.00011  median sigma 0.00316
+  O1a.z    n=30 pull mean -0.144 sd 0.979  mean err -0.00165  median sigma 0.01257
+  O1b.z    n=30 pull mean +0.150 sd 0.869  mean err +0.00261  median sigma 0.01300
+  O2.z     n=30 pull mean -0.071 sd 0.929  mean err -0.00097  median sigma 0.01000
+  La2.Uzz  n=30 pull mean -0.156 sd 0.952  mean err -0.00010  median sigma 0.00075
+  Ni.Uzz   n=30 pull mean -0.118 sd 0.973  mean err -0.00007  median sigma 0.00097
+  t_b      n=30 pull mean -0.136 sd 0.769  mean err -0.02279  median sigma 0.13574
+  twin.m   n=30 pull mean +0.006 sd 1.226  mean err -0.00375  median sigma 0.02425
+  La1.Uzz  n=30 pull mean +0.086 sd 0.960  mean err +0.00011  median sigma 0.00147
+bound hits ignored per seed (median count): 0.0

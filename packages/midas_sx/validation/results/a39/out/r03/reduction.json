@@ -1,0 +1,38 @@
+{
+ "tilts_deg": [
+  0.023391604112104676,
+  -0.18636071501309426,
+  -20.09095334571912
+ ],
+ "wedge_deg": 0.3104265604562987,
+ "converged": true,
+ "reason": "ok",
+ "n_used": 2421,
+ "n_spots": 12642,
+ "rms_px": 0.7095038956551062,
+ "rms_frame": 0.48554803228008797,
+ "centre_rc": [
+  862.0195450228969,
+  401.5438802423079
+ ],
+ "lsd_mm": 171.10918534430985,
+ "counts": {
+  "low_angle": 1122,
+  "no_hkl": 9100,
+  "no_crossing": 141,
+  "frames_edge": 44,
+  "detector_edge": 61,
+  "masked_pixels": 419,
+  "no_background": 0,
+  "near_axis": 0,
+  "outside_opening": 0,
+  "factor_variation": 214,
+  "crowded": 385,
+  "input": 12642,
+  "kept": 1156
+ },
+ "r_int_run": 0.16467120351267306,
+ "n_unique_run": 613,
+ "pol_plane": 90.0,
+ "profile": "ProfileModel(sigma_px=2.1430361649393275, sf0=0.9142742626556988, sf1=0.11765359923250819, k=3.0, shell_px=3, shell_frames=2, ext_f0=2.7428227879670963, ext_f1=0.3529607976975246, ext_p=7.07201934429978, margin=6, background='mean')"
+}

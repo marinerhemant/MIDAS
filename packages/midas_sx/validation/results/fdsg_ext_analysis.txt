@@ -1,0 +1,17 @@
+# A31 analysis (find_domains with a wrong declared space group); seeds 25 .. 49 n seeds 25
+SG139  sg 139: success 25/25 (100 %), domains found per seed {2: 22, 3: 3}, seeds with >= 3 domains 3, median reflections largest/second 139/66, median seconds 0.8
+SG87   sg  87: success 25/25 (100 %), domains found per seed {2: 22, 3: 3}, seeds with >= 3 domains 3, median reflections largest/second 139/66, median seconds 0.8
+SG107  sg 107: success 25/25 (100 %), domains found per seed {2: 22, 3: 3}, seeds with >= 3 domains 3, median reflections largest/second 139/66, median seconds 0.9
+SG119  sg 119: success 25/25 (100 %), domains found per seed {2: 22, 3: 3}, seeds with >= 3 domains 3, median reflections largest/second 139/66, median seconds 0.9
+SG140  sg 140: success 25/25 (100 %), domains found per seed {2: 22, 3: 3}, seeds with >= 3 domains 3, median reflections largest/second 139/66, median seconds 0.8
+SG71   sg  71: success 25/25 (100 %), domains found per seed {2: 22, 3: 3}, seeds with >= 3 domains 3, median reflections largest/second 139/66, median seconds 0.9
+
+Readings against A31:
+  SG87: success 25/25, difference to SG139 +0 seeds (null band +-0.0 seeds), third-domain seeds 3 vs 3: CONFIRM criteria met
+  SG107: success 25/25, difference to SG139 +0 seeds (null band +-0.0 seeds), third-domain seeds 3 vs 3: CONFIRM criteria met
+  SG119: success 25/25, difference to SG139 +0 seeds (null band +-0.0 seeds), third-domain seeds 3 vs 3: CONFIRM criteria met
+  SG140: success 25/25, difference to SG139 +0 seeds (null band +-0.0 seeds), third-domain seeds 3 vs 3: CONFIRM criteria met
+  SG71: success 25/25, difference to SG139 +0 seeds (null band +-0.0 seeds), third-domain seeds 3 vs 3: CONFIRM criteria met
+
+A31b: prediction (each <= 15/25 and equal within 2 seeds): does not hold | null (each >= 23/25): HOLDS | successes {'SG87': 25, 'SG107': 25, 'SG119': 25, 'SG140': 25, 'SG71': 25}
+Control SG139 must be >= 23/25 (A25 found 50/50 on seeds 0..49); if it is not, the chain of this script is suspect and the reading is void: OK

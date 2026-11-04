@@ -1,0 +1,67 @@
+# A24 analysis. Determined set (rule: median formal sigma in arm T on tw00 below 0.02 A / 0.00127 A^2): ['La2.z', 'Ni.z', 'O1a.z', 'O1b.z', 'O2.z', 'La1.U', 'La2.U', 'Ni.U']
+  undetermined: ['O1a.U', 'O1b.U', 'O2.U', 'O3.U']
+
+## tw30 (m = 0.3): 50 seeds
+   arm U: converged 49/50; GooF median 1.34 (IQR 1.23-1.45); poor_fit 0
+      not converged: on bound: O3.Ux1
+   arm T: converged 49/50; GooF median 0.93 (IQR 0.88-1.01); poor_fit 0
+      not converged: on bound: O3.Ux1
+   m (arm T, all seeds): median 0.2959 (IQR 0.2769-0.3198), mean 0.2969; median formal sigma_m 0.0271; m > 2 sigma_m in 100 %; m <= 0.05 in 0 %; m > 0.10 in 100 %
+   pull of m: mean -0.14, sd 1.15
+   |corr(m, other)|: max per seed median 0.486; fraction of seeds > 0.98 0.00; largest median partner c:O1a.z (0.485)
+param  sigma_T  T_bias_sig  T_pull_mean  T_pull_sd  U_bias_sig_T  sigT_over_sigU  TminusU_rms_sigU
+La2.z  0.00096      -0.144      -0.0941      0.895          1.11            1.02              1.31
+ Ni.z  0.00268      0.0376       0.0594       1.04         0.929            1.02             0.943
+O1a.z   0.0124      -0.381       -0.447       1.13         -6.58            1.35              8.09
+O1b.z   0.0133       0.182        0.159      0.736          6.56           0.995              6.25
+ O2.z   0.0101     -0.0445      -0.0541       0.87         0.356            1.02             0.497
+La1.U 0.000416      0.0488        0.101       1.03         -1.59            1.06              1.74
+La2.U 0.000262       0.123       0.0662      0.891         0.137            1.01             0.212
+ Ni.U 0.000386      0.0226       0.0936      0.815          -0.7           0.997             0.721
+
+## tw10 (m = 0.1): 50 seeds
+   arm U: converged 50/50; GooF median 1.01 (IQR 0.96-1.09); poor_fit 0
+   arm T: converged 50/50; GooF median 0.96 (IQR 0.88-1.01); poor_fit 0
+   m (arm T, all seeds): median 0.0925 (IQR 0.0628-0.1211), mean 0.0915; median formal sigma_m 0.0319; m > 2 sigma_m in 68 %; m <= 0.05 in 14 %; m > 0.10 in 46 %
+   pull of m: mean -0.18, sd 1.18
+   |corr(m, other)|: max per seed median 0.642; fraction of seeds > 0.98 0.00; largest median partner c:O1a.z (0.642)
+param  sigma_T  T_bias_sig  T_pull_mean  T_pull_sd  U_bias_sig_T  sigT_over_sigU  TminusU_rms_sigU
+La2.z 0.000959     -0.0684       -0.104       0.89          0.26            1.01             0.381
+ Ni.z  0.00267      0.0361       0.0305       1.11         0.256            1.01             0.259
+O1a.z   0.0108      -0.239       -0.284       1.22         -2.09            1.37              2.76
+O1b.z   0.0123       0.153        0.119      0.788          1.43            1.06              1.45
+ O2.z   0.0102       -0.15       -0.129      0.846       -0.0731            1.01             0.127
+La1.U 0.000408       0.155        0.162       1.01        -0.478            1.04             0.721
+La2.U  0.00026       0.041       0.0142      0.914        0.0968               1            0.0941
+ Ni.U  0.00039      0.0074        0.039      0.882        -0.142           0.999             0.171
+
+## tw00 (m = 0.0): 50 seeds
+   arm U: converged 50/50; GooF median 0.94 (IQR 0.89-1.02); poor_fit 0
+   arm T: converged 50/50; GooF median 0.94 (IQR 0.89-1.03); poor_fit 0
+   m (arm T, all seeds): median 0.0000 (IQR 0.0000-0.0108), mean 0.0112; median formal sigma_m 0.0338; m > 2 sigma_m in 0 %; m <= 0.05 in 92 %; m > 0.10 in 0 %
+   |corr(m, other)|: max per seed median 0.682; fraction of seeds > 0.98 0.00; largest median partner c:O1a.z (0.682)
+param  sigma_T  T_bias_sig  T_pull_mean  T_pull_sd  U_bias_sig_T  sigT_over_sigU  TminusU_rms_sigU
+La2.z 0.000953     -0.0634      -0.0916      0.897       -0.0217            1.01            0.0807
+ Ni.z  0.00267      0.0566       0.0533       1.14        0.0803               1            0.0482
+O1a.z   0.0103       0.168        0.125       1.02       -0.0691            1.37             0.589
+O1b.z   0.0117     -0.0666       -0.102      0.862         0.064            1.08             0.255
+ O2.z   0.0102       -0.17       -0.148      0.779        -0.164               1            0.0199
+La1.U 0.000405        0.32        0.327        1.1         0.235            1.03             0.165
+La2.U 0.000259    -0.00845      -0.0387      0.934      -0.00165               1            0.0263
+ Ni.U 0.000388      0.0213       0.0532      0.982       0.00139               1            0.0394
+
+# Verdicts against A24
+E tw30: converged >= 90 % True (98 %); |median m - 0.3| <= 0.02: True (median 0.2959); pulls (m and determined) calibrated True; GooF median <= 1.2 True; informative (U GooF >= 1.5 T or a coordinate/U shift > 1 sigma_T): True  => CONFIRM
+   REFUTE conditions: none
+E tw10: converged >= 90 % True (100 %); |median m - 0.1| <= 0.02: True (median 0.0925); pulls (m and determined) calibrated True; GooF median <= 1.2 True; informative (U GooF >= 1.5 T or a coordinate/U shift > 1 sigma_T): True  => CONFIRM
+   REFUTE conditions: none
+E tw00 (null): m <= 0.05 in 92 % (>= 90 %) True; sigma_T/sigma_U <= 1.5 True (max 1.37); T-U paired rms under 1.2 x nested expectation + 0.1 True  => CONFIRM
+      La2.z: T-U rms 0.081 vs bound 0.247
+      Ni.z: T-U rms 0.048 vs bound 0.192
+      O1a.z: T-U rms 0.589 vs bound 1.226
+      O1b.z: T-U rms 0.255 vs bound 0.600
+      O2.z: T-U rms 0.020 vs bound 0.152
+      La1.U: T-U rms 0.165 vs bound 0.411
+      La2.U: T-U rms 0.026 vs bound 0.132
+      Ni.U: T-U rms 0.039 vs bound 0.150
+   REFUTE: m > 0.10 in 0 % of seeds (> 10 % refutes); inflation > 2: False

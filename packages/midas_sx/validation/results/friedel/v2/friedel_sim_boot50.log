@@ -1,0 +1,28 @@
+/Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /Users/runner/miniforge3/conda-bld/libtorch_1781354591099/work/torch/csrc/utils/tensor_numpy.cpp:219.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /Users/runner/miniforge3/conda-bld/libtorch_1781354591099/work/torch/csrc/utils/tensor_numpy.cpp:219.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /Users/runner/miniforge3/conda-bld/libtorch_1781354591099/work/torch/csrc/utils/tensor_numpy.cpp:219.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /Users/runner/miniforge3/conda-bld/libtorch_1781354591099/work/torch/csrc/utils/tensor_numpy.cpp:219.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /Users/runner/miniforge3/conda-bld/libtorch_1781354591099/work/torch/csrc/utils/tensor_numpy.cpp:219.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+/Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /Users/runner/miniforge3/conda-bld/libtorch_1781354591099/work/torch/csrc/utils/tensor_numpy.cpp:219.)
+  rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+== S1  n=50  pairs median 100
+  tx     bias -0.0007  emp_sd 0.0083  sigma_formal 0.0116 (sd/sigma 0.72, cov 0.82)  sigma_boot 0.0082 (sd/sigma 1.02, cov 0.70)
+  ty     bias -0.0024  emp_sd 0.0137  sigma_formal 0.0147 (sd/sigma 0.93, cov 0.78)  sigma_boot 0.0153 (sd/sigma 0.90, cov 0.80)
+  tz     bias -0.0017  emp_sd 0.0307  sigma_formal 0.0244 (sd/sigma 1.26, cov 0.60)  sigma_boot 0.0308 (sd/sigma 1.00, cov 0.64)
+  wedge  bias +0.0015  emp_sd 0.0095  sigma_formal 0.0107 (sd/sigma 0.89, cov 0.72)  sigma_boot 0.0093 (sd/sigma 1.01, cov 0.66)
+  bcz    bias +0.0131  emp_sd 0.0459  sigma_formal 0.0216 (sd/sigma 2.12, cov 0.34)  sigma_boot 0.0465 (sd/sigma 0.99, cov 0.68)
+  bcy    bias -0.0001  emp_sd 0.0542  sigma_formal 0.0245 (sd/sigma 2.21, cov 0.38)  sigma_boot 0.0527 (sd/sigma 1.03, cov 0.64)
+  lsd    bias +0.0033  emp_sd 0.0729  sigma_formal 0.0772 (sd/sigma 0.94, cov 0.64)  sigma_boot 0.0652 (sd/sigma 1.12, cov 0.54)
+== S2  n=50  pairs median 100
+  tx     bias -0.0008  emp_sd 0.0073  sigma_formal 0.0114 (sd/sigma 0.64, cov 0.92)  sigma_boot 0.0083 (sd/sigma 0.87, cov 0.74)
+  ty     bias +0.0020  emp_sd 0.0155  sigma_formal 0.0145 (sd/sigma 1.07, cov 0.60)  sigma_boot 0.0164 (sd/sigma 0.95, cov 0.68)
+  tz     bias -0.0030  emp_sd 0.0373  sigma_formal 0.0241 (sd/sigma 1.55, cov 0.54)  sigma_boot 0.0299 (sd/sigma 1.25, cov 0.58)
+  wedge  bias +0.0001  emp_sd 0.0113  sigma_formal 0.0105 (sd/sigma 1.07, cov 0.64)  sigma_boot 0.0093 (sd/sigma 1.21, cov 0.52)
+  bcz    bias -0.0052  emp_sd 0.0540  sigma_formal 0.0214 (sd/sigma 2.53, cov 0.40)  sigma_boot 0.0508 (sd/sigma 1.06, cov 0.60)
+  bcy    bias -0.0020  emp_sd 0.0663  sigma_formal 0.0241 (sd/sigma 2.75, cov 0.32)  sigma_boot 0.0506 (sd/sigma 1.31, cov 0.56)
+  lsd    bias +0.0005  emp_sd 0.0604  sigma_formal 0.0763 (sd/sigma 0.79, cov 0.80)  sigma_boot 0.0665 (sd/sigma 0.91, cov 0.72)

@@ -1,0 +1,38 @@
+# A19 orientation + geometry refinement from a wrong start: 50 seeds (start: U 0.3 deg off, beam centre 0.5 px off, distance 1 % off)
+
+O1  refined U error [deg]: median 0.0082  mean 0.0083  p90 0.0117  max 0.0163
+    fraction within 0.05 deg: 100%  (need >= 90 %);  median <= 0.03: yes  -> O1 MET
+    existing direction-only tool from the same start: median 0.0462 deg, p90 0.3890, within 0.05 deg: 52%
+    optimiser converged: 46/50; spots used median 144 of 175 blobs; rms residual 0.237 px, 0.175 frames
+    formal sigma of the rotation (deg) median x/y/z: 0.0055 / 0.0018 / 0.0063
+    geometry recovered (error after refinement; start error): beam centre row -0.000 +- 0.005 px (start rms 0.34), col +0.014 +- 0.005 px, distance -3.57e-04 +- 4.2e-05 (start 1e-2)
+
+REFUTE conditions (A19):
+    refined U error > 0.10 deg in 0% of seeds (refuted if > 10 %): not triggered
+    hkl assignment collapse (< 85 spots used) in 0% of seeds (refuted if > 10 %): not triggered
+
+structure refinement with the refined U and geometry (N3p start): converged 50/50; GooF median 0.95; determined set ['La2.z', 'Ni.z', 'O1.z', 'O2.z', 'La1.U', 'La2.U', 'Ni.U', 'O1.U']
+param  pull_sd  pull_mean  paired_mean  paired_rms  paired_max  frac_gt1
+La2.z    0.764     -0.087        0.015       0.519       2.561     0.040
+ Ni.z    1.056     -0.180        0.030       0.472       2.232     0.040
+ O1.z    1.163     -0.001        0.151       0.745       4.066     0.060
+ O2.z    0.835      0.106        0.053       0.201       0.861     0.000
+La1.U    1.096      0.200       -0.110       0.348       2.126     0.020
+La2.U    1.057     -0.215        0.105       0.719       4.461     0.040
+ Ni.U    0.878     -0.005       -0.076       0.301       1.777     0.020
+ O1.U    0.966     -0.324       -0.228       0.586       3.714     0.040
+
+O2  pull sd in [0.7,1.4] for all 8: MET;  paired mean shift vs exact U <= 0.3 sigma: MET;  paired rms <= 0.5 sigma: NOT MET   -> O2 NOT MET
+    (reported, not the criterion: |mean pull| <= 0.3 for all: no; max |mean pull| 0.324)
+    REFUTE: seeds with a paired shift > 1 sigma on ANY determined parameter: 6% (refuted if > 10 %): not triggered
+
+NULL arm (the wrong start left unrefined): paired shift vs exact U in sigma
+param  null_paired_mean  null_paired_rms  null_paired_max  null_n_unique
+La2.z             0.102            1.440            4.065         46.000
+ Ni.z             0.268            1.425            3.743         46.000
+ O1.z             0.166            1.433            6.286         46.000
+ O2.z            -0.101            1.467            5.258         46.000
+La1.U            -0.222            3.660           13.299         46.000
+La2.U             0.275            2.450            9.692         46.000
+ Ni.U            -0.201            1.982            4.619         46.000
+ O1.U            -0.385            1.378            5.612         46.000

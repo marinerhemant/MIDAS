@@ -1,0 +1,92 @@
+
+## Anisotropic U (A22 protocol), orientation seed 4
+  seeds 25; arm A: converged 22/25; GooF median 0.979 (arm I: 3.613); n_unique median 73; n_par 14
+  determined (11): ['La2.z', 'Ni.z', 'O1.z', 'O2.z', 'O1.U', 'La1.Uxx', 'La1.Uzz', 'La2.Uxx', 'La2.Uzz', 'Ni.Uxx', 'Ni.Uzz']
+  undetermined (2): ['O2.U', 'O3.U']
+  param   det  n  n_conv  med_sigma  pull_mean  pull_sd  conf_wrong_gt3
+  La2.z  True 25      22      0.001     -0.607    1.273               1
+   Ni.z  True 25      22      0.002     -0.159    1.275               1
+   O1.z  True 25      22      0.005     -0.695    1.231               1
+   O2.z  True 25      22      0.008      0.257    0.986               0
+   O1.U  True 25      22      0.001      0.161    1.036               0
+   O2.U False 25      22      0.002     -0.351    0.964               0
+   O3.U False 25      22      0.003      0.029    1.023               0
+La1.Uxx  True 25      22      0.001      0.261    0.722               0
+La1.Uzz  True 25      22      0.001      0.002    1.085               0
+La2.Uxx  True 25      22      0.001     -0.123    0.891               0
+La2.Uzz  True 25      22      0.001     -0.010    0.935               0
+ Ni.Uxx  True 25      22      0.001      0.216    1.025               0
+ Ni.Uzz  True 25      22      0.001     -0.351    0.948               0
+  seeds with |corr(Uxx, Uzz)| > 0.98 (mean over sites): 0 %
+  informative: GooF ratio null/main 3.69; max |mean shift of the null arm| / sigma_main over shared determined parameters 8.94 -> True
+  REGISTERED READING: INCONCLUSIVE
+
+## Anisotropic U (A22 protocol), orientation seed 6
+  seeds 25; arm A: converged 0/25; GooF median 1.024 (arm I: 0.983); n_unique median 25; n_par 14
+  determined (0): []
+  undetermined (13): ['La2.z', 'Ni.z', 'O1.z', 'O2.z', 'O1.U', 'O2.U', 'O3.U', 'La1.Uxx', 'La1.Uzz', 'La2.Uxx', 'La2.Uzz', 'Ni.Uxx', 'Ni.Uzz']
+  param   det  n  n_conv  med_sigma  pull_mean  pull_sd  conf_wrong_gt3
+  La2.z False 25       0      0.049     -0.197    0.295               0
+   Ni.z False 25       0      0.268     -0.104    0.442               0
+   O1.z False 25       0      0.128     -0.317    1.092               0
+   O2.z False 25       0      0.768      0.006    0.461               0
+   O1.U False 25       0      0.002     -0.468    0.830               0
+   O2.U False 25       0      0.051     -0.139    0.409               0
+   O3.U False 25       0      0.082     -0.003    0.208               0
+La1.Uxx False 25       0      0.008     -0.079    0.452               0
+La1.Uzz False 25       0      0.118     -0.066    0.097               0
+La2.Uxx False 25       0      0.006      0.066    0.579               0
+La2.Uzz False 25       0      0.082      0.002    0.150               0
+ Ni.Uxx False 25       0      0.004     -0.127    0.652               0
+ Ni.Uzz False 25       0      0.157      0.112    0.189               0
+  seeds with |corr(Uxx, Uzz)| > 0.98 (mean over sites): nan %
+  informative: GooF ratio null/main 0.96; max |mean shift of the null arm| / sigma_main over shared determined parameters nan -> False
+  REGISTERED READING: UNINFORMATIVE (< 4 determined parameters)
+
+## Exact twin fraction m = 0.30 (A24 protocol), orientation seed 4
+  seeds 25; arm T: converged 23/25; GooF median 0.959 (arm U: 1.384); n_unique median 86; n_par 14
+  determined (8): ['La2.z', 'Ni.z', 'O1a.z', 'O1b.z', 'O2.z', 'La1.U', 'La2.U', 'Ni.U']
+  undetermined (5): ['O1a.U', 'O1b.U', 'O2.U', 'O3.U', 'twin.m']
+ param   det  n  n_conv  med_sigma  pull_mean  pull_sd  conf_wrong_gt3
+ La2.z  True 25      23      0.001     -0.628    1.145               0
+  Ni.z  True 25      23      0.002     -0.355    1.310               1
+ O1a.z  True 25      23      0.011     -0.302    1.046               1
+ O1b.z  True 25      23      0.010     -0.568    0.990               0
+  O2.z  True 25      23      0.008      0.346    0.865               0
+ La1.U  True 25      23      0.000      0.280    0.975               0
+ La2.U  True 25      23      0.000      0.033    1.014               0
+  Ni.U  True 25      23      0.000      0.110    1.009               0
+ O1a.U False 25      23      0.003     -0.061    0.915               0
+ O1b.U False 25      23      0.003     -0.059    0.982               0
+  O2.U False 25      23      0.002     -0.085    1.187               0
+  O3.U False 25      23      0.003     -0.275    0.869               0
+twin.m False 25      23      0.022     -0.199    0.827               0
+  m: median 0.2964 (true 0.30), sigma_m median 0.0222, detection m > 2 sigma_m 22/23
+  seeds with |corr(m, any parameter)| > 0.98: 0 %
+  informative: GooF ratio null/main 1.44; max |mean shift of the null arm| / sigma_main over shared determined parameters 7.52 -> True
+  REGISTERED READING: INCONCLUSIVE
+
+## Exact twin fraction m = 0.30 (A24 protocol), orientation seed 6
+  seeds 25; arm T: converged 5/25; GooF median 0.949 (arm U: 0.938); n_unique median 37; n_par 14
+  determined (1): ['La2.z']
+  undetermined (12): ['Ni.z', 'O1a.z', 'O1b.z', 'O2.z', 'La1.U', 'La2.U', 'Ni.U', 'O1a.U', 'O1b.U', 'O2.U', 'O3.U', 'twin.m']
+ param   det  n  n_conv  med_sigma  pull_mean  pull_sd  conf_wrong_gt3
+ La2.z  True 25       5      0.011      0.132    0.978               0
+  Ni.z False 25       5      0.035      0.096    0.938               0
+ O1a.z False 25       5      0.149     -0.214    0.954               1
+ O1b.z False 25       5      0.161     -0.011    0.897               0
+  O2.z False 25       5      0.142     -0.066    0.877               0
+ La1.U False 25       5      0.002     -0.458    1.078               0
+ La2.U False 25       5      0.002      0.435    1.146               1
+  Ni.U False 25       5      0.002     -0.109    0.887               0
+ O1a.U False 25       5      0.009     -0.059    0.474               0
+ O1b.U False 25       5      0.009     -0.071    0.490               0
+  O2.U False 25       5      0.016     -0.096    0.622               0
+  O3.U False 25       5      0.035     -0.007    0.460               0
+twin.m False 25       5      0.383     -0.078    0.525               0
+  m: median 0.2949 (true 0.30), sigma_m median 0.2851, detection m > 2 sigma_m 1/5
+  seeds with |corr(m, any parameter)| > 0.98: 0 %
+  informative: GooF ratio null/main 0.99; max |mean shift of the null arm| / sigma_main over shared determined parameters 0.66 -> False
+  REGISTERED READING: UNINFORMATIVE (< 4 determined parameters)
+
+# Summary: {'S2A x O4': 'INCONCLUSIVE', 'S2A x O6': 'UNINFORMATIVE (< 4 determined parameters)', 'S2O-tw30 x O4': 'INCONCLUSIVE', 'S2O-tw30 x O6': 'UNINFORMATIVE (< 4 determined parameters)'}

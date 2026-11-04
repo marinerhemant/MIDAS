@@ -1,0 +1,84 @@
+n reps per scenario/kind:
+scenario                           kind         
+S1 run02-like (tx -0.10, W +0.41)  all              10
+                                   pairs~100        50
+                                   scrambled~100    50
+S2 (tx +0.30, W -0.30)             all              10
+                                   pairs~100        50
+                                   scrambled~100    50
+S3 zero (tx 0, W 0)                all              10
+                                   pairs~100        50
+                                   scrambled~100    50
+
+== S1 run02-like (tx -0.10, W +0.41) | all | n=10 | pairs median 157
+param    bias  emp_sd  mean_sigma_formal  sd_over_sigma  coverage68  bias_over_sd
+   tx -0.0037  0.0071             0.0092         0.7675         0.8       -0.5155
+   ty -0.0013  0.0179             0.0116         1.5520         0.5       -0.0727
+   tz -0.0011  0.0250             0.0188         1.3291         0.4       -0.0452
+wedge -0.0022  0.0104             0.0085         1.2227         0.6       -0.2158
+  bcz  0.0040  0.0569             0.0162         3.5180         0.2        0.0695
+  bcy -0.0034  0.0352             0.0181         1.9438         0.6       -0.0963
+  lsd  0.0181  0.0696             0.0604         1.1517         0.8        0.2595
+
+== S1 run02-like (tx -0.10, W +0.41) | pairs~100 | n=50 | pairs median 100
+param    bias  emp_sd  mean_sigma_formal  sd_over_sigma  coverage68  bias_over_sd
+   tx -0.0013  0.0091             0.0117         0.7732        0.84       -0.1394
+   ty  0.0007  0.0175             0.0148         1.1795        0.62        0.0410
+   tz -0.0010  0.0308             0.0243         1.2701        0.58       -0.0318
+wedge  0.0001  0.0112             0.0108         1.0334        0.72        0.0084
+  bcz  0.0017  0.0502             0.0215         2.3411        0.34        0.0342
+  bcy -0.0137  0.0482             0.0243         1.9866        0.38       -0.2833
+  lsd  0.0079  0.0705             0.0772         0.9129        0.78        0.1121
+   PASS tx: False  (|bias| 0.0013 <= min(0.02, 0.5 sd 0.0046); sd/sigma 0.77 in [0.7,1.4]; coverage 0.84 in [0.55,0.80])
+   PASS wedge: True  (|bias| 0.0001 <= min(0.02, 0.5 sd 0.0056); sd/sigma 1.03 in [0.7,1.4]; coverage 0.72 in [0.55,0.80])
+
+== S2 (tx +0.30, W -0.30) | all | n=10 | pairs median 156
+param    bias  emp_sd  mean_sigma_formal  sd_over_sigma  coverage68  bias_over_sd
+   tx  0.0014  0.0062             0.0093         0.6730         0.9        0.2302
+   ty  0.0015  0.0068             0.0118         0.5819         0.9        0.2191
+   tz -0.0130  0.0273             0.0193         1.4171         0.7       -0.4764
+wedge -0.0024  0.0093             0.0086         1.0804         0.6       -0.2585
+  bcz -0.0070  0.0328             0.0173         1.8968         0.2       -0.2145
+  bcy  0.0212  0.0485             0.0195         2.4866         0.4        0.4364
+  lsd  0.0117  0.0370             0.0611         0.6061         0.9        0.3148
+
+== S2 (tx +0.30, W -0.30) | pairs~100 | n=50 | pairs median 100
+param    bias  emp_sd  mean_sigma_formal  sd_over_sigma  coverage68  bias_over_sd
+   tx  0.0016  0.0080             0.0114         0.7031        0.84        0.1974
+   ty  0.0012  0.0158             0.0145         1.0905        0.62        0.0775
+   tz -0.0038  0.0284             0.0240         1.1849        0.60       -0.1341
+wedge  0.0013  0.0099             0.0105         0.9401        0.76        0.1321
+  bcz -0.0087  0.0463             0.0218         2.1274        0.32       -0.1875
+  bcy  0.0056  0.0472             0.0245         1.9253        0.42        0.1195
+  lsd  0.0015  0.0631             0.0757         0.8337        0.76        0.0243
+   PASS tx: False  (|bias| 0.0016 <= min(0.02, 0.5 sd 0.0040); sd/sigma 0.70 in [0.7,1.4]; coverage 0.84 in [0.55,0.80])
+   PASS wedge: True  (|bias| 0.0013 <= min(0.02, 0.5 sd 0.0050); sd/sigma 0.94 in [0.7,1.4]; coverage 0.76 in [0.55,0.80])
+
+== S3 zero (tx 0, W 0) | all | n=10 | pairs median 160
+param    bias  emp_sd  mean_sigma_formal  sd_over_sigma  coverage68  bias_over_sd
+   tx  0.0004  0.0070             0.0089         0.7888         0.8        0.0515
+   ty  0.0053  0.0144             0.0115         1.2503         0.8        0.3722
+   tz -0.0008  0.0303             0.0189         1.6029         0.5       -0.0276
+wedge  0.0003  0.0054             0.0083         0.6560         0.9        0.0539
+  bcz  0.0011  0.0469             0.0171         2.7470         0.4        0.0243
+  bcy -0.0119  0.0557             0.0193         2.8948         0.1       -0.2136
+  lsd  0.0245  0.0347             0.0599         0.5784         0.9        0.7076
+
+== S3 zero (tx 0, W 0) | pairs~100 | n=50 | pairs median 100
+param    bias  emp_sd  mean_sigma_formal  sd_over_sigma  coverage68  bias_over_sd
+   tx  0.0000  0.0086             0.0113         0.7607        0.80        0.0053
+   ty  0.0009  0.0189             0.0144         1.3126        0.56        0.0482
+   tz  0.0027  0.0290             0.0235         1.2313        0.72        0.0927
+wedge -0.0006  0.0094             0.0104         0.8987        0.74       -0.0651
+  bcz  0.0037  0.0552             0.0207         2.6650        0.26        0.0673
+  bcy -0.0107  0.0585             0.0233         2.5098        0.30       -0.1829
+  lsd -0.0059  0.0734             0.0752         0.9758        0.70       -0.0811
+   PASS tx: True  (|bias| 0.0000 <= min(0.02, 0.5 sd 0.0043); sd/sigma 0.76 in [0.7,1.4]; coverage 0.80 in [0.55,0.80])
+   PASS wedge: True  (|bias| 0.0006 <= min(0.02, 0.5 sd 0.0047); sd/sigma 0.90 in [0.7,1.4]; coverage 0.74 in [0.55,0.80])
+
+scrambled-mate null: rms error of the estimate about the TRUTH, scrambled vs true pairs (registered: scrambled >= 3 x true-pair)
+S1 run02-like (tx -0.10, W +0.41) | tx: true-pair rms error 0.0090, scrambled 62.299 (6885x; median scrambled estimate -0.000, truth -0.10) | wedge: true-pair rms error 0.0111, scrambled 24.150 (2185x; median scrambled estimate +0.000, truth +0.41) | rms residual scrambled 0.686 vs 0.0017
+S2 (tx +0.30, W -0.30) | tx: true-pair rms error 0.0081, scrambled 27.305 (3376x; median scrambled estimate -0.000, truth +0.30) | wedge: true-pair rms error 0.0099, scrambled 28.476 (2877x; median scrambled estimate +0.000, truth -0.30) | rms residual scrambled 0.685 vs 0.0016
+S3 zero (tx 0, W 0) | tx: true-pair rms error 0.0085, scrambled 18.193 (2132x; median scrambled estimate +0.000, truth +0.00) | wedge: true-pair rms error 0.0093, scrambled 23.097 (2480x; median scrambled estimate -0.000, truth +0.00) | rms residual scrambled 0.716 vs 0.0016
+
+POSITIVE CONTROL (S1 tx and wedge, registered criteria): FAIL

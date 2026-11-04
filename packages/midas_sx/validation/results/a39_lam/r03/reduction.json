@@ -1,0 +1,43 @@
+{
+ "tilts_deg": [
+  0.018667870035203208,
+  -0.18372103320251704,
+  -20.137728831025665
+ ],
+ "wedge_deg": 0.3057905866858119,
+ "converged": true,
+ "reason": "ok",
+ "n_used": 2421,
+ "n_spots": 12642,
+ "rms_px": 0.6844441663127148,
+ "rms_frame": 0.4440965857135568,
+ "centre_rc": [
+  862.0053238945745,
+  401.73324813109053
+ ],
+ "lsd_mm": 170.7922864284592,
+ "wavelength_A": 0.6899277690737373,
+ "header_wavelength_A": 0.6889,
+ "lambda_cell_scale": 0.001491898786089907,
+ "sigma_lambda_cell_scale": 2.7539687824491874e-05,
+ "refine_wavelength": true,
+ "counts": {
+  "low_angle": 1122,
+  "no_hkl": 9105,
+  "no_crossing": 140,
+  "frames_edge": 43,
+  "detector_edge": 60,
+  "masked_pixels": 419,
+  "no_background": 0,
+  "near_axis": 0,
+  "outside_opening": 0,
+  "factor_variation": 65,
+  "crowded": 383,
+  "input": 12642,
+  "kept": 1305
+ },
+ "r_int_run": 0.10835839545877103,
+ "n_unique_run": 649,
+ "pol_plane": 0.0,
+ "profile": "ProfileModel(sigma_px=2.1430361649393275, sf0=0.9147069372035156, sf1=0.11769912208669621, k=3.0, shell_px=3, shell_frames=2, ext_f0=2.744120811610547, ext_f1=0.35309736626008864, ext_p=7.07201934429978, margin=6, background='mean')"
+}

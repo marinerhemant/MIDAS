@@ -1,0 +1,29 @@
+# A23 two-domain analysis: 50 seeds with results
+C1 domain 1: U error median 0.0093 deg (p90 0.0130, max 0.0174); within 0.05 deg 100 %; above 0.10 deg 0 %; optimiser converged 100 %
+C1 domain 2: U error median 0.0058 deg (p90 0.0091, max 0.0151); within 0.05 deg 100 %; above 0.10 deg 0 %; optimiser converged 100 %
+
+arm S1: converged 48/50; GooF median 1.02; unique reflections median 54
+arm M : converged 49/50; GooF median 0.97; unique reflections median 77 (domain 1 45, domain 2 32)
+   M not converged: on bound: O3.Ux1
+param  sigma_M  sigma_S1  ratio  M_pull_mean  M_pull_sd  S1_pull_mean  S1_pull_sd
+La2.z 0.000929  0.000941  0.987      -0.0384      0.973       -0.0789       0.893
+ Ni.z  0.00278   0.00263   1.06        0.181      0.953        -0.128        1.01
+ O1.z  0.00737   0.00703   1.05        0.259       1.01       -0.0708       0.993
+ O2.z   0.0101   0.00999   1.02      -0.0769      0.808         -0.13       0.867
+La1.U 0.000442   0.00041   1.08       -0.115      0.824         0.107       0.872
+La2.U 0.000267  0.000258   1.03       0.0457      0.941        -0.167           1
+ Ni.U 0.000407  0.000372   1.09       -0.269          1        -0.263        1.09
+ O1.U  0.00135   0.00127   1.06       -0.113       1.14       -0.0877        1.11
+
+C2 arm M: >= 90 % converged True (98 %); pull sd in [0.7,1.4] and |mean| <= 0.5 True; GooF median <= 1.2 True
+C3 domain ratio k2/k1: median 0.4301 (IQR 0.4292-0.4312) vs true 0.4286: relative error +0.4 %  => MET
+C4 sigma_M below sigma_S1 for 1/8 determined parameters (median ratio 1.053) => NOT MET
+REFUTE conditions triggered: ['M sigma larger than S1 for more than half']
+
+OVERALL: NOT MET (see items)
+
+# Reported, not judged
+unique reflections S1 54 vs M 77; contamination (kept domain-1 reflections with a TRUE domain-2 spot in the support box): median 0.019
+rejections per seed, S1 (median counts): {"low_angle": 31.0, "no_hkl": 80.0, "no_crossing": 2.0, "factor_variation": 4.0, "crowded": 4.0}
+rejections per seed, M  (median counts): {"low_angle": 3.0, "factor_variation": 2.0, "crowded": 5.0, "no_crossing": 1.0}
+contamination effect: S1 (two-domain frames) minus the single-domain c2v3 run of the same seeds, in c2v3 formal sigma: mean La2.z +0.13, Ni.z +0.23, O1.z +0.07, O2.z -0.15, La1.U -0.32, La2.U +0.30, Ni.U -0.43, O1.U +0.04; rms La2.z 0.98, Ni.z 1.47, O1.z 1.07, O2.z 1.02, La1.U 1.10, La2.U 1.76, Ni.U 1.49, O1.U 1.01

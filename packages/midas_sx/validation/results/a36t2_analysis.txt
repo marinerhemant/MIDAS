@@ -1,0 +1,40 @@
+## P11: seeds mean 20 quadratic 20
+  mean      converged 20/20; GooF median 1.03; m median 0.2882 (sigma_m median 0.0451)
+  quadratic converged 20/20; GooF median 1.00; m median 0.2942 (sigma_m median 0.0641)
+param  mean_pull_mean  mean_pull_sd  quadratic_pull_mean  quadratic_pull_sd
+La2.z           -0.15          1.12                -0.26               0.72
+ Ni.z           -0.27          0.93                -0.56               1.16
+O1a.z           -0.31          0.87                 0.04               0.72
+O1b.z            0.26          1.30                 0.12               0.67
+ O2.z           -0.47          1.27                -0.12               1.10
+La1.U            0.30          0.74                 0.63               0.86
+La2.U            1.13          1.05                -0.28               1.17
+ Ni.U           -0.47          0.99                -0.25               1.29
+## P30: seeds mean 20 quadratic 20
+  mean      converged 20/20; GooF median 1.00; m median 0.2991 (sigma_m median 0.0039)
+  quadratic converged 20/20; GooF median 1.00; m median 0.2992 (sigma_m median 0.0046)
+param  mean_pull_mean  mean_pull_sd  quadratic_pull_mean  quadratic_pull_sd
+La2.z           -0.22          0.89                -0.16               0.94
+ Ni.z           -0.36          1.02                -0.27               1.04
+O1a.z           -0.61          0.87                -0.71               1.99
+O1b.z            0.33          0.64                 0.65               2.22
+ O2.z           -0.44          1.26                -0.21               1.22
+La1.U            0.16          0.97                 0.09               1.17
+La2.U            0.01          1.29                -0.51               1.24
+ Ni.U            0.37          0.89                 0.66               0.99
+## P00: seeds mean 20 quadratic 20
+  mean      converged 20/20; GooF median 1.00; m median 0.0027 (sigma_m median 0.0151)
+  quadratic converged 20/20; GooF median 1.00; m median 0.0000 (sigma_m median 0.0204)
+param  mean_pull_mean  mean_pull_sd  quadratic_pull_mean  quadratic_pull_sd
+La2.z           -0.08          1.14                -0.04               1.02
+ Ni.z           -0.20          1.19                 0.09               0.90
+O1a.z            0.35          1.01                 0.32               0.98
+O1b.z            0.57          0.91                -0.13               1.30
+ O2.z            0.15          1.13                 0.03               1.13
+La1.U            0.10          1.06                 0.29               0.81
+La2.U           -0.07          1.11                -0.16               0.90
+ Ni.U            0.07          1.06                 0.18               1.16
+
+T2(b) P11: La2.U pull -0.28 (<= +0.6), Ni.U -0.25 (within 0.6), m median 0.2942 -> MET
+T2(b) P30 / P00 no worse by > 0.3 in |mean pull| -> NOT MET
+T2(c) sigma_m inflation P11: 1.422 (<= 1.25) -> NOT MET

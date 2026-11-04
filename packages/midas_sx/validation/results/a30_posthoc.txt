@@ -1,0 +1,31 @@
+
+== POST HOC S2A x O4 (arm A), gate_free = oxygen U: converged 25/25; GooF median 0.979
+  La2.z    n=25 pull mean -0.607 sd 1.273  median sigma 0.00081
+  Ni.z     n=25 pull mean -0.159 sd 1.275  median sigma 0.00250
+  O1.z     n=25 pull mean -0.695 sd 1.231  median sigma 0.00521
+  O2.z     n=25 pull mean +0.257 sd 0.986  median sigma 0.00783
+  La1.Uxx  n=25 pull mean +0.261 sd 0.722  median sigma 0.00087
+  La1.Uzz  n=25 pull mean +0.002 sd 1.085  median sigma 0.00098
+  La2.Uxx  n=25 pull mean -0.123 sd 0.891  median sigma 0.00052
+  La2.Uzz  n=25 pull mean -0.010 sd 0.935  median sigma 0.00054
+  Ni.Uxx   n=25 pull mean +0.216 sd 1.025  median sigma 0.00050
+  Ni.Uzz   n=25 pull mean -0.351 sd 0.948  median sigma 0.00072
+  O1.U     n=25 pull mean +0.161 sd 1.036  median sigma 0.00101
+  O2.U     n=25 pull mean -0.351 sd 0.964  median sigma 0.00194
+  O3.U     n=25 pull mean +0.029 sd 1.023  median sigma 0.00340
+
+== POST HOC S2O-tw30 x O4 (arm T), gate_free = oxygen U: converged 25/25; GooF median 0.959
+  La2.z    n=25 pull mean -0.628 sd 1.145  median sigma 0.00077
+  Ni.z     n=25 pull mean -0.355 sd 1.310  median sigma 0.00219
+  O1a.z    n=25 pull mean -0.302 sd 1.046  median sigma 0.01104
+  O1b.z    n=25 pull mean -0.568 sd 0.990  median sigma 0.01015
+  O2.z     n=25 pull mean +0.346 sd 0.865  median sigma 0.00823
+  La1.U    n=25 pull mean +0.280 sd 0.975  median sigma 0.00048
+  La2.U    n=25 pull mean +0.033 sd 1.014  median sigma 0.00028
+  Ni.U     n=25 pull mean +0.110 sd 1.009  median sigma 0.00033
+  O1a.U    n=25 pull mean -0.061 sd 0.915  median sigma 0.00289
+  O1b.U    n=25 pull mean -0.059 sd 0.982  median sigma 0.00321
+  O2.U     n=25 pull mean -0.085 sd 1.187  median sigma 0.00200
+  O3.U     n=25 pull mean -0.275 sd 0.869  median sigma 0.00335
+  twin.m   n=25 pull mean -0.199 sd 0.827  median sigma 0.02233
+  m median 0.2952, sigma_m 0.0223

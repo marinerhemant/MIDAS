@@ -1,0 +1,13 @@
+# A31 analysis (find_domains with a wrong declared space group); seeds 25 .. 49 n seeds 25
+SG139  sg 139: success 25/25 (100 %), domains found per seed {2: 22, 3: 3}, seeds with >= 3 domains 3, median reflections largest/second 139/66, median seconds 0.8
+SG123  sg 123: success 2/25 (8 %), domains found per seed {0: 17, 1: 4, 2: 2, 3: 1, 4: 1}, seeds with >= 3 domains 2, median reflections largest/second 54/74, median seconds 0.1
+SG129  sg 129: success 2/25 (8 %), domains found per seed {0: 17, 1: 4, 2: 2, 3: 1, 4: 1}, seeds with >= 3 domains 2, median reflections largest/second 54/74, median seconds 0.1
+SG1    sg   1: success 2/25 (8 %), domains found per seed {0: 17, 1: 4, 2: 2, 3: 1, 4: 1}, seeds with >= 3 domains 2, median reflections largest/second 54/74, median seconds 0.1
+
+Readings against A31:
+  SG123: success 2/25, difference to SG139 -23 seeds (null band +-0.0 seeds), third-domain seeds 2 vs 3: not met; REFUTE criterion (< 15/25) met
+  SG129: success 2/25, difference to SG139 -23 seeds (null band +-0.0 seeds), third-domain seeds 2 vs 3: not met; REFUTE criterion (< 15/25) met
+  SG1: success 2/25, difference to SG139 -23 seeds (null band +-0.0 seeds), third-domain seeds 2 vs 3: not met; REFUTE criterion (< 15/25) met
+
+REGISTERED READING: REFUTED (fragile to a wrong space group)
+Control SG139 must be >= 23/25 (A25 found 50/50 on seeds 0..49); if it is not, the chain of this script is suspect and the reading is void: OK

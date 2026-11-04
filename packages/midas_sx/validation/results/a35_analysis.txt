@@ -1,0 +1,27 @@
+# A35: P11, seeds 60..69 (10), arm Tr on tables reduced with the estimated shell background and with the oracle background
+
+## est_bg: converged 10/10; GooF median 0.248; m median 0.2542 (sigma_m 0.0954); rejected rows per seed median 1
+param  n  pull_mean  pull_sd  mean_err  median_sigma
+La2.z 10    -0.1932   0.4933   -0.0010        0.0030
+ Ni.z 10    -0.4862   0.4877   -0.0049        0.0078
+O1a.z 10    -0.5057   0.0375   -0.0243        0.0442
+O1b.z 10     0.6457   0.3565    0.0487        0.0498
+ O2.z 10     0.0058   0.3443   -0.0015        0.0285
+La1.U 10     0.0823   0.4417    0.0003        0.0014
+La2.U 10     1.4913   0.5764    0.0015        0.0009
+ Ni.U 10    -0.4472   0.1503   -0.0006        0.0013
+
+## oracle_bg0: converged 8/10; GooF median 0.191; m median 0.3008 (sigma_m 0.0050); rejected rows per seed median 3
+param  n  pull_mean  pull_sd  mean_err  median_sigma
+La2.z  8    -0.1446   0.5943   -0.0000        0.0002
+ Ni.z  8    -0.1325   0.1292   -0.0001        0.0004
+O1a.z  8     0.7503   1.7448    0.0025        0.0031
+O1b.z  8     0.3575   0.8810    0.0012        0.0033
+ O2.z  8     0.3159   0.3036    0.0007        0.0022
+La1.U  8     0.4821   0.8800    0.0000        0.0001
+La2.U  8     0.1606   0.2880    0.0000        0.0000
+ Ni.U  8    -0.3963   0.4062   -0.0000        0.0001
+
+(a) est_bg reproduces the bias with true U (La2.U >= +1.0 and Ni.U <= -0.5): La2.U +1.49, Ni.U -0.45 -> False
+(b) oracle: all eight |mean pull| <= 0.5 and pull sd in [0.7, 1.4]: False  (La2.U +0.16, Ni.U -0.40; max |mean pull| 0.75, sd range 0.13-1.74)
+REGISTERED READING: INCONCLUSIVE

@@ -1,0 +1,17 @@
+# A36 T3: 25 paired seeds (N3p start, 0.10 A)
+determined set: ['La2.z', 'Ni.z', 'O1.z', 'O2.z', 'La1.U', 'La2.U', 'Ni.U', 'O1.U']
+param  mean_sigma  mean_pull_mean  mean_pull_sd  quadratic_sigma  quadratic_pull_mean  quadratic_pull_sd  sigma_ratio
+La2.z       0.001          -0.101         0.761            0.001               -0.281              0.915        1.184
+ Ni.z       0.003          -0.207         0.910            0.003               -0.468              0.970        1.168
+ O1.z       0.007           0.031         1.254            0.008                0.085              1.229        1.146
+ O2.z       0.010           0.183         0.895            0.012                0.031              0.857        1.169
+La1.U       0.000           0.339         1.056            0.001                0.870              1.254        1.237
+La2.U       0.000          -0.324         0.964            0.000               -0.563              1.093        1.207
+ Ni.U       0.000           0.295         0.763            0.000                0.137              0.962        1.174
+ O1.U       0.001          -0.390         1.031            0.001               -0.684              0.984        1.123
+mean      converged 25/25; GooF median 0.96
+quadratic converged 25/25; GooF median 0.97
+R_F2 (strong, global scale): mean 1.09 %  quadratic 1.23 %  difference +0.14 pp
+
+sigma ratio median 1.171 (<= 1.10) False; R_F2 True; pulls False; GooF True; converged True
+T3 reading: INCONCLUSIVE

@@ -1,0 +1,20 @@
+# /verify of claim 3e5f69ee9f55 (joint model: aniso cations + 90 deg twin + per-domain extinction), 2026-10-21: PROVISIONAL
+
+Lenses: physics SURVIVES, statistics UNCERTAIN, reproduction SURVIVES, artifact UNCERTAIN -> PROVISIONAL. Workdirs .../verify_workdirs/Desktop/analysis/midas_sx/refute_3e5f_*/. The registered reading of A33 is REFUTED (arm F converged 20/30 < 24/30); the quoted 30/30 is POST HOC with a widened gate (in-plane cation U gate_free).
+
+## What holds (strong)
+- INDEPENDENT REPRODUCTION: a numpy fit written from scratch (hand-written Immm operators, IT92 form factors, closed-form Struve extinction integral, scipy least_squares, no repository refiner) matches the repository's refit on all 30 seeds: GooF to 1.6e-14, m to 1.8e-8, t_b to 1.6e-8, formal sigmas to 5e-8 relative, the same 10 seeds hit a bound. Repository refits of seeds 0-4 (25 arm fits) and the revised-gate refit of all 30 seeds reproduce the CSVs (max difference 1.3e-7 / 1.9e-8). Truth table (70 reflections) agrees with an independent calculation to 3e-7 (kinematic) and 2e-7 (with extinction, per domain, weights 0.7 and 0.3).
+- PHYSICS of the rail hits: the twin law swaps x and y, so Uxx and Uyy of a cation are nearly degenerate: corr(Uxx, Uyy) = -0.91 (La1), -0.93 (La2), -0.92 (Ni) at m = 0.3, exactly degenerate at m = 0.5, -0.55 at m = 0; sigma(Uxx+Uyy) 0.0016 against sigma(Uxx-Uyy) 0.0063 for La1. A linearised Monte Carlo predicts 12.0 of 30 seeds with an in-plane cation U below the 1e-4 bound; 10 were observed. Tying Uxx = Uyy (the truth) gives 0 bound hits in 30/30 seeds and the same determined parameters (t_b 4.98 +- 0.114 across seeds). So the gate_free is legitimate, not a hidden failure.
+- Pulls (30 seeds, revised gate): La2.z +0.08/0.86, Ni.z +0.05/0.93, O1a.z -0.14/0.98, O1b.z +0.15/0.87, O2.z -0.07/0.93, La2.Uzz -0.16/0.95, Ni.Uzz -0.12/0.97, t_b -0.14/0.77 (mean/sd; SE of a mean 0.14-0.22); the 20 seeds that converged under the registered gate give identical errors under the revised gate and the 10 added seeds are not detectably biased (Welch p 0.17-0.97).
+- The full model does not hallucinate: fitted to truths lacking an effect it returns t_b 0.38 (no extinction), m 0.005 (no twin), t_b 0.28 and m 0.004 (neither).
+
+## Wording that must be tightened (statistics + artifact lenses)
+1. m is NOT a 'determined' parameter by the rule (sigma_m 0.0243 > 0.02) and NOT shown calibrated: pull sd 1.226 (95 % CI 0.98-1.65), empirical sd over seeds 0.0321 = 1.32 x the formal 0.0243. 'm = 0.2995 +- 0.024' is the formal sigma.
+2. '7-13 sigma': the shifts of the ablated arms refer to the largest one or two parameters per arm (no anisotropy: Ni.z 12.8, t_b 11.7, La2.z 7.5; no twin: O1b.z 7.6, O1a.z 7.0, the other six determined parameters 0.1-1.5); the no-extinction arm never converged (0/30). The no-twin arm has GooF 1.39 (x1.47 < 1.5); its necessity rests on the 7.6 sigma shift and on the nested chi^2 (min 5.8, median 54).
+3. '30/30' = 30/30 under a gate that ignores bound hits of undetermined U (10 fits still have an in-plane cation U on its bound).
+4. The seeds differ only in the noise draw: one orientation, one signal volume, closed loop (exact U and DAC), so reduction systematics are common-mode.
+
+## Limits of the model class (artifact lens; 10 seeds each, real merged-table noise, truth rescaled by the variant/baseline ratio)
+- t_b is an EFFECTIVE parameter. With unequal domain thicknesses 8/3 um or 7/4 um it reads 6.7 / 6.2 um (+12 / +8 sigma) with GooF unchanged (0.88-0.89), with log-normal thickness (sigma_ln 0.8) 6.3 um (+10 sigma); polarisation of Lambda moves it 0.05-0.1 um. m is robust: the largest paired shift is -0.025 (about 1 sigma_formal), 3/8 um domains. None of these misspecifications is visible in GooF.
+- t_b converges only from starts up to about 20 um (25 um fails 8/8 with poor_fit set; 30 um 0/30 at the true minimum, 5/30 carry a 'converged' flag with GooF ~16); m start 0.45, shifts 0.2 A and a t_b start of 1 um all converge 30/30 to the same solution.
+- No real data enters the claim; the ablations show the effects are needed when the truth contains them.

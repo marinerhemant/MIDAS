@@ -1,0 +1,74 @@
+
+## T0: 50 seeds
+   arm K: converged 50/50; GooF median 0.95 (IQR 0.90-1.05); poor_fit 0
+   arm E: converged 50/50; GooF median 0.95 (IQR 0.90-1.05); poor_fit 0
+   arm O: converged 50/50; GooF median 0.95 (IQR 0.90-1.05); poor_fit 0
+param  sigma_O  sigma_E_over_K  E_bias_sig  E_pull_mean  E_pull_sd  EminusO_mean  EminusO_rms  EminusK_rms  KminusO_mean  KminusO_rms  K_pull_mean
+La2.z 0.000934            1.04      -0.322       -0.311      0.725        -0.213        0.344        0.344             0            0       -0.114
+ Ni.z   0.0026            1.03      -0.391       -0.358       1.05        -0.164        0.254        0.254             0            0       -0.206
+ O1.z  0.00697               1      -0.087      -0.0648       1.16        0.0254       0.0825       0.0825             0            0      -0.0908
+ O2.z  0.00987            1.02       0.178        0.157      0.868         0.129        0.196        0.196             0            0        0.031
+La1.U 0.000413            1.11       0.634        0.547       1.05         0.333        0.512        0.512             0            0        0.279
+La2.U 0.000258            1.06      0.0128     0.000394      0.965         0.242        0.365        0.365             0            0       -0.244
+ Ni.U 0.000374               1       0.067       0.0663      0.879        0.0285       0.0426       0.0426             0            0        0.038
+ O1.U  0.00126            1.01     -0.0212      -0.0453      0.992        0.0873        0.192        0.192             0            0        -0.13
+   t_b (E, converged): median 0.758 um (truth 0.0), IQR 0.000-1.133; median formal sigma 0.834; at upper bound (reason mentions ext): 0/50
+   |corr(t_b, other)|: max over partners per seed, median 0.927, fraction of seeds > 0.98: 0.00; largest median partner: c:scale (0.927)
+
+## T1_5: 50 seeds
+   arm K: converged 50/50; GooF median 3.34 (IQR 3.11-3.52); poor_fit 43
+   arm E: converged 50/50; GooF median 0.96 (IQR 0.91-1.04); poor_fit 0
+   arm O: converged 50/50; GooF median 0.97 (IQR 0.90-1.06); poor_fit 0
+param  sigma_O  sigma_E_over_K  E_bias_sig  E_pull_mean  E_pull_sd  EminusO_mean  EminusO_rms  EminusK_rms  KminusO_mean  KminusO_rms  K_pull_mean
+La2.z 0.000818            1.02      -0.372       -0.361      0.853        -0.152        0.389         6.32           6.3         6.49         5.73
+ Ni.z  0.00226               1      -0.316       -0.351       1.03       -0.0882         0.24         4.51           4.5          4.6         4.07
+ O1.z  0.00605           0.967      -0.154       -0.159       0.98       -0.0264        0.107         1.93         -1.01         2.06        -1.02
+ O2.z  0.00853           0.949      -0.084       -0.102      0.921        0.0662         0.21         3.49         -3.61         3.75        -3.45
+La1.U 0.000349            1.13       0.609        0.538       1.23         0.202        0.563         10.6         -10.3         10.4        -9.85
+La2.U 0.000221            1.06      0.0984       0.0643      0.952         0.167        0.476         8.02         -8.04         8.14        -7.84
+ Ni.U 0.000319           0.961      -0.227       -0.194        1.1        0.0151       0.0762         1.38         -1.21         1.45        -1.34
+ O1.U  0.00111            1.08       0.163        0.115      0.986         0.123        0.262         3.91         -2.96         3.53         -3.1
+   t_b (E, converged): median 5.054 um (truth 5.0), IQR 4.947-5.127; median formal sigma 0.114; at upper bound (reason mentions ext): 0/50
+   |corr(t_b, other)|: max over partners per seed, median 0.928, fraction of seeds > 0.98: 0.00; largest median partner: c:scale (0.928)
+
+## T1_10: 50 seeds
+   arm K: converged 0/50; GooF median 14.65 (IQR 13.66-15.40); poor_fit 50
+   arm E: converged 50/50; GooF median 0.97 (IQR 0.92-1.03); poor_fit 0
+   arm O: converged 50/50; GooF median 0.98 (IQR 0.91-1.04); poor_fit 0
+param  sigma_O  sigma_E_over_K  E_bias_sig  E_pull_mean  E_pull_sd  EminusO_mean  EminusO_rms  EminusK_rms  KminusO_mean  KminusO_rms  K_pull_mean
+La2.z 0.000535           0.966      0.0193       0.0192      0.904       -0.0457        0.295         18.6          21.4         22.1           18
+ Ni.z   0.0014             0.9      -0.196       -0.185       1.08        -0.036        0.157         7.65           8.1         9.12         6.62
+ O1.z  0.00413           0.922      -0.335       -0.299      0.932       -0.0918        0.179         8.58         -6.92         10.6        -5.73
+ O2.z   0.0055           0.874      -0.191       -0.213      0.915      -0.00674        0.135         13.6         -18.2         19.6        -13.1
+La1.U 0.000208            1.03       0.342        0.329       0.97         0.145        0.466         25.6         -28.3         28.4        -25.1
+La2.U 0.000136            1.09       0.126       0.0797       1.03         0.192        0.546           39         -42.6         42.7        -38.8
+ Ni.U 0.000208           0.908      0.0753       0.0968      0.972        0.0655         0.16         13.6         -14.7         16.3        -12.2
+ O1.U 0.000784            1.21       0.568        0.465      0.882         0.273        0.398         12.8         -11.4         12.4        -11.6
+   t_b (E, converged): median 10.012 um (truth 10.0), IQR 9.989-10.042; median formal sigma 0.0443; at upper bound (reason mentions ext): 0/50
+   |corr(t_b, other)|: max over partners per seed, median 0.912, fraction of seeds > 0.98: 0.00; largest median partner: c:scale (0.912)
+
+## T2: 50 seeds
+   arm K: converged 2/50; GooF median 7.85 (IQR 7.41-8.13); poor_fit 49
+   arm E: converged 50/50; GooF median 1.05 (IQR 0.98-1.10); poor_fit 0
+   arm O: converged 50/50; GooF median 0.97 (IQR 0.90-1.04); poor_fit 0
+param  sigma_O  sigma_E_over_K  E_bias_sig  E_pull_mean  E_pull_sd  EminusO_mean  EminusO_rms  EminusK_rms  KminusO_mean  KminusO_rms  K_pull_mean
+La2.z  0.00068            1.01       0.928        0.827      0.806          1.05         1.14           13          15.1         15.6         13.4
+ Ni.z  0.00183            0.96       0.366        0.244      0.976         0.593        0.664         7.83          9.15          9.4         7.84
+ O1.z  0.00506           0.957       0.663        0.584        1.1         0.835        0.877         4.68         -2.63         5.04        -2.37
+ O2.z  0.00699           0.941       0.282        0.295      0.822         0.351        0.438         9.39         -9.36         9.89        -8.48
+La1.U  0.00027             1.1       -0.65        -0.56      0.942         -1.08         1.23         20.1         -21.9         22.1        -20.6
+La2.U 0.000174            1.13      -0.935       -0.767      0.969        -0.795        0.889           27         -28.3         28.7        -27.4
+ Ni.U  0.00026           0.924       0.491        0.528       1.09         0.555        0.599         4.01          -3.4         4.12        -2.94
+ O1.U 0.000939            1.23       0.936        0.773       1.08         0.854        0.922           10         -7.41         8.44        -7.99
+   t_b (E, converged): median 7.642 um (truth 7.0), IQR 7.617-7.697; median formal sigma 0.0655; at upper bound (reason mentions ext): 0/50
+   |corr(t_b, other)|: max over partners per seed, median 0.923, fraction of seeds > 0.98: 0.00; largest median partner: c:scale (0.923)
+
+# Verdicts against A21
+E1 T1_5: informative (K vs O shifts a determined parameter by >1 sigma): True; pull sd in [0.7,1.4] True; E-O mean<=0.3 True; E-O rms<=0.5 False; t_b within 15 % True (median 5.05 vs 5.0); >=90 % converged True  => NOT MET
+   REFUTE checks T1_5: K shift >1 sigma and E removes < half: False; t_b at bound in 0 % (>20 % refutes); |corr|>0.98 in 0 % of seeds (>50 % refutes)
+E1 T1_10: informative (K vs O shifts a determined parameter by >1 sigma): True; pull sd in [0.7,1.4] True; E-O mean<=0.3 True; E-O rms<=0.5 False; t_b within 15 % True (median 10.01 vs 10.0); >=90 % converged True  => NOT MET
+   REFUTE checks T1_10: K shift >1 sigma and E removes < half: False; t_b at bound in 0 % (>20 % refutes); |corr|>0.98 in 0 % of seeds (>50 % refutes)
+E2 T2 (misspecified): |mean pull| <= 1 for all determined True; E-O rms <= 1 sigma False; effective t_b median 7.64 um  => NOT MET
+   informative (K-O mean >1 sigma somewhere): True
+E3 T0 (null): t_b <= 1 um in 62 % (>=80 % needed); sigma inflation E/K max 1.11 (<=1.5, refute >2); E-K rms max 0.51 (<=0.5)  => NOT MET
+   REFUTE check T0: inflation >2 False; |E bias| > 1 sigma on a determined parameter False

@@ -1,0 +1,33 @@
+# C1 S1_Cu  n_int_max=100000  noise_seed=11  orient_seed=1  E=30 keV  mu_diamond=0.901 /cm  bandwidth_rel=0.001  mosaic=0.1 deg  DAC tilt=(2.0, 1.0) t+=2.5 t-=3.0 mm opening=35.0 deg  (run 2026-10-15)
+simulated 39 true spots (39 complete) in 20 s; RSS 946 MB
+front end: 53 blobs in 132 s (noise 5.78, threshold 40.5); RSS 1316 MB
+profile model (from 16 strong spots): sigma_px=0.707 sigma_f=0.236+0.055*L  k=2.0 (converged=True)
+support sweep (k, median I(k)/I(kmax), p10, n): 2:0.9972/0.9144/16; 2.5:0.9946/0.9150/16; 3:0.9982/0.9182/16; 3.5:0.9999/0.9182/16; 4:0.9999/0.9182/16; 5:1.0041/0.9496/16; 6:1.0000/1.0000/16
+[FULL (all corrections)] kept 27/53; rejected: low_angle=26
+[N1 (no corrections)] kept 27/53; rejected: low_angle=26
+[ablate L] kept 27/53; rejected: low_angle=26
+[ablate P] kept 27/53; rejected: low_angle=26
+[ablate T] kept 27/53; rejected: low_angle=26
+[control: wrong omega sign] kept 0/53; rejected: low_angle=26, no_hkl=26, outside_opening=1
+
+                                       arm  n_obs  n_unique   R_F2   slope  slope_se     dB  r_int  n_sel
+                    FULL (all corrections)     27        10 0.0122 -0.0150    0.0544 0.0075 0.0114     10
+                       N1 (no corrections)     27        10 0.4621 -2.2374    1.1703 1.1187 0.3771      7
+                                  ablate L     27        10 0.4474 -1.8660    1.0838 0.9330 0.3728      7
+                                  ablate P     27        10 0.0426 -0.3098    0.0925 0.1549 0.0181     10
+                                  ablate T     27        10 0.0223 -0.0605    0.0724 0.0302 0.0285     10
+C5: blob label sum, same spots/corrections     27        10 0.0358 -0.4419    0.0723 0.2209 0.0084     10
+                 control: wrong omega sign      0         0    NaN     NaN       NaN    NaN    NaN      0
+
+true spots 39; FULL observations 27; unique reflections merged 10
+
+PREREGISTERED READING (C1): R_F2 <= 5 %, |slope| <= 0.2 A^2, FULL beats N1 by >= 2x in R_F2
+  R_F2(FULL)=0.0122  slope=-0.0150 +- 0.0544 (regression SE; replicate scatter of this design is ~0.04, see DESIGN.md)  R_F2(N1)=0.4621  ratio N1/FULL=37.93
+  C1 numeric criteria met: True   (still PROVISIONAL: synthetic, one noise seed, not /verify'd)
+  sensitivity (each ablation must raise R_F2 by >= 0.02 absolute or move |slope| by >= 0.2):
+    ablate L                       R_F2=0.4474 slope=-1.8660 -> DETECTED
+    ablate P                       R_F2=0.0426 slope=-0.3098 -> DETECTED
+    ablate T                       R_F2=0.0223 slope=-0.0605 -> NOT DETECTED (that correction is UNTESTED at this geometry)
+    control: wrong omega sign      observations surviving hkl assignment = 0 of 53 blobs -> DETECTED (reduction fails at assignment)
+  C5: blob-sum R_F2=0.0358 slope=-0.4419  vs fixed-support R_F2=0.0122 slope=-0.0150
+peak RSS 1316 MB

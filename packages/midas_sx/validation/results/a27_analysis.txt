@@ -1,0 +1,59 @@
+# A27 analysis (PREREGISTER A27). Determined set fixed in A26: ['La2.z', 'Ni.z', 'O1a.z', 'O1b.z', 'O2.z', 'La1.U', 'La2.U', 'Ni.U']
+
+## P11 (m = 0.3)
+   domain-1 orientation: pair model median 0.0055 deg (p90 0.0089, max 0.0108; > 0.10 deg in 0 %); centroid model (the A26 method, same frames) median 0.0491 deg; pair model used (converged) in 100 % of seeds; fitted blend weight m_orient median 0.057
+   A0 (A26 tables, plain T): converged 25/50; GooF median 1.04; m median 0.2851 (IQR 0.2573-0.3101) sigma_m 0.0428; m pull mean -0.54 sd 0.94
+   A1 (A26 tables, robust Tr): converged 50/50; GooF median 1.03; m median 0.2875 (IQR 0.2573-0.3135) sigma_m 0.0428; m pull mean -0.26 sd 1.21; rows rejected per seed: median 0, max 2
+   B0 (pair-model tables, plain T): converged 22/50; GooF median 1.05; m median 0.2951 (IQR 0.2632-0.3215) sigma_m 0.0643; m pull mean -0.17 sd 0.63; rows rejected per seed: median 0, max 0
+   B1 (pair-model tables, robust Tr): converged 49/50; GooF median 1.03; m median 0.2965 (IQR 0.2632-0.3215) sigma_m 0.0643; m pull mean -0.08 sd 0.78; rows rejected per seed: median 0, max 1
+   B1 determined parameters (converged seeds):
+param  pull_mean  pull_sd  sigT_over_sigU
+La2.z      0.247      1.2            1.01
+ Ni.z     -0.219    0.966            1.03
+O1a.z     -0.232     0.88            1.34
+O1b.z      0.387     1.13            1.12
+ O2.z     -0.283    0.917            1.02
+La1.U      0.243    0.972            1.01
+La2.U       1.42        1            1.02
+ Ni.U     -0.868     1.03            1.01
+
+## P30 (m = 0.3)
+   domain-1 orientation: pair model median 0.0208 deg (p90 0.0247, max 0.0838; > 0.10 deg in 0 %); centroid model (the A26 method, same frames) median 0.0287 deg; pair model used (converged) in 100 % of seeds; fitted blend weight m_orient median 0.077
+   A0 (A26 tables, plain T): converged 26/50; GooF median 1.01; m median 0.2990 (IQR 0.2895-0.3028) sigma_m 0.0039; m pull mean +0.24 sd 1.01
+   A1 (A26 tables, robust Tr): converged 48/50; GooF median 1.01; m median 0.2993 (IQR 0.2962-0.3028) sigma_m 0.0039; m pull mean -0.05 sd 1.04; rows rejected per seed: median 0, max 2
+   B0 (pair-model tables, plain T): converged 26/50; GooF median 1.02; m median 0.2985 (IQR 0.2941-0.3028) sigma_m 0.0045; m pull mean -0.09 sd 0.77; rows rejected per seed: median 0, max 0
+   B1 (pair-model tables, robust Tr): converged 49/50; GooF median 1.01; m median 0.2985 (IQR 0.2946-0.3017) sigma_m 0.0048; m pull mean -0.28 sd 1.06; rows rejected per seed: median 0, max 2
+   B1 determined parameters (converged seeds):
+param  pull_mean  pull_sd  sigT_over_sigU
+La2.z      0.169    0.964           0.956
+ Ni.z    -0.0498    0.965           0.977
+O1a.z     -0.177     1.03           0.989
+O1b.z    -0.0151    0.813           0.907
+ O2.z     -0.135     1.04           0.993
+La1.U    -0.0579     1.18            1.02
+La2.U      0.262     1.25           0.992
+ Ni.U     -0.214     1.04           0.987
+
+## P00 (m = 0.0)
+   domain-1 orientation: pair model median 0.0068 deg (p90 0.0113, max 0.0146; > 0.10 deg in 0 %); centroid model (the A26 method, same frames) median 0.0062 deg; pair model used (converged) in 100 % of seeds; fitted blend weight m_orient median 0.000
+   A0 (A26 tables, plain T): converged 44/50; GooF median 1.01; m median 0.0027 (IQR 0.0000-0.0116) sigma_m 0.0126
+   A1 (A26 tables, robust Tr): converged 50/50; GooF median 1.01; m median 0.0027 (IQR 0.0000-0.0128) sigma_m 0.0128; rows rejected per seed: median 0, max 1
+   B0 (pair-model tables, plain T): converged 46/50; GooF median 1.01; m median 0.0015 (IQR 0.0000-0.0064) sigma_m 0.0129; rows rejected per seed: median 0, max 0
+   B1 (pair-model tables, robust Tr): converged 50/50; GooF median 1.01; m median 0.0015 (IQR 0.0000-0.0064) sigma_m 0.0129; rows rejected per seed: median 0, max 1
+   B1 determined parameters (converged seeds):
+param  pull_mean  pull_sd  sigT_over_sigU
+La2.z      0.121    0.928               1
+ Ni.z     -0.369     1.14               1
+O1a.z    -0.0429      1.1            1.03
+O1b.z      0.012     0.93               1
+ O2.z      0.292    0.983               1
+La1.U     0.0664      1.1            1.01
+La2.U      0.331     1.27               1
+ Ni.U       -0.2     1.03               1
+
+# Verdicts against A27 (primary arm B1)
+E P11: (1) revised-gate convergence >= 90 % and >= 45 seeds: True (98 %, 49); (2) |median m - 0.30| <= 0.02: True (0.2965); (3) pulls calibrated: False (m -0.08/0.78; params mean max 1.42, sd range 0.88-1.20); (4) GooF median <= 1.2: True (1.03); (5) orientation median <= 0.0245 deg and <= 0.10 deg in >= 98 %: True (0.0055, 100 %); (6) rejected rows median <= 3: True (0)  => NOT MET
+   REFUTE conditions: none
+E P30: (1) revised-gate convergence >= 90 % and >= 45 seeds: True (98 %, 49); (2) |median m - 0.30| <= 0.02: True (0.2985); (3) pulls calibrated: True (m -0.28/1.06; params mean max 0.26, sd range 0.81-1.25); (4) GooF median <= 1.2: True (1.01); (5) orientation median <= 0.0143 deg and <= 0.10 deg in >= 98 %: False (0.0208, 100 %); (6) rejected rows median <= 3: True (0)  => NOT MET
+   REFUTE conditions: none
+E P00 (null, B1): m <= 0.05 in 100 % True; sigma inflation Tr/Ur <= 1.5 True (max 1.03); m > 0.10 in 0 % (<= 10 %) True  => CONFIRM

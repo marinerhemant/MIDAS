@@ -1,0 +1,11 @@
+## P11: 20 seeds
+  mean      n= 7671  median z -0.150 (se 0.014)  median (I - exp)  -87.60  mean sigI 615
+  quadratic n= 7671  median z -0.004 (se 0.014)  median (I - exp)   -2.93  mean sigI 842
+## P30: 20 seeds
+  mean      n= 7385  median z -0.052 (se 0.015)  median (I - exp)  -14.46  mean sigI 344
+  quadratic n= 7385  median z -0.000 (se 0.015)  median (I - exp)   -0.03  mean sigI 463
+## P00: 20 seeds
+  mean      n= 8370  median z -0.016 (se 0.014)  median (I - exp)   -2.83  mean sigI 193
+  quadratic n= 8370  median z -0.003 (se 0.014)  median (I - exp)   -0.83  mean sigI 243
+
+T2(a): quadratic median z within +-0.05 in all three variants -> MET
