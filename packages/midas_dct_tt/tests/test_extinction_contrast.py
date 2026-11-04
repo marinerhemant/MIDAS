@@ -42,8 +42,13 @@ def test_perfect_lattice_takes_the_full_path_and_is_attenuated():
     y = extinction_weights(Q, shape, 1.0, extinction_length_um=LAMBDA_EXT,
                            max_path_um=MAXPATH)
     assert float(y.max()) < 1.0, "a perfect thick crystal must lose intensity"
+    # the exact perfect-crystal Laue factor, A = pi t / Lambda (NOT tanh(t/Lambda)/(t/Lambda), which is pi^2 too weak)
+    A = math.pi * MAXPATH / LAMBDA_EXT
+    from scipy.integrate import quad
+    from scipy.special import j0
+    assert float(y.mean()) == pytest.approx(quad(j0, 0, 2 * A)[0] / (2 * A), rel=1e-10)
     x = MAXPATH / LAMBDA_EXT
-    assert float(y.mean()) == pytest.approx(math.tanh(x) / x, rel=1e-10)
+    assert 1.0 - float(y.mean()) > 5.0 * (1.0 - math.tanh(x) / x)
 
 
 def test_distortion_shortens_the_path_and_removes_the_attenuation():

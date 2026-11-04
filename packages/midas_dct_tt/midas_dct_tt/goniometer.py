@@ -98,20 +98,42 @@ def instrument_transformation(samrx_offset, samry_offset, omega_offset):
     return _rz(omega_offset) @ _ry(samry_offset) @ _rx(samrx_offset)
 
 
-def reciprocal_basis(a_A, b_A, c_A, alpha=90.0, beta=90.0, gamma=90.0):
+def reciprocal_basis(a_A, b_A, c_A, alpha=90.0, beta=90.0, gamma=90.0, *, frame="midas"):
     """Reciprocal basis as a COLUMN operator: ``G_crystal = B @ [h, k, l]``.
 
-    Delegates to :meth:`midas_hkls.lattice.Lattice.reciprocal_cartesian_vectors`
-    (which returns rows, without the ``2*pi``) and transposes. No lattice
-    algebra is re-derived here.
+    ``frame`` selects the crystal Cartesian frame ``G`` is expressed in:
 
-    The ``2*pi`` factor is *omitted*, so ``|B @ hkl| = 1/d``. Every consumer in
-    this module uses only the direction of ``G``, where the factor cancels
+    ``"midas"`` (default)
+        The frame the rest of this package and every MIDAS orientation matrix use
+        (``chain.GrainRecord.reciprocal_basis``, ``midas_dfxm.field.reciprocal_basis``,
+        ``Grains.csv``): **a* along x**, b* in the xy plane, i.e. ``inv(A).T`` of
+        ``midas_stress.lattice_params_to_A_matrix``; for a hexagonal cell real-space a
+        is at -30 deg and b at 90 deg. Use it whenever ``U`` is a MIDAS orientation or
+        is meant to be combined with the chain's ``B``.
+
+    ``"crystallographic"``
+        ``midas_hkls.Lattice.reciprocal_cartesian_vectors().T`` (real a along x). The
+        previous behaviour. For a hexagonal cell this is 30 deg about c from the MIDAS
+        frame (monoclinic ``|beta - 90|``, triclinic a general rotation; all-90-deg
+        cells are identical), so ``G = U @ B @ hkl`` is silently rotated if ``U``
+        lives in the other frame. Use it only for orientations that really are
+        expressed in that textbook frame.
+
+    The ``2*pi`` factor is *omitted* in both, so ``|B @ hkl| = 1/d``. Every consumer
+    in this module uses only the direction of ``G``, where the factor cancels
     identically; :func:`reachable_reflections` uses ``d`` itself for the Bragg
-    test, in the same units.
+    test, in the same units. Before 2026-10-21 only the crystallographic frame
+    existed, under the same name as the MIDAS-frame method in :mod:`chain`.
     """
-    from midas_hkls.lattice import Lattice
-    return Lattice(a_A, b_A, c_A, alpha, beta, gamma).reciprocal_cartesian_vectors().T
+    if frame == "crystallographic":
+        from midas_hkls.lattice import Lattice
+        return Lattice(a_A, b_A, c_A, alpha, beta, gamma).reciprocal_cartesian_vectors().T
+    if frame != "midas":
+        raise ValueError(f"frame must be 'midas' or 'crystallographic', got {frame!r}")
+    from midas_stress.tensor import lattice_params_to_A_matrix
+    A = lattice_params_to_A_matrix(
+        np.array([a_A, b_A, c_A, alpha, beta, gamma], dtype=float))
+    return np.linalg.inv(A).T
 
 
 def topotomo_tilts(G_sample, T):

@@ -34,7 +34,10 @@ dependencies = [
     # 0.7.2 floor is REQUIRED: goniometer.reciprocal_basis calls
     # Lattice.reciprocal_cartesian_vectors, added in 0.7.2 (commit 1ac5258d).
     # Resolving 0.6.x is an AttributeError.
-    "midas-hkls>=0.7.2",     # Ph 1: structure factors, hkl enumeration, Lp
+    # 0.17.0 floor is REQUIRED: extinction_weights calls laue_extinction_factor,
+    # added in midas-hkls 0.17.0 (the tanh factor it replaced understates a
+    # perfect crystal's extinction by pi^2 at small t/Lambda).
+    "midas-hkls>=0.17.0",    # Ph 1: structure factors, hkl enumeration, Lp
     # 0.1.1 floor is REQUIRED, not cosmetic: recon.py passes lr_schedule= to
     # fit(), a keyword 0.1.0 does not accept. Resolving 0.1.0 is a TypeError.
     "midas-invert>=0.1.1",   # Ph 3: shared fit / UQ / Fisher-design primitives

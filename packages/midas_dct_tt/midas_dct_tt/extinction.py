@@ -9,8 +9,16 @@ pink-beam and anything else touching near-perfect crystals share the same
 implementation rather than three drifting copies:
 
 * :func:`~midas_hkls.extinction.extinction_length_um` -- ``Lambda``
+* :func:`~midas_hkls.extinction.laue_extinction_factor` -- the exact perfect-crystal
+  Laue factor ``(1/2A) int_0^{2A} J0``, ``A = pi t / Lambda`` (what
+  :func:`extinction_weights` applies)
+* :func:`~midas_hkls.extinction.laue_kinematical_path_limit_um` -- its validity
+  bound (10 % loss at ``t = 0.1785 Lambda``)
 * :func:`~midas_hkls.extinction.primary_extinction_factor` -- ``y = tanh(x)/x``
-* :func:`~midas_hkls.extinction.kinematical_path_limit_um` -- the validity bound
+  (a different model: with ``x = t/Lambda`` it loses ``pi^2`` less than a perfect
+  crystal at small ``t/Lambda``; kept for callers that supply their own ``x``)
+* :func:`~midas_hkls.extinction.kinematical_path_limit_um` -- the bound of THAT
+  tanh model (0.5838 Lambda), not of a perfect crystal
 * :func:`~midas_hkls.extinction.refraction_shift_deg`,
   :func:`~midas_hkls.extinction.susceptibility_chi0` -- the constant dynamical
   offset, contributed from the DFXM analysis
@@ -24,8 +32,11 @@ Kinematical validity, in one number
 Extinction contrast is *the* classical contrast mechanism in X-ray topography,
 and a near-perfect grain -- exactly what topotomography is used on -- diffracts
 dynamically. Rather than leave that as an unstated assumption, ask for a number:
-``t / Lambda``. Treat ``>~ 0.5`` as "kinematical results are quantitatively wrong
-here". Takagi-Taupin is out of scope and is not promised.
+``t / Lambda``. For a perfect crystal the intensity is already 10 % below the
+kinematical value at ``t / Lambda = 0.1785`` and 29 % below at 0.318 (the exact
+Laue factor, :func:`~midas_hkls.extinction.laue_extinction_factor`); treat
+``>~ 0.2`` as "kinematical results are quantitatively wrong here", not ``0.5``.
+Takagi-Taupin is out of scope and is not promised.
 
 Note for this package specifically: extinction is **centroid-preserving** (it
 reshapes a rocking curve symmetrically), so it does not bias a position-channel
@@ -41,6 +52,8 @@ from midas_hkls.extinction import (
     CLASSICAL_ELECTRON_RADIUS_A,
     extinction_length_um,
     kinematical_path_limit_um,
+    laue_extinction_factor,
+    laue_kinematical_path_limit_um,
     primary_extinction_factor,
     refraction_shift_deg,
 )
@@ -57,6 +70,8 @@ __all__ = [
     "extinction_weights",
     "extinction_length_um",
     "kinematical_path_limit_um",
+    "laue_extinction_factor",
+    "laue_kinematical_path_limit_um",
     "primary_extinction_factor",
     "refraction_shift_deg",
 ]
@@ -76,7 +91,7 @@ def direct_beam_transmission(path_um, *, mu_per_um, diffracted_fraction=0.0):
     (dimensionless, in ``[0, 1]``); it is a caller input rather than something
     computed here because it depends on the reflection, the beam's spectral and
     angular width, and the extinction regime -- for which
-    :func:`~midas_hkls.extinction.primary_extinction_factor` is the knob.
+    :func:`~midas_hkls.extinction.laue_extinction_factor` is the knob.
     """
     t = _float_tensor(path_um)
     mu = _float_tensor(mu_per_um).to(dtype=t.dtype, device=t.device)
@@ -162,18 +177,22 @@ def extinction_weights(Q_sample, shape, spacing_um, *, extinction_length_um,
     """Per-voxel primary-extinction factor ``y`` in ``(0, 1]``, ready to multiply
     a kinematical intensity.
 
-    Composition of :func:`coherent_path_um` with
-    :func:`~midas_hkls.extinction.primary_extinction_factor`. Pass the result as
+    Composition of :func:`coherent_path_um` with the exact perfect-crystal Laue
+    factor :func:`~midas_hkls.extinction.laue_extinction_factor`
+    (``A = pi t / Lambda``; before this change it applied
+    ``tanh(t/Lambda)/(t/Lambda)``, which understates the extinction by ``pi^2`` at
+    small ``t/Lambda``). Pass the result as
     ``extinction=`` to :func:`~midas_dct_tt.forward.voxel_scattering` or
     :func:`~midas_dct_tt.forward.topograph_stack`.
 
     ``y -> 1`` (no extinction, full kinematical intensity) where the lattice is
-    distorted; ``y -> Lambda/t`` where it is perfect and thick.
+    distorted; ``y -> Lambda / (2 pi t)`` (oscillating about it) where it is
+    perfect and thick.
     """
     t = coherent_path_um(Q_sample, shape, spacing_um,
                          extinction_length_um=extinction_length_um,
                          max_path_um=max_path_um)
-    return primary_extinction_factor(t, extinction_length_um)
+    return laue_extinction_factor(t, extinction_length_um)
 
 
 def kinematical_validity(hkl, *, wavelength_A, thickness_um, crystal=None,

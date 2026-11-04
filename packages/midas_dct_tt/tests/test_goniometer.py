@@ -237,3 +237,32 @@ def test_rodrigues_recovers_the_axis():
 
 def test_zero_rodrigues_is_the_identity():
     assert np.allclose(rodrigues_to_crystal_to_sample([0, 0, 0]), np.eye(3))
+
+
+# ---- crystal frame of reciprocal_basis -------------------------------------------------
+
+def test_reciprocal_basis_default_is_the_midas_frame_a_star_along_x():
+    """a* along x, b* in the xy plane at 60 deg, c* along z for a hexagonal cell; the
+    same B as midas_dfxm.field.reciprocal_basis (used by chain.py) up to the 2*pi."""
+    import torch
+    from midas_dfxm.field import reciprocal_basis as dfxm_basis
+    Bm = reciprocal_basis(A_A, A_A, C_A, 90.0, 90.0, 120.0)
+    assert abs(Bm[1, 0]) < 1e-12 and abs(Bm[2, 0]) < 1e-12 and abs(Bm[2, 1]) < 1e-12   # upper triangular
+    assert math.degrees(math.atan2(Bm[1, 1], Bm[0, 1])) == pytest.approx(60.0)
+    chain = dfxm_basis(torch.tensor([A_A, A_A, C_A, 90.0, 90.0, 120.0], dtype=torch.float64))
+    np.testing.assert_allclose(Bm * 2 * math.pi, chain.numpy(), atol=1e-12)
+
+
+def test_reciprocal_basis_crystallographic_frame_is_30deg_off_for_hexagonal_and_equal_for_cubic():
+    Bm = reciprocal_basis(A_A, A_A, C_A, 90.0, 90.0, 120.0)
+    Bt = reciprocal_basis(A_A, A_A, C_A, 90.0, 90.0, 120.0, frame="crystallographic")
+    # same lengths of every reflection, rotated by exactly 30 deg about c
+    hkl = np.array([[1, 0, 0], [0, 1, 0], [1, 1, 3], [2, -1, 1]], float).T
+    np.testing.assert_allclose(np.linalg.norm(Bm @ hkl, axis=0), np.linalg.norm(Bt @ hkl, axis=0))
+    c, s = math.cos(math.radians(30)), math.sin(math.radians(30))
+    R = np.array([[c, s, 0], [-s, c, 0], [0, 0, 1.0]])           # -30 deg about z
+    np.testing.assert_allclose(R @ Bt, Bm, atol=1e-12)
+    np.testing.assert_allclose(reciprocal_basis(4.0, 4.0, 4.0),
+                               reciprocal_basis(4.0, 4.0, 4.0, frame="crystallographic"), atol=1e-12)
+    with pytest.raises(ValueError):
+        reciprocal_basis(A_A, A_A, C_A, 90.0, 90.0, 120.0, frame="bogus")

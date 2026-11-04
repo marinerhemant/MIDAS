@@ -86,6 +86,8 @@ from .extinction import (
     direct_beam_transmission,
     extinction_length_um,
     kinematical_path_limit_um,
+    laue_extinction_factor,
+    laue_kinematical_path_limit_um,
     primary_extinction_factor,
 )
 from .forward import (
@@ -252,6 +254,8 @@ __all__ = [
     "extinction_length_um",
     "kinematical_path_limit_um",
     "kinematical_validity",
+    "laue_extinction_factor",
+    "laue_kinematical_path_limit_um",
     "primary_extinction_factor",
     # reconstruction (Phase 2)
     "axial_elongation",

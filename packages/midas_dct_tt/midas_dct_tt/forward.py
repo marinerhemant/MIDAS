@@ -36,8 +36,9 @@ escapes the coherent-domain attenuation and gets *brighter* -- the classical
 must turn it on; if you care only about grain shape you need not.
 
 It remains primary extinction only. **Takagi-Taupin is out of scope and is not
-promised.** Use :func:`~midas_hkls.extinction.kinematical_path_limit_um` to check
-where you are relative to the boundary; do not assume you are inside it.
+promised.** Use :func:`~midas_hkls.extinction.laue_kinematical_path_limit_um` to
+check where you are relative to the boundary (10 % loss at ``t = 0.1785 Lambda``
+for a perfect crystal); do not assume you are inside it.
 """
 from __future__ import annotations
 
