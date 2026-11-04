@@ -59,3 +59,22 @@ def test_rod_intensity_grad_in_layer_count():
     assert n3.grad is not None and torch.isfinite(n3.grad)
     assert ct.lattice_params.grad is not None
     assert torch.isfinite(ct.lattice_params.grad).all()
+
+
+@pytest.mark.unit
+def test_rod_intensity_polarization_is_ignored_and_says_so():
+    """A rod scan has no detector azimuth: the Lp factor is the full-ring average, so K is ignored; a non-default K warns (it used to be forwarded to a
+    function that now ignores it with its own warning), the default stays silent and the value is unchanged."""
+    import warnings
+    ct = build_crystal_tensor()
+    l = torch.linspace(0.5, 3.5, 50, dtype=DT)
+    hkl = torch.stack([torch.full_like(l, 1.0), torch.full_like(l, 1.0), l], dim=-1)
+    N = torch.tensor([1e4, 1e4, 4.0], dtype=DT)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        base = rod_intensity(ct, hkl, N, wavelength_A=1.0)
+        same = rod_intensity(ct, hkl, N, wavelength_A=1.0, polarization=0.5)
+    assert torch.equal(base, same)
+    with pytest.warns(UserWarning, match="polarization is ignored"):
+        k1 = rod_intensity(ct, hkl, N, wavelength_A=1.0, polarization=1.0)
+    assert torch.equal(base, k1)

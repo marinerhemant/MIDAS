@@ -93,7 +93,10 @@ def rod_intensity(crystal_t, hkl_cont, N, *, wavelength_A, polarization=0.5,
         For the Lorentz-polarization 2-theta only (geometry is in reciprocal
         units; the shape factor is lambda-independent).
     polarization : float
-        Polarization fraction K (0.5 = unpolarized).
+        Kept for API compatibility and IGNORED: a rod / RSM scan along continuous Miller indices has no detector azimuth, so the
+        polarisation factor is the full-ring average 1/2 (1 + cos^2 2theta), which does not depend on the beam polarisation
+        (:func:`midas_hkls.lorentz_polarization`). A value other than 0.5 warns. For a per-pixel polarisation (the azimuth is known on
+        a detector) use :func:`midas_2d.instrument.solid_angle_polarization`.
     apply_lp : bool
         Multiply by the Lorentz-polarization factor.
 
@@ -110,6 +113,10 @@ def rod_intensity(crystal_t, hkl_cont, N, *, wavelength_A, polarization=0.5,
     S2 = interference_factor(hkl_cont, N)                 # (...)
     I = F2 * S2
     if apply_lp:
+        if float(polarization) != 0.5:
+            import warnings
+            warnings.warn("rod_intensity: polarization is ignored (a rod scan has no detector azimuth, the polarisation factor is the "
+                          "full-ring average); use midas_2d.instrument.solid_angle_polarization for a per-pixel factor.", UserWarning, stacklevel=2)
         tt = two_theta(hkl_cont, crystal_t.lattice_params, wavelength_A)  # rad
-        I = I * lorentz_polarization(tt, polarization=polarization)
+        I = I * lorentz_polarization(tt)
     return I

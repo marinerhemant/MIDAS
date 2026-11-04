@@ -24,7 +24,7 @@ dependencies = [
     "torch>=2.0",
     # Sibling MIDAS packages -- reused per MIDAS_2D_ULTRAFAST_DIFFRACTION_PLAN.md
     # Section 3. Do NOT re-port their primitives.
-    "midas-hkls>=0.5",           # lattice math, form factors, structure factors, hkl enumeration (torch)
+    "midas-hkls>=0.17.0",         # lattice math, form factors, structure factors, hkl enumeration (torch); 0.17.0: corrections.polarization_factor
     "midas-pink>=0.1",           # ParameterisedSpectrum: mono/pink/white energy model
     "midas-invert>=0.1.1",         # shared differentiable-inversion primitives (fit, UQ, design, mixture, surrogate)
 ]

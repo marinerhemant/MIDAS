@@ -63,19 +63,41 @@ def project_to_detector(q_vec, *, wavelength_A, distance_mm, pixel_mm,
     return torch.stack([px, py], dim=-1), valid
 
 
-def solid_angle_polarization(q_vec, *, wavelength_A, polarization=0.5):
+def solid_angle_polarization(q_vec, *, wavelength_A, polarization=0.5, polarization_axis=(1.0, 0.0, 0.0)):
     """Combined inverse solid-angle (cos^3 of scattering angle) and
-    polarisation correction factor for a flat detector."""
+    polarisation correction factor for a flat detector.
+
+    ``polarization`` is K: 0.5 = unpolarised (the default), 1 = fully linearly polarised along ``polarization_axis``
+    (a vector in the detector frame, ``x`` by default; its component along the beam ``z`` is ignored). The polarisation factor is the PER-PIXEL
+    Thomson mixture of :func:`midas_hkls.corrections.polarization_factor` with the linear fraction f = 2K - 1, evaluated at the azimuth of each
+    scattered ray about the beam, measured from ``polarization_axis``; the azimuthal average is 1/2 (1 + cos^2 2theta) for any K.
+
+    Before 2026-10-21 this returned ``(1 - K) + K cos^2 2theta`` for every pixel, which is the value in the single direction along the
+    polarisation vector, not at the pixel's azimuth (K = 1, 2theta = 60 deg: 0.25 everywhere against 0.25 in-plane, 1 perpendicular, 0.625 on
+    average). Identical at the default K = 0.5 (to rounding). The whole factor is differentiable with respect to ``q_vec`` (torch).
+    """
     import torch
+    from midas_hkls import corrections as _C
+    K = float(polarization)
+    if not 0.0 <= K <= 1.0:
+        raise ValueError(f"polarization K must be in [0, 1] (0.5 = unpolarised), got {K}")
+    e = [float(v) for v in polarization_axis]
+    n = math.sqrt(e[0] ** 2 + e[1] ** 2)                      # the component along the beam (z) is ignored
+    if n < 1e-12:
+        raise ValueError("polarization_axis has no component perpendicular to the beam (z)")
+    ex, ey = e[0] / n, e[1] / n
     q_vec = torch.as_tensor(q_vec)
     k = 2.0 * math.pi / float(wavelength_A)
     qmag = torch.linalg.vector_norm(q_vec, dim=-1)
     sin_th = torch.clamp(qmag / (2.0 * k), max=1.0)
     two_th = 2.0 * torch.asin(sin_th)
-    cos2 = torch.cos(two_th)
-    K = float(polarization)
-    pol = (1.0 - K) + K * cos2 * cos2
     solid = torch.cos(two_th).clamp(min=1e-6) ** 3           # ~ 1/r^2 obliquity
+    # azimuth of the scattered ray about the beam, from the polarisation vector: components of k_f = q + k z along e and along z x e = (-ey, ex)
+    a = q_vec[..., 0] * ex + q_vec[..., 1] * ey
+    b = -q_vec[..., 0] * ey + q_vec[..., 1] * ex
+    live = (a * a + b * b) > 1e-30                            # q on the beam axis: the azimuth is undefined (and sin^2 2theta = 0 there); keep the gradient finite
+    phi = torch.atan2(torch.where(live, b, torch.zeros_like(b)), torch.where(live, a, torch.ones_like(a)))
+    pol = _C.polarization_factor(torch.rad2deg(two_th), torch.rad2deg(phi) + 90.0, pol_fraction=2.0 * K - 1.0, pol_plane_eta_deg=90.0)
     return pol * solid
 
 

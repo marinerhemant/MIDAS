@@ -488,7 +488,7 @@ def object_to_amplitude(psi, *, centered: bool = True):
 
 
 def detector_signal(intensity, *, Q=None, wavelength_A=None,
-                    structure_factor_sq=None, polarization: float = 0.5,
+                    structure_factor_sq=None, polarization: float = 0.5, polarization_axis=(1.0, 0.0, 0.0),
                     coherence_length_A=None, real_basis=None,
                     photons_per_peak=None, background=0.0):
     """Turn ``|A|^2`` into the expected photon rate on the detector.
@@ -538,7 +538,7 @@ def detector_signal(intensity, *, Q=None, wavelength_A=None,
             raise ValueError("Q given without wavelength_A")
         from .instrument import solid_angle_polarization
         lp = solid_angle_polarization(Q, wavelength_A=wavelength_A,
-                                      polarization=polarization)
+                                      polarization=polarization, polarization_axis=polarization_axis)
         I = I * lp.to(I.dtype)
 
     if coherence_length_A:
