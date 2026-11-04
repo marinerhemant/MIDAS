@@ -77,7 +77,8 @@ def test_hcp_bravais_miller_roundtrip_c():
 
 
 def test_hcp_a1_axis_unit_vector_is_ex():
-    a1 = direction_bravais_to_cart(2, -1, -1, 0, c_over_a=1.6)
+    # textbook frame (a1 along x); the default frame is the MIDAS one, see test_hcp_frame.py
+    a1 = direction_bravais_to_cart(2, -1, -1, 0, c_over_a=1.6, frame="crystallographic")
     np.testing.assert_allclose(a1, np.array([1.0, 0.0, 0.0]), atol=1e-12)
 
 
@@ -88,7 +89,7 @@ def test_hcp_basal_plane_normal_is_ez():
 
 def test_hcp_prismatic_plane_normal_recovers_expected_direction():
     # (1 0 -1 0): n_cart proportional to (1, 1/sqrt(3), 0).
-    n = plane_normal_bravais_to_cart(1, 0, -1, 0, c_over_a=1.6)
+    n = plane_normal_bravais_to_cart(1, 0, -1, 0, c_over_a=1.6, frame="crystallographic")
     expected = np.array([1.0, 1.0 / np.sqrt(3), 0.0])
     expected /= np.linalg.norm(expected)
     np.testing.assert_allclose(n, expected, atol=1e-12)

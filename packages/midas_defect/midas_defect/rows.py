@@ -66,22 +66,55 @@ class Row:
     spacing_resid: float = float("nan")               # RMS frac-index residual
 
 
-def allowed_multiple_parity(hkl_step, space_group_number=139):
-    """Smallest n such that n*(h,k,l) is an allowed reflection.
+def _seed_basis(lat, two_pi=True):
+    """Reciprocal basis of a seed cell in the MIDAS crystal frame (a* along x, b* in the
+    xy plane): the upper-triangular ``B`` with ``B^T B = G*``, the same convention
+    ``refine_lattice`` returns (Cholesky of ``G*``), so a seed ``U`` and a refined ``U``
+    are in one frame. ``midas_hkls.Lattice.reciprocal_cartesian_vectors`` is the textbook
+    frame (real a along x), 30 deg about c from it for a hexagonal cell (``|beta - 90|``
+    for monoclinic), so using it here made ``Domain.U`` switch frames at the first refit
+    for any seed with gamma != 90 or beta != 90. Identical for all-90-deg cells."""
+    try:
+        from midas_hkls import midas_b_matrix as _b
+    except ImportError:                                  # midas-hkls without frames.py
+        from midas_hkls.nf_hkls import _b_matrix as _b
+    B = np.asarray(_b(lat), float)
+    return B * (2.0 * math.pi) if two_pi else B
 
-    NOT a blanket "even only". Verified from midas_hkls extinctions for SG 139
-    (I4/mmm, h+k+l even): a step with ODD h+k+l shows only EVEN multiples, so
-    the observed row spacing is 2|G_step|; a step with EVEN h+k+l shows EVERY
-    multiple, so the spacing is |G_step| and halving it is a factor-2 error.
-    (0,0,1) is odd-sum, which is why the blanket rule worked there and nowhere
-    else -- and F-centred cells (Fmmm, S5) follow a different rule again.
+
+def _as_int(x, what):
+    """An integer from an int / numpy integer / integral float; anything else is an error (the old code truncated 0.5 to 0 and treated True as group 1)."""
+    import numbers
+    if isinstance(x, (bool, np.bool_)):
+        raise TypeError(f"{what} must be an integer, got a bool")
+    if isinstance(x, numbers.Integral):
+        return int(x)
+    if isinstance(x, numbers.Real) and float(x).is_integer():
+        return int(x)
+    raise TypeError(f"{what} must be an integer, got {x!r}")
+
+
+@lru_cache(maxsize=None)
+def _smallest_allowed_multiple(h, k, l, space_group_number):
+    sg = _space_group(space_group_number)
+    for n in range(1, 13):
+        if not sg.is_systematically_absent(n*h, n*k, n*l):
+            return n
+    return 1                         # unreachable: every group allows some multiple of a step (n = the group's translation order divides 12)
+
+
+def allowed_multiple_parity(hkl_step, space_group_number=139):
+    """Smallest n such that n*(h,k,l) is NOT systematically absent in the space group: centring, screw axes and glide planes all count.
+
+    NOT a blanket "even only". The reflections on a reciprocal-lattice row along ``G_step`` are the multiples n*G_step, and the allowed n are the multiples
+    of one smallest n0 (the absence conditions are linear congruences), which is the observed row spacing n0*|G_step|. For SG 139 (I4/mmm, h+k+l even) a
+    step with ODD h+k+l shows only EVEN multiples; a step with EVEN h+k+l shows EVERY multiple, so the spacing is |G_step| and halving it is a factor-2 error.
+    F-centred cells (Fmmm, S5) follow another rule, C- and R-centred ones again (n up to 3), and a screw axis along the step can forbid more (SG 141, step
+    (0,0,1): n0 = 4). Derived from ``midas_hkls.SpaceGroup.is_systematically_absent`` for every group; before 2026-10-21 only SG 139 and 69 were handled
+    (everything else returned 1), and until the first fix the centring alone was used (screws and glides ignored). (0,0,0) returns 1.
     """
-    h, k, l = hkl_step
-    if space_group_number in (139,):                 # I-centred: h+k+l even
-        return 2 if (h + k + l) % 2 else 1
-    if space_group_number in (69,):                  # F-centred: h,k,l same parity
-        return 1 if (h % 2 == k % 2 == l % 2) else 2
-    return 1
+    h, k, l = (_as_int(v, "hkl_step entries") for v in hkl_step)
+    return _smallest_allowed_multiple(h, k, l, _as_int(space_group_number, "space_group_number"))
 
 
 @lru_cache(maxsize=None)
@@ -1044,9 +1077,7 @@ def refine_to_convergence(q, U0, *, a0, c0, b0=None, alpha0=90.0, beta0=90.0,
         # A full seed basis. Without this the first match is tetragonal.
         lat = Lattice(a=a, b=float(b0) if b0 is not None else a, c=c,
                       alpha=float(alpha0), beta=float(beta0), gamma=float(gamma0))
-        B = np.asarray(lat.reciprocal_cartesian_vectors(), float).T
-        if two_pi:
-            B = B*2*math.pi
+        B = _seed_basis(lat, two_pi)
     claim = frag = hkl = resid = None
     n_iter = 0
     # `min_reflections` is an ACCEPTANCE criterion on the converged domain, not
@@ -1278,37 +1309,20 @@ def _u_from_two_vectors(g1, g2, q1, q2):
     return Fl @ Fc.T
 
 
-def orientation_grid(step_deg=3.0, space_group_number=139):
-    r"""Orientations covering SO(3) at ``step_deg``, reduced by the Laue group.
+def _laue_rotations(space_group_number: int):
+    """Proper rotations (n, 3, 3) of the Laue class of a space group: ``midas_stress.laue_rotations`` (the matrix form of ``make_symmetries``)."""
+    from midas_stress.orientation_sampling import laue_rotations
+    return laue_rotations(space_group_number)
 
-    Cubochoric-style sampling is overkill here; a uniform axis grid crossed with
-    a rotation angle is adequate and easy to audit. The 422 proper group has
-    order 8, so only 1/8 of SO(3) is distinct for a tetragonal lattice.
+
+def orientation_grid(step_deg=3.0, space_group_number=139):
+    """Orientations covering SO(3) modulo the Laue group of ``space_group_number`` with covering radius of about ``step_deg``: ``midas_stress.orientation_grid``.
+
+    Before 2026-10-21 this grid was every axis crossed with rotation angles up to ``2 pi / order`` only: a ball of radius 45 deg, 2.5 % of SO(3) against the
+    12.5 % fundamental zone, so 78 % of random orientations had no grid point within 3 deg (median distance 22.7 deg).
     """
-    axes = []
-    n_th = max(2, int(round(180.0/step_deg)))
-    for it in range(n_th + 1):
-        th = math.pi*it/n_th
-        st = math.sin(th)
-        n_ph = max(1, int(round(2*math.pi*st/math.radians(step_deg))))
-        for ip in range(n_ph):
-            ph = 2*math.pi*ip/n_ph
-            axes.append((st*math.cos(ph), st*math.sin(ph), math.cos(th)))
-    order = 8 if space_group_number in (139,) else 1
-    amax = 2*math.pi/order
-    n_a = max(1, int(round(amax/math.radians(step_deg))))
-    out = []
-    for ax in axes:
-        ax = np.asarray(ax, float)
-        nn = np.linalg.norm(ax)
-        if nn < 1e-12:
-            continue
-        ax = ax/nn
-        K = np.array([[0, -ax[2], ax[1]], [ax[2], 0, -ax[0]], [-ax[1], ax[0], 0]])
-        for ia in range(n_a):
-            an = amax*ia/n_a
-            out.append(np.eye(3) + math.sin(an)*K + (1-math.cos(an))*(K @ K))
-    return np.array(out)
+    from midas_stress.orientation_sampling import orientation_grid as _grid
+    return _grid(step_deg, space_group_number)
 
 
 def _local_rotations(U, span_deg, step_deg):
@@ -1331,6 +1345,13 @@ def index_by_grid(q, B, *, a=3.6116, c=19.2516, exclude=None, tol_q=0.05,
                   step_deg=1.5, refine_step_deg=0.25, space_group_number=139,
                   min_reflections=8, min_margin=3, max_domains=10):
     r"""Exhaustive orientation search with the cell known.
+
+    ``step_deg`` must be about ``tol_q / |q|_max`` (about 1.5 deg for the defaults): a match needs the grid point within that angle of the truth, and the
+    local refinement only starts from the best-scoring grid point. The grid covers the whole orientation space modulo the Laue group of
+    ``space_group_number`` (:func:`orientation_grid`; before 2026-10-21 it covered a 45 deg ball around the identity, 2.5 % of SO(3)); at 1.5 deg it has
+    about 170 000 points for SG 139. The reciprocal basis built here is tetragonal (a, c), so only tetragonal groups are meaningful, and the orientation is recovered
+    only MODULO THE 422 SYMMETRY OF THAT TETRAGONAL METRIC (for SG 87, 71 or 1 data on an a = b cell the lattice cannot tell the 422 equivalents apart; the result can
+    differ from the truth by 90 or 180 deg about c, measured against the group's own Laue operators).
 
     DOES NOT WORK FOR SUBDOMINANT GRAINS -- do not wire this into a pipeline
     without reading this paragraph. On a planted control of three equal grains
@@ -1372,6 +1393,8 @@ def index_by_grid(q, B, *, a=3.6116, c=19.2516, exclude=None, tol_q=0.05,
     avail = (np.ones(len(q), bool) if exclude is None
              else ~np.asarray(exclude, bool))
     grid = orientation_grid(step_deg, space_group_number)
+    sym_ops = _laue_rotations(space_group_number)           # the group's own proper rotations (was the tetragonal 422 table for every group)
+    n_sym = len(sym_ops)
     hb, lb = hkl_box_from_geometry(a, c)
     Binv = np.linalg.inv(B)
     found = []
@@ -1422,9 +1445,9 @@ def index_by_grid(q, B, *, a=3.6116, c=19.2516, exclude=None, tol_q=0.05,
         # percentile of the score distribution is robust to a handful of
         # genuine peaks while still catching a landscape with no peak at all.
         tr = np.einsum("ji,njk->nik", grid[top],
-                       np.einsum("nij,sjk->nsik", grid, _ROT422).reshape(
-                           len(grid), 8, 3, 3).transpose(1, 0, 2, 3).reshape(
-                           -1, 3, 3)).reshape(8, len(grid), 3, 3
+                       np.einsum("nij,sjk->nsik", grid, sym_ops).reshape(
+                           len(grid), n_sym, 3, 3).transpose(1, 0, 2, 3).reshape(
+                           -1, 3, 3)).reshape(n_sym, len(grid), 3, 3
                                               ).trace(axis1=2, axis2=3)
         ang = np.degrees(np.arccos(np.clip((tr.max(axis=0) - 1)/2, -1, 1)))
         far = ang >= 5.0

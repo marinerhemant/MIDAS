@@ -85,9 +85,13 @@ class SelfCalResult:
 
 
 def _B(a, b, c, alpha, beta, gamma):
+    """2*pi reciprocal basis in the MIDAS crystal frame (a* along x), the frame of
+    ``rows.refine_lattice``'s ``U``. (The textbook-frame basis this used to return put
+    predictions of a refined hexagonal/monoclinic domain 30 deg / |beta-90| off.)"""
     from midas_hkls import Lattice
+    from .rows import _seed_basis
     lat = Lattice(a=a, b=b, c=c, alpha=alpha, beta=beta, gamma=gamma)
-    return np.asarray(lat.reciprocal_cartesian_vectors(), float).T * 2.0 * math.pi
+    return _seed_basis(lat, two_pi=True)
 
 
 def _q_sample(geom, d, omega_sign):
@@ -145,7 +149,12 @@ def selfcalibrate_from_crystals(domains: Sequence[CrystalSpots], geom: Geometry,
         out = []
         for d, (U, a, b, ga) in zip(doms, per):
             qs = _q_sample(g, d, omega_sign)
-            pred = (U @ _B(a, b, float(d.c), 90.0, 90.0, ga) @ np.asarray(d.hkl, float).T).T
+            # A wrong hkl assignment (a deliberate test case) can drive the trial step outside the
+            # lattice's valid range; keep the cell physical so the optimiser sees a large residual
+            # instead of a ValueError from Lattice.
+            a_, b_ = max(float(a), 1e-3), max(float(b), 1e-3)
+            ga_ = float(np.clip(ga, 1.0, 179.0))
+            pred = (U @ _B(a_, b_, float(d.c), 90.0, 90.0, ga_) @ np.asarray(d.hkl, float).T).T
             out.append(qs - pred)
         return out
 

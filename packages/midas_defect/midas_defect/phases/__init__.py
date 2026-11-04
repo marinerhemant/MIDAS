@@ -20,6 +20,7 @@ from .fcc import (
     GAMMA_TWIN_FCC,
 )
 from .hcp import (
+    HCP_FRAMES,
     bravais_to_miller,
     gamma_twin_hcp_compressive,
     gamma_twin_hcp_tensile,
@@ -60,6 +61,7 @@ __all__ = [
     "FCC_TWIN_111_112",
     "GAMMA_TWIN_BCC",
     "GAMMA_TWIN_FCC",
+    "HCP_FRAMES",
     "bcc",
     "bravais_to_miller",
     "fcc",

@@ -29,7 +29,7 @@ Differentiability
 
 MIDAS reuses
 ------------
-* `midas_transforms.device` — canonical device/dtype resolution.
+* `midas_defect._device` — device/dtype resolution (precision first; float64 by default).
 * `midas_stress.orientation` (when `U` is provided) — for lab/sample → crystal
   frame conversion of rod directions.
 * `lattice.tetragonal_shells` — shell-crossing lookup.
@@ -44,7 +44,7 @@ import math
 import numpy as np
 import torch
 
-from midas_transforms.device import resolve_device, resolve_dtype
+from ._device import resolve_device, resolve_dtype
 
 from .lattice import Shell, tetragonal_shells
 

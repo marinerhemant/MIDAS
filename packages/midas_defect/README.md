@@ -104,7 +104,7 @@ All modules satisfy ALL four:
 
 1. **Differentiable**. Every physics / scoring / fitting routine is torch;
    numpy / scipy live only in `_discrete` helpers off the gradient path.
-2. **Device portable**. CPU / CUDA / MPS via `midas_transforms.device.resolve_device`.
+2. **Device portable, precision first**. CPU / CUDA (MPS only when asked for) via `midas_defect._device`: float64 everywhere; an explicit `mps` without a dtype runs in float32 with a RuntimeWarning, `float64` on `mps` raises. `MIDAS_DEFECT_DEVICE` / `MIDAS_DEFECT_DTYPE` override; `MIDAS_TRANSFORMS_DEVICE` / `_DTYPE` are no longer read.
 3. **Thoroughly tested**. Per module: synthetic + autograd + device + **real-data
    regression** (reproduces a published demk number) + benchmark.
 4. **Reuses upstream MIDAS**. No re-ported orientation, lattice, transform, or

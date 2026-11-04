@@ -10,7 +10,7 @@ import pytest
 from midas_defect.rows import (
     find_lattice_rows, allowed_multiple_parity, unique_by_hkl,
     refine_row_spacing, refine_cell_orientation, refine_lattice,
-    index_from_pairs, index_by_grid, orientation_grid,
+    index_from_pairs, index_by_grid, orientation_grid, _laue_rotations, _ROT422,
     index_from_row, cell_from_row, row_scan_range,
                                candidate_row_spacings, hkl_box_from_geometry,
                                index_from_ladder, match_mask,
@@ -46,6 +46,59 @@ def test_parity_is_per_direction_not_a_blanket_even_rule():
     # F-centring is a different rule again
     assert allowed_multiple_parity((1, 1, 1), 69) == 1
     assert allowed_multiple_parity((1, 0, 0), 69) == 2
+
+
+@pytest.mark.parametrize("sg,step,n", [(141, (0, 0, 1), 4), (76, (0, 0, 1), 4), (152, (0, 0, 1), 3), (140, (0, 1, 1), 2), (140, (1, 0, 1), 2),     # screw axes and glides
+                                       (139, (0, 0, 1), 2), (139, (1, 1, 0), 1)])
+def test_parity_counts_screw_axes_and_glide_planes_not_only_the_centring(sg, step, n):
+    assert allowed_multiple_parity(step, sg) == n
+
+
+def test_the_allowed_multiples_are_exactly_the_multiples_of_the_smallest_one_for_every_group():
+    """The claim behind 'smallest allowed multiple = observed row spacing': the absence conditions are linear congruences, so the allowed n form a subgroup of the
+    integers. Checked against SpaceGroup.is_systematically_absent for all 230 groups and a grid of steps."""
+    from midas_hkls import SpaceGroup
+    rng = np.random.default_rng(0)
+    for sgn in range(1, 231):
+        sg = SpaceGroup.from_number(sgn)
+        for _ in range(6):
+            st = tuple(int(v) for v in rng.integers(-2, 3, 3))
+            if st == (0, 0, 0):
+                continue
+            n0 = allowed_multiple_parity(st, sgn)
+            for n in range(1, 13):
+                assert (not sg.is_systematically_absent(n*st[0], n*st[1], n*st[2])) == (n % n0 == 0), (sgn, st, n0, n)
+
+
+def test_parity_validates_its_inputs():
+    assert allowed_multiple_parity(np.array([0, 0, 1], dtype=np.int64), np.int64(139)) == 2          # numpy integers are fine
+    assert allowed_multiple_parity([0.0, 0.0, 1.0], 139.0) == 2                                       # integral floats too
+    assert allowed_multiple_parity((0, 0, 0), 139) == 1
+    for bad in ((0.5, 0, 0), (0, 0, None), ("1", 0, 0)):
+        with pytest.raises(TypeError):
+            allowed_multiple_parity(bad, 139)
+    for bad_sg in (True, 139.5, "139"):
+        with pytest.raises(TypeError):
+            allowed_multiple_parity((0, 0, 1), bad_sg)
+    for bad_sg in (0, 231, -5):
+        with pytest.raises(ValueError):
+            allowed_multiple_parity((0, 0, 1), bad_sg)
+
+
+@pytest.mark.parametrize("sg", [87, 107, 119, 140, 71])
+def test_parity_follows_the_centring_not_the_group_number_for_other_i_centred_groups(sg):
+    """It used to special-case 139 and 69 and return 1 for every other group: an I-centred cell declared as I4/m, I4mm, I-4m2, I4/mcm or Immm
+    got the wrong row spacing for odd-sum steps (midas_sx PREREGISTER A31b: find_domains 9/25 instead of 25/25)."""
+    assert allowed_multiple_parity((0, 0, 1), sg) == 2
+    assert allowed_multiple_parity((1, 1, 0), sg) == 1
+    assert allowed_multiple_parity((1, 1, 1), sg) == 2
+
+
+@pytest.mark.parametrize("sg,step,n", [(123, (0, 0, 1), 1), (123, (1, 0, 0), 1), (1, (1, 1, 1), 1),     # primitive: every multiple
+                                       (65, (1, 0, 0), 2), (65, (1, 1, 0), 1), (65, (0, 0, 1), 1),      # C-centred (Cmmm): h+k even
+                                       (166, (1, 0, 0), 3), (166, (0, 0, 1), 3), (166, (1, 1, 0), 1)])   # R-centred (hexagonal axes): -h+k+l = 3n
+def test_parity_for_primitive_c_and_r_centred_groups(sg, step, n):
+    assert allowed_multiple_parity(step, sg) == n
 
 
 @pytest.mark.parametrize("step", STEPS, ids=[str(s) for s in STEPS])
@@ -800,6 +853,50 @@ def test_orientation_grid_is_proper_and_scales():
     assert len(orientation_grid(3.0)) > 5*len(orientation_grid(6.0))
 
 
+def test_laue_rotations_are_midas_stress_make_symmetries():
+    key = lambda M: tuple(np.round(M.ravel()).astype(int))
+    assert {key(M) for M in _laue_rotations(139)} == {key(M) for M in _ROT422}          # the table that used to be hard-coded
+    assert len(_laue_rotations(87)) == 4 and len(_laue_rotations(71)) == 4 and len(_laue_rotations(123)) == 8
+    assert len(_laue_rotations(225)) == 24 and len(_laue_rotations(1)) == 1
+    from midas_stress.orientation import make_symmetries
+    assert len(_laue_rotations(194)) == make_symmetries(194)[0] == 12                    # hexagonal: the canonical list, no private table
+
+
+@pytest.mark.parametrize("sg", [139, 87, 71, 1])
+def test_orientation_grid_covers_random_orientations(sg):
+    """The grid must reach every orientation modulo the Laue group: the old one (angles up to 2 pi / order about every axis) left 78 % of random
+    orientations more than 3 deg from any grid point (median 22.7 deg)."""
+    from scipy.spatial.transform import Rotation as Rot
+    ops = _laue_rotations(sg)
+    step = 6.0
+    g = orientation_grid(step, sg)
+    assert np.allclose(np.linalg.det(g), 1.0) and np.allclose(np.einsum("nij,nkj->nik", g, g), np.eye(3), atol=1e-9)
+    dist = []
+    for u in Rot.random(150, random_state=5).as_matrix():
+        best = max(np.einsum("nij,ij->n", g, u @ s).max() for s in ops)                 # tr(g^T u s)
+        dist.append(math.degrees(math.acos(np.clip((best - 1)/2, -1, 1))))
+    assert np.percentile(dist, 95) < 1.2*step and max(dist) < 1.6*step, (np.percentile(dist, 95), max(dist))
+    # one representative per class: roughly 1/order of the full grid
+    full = orientation_grid(step, 1)
+    assert 0.8*len(full)/len(ops) < len(g) < 1.25*len(full)/len(ops)
+
+
+def test_index_by_grid_finds_a_grain_at_a_random_orientation_not_only_near_the_identity():
+    from scipy.spatial.transform import Rotation as Rot
+    a, c = 3.6116, 19.2516
+    B = np.diag([2*math.pi/a, 2*math.pi/a, 2*math.pi/c])
+    hkl = np.array([(h, k, l) for h in range(-1, 2) for k in range(-2, 3) for l in range(-5, 6)
+                    if (h, k, l) != (0, 0, 0) and (h+k+l) % 2 == 0], float)
+    found = 0
+    for seed in (11, 13, 14):
+        U = Rot.random(random_state=seed).as_matrix()
+        rng = np.random.default_rng(seed)
+        q = (U @ B @ hkl.T).T + rng.normal(scale=0.004, size=(len(hkl), 3))
+        got = index_by_grid(q, B, a=a, c=c, max_domains=1)                    # the default step (1.5 deg): a match needs the grid within about tol_q / |q| of the truth
+        found += bool(got) and _misorientation_deg(U, got[0][0]) < 2.0
+    assert found == 3, f"only {found} of 3 random orientations were indexed"
+
+
 def test_index_by_grid_finds_the_dominant_grain_and_refuses_noise():
     """Documents both what it can do and what it cannot.
 
@@ -823,14 +920,14 @@ def test_index_by_grid_finds_the_dominant_grain_and_refuses_noise():
                     if (h, k, l) != (0, 0, 0) and (h+k+l) % 2 == 0], float)
     rng = np.random.default_rng(0)
     q = (U @ B @ hkl.T).T + rng.normal(scale=0.004, size=(len(hkl), 3))
-    got = index_by_grid(q, B, a=a, c=c, step_deg=6.0, max_domains=1)
+    got = index_by_grid(q, B, a=a, c=c, max_domains=1)             # default step (1.5 deg); a 6 deg grid is too coarse for tol_q = 0.05 at |q| ~ 2
     assert got, "the dominant grain must be found"
     assert got[0][1] > 0.8*len(hkl)
     assert _misorientation_deg(U, got[0][0]) < 2.0
 
     v = rng.normal(size=(200, 3))
     qr = v/np.linalg.norm(v, axis=1)[:, None]*rng.uniform(1.0, 4.0, 200)[:, None]
-    assert index_by_grid(qr, B, a=a, c=c, step_deg=6.0,
+    assert index_by_grid(qr, B, a=a, c=c,
                          min_reflections=12) == [], "must refuse a random cloud"
 
 

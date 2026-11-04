@@ -55,7 +55,7 @@ from typing import Optional, Sequence, Union
 import numpy as np
 import torch
 
-from midas_transforms.device import resolve_device, resolve_dtype
+from ._device import resolve_device, resolve_dtype
 
 
 __all__ = [

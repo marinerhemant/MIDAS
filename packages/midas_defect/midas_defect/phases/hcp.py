@@ -5,11 +5,37 @@ materialized to crystal-Cartesian unit vectors via :func:`hcp_systems` at the
 caller's ``c_over_a``. Twin shear and geometry depend on ``c/a``, so explicit
 parameterization is unavoidable.
 
-Crystal-Cartesian basis
------------------------
-    a1 = a (1, 0, 0)
-    a2 = a (-1/2, sqrt(3)/2, 0)
-    c  = a * (c/a) (0, 0, 1)
+Crystal-Cartesian frames
+------------------------
+Two frames are in use, 30 degrees about c apart (``HCP_FRAMES``):
+
+``"midas"`` (default)
+    The frame of MIDAS ``Grains.csv`` orientation matrices (crystal -> lab) and
+    of ``midas_hkls``' ``B`` matrix (a port of the C ``CorrectHKLsLatC``):
+    ``g = B (h, k, l)`` with **a\* along x**, b\* in the xy plane, c\* along z;
+    real-space a at -30 deg (150 deg), b at 90 deg, c || z. Use it for any
+    orientation that comes from MIDAS (``Grains.csv``, ``midas-index`` /
+    ``midas-fit-grain``, ``midas_diffract`` forward model).
+
+``"crystallographic"``
+    The textbook frame, real-space a1 along x::
+
+        a1 = a (1, 0, 0)
+        a2 = a (-1/2, sqrt(3)/2, 0)
+        c  = a * (c/a) (0, 0, 1)
+
+    Use it for orientations expressed in that frame, e.g. the ones this
+    package solves for itself on the ``midas_hkls.Lattice`` seed path
+    (``rows.py`` / ``selfcal.py`` build ``B`` from
+    ``Lattice.reciprocal_cartesian_vectors``) until ``refine_lattice`` moves
+    them to the MIDAS frame.
+
+The 12 hexagonal symmetry operators and all disorientation ANGLES are the same
+in both frames, so an angle-only check cannot tell them apart; plane normals,
+slip/twin directions and rotation AXES are rotated by 30 deg about c. Before
+2026-10-20 only the crystallographic frame existed, so the tables were 30 deg
+off for MIDAS orientations (basal <a> directions at |cos| = 0.866 from the real
+a axes; Schmid factors off by 0.02-0.04 on average, up to 0.12).
 
 References
 ----------
@@ -23,6 +49,22 @@ from __future__ import annotations
 
 import numpy as np
 from numpy.typing import NDArray
+
+from midas_stress.twin_relations import HCP_FRAMES  # crystal Cartesian frames; see the module docstring
+
+# Rotation by -30 deg about z: takes the textbook (a1 along x) frame to the MIDAS
+# (a* along x) frame. Checked against midas_hkls.frame_rotation in the tests.
+_C30, _S30 = np.cos(np.pi / 6.0), np.sin(np.pi / 6.0)
+_RZ_M30 = np.array([[_C30, _S30, 0.0], [-_S30, _C30, 0.0], [0.0, 0.0, 1.0]])
+
+
+def _to_frame(vec: NDArray[np.floating], frame: str) -> NDArray[np.floating]:
+    """Rotate a textbook-frame vector (or rows) into ``frame``."""
+    if frame not in HCP_FRAMES:
+        raise ValueError(f"frame must be one of {HCP_FRAMES}, got {frame!r}")
+    if frame == "crystallographic":
+        return vec
+    return vec @ _RZ_M30.T
 
 # ----------------------------------------------------------------------------
 # 4-index <-> 3-index conversions (directions only; planes use h, k, l with
@@ -61,9 +103,11 @@ def miller_to_bravais(U: int, V: int, W: int) -> tuple[int, int, int, int]:
 # ----------------------------------------------------------------------------
 
 def direction_bravais_to_cart(
-    u: float, v: float, t: float, w: float, c_over_a: float
+    u: float, v: float, t: float, w: float, c_over_a: float,
+    *, frame: str = "midas",
 ) -> NDArray[np.floating]:
-    """Unit Cartesian direction of 4-index Miller-Bravais [u v t w]."""
+    """Unit Cartesian direction of 4-index Miller-Bravais [u v t w] in ``frame``
+    (``"midas"`` default, or ``"crystallographic"``; see the module docstring)."""
     if not np.isclose(u + v + t, 0.0):
         raise ValueError(f"Miller-Bravais constraint violated: u+v+t={u+v+t}")
     U, V, W = u - t, v - t, w
@@ -71,17 +115,19 @@ def direction_bravais_to_cart(
     norm = np.linalg.norm(vec)
     if norm < 1e-12:
         raise ValueError(f"Zero-length direction [{u} {v} {t} {w}]")
-    return vec / norm
+    return _to_frame(vec / norm, frame)
 
 
 def plane_normal_bravais_to_cart(
-    h: float, k: float, i: float, l: float, c_over_a: float
+    h: float, k: float, i: float, l: float, c_over_a: float,
+    *, frame: str = "midas",
 ) -> NDArray[np.floating]:
-    """Unit Cartesian normal of 4-index Miller-Bravais plane (h k i l).
+    """Unit Cartesian normal of 4-index Miller-Bravais plane (h k i l) in ``frame``.
 
-    With h + k + i = 0 the normal in Cartesian is proportional to
-    (h, (h + 2k)/sqrt(3), l a/c). See Cullity & Stock, *Elements of
-    X-Ray Diffraction*, App. 4 for the reciprocal-basis derivation.
+    With h + k + i = 0 the normal in the ``"crystallographic"`` frame is
+    proportional to (h, (h + 2k)/sqrt(3), l a/c) (Cullity & Stock, *Elements of
+    X-Ray Diffraction*, App. 4); in the ``"midas"`` frame (default) it is that
+    vector rotated by -30 deg about c, i.e. ((2h + k)/sqrt(3), k, l a/c) = B (h, k, l).
     """
     if not np.isclose(h + k + i, 0.0):
         raise ValueError(f"Miller-Bravais plane constraint violated: h+k+i={h+k+i}")
@@ -91,7 +137,7 @@ def plane_normal_bravais_to_cart(
     norm = np.linalg.norm(vec)
     if norm < 1e-12:
         raise ValueError(f"Zero-length normal ({h} {k} {i} {l})")
-    return vec / norm
+    return _to_frame(vec / norm, frame)
 
 
 # ----------------------------------------------------------------------------
@@ -156,8 +202,13 @@ _FAMILY_TABLE: dict[str, list[tuple[tuple[int, int, int, int], tuple[int, int, i
 }
 
 
-def hcp_systems(family: str, c_over_a: float) -> NDArray[np.floating]:
+def hcp_systems(family: str, c_over_a: float, *, frame: str = "midas") -> NDArray[np.floating]:
     """Materialize an HCP slip/twin family to crystal-Cartesian unit vectors.
+
+    ``frame`` is ``"midas"`` (default: the frame of MIDAS ``Grains.csv``
+    orientations) or ``"crystallographic"`` (textbook a1 along x); see the
+    module docstring. Pass the one the orientation matrices you will rotate
+    these systems with live in.
 
     Parameters
     ----------
@@ -180,8 +231,8 @@ def hcp_systems(family: str, c_over_a: float) -> NDArray[np.floating]:
     rows = _FAMILY_TABLE[family]
     out = np.empty((len(rows), 2, 3), dtype=float)
     for idx, (plane, direction) in enumerate(rows):
-        n = plane_normal_bravais_to_cart(*plane, c_over_a=c_over_a)
-        b = direction_bravais_to_cart(*direction, c_over_a=c_over_a)
+        n = plane_normal_bravais_to_cart(*plane, c_over_a=c_over_a, frame=frame)
+        b = direction_bravais_to_cart(*direction, c_over_a=c_over_a, frame=frame)
         if abs(float(np.dot(n, b))) > 1e-9:
             raise AssertionError(
                 f"non-orthogonal HCP system {family}[{idx}]: "
@@ -218,6 +269,7 @@ __all__ = [
     "TWIN_COMPRESSIVE_4INDEX",
     "TWIN_TENSILE_4INDEX",
     "bravais_to_miller",
+    "HCP_FRAMES",
     "direction_bravais_to_cart",
     "gamma_twin_hcp_compressive",
     "gamma_twin_hcp_tensile",

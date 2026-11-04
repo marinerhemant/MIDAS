@@ -40,7 +40,7 @@ dependencies = [
                                  # >=0.13.0: raster.raster_wide_asymmetry_sign_test calls
                                  # midas_hkls.asymmetry_sign_test, added there;
                                  # >=0.11 for centring_allowed, which rows.py now delegates to
-    "midas-stress>=0.1",         # quat / rotation / misorientation primitives
+    "midas-stress>=0.16.0",       # quat / rotation / misorientation primitives
     "midas-diffract>=0.10.0",     # HEDMForwardModel for predicted spot positions; >=0.2.0 for the
                                  # distortion layer and FF-panel tilts build_forward_model now uses
     "midas-distortion>=0.2.0",   # v1 -> v2 coefficient bridge in indexing.build_forward_model

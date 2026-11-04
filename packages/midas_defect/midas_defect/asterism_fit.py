@@ -48,7 +48,7 @@ import math
 import numpy as np
 import torch
 
-from midas_transforms.device import resolve_device, resolve_dtype
+from ._device import resolve_device, resolve_dtype
 
 from .lattice import Shell, cual2_crystal, tetragonal_shells
 from .seed_index import predict_q_from_U

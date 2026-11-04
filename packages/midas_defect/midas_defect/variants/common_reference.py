@@ -14,14 +14,18 @@ from numpy.typing import NDArray
 from ..types import CrystalPhase
 from .kmeans_fz import _disorientation_deg, _om_to_quat
 
-# Sigma3 reference axis-angle per phase.
-# FCC / BCC: 60 deg about [111] (canonical Sigma3 twin).
-# HCP:       86.3 deg about [1 -1 0 0] (Sigma3 analogue for hexagonal).
-_SIGMA3_AXIS_ANGLE_DEG = {
-    CrystalPhase.FCC: (np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0), 60.0),
-    CrystalPhase.BCC: (np.array([1.0, 1.0, 1.0]) / np.sqrt(3.0), 60.0),
-    CrystalPhase.HCP: (np.array([1.0, -1.0, 0.0, 0.0]), 86.3),  # 4-index axis
-}
+# The twin / Sigma3 orientation relationships themselves (operators, axis families, pair
+# building and finding) live in :mod:`midas_stress.twin_relations`; this module only picks the
+# relation for a phase. FCC / BCC: the Sigma3 twin, 60 deg about <111>. HCP: a deformation twin
+# of the hexagonal cell (default the {10-12} tension twin), built from its K1 plane normal in the
+# requested crystal frame.
+#
+# History: the earlier HCP "Sigma3 analogue" was 86.3 deg about the textbook-frame label [1-100] at
+# Mg c/a. As a Cartesian vector that axis IS a real a axis of the MIDAS frame (a at -30 deg), so
+# for MIDAS orientations it was, by accident, the Mg {10-12} twin (86.3 deg about <11-20>); for
+# orientations in the textbook frame it was a <10-10> axis, which is no twin. It was documented as
+# <1-100>, fixed to Mg, and its default 55-65 deg window could never admit an 85-86 deg twin. The
+# twin is now chosen explicitly (``hcp_twin``) and its axis family is derived from the relation.
 
 _PHASE_TO_SPACE_GROUP = {
     CrystalPhase.FCC: 225,
@@ -60,35 +64,41 @@ def assign_variants_common_reference(
     return labels
 
 
+def _sigma3_relation(phase, *, c_over_a: float = 1.624, hcp_twin: str = "tension_1012",
+                     frame: str = "midas"):
+    """The ``midas_stress.TwinRelation`` used as the 'Sigma3' relation of ``phase``."""
+    from midas_stress.twin_relations import default_fcc_twin_relations, default_hcp_twin_relations
+    if phase in (CrystalPhase.FCC, CrystalPhase.BCC):
+        return default_fcc_twin_relations()[0]            # 60 deg about <111>
+    if phase is CrystalPhase.HCP:
+        return default_hcp_twin_relations(c_over_a, systems=(hcp_twin,), frame=frame)[0]
+    raise ValueError(f"unknown phase {phase!r}")
+
+
 def build_sigma3_pair(
     R_matrix: NDArray[np.floating],
     phase: CrystalPhase = CrystalPhase.FCC,
+    *,
+    frame: str = "midas",
+    c_over_a: float = 1.624,
+    hcp_twin: str = "tension_1012",
 ) -> tuple[NDArray[np.floating], NDArray[np.floating]]:
-    """Return ``(R_matrix, R_matrix @ S)`` where ``S`` is the Σ3 rotation.
+    """Return ``(R_matrix, R_matrix @ T)`` where ``T`` is the phase's twin operator.
 
-    The Σ3 operator is in the **crystal** frame, so the twin orientation is
-    obtained by post-multiplying the matrix orientation.
+    The operator is in the **crystal** frame, so the twin orientation is obtained by
+    post-multiplying the matrix orientation. FCC/BCC: 60 deg about [111]. HCP: the ``hcp_twin``
+    deformation twin (``"tension_1012"``, ``"compression_1011"``, ``"tension_1121"``,
+    ``"compression_1122"``) at ``c_over_a`` (default Mg 1.624, where {10-12} is 86.3 deg),
+    built in ``frame`` (``"midas"`` default: the frame of Grains.csv orientations;
+    ``"crystallographic"``: textbook a1 along x). Implemented by
+    :func:`midas_stress.twin_relations.build_twin_pair`.
     """
-    import midas_stress.orientation as o
-
+    from midas_stress.twin_relations import build_twin_pair
     R_matrix = np.asarray(R_matrix, dtype=float)
     if R_matrix.shape != (3, 3):
         raise ValueError(f"R_matrix must be (3, 3); got {R_matrix.shape}")
-
-    if phase in (CrystalPhase.FCC, CrystalPhase.BCC):
-        axis_3, angle_deg = _SIGMA3_AXIS_ANGLE_DEG[phase]
-        S = np.asarray(o.axis_angle_to_orient_mat(axis_3, angle_deg))
-    elif phase is CrystalPhase.HCP:
-        axis_4, angle_deg = _SIGMA3_AXIS_ANGLE_DEG[phase]
-        # Convert 4-index axis to crystal-Cartesian.
-        from ..phases.hcp import direction_bravais_to_cart
-
-        axis_cart = direction_bravais_to_cart(*axis_4, c_over_a=1.624)  # Mg default
-        S = np.asarray(o.axis_angle_to_orient_mat(axis_cart, angle_deg))
-    else:
-        raise ValueError(f"unknown phase {phase!r}")
-
-    return R_matrix, R_matrix @ S
+    return build_twin_pair(R_matrix, _sigma3_relation(phase, c_over_a=c_over_a,
+                                                      hcp_twin=hcp_twin, frame=frame))
 
 
 __all__ = ["assign_variants_common_reference", "build_sigma3_pair"]
