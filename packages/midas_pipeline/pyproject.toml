@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "midas-pipeline"
-version = "0.21.0"
+version = "0.22.0"
 description = "Unified MIDAS HEDM orchestrator. FF is the single-scan degeneracy of PF; one orchestrator, --scan-mode {ff,pf}."
 readme = "README.md"
 license = "BSD-3-Clause"
@@ -65,7 +65,7 @@ dependencies = [
     # >=0.11.0 (transforms), >=0.10.0 (index), >=0.11.0 (fit-grain): the compact ring-slot
     # nData.bin layout. The writer (transforms) and both readers must agree, or the
     # ring slots are read at the wrong offsets.
-    "midas-transforms>=0.11.0",
+    "midas-transforms>=0.13.0",
     "midas-index>=0.11.0",
     # >=0.7.0: the "c_recipe" refine mode this CLI offers as a choice.
     # >=0.8.0: the canonical midas_fit_grain.losses module this package imports.
