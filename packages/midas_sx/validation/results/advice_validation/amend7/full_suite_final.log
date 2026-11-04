@@ -1,0 +1,21 @@
+........................................................................ [ 28%]
+........................................................................ [ 56%]
+........................................................................ [ 85%]
+.....................................                                    [100%]
+=============================== warnings summary ===============================
+tests/test_advice_coverage.py::test_a_declared_cell_aperture_removes_blocked_reflections_from_the_denominator
+  /Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_defect/midas_defect/geometry.py:328: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /Users/runner/miniforge3/conda-bld/libtorch_1781354591099/work/torch/csrc/utils/tensor_numpy.cpp:219.)
+    rows_t = torch.as_tensor(rows, dtype=dtype_, device=device_)   # Z_pix
+
+tests/test_predicted.py: 156 warnings
+tests/test_workflow.py: 468 warnings
+  /Users/travel_user/miniforge3/envs/midas_env/lib/python3.12/site-packages/skimage/morphology/grayreconstruct.py:216: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
+  As an alternative, you can create a new view using np.reshape (with copy=False if needed).
+    rec_img.shape = np.array(seed.shape) + (np.array(footprint.shape) - 1)
+
+tests/test_workflow.py::test_a_wrong_cell_raises_unless_allowed_and_the_reason_is_kept
+  /Volumes/T5 EVO/travel/work/opt/MIDAS/packages/midas_sx/tests/test_workflow.py:83: RuntimeWarning: reduce_scan: continuing with a NON-converged orientation (allow_unconverged=True): rms frame residual 2.99 frames above 1.0 (wrong cell or omega convention?)
+    red = reduce_scan(raw, bad, U0, setup, allow_unconverged=True)         # the caller took the responsibility
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+253 passed, 626 warnings in 1721.51s (0:28:41)

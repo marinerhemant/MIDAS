@@ -1,0 +1,347 @@
+{
+ "runs": [
+  "r3",
+  "r4",
+  "r5"
+ ],
+ "checks_run": [
+  "scan_range",
+  "completeness_redundancy",
+  "next_setting",
+  "resolution_limit",
+  "systematic_floor",
+  "intensity_drift",
+  "dynamic_range",
+  "omega_sampling",
+  "geometry_consistency",
+  "contamination"
+ ],
+ "checks_unavailable": [],
+ "ok": false,
+ "numbers": {
+  "completeness": {
+   "n_expected": 296,
+   "n_accessible": 284,
+   "blocked_by_aperture": 12,
+   "frac_n_ge_1": 0.493,
+   "frac_n_ge_2": 0.4049,
+   "mean_multiplicity": 5.44
+  },
+  "dynamic_range": {
+   "observations_above_limit": 0,
+   "observations_linked": 762,
+   "blobs_above_1e5_per_run": {
+    "r3": 0,
+    "r4": 0,
+    "r5": 0
+   }
+  }
+ },
+ "findings": [
+  {
+   "id": "scan_range",
+   "severity": "note",
+   "title": "rotation range shorter than 180 deg: few or no in-run Friedel pairs",
+   "measured": {
+    "per_run": {
+     "r3": {
+      "range_deg": 76.0,
+      "pairs_predicted": 277,
+      "pairs_observed": 114
+     },
+     "r4": {
+      "range_deg": 76.0,
+      "pairs_predicted": 275,
+      "pairs_observed": 61
+     },
+     "r5": {
+      "range_deg": 76.0,
+      "pairs_predicted": 274,
+      "pairs_observed": 77
+     }
+    },
+    "short_runs": [
+     "r3",
+     "r4",
+     "r5"
+    ],
+    "pairs_predicted_360deg_same_orientation": 1369,
+    "geometry_refined_from_data": true,
+    "fewest_in_run_pairs_in_short_runs": 61,
+    "cross_run": {
+     "signed_hkl_with_mate_in_another_run": 226,
+     "signed_hkl_observed": 599
+    },
+    "sample_environment_max_range_deg": 76.0
+   },
+   "threshold": "range < 180 deg means (almost) no in-run Friedel pairs; limiting only if the geometry was refined from the data AND fewer than 30 in-run pairs exist and the range is not set by the sample environment",
+   "evidence": "run.geom (omega_step, n_frames), predicted_crossings of all expected signed hkl with the run's refined U and geometry (pairs = unordered {h,-h} both crossing), run.obs for observed pairs",
+   "action": "The scan range is set by the sample environment (max_range_deg given): this is not a choice. Compensate with more orientations of the crystal (see 'next_setting') and a calibrant/standard crystal to fix the geometry, because without in-run mates the geometry rests on the orientation fit alone.",
+   "gain": "simulated (validation/real/PREREG_friedel_geometry.md, positive control): about 1500 pairs of a 360 deg scan give tx +-0.002 deg and wedge +-0.001 deg; about 100 pairs give +-0.01 deg. On the real L-alanine runs (170 deg, 35-57 in-run pairs) the pair estimates agreed with the orientation fit within 0.035 deg (INCONCLUSIVE by the registered rule).",
+   "scope": "Predicted pair counts are geometric (a crossing on the detector); observed counts are what survived integration. Pairs between different runs need the unknown relative rotation of the runs and are reported, not used."
+  },
+  {
+   "id": "completeness",
+   "severity": "limiting",
+   "title": "unique reflections inside the detector d_min are missing",
+   "measured": {
+    "detector_corner_d_min_A": 0.515,
+    "effective_d_min_A": 0.58,
+    "unique_dropped_partial_rings": 110,
+    "expected_unique": 296,
+    "accessible_unique": 284,
+    "blocked_by_aperture": 12,
+    "reachable_unique": 284,
+    "observed_n1": 140,
+    "observed_n2": 115,
+    "completeness_n1": 0.493,
+    "completeness_n2": 0.405,
+    "by_shell": [
+     {
+      "d_range": "10.25-1.05",
+      "expected": 61,
+      "n1": 0.836,
+      "n2": 0.787
+     },
+     {
+      "d_range": "1.05-0.84",
+      "expected": 52,
+      "n1": 0.731,
+      "n2": 0.519
+     },
+     {
+      "d_range": "0.84-0.73",
+      "expected": 48,
+      "n1": 0.646,
+      "n2": 0.5
+     },
+     {
+      "d_range": "0.73-0.66",
+      "expected": 42,
+      "n1": 0.357,
+      "n2": 0.286
+     },
+     {
+      "d_range": "0.66-0.62",
+      "expected": 41,
+      "n1": 0.098,
+      "n2": 0.073
+     },
+     {
+      "d_range": "0.62-0.58",
+      "expected": 39,
+      "n1": 0.0,
+      "n2": 0.0
+     }
+    ],
+    "strong_half_completeness_n1": 0.769,
+    "strong_half_completeness_n2": 0.713,
+    "expected_but_not_reachable": 0,
+    "reachable_but_not_observed": 144
+   },
+   "threshold": "completeness n>=2 < 0.85 or n>=1 < 0.95 on the geometric denominator; limiting only if the strong half (calculated |F|^2 above the median) is also below 0.85",
+   "evidence": "enumerate_hkl to the detector d_min, Laue-unique classes (SpaceGroup.asu_representative), merged n from ctx.merged(); reachable = predicted_crossings of any run",
+   "action": "Most of the missing reflections do cross the Ewald sphere inside the scans but were not observed: they are weak, masked or crowded. Check the 'systematic_floor' and 'resolution_limit' findings before changing anything; a longer exposure helps only if the floor is counting-limited.",
+   "gain": null,
+   "scope": "The denominator is geometric (everything the detector can see, intrinsically weak reflections included), so 100 % is not attainable; the strong-half figure uses calculated |F|^2 of the supplied crystal. Anomalous differences are not modelled: Friedel mates count as one reflection."
+  },
+  {
+   "id": "next_setting",
+   "severity": "limiting",
+   "title": "one more run at a re-oriented crystal is predicted to add the most missing reflections",
+   "measured": {
+    "base_run": "r3",
+    "best_rotation": {
+     "axis": "X (beam)",
+     "angle_deg": 315.0
+    },
+    "predicted_gain_n2_best_rotation": 105,
+    "predicted_new_reflections_best_rotation": 92,
+    "repeat_same_orientation_control": {
+     "gain_n2": 74,
+     "new_reflections": 82
+    },
+    "unique_below_n2_now": 169,
+    "completeness_n2_now": 0.405,
+    "predicted_completeness_n2_after_one_more_run": 0.775,
+    "candidates_evaluated": 47,
+    "seconds": 2.0
+   },
+   "threshold": "recommended when completeness n>=2 is below 0.85 and one more run is predicted to bring at least 5 unique reflections to n >= 2",
+   "evidence": "predicted_crossings of the unique reflections below n = 2 (all signed equivalents) for the refined U of the widest run rotated by candidate rotations about the stage X and Y axes in steps of the option setting_step_deg (15 deg), midas_stress axis_angle_to_orient_mat, same geometry and omega range; a reflection's predicted new observations = its crossings in the extra run",
+   "action": "Re-orient the crystal by about 315 deg about the X (beam) axis of the rotation stage at omega = 0 (a goniometer tilt/chi or a re-mount) and collect one more run with the same scan. PREDICTED: it brings 105 of the 169 unique reflections below n = 2 to n >= 2 and reaches 92 not seen so far (a repeat of the old orientation: 74 and 82).",
+   "gain": "PREDICTED from geometry only (a forecast, not a measurement): every crossing on the detector is assumed to be observed, so the real gain is smaller by the fraction of weak or crowded reflections.",
+   "scope": "The sign and zero of the goniometer angle are those of the refined U of the first run in the stage frame; check the direction against your goniometer. Absorption by the environment at the new orientation, shadowing and collisions are not modelled."
+  },
+  {
+   "id": "resolution_detector_limited",
+   "severity": "note",
+   "title": "the data reach the detector edge with signal to spare: the detector coverage cuts the resolution",
+   "measured": {
+    "detector_corner_d_min_A": 0.515,
+    "effective_d_min_A": 0.58,
+    "smallest_d_observed_A": 0.648,
+    "shells": [
+     {
+      "d_range": "10.25-1.30",
+      "n": 28,
+      "median_I_over_sigma": 85.9
+     },
+     {
+      "d_range": "1.30-1.03",
+      "n": 28,
+      "median_I_over_sigma": 76.0
+     },
+     {
+      "d_range": "1.03-0.90",
+      "n": 19,
+      "median_I_over_sigma": 52.9
+     },
+     {
+      "d_range": "0.90-0.82",
+      "n": 19,
+      "median_I_over_sigma": 48.8
+     },
+     {
+      "d_range": "0.82-0.76",
+      "n": 12,
+      "median_I_over_sigma": 32.7
+     },
+     {
+      "d_range": "0.76-0.71",
+      "n": 15,
+      "median_I_over_sigma": 28.6
+     },
+     {
+      "d_range": "0.71-0.68",
+      "n": 11,
+      "median_I_over_sigma": 37.5
+     },
+     {
+      "d_range": "0.68-0.65",
+      "n": 7,
+      "median_I_over_sigma": 21.1
+     }
+    ],
+    "i_over_sigma_limit": 2.0,
+    "resolution_limit": "beyond the smallest d observed"
+   },
+   "threshold": "median I/sigma stays >= 2 in every shell of the merged data, down to d = 0.65 A (detector corner d_min 0.52 A, effective d_min 0.58 A)",
+   "evidence": "median F2/sigF2 of the merged unique reflections by shell (equal volume in 1/d^3 over the observed d range), ctx.merged(); d from the lattice",
+   "action": "If higher resolution is wanted (anisotropic displacement parameters, light atoms next to heavy ones), move the detector closer or swing it to higher 2theta; the signal is there.",
+   "gain": null,
+   "scope": "the merged sigma includes the error-model term when the merge was robust, so I/sigma is bounded by about 1/g. Reflections not observed at all are not in the median (see the completeness finding for them)."
+  },
+  {
+   "id": "systematic_floor",
+   "severity": "note",
+   "title": "equivalents agree to counting statistics (floor 1.7%, counting 2.9%)",
+   "measured": {
+    "floor_f": 0.017,
+    "counting": 0.029,
+    "ratio": 0.6,
+    "usable_observations": 737,
+    "floor_with_run_scales_only": 0.184,
+    "merge_scale": "smooth",
+    "floor_by": {
+     "Lorentz factor": {
+      "(1.5, 2.0]": 0.026,
+      "(2.0, 3.0]": 0.016,
+      "(3.0, 5.0]": 0.016,
+      "(5.0, 1000000000.0]": 0.022
+     },
+     "resolution d (A)": {
+      "(0.0, 0.75]": 0.026,
+      "(0.75, 0.9]": 0.013,
+      "(0.9, 1.1]": 0.011,
+      "(1.1, 1.5]": 0.012,
+      "(1.5, 2.5]": 0.019
+     },
+     "run": {
+      "r3": 0.015,
+      "r4": 0.0,
+      "r5": 0.02
+     }
+    }
+   },
+   "threshold": "limiting when f >= 8% and f / counting >= 2; note when only the ratio is exceeded. (the systematic floor f exceeds the counting-statistics prediction by this factor: more exposure no longer helps (L-alanine, A39: 14 % against 2.7 %, ratio 5); relative F2 floor above which equivalents disagree by more than a good data set does (L-alanine after the fixes: 5.9 %; before: 14.2 %))",
+   "evidence": "merge.systematic_floor on the merged observations (leave-one-out log deviation of symmetry equivalents, robust sd, minus the counting prediction); by L, d and run in measured",
+   "action": "The merged precision is counting-limited: more exposure or more redundancy improves it.",
+   "gain": null,
+   "scope": "sees only what differs between equivalents; an error common to all equivalents (wrong cell in the Lorentz factor, absorption identical in every orientation) is invisible; says nothing about accuracy against a structure"
+  },
+  {
+   "id": "intensity_drift",
+   "severity": "limiting",
+   "title": "the intensity scale varies by 73% within a run (log range 0.55); a smooth per-run scale cuts R_int from 14.8% to 2.2%",
+   "measured": {
+    "log_scale_range_per_run": {
+     "r3": 0.535,
+     "r4": 0.527,
+     "r5": 0.549
+    },
+    "rint_run_scales_only": 0.1483,
+    "rint_smooth_scale": 0.0222,
+    "rint_gain": 0.85,
+    "rint_permuted_frames": 0.1431,
+    "placebo_gain": 0.035,
+    "k_over_frame_bins": {
+     "r3": [
+      0.878,
+      0.844,
+      0.998,
+      1.265,
+      1.298,
+      1.019,
+      0.853,
+      0.844
+     ],
+     "r4": [
+      0.838,
+      1.042,
+      1.278,
+      1.2,
+      0.99,
+      0.823,
+      0.837,
+      0.992
+     ],
+     "r5": [
+      0.937,
+      1.172,
+      1.229,
+      0.997,
+      0.788,
+      0.768,
+      0.957,
+      1.152
+     ]
+    },
+    "i0_recorded": false
+   },
+   "threshold": "drift when the log scale range >= 0.15 and the R_int gain >= 25%, and the permuted-frame placebo gains less than 50% of the real gain (max-min of the fitted log scale within a run; +-7 % or more over a scan is a visible drift (L-alanine: 0.37-0.58); relative R_int reduction by the smooth scale; below this the scale is not doing anything the data need)",
+   "evidence": "merge.scale_smooth (8 knots per run over the frame index, fitted from equivalents only) against merge.scale_groups; placebo = the same fit with the frame labels permuted within each run (5 seeds)",
+   "action": "The scale is INFERRED from equivalents, not measured: check that the crystal is centred on the rotation axis for the whole rotation and that the beam covers (or is smaller than) the crystal consistently; record the incident intensity (and, if possible, the transmitted beam) for every frame so the scale can be measured; if the crystal is much larger than the beam, a centring error shows up as exactly this kind of slow variation.",
+   "gain": "on THIS data a smooth scale lowers R_int from 14.8% to 2.2% (in sample; placebo with permuted frames: 14.3%); a held-out check is real/a39_cv_robust.py in the validation directory",
+   "scope": "the scale absorbs anything smooth in the frame index that multiplies a whole run (beam or sample-volume drift, centring, absorption by a symmetric environment); it cannot say which. Needs equivalents spread over each run's whole range"
+  },
+  {
+   "id": "omega_sampling",
+   "severity": "note",
+   "title": "spots are sampled by only 0.5 frames (step 0.25 deg): the omega profile is barely resolved",
+   "measured": {
+    "median_width_frames": 0.47,
+    "p10": 0.19,
+    "p90": 0.71,
+    "step_deg": 0.25,
+    "width_deg_upper_estimate": 0.1185,
+    "n": 762
+   },
+   "threshold": "note when the median spot width is below 3 frames (undersampled profile) or above 30 frames (oversampled). (median spot width in frames below which the profile is sampled by fewer than about 3 frames (A39: median 1.3-2.4 at 0.2 deg))",
+   "evidence": "spots.omega_width_frames (the blob's extent in frames) of the blobs behind the observations",
+   "action": "a finer rotation step would resolve the profile: as a rule of thumb about a quarter of the spot width, here roughly 0.0296 deg (with a proportionally shorter exposure per frame); the total dose and scan time stay the same",
+   "gain": null,
+   "scope": "the blob width in frames includes overlap and the finder's threshold; below about 2 frames it is an upper bound on the true angular width; the integrated intensity does not depend on the sampling, the profile shape and the crossing position do"
+  }
+ ]
+}

@@ -1,0 +1,202 @@
+{
+ "D2": {
+  "findings": [
+   {
+    "id": "dynamic_range",
+    "severity": "limiting",
+    "title": "saturated: 217 of 1452 observations have peak pixels sit at the detector's count cutoff (226888)",
+    "fraction_clipped": 0.1494,
+    "observations_clipped": 217,
+    "blobs_clipped_per_run": {
+     "r3": 116,
+     "r4": 44,
+     "r5": 67
+    },
+    "max_peak_counts": 226853.0,
+    "cutoff": 226888.0,
+    "cutoff_is_a_guess": false
+   },
+   {
+    "id": "dynamic_range",
+    "severity": "note",
+    "title": "583 of 1452 observations have a peak pixel above 5.67e+04 counts (max 2.27e+05)",
+    "fraction": 0.4015,
+    "max_peak_counts": 226853.0,
+    "cutoff": 226888.0
+   }
+  ],
+  "numbers": {
+   "observations_above_limit": 583,
+   "observations_linked": 1452,
+   "blobs_above_1e5_per_run": {
+    "r3": 195,
+    "r4": 106,
+    "r5": 141
+   },
+   "blobs_clipped_per_run": {
+    "r3": 116,
+    "r4": 44,
+    "r5": 67
+   },
+   "observations_clipped": 217
+  }
+ },
+ "D2c_clean_cutoff_1.5xmax": {
+  "findings": [
+   {
+    "id": "dynamic_range",
+    "severity": "note",
+    "title": "23 of 1453 observations have a peak pixel above 1.09e+06 counts (max 2.91e+06)",
+    "fraction": 0.0158,
+    "max_peak_counts": 2907765.0,
+    "cutoff": 4361647.5
+   }
+  ],
+  "numbers": {
+   "observations_above_limit": 23,
+   "observations_linked": 1453,
+   "blobs_above_1e5_per_run": {
+    "r3": 195,
+    "r4": 105,
+    "r5": 141
+   },
+   "blobs_clipped_per_run": {
+    "r3": 0,
+    "r4": 0,
+    "r5": 0
+   },
+   "observations_clipped": 0
+  }
+ },
+ "D2n_clean_no_cutoff": {
+  "findings": [
+   {
+    "id": "dynamic_range",
+    "severity": "note",
+    "title": "425 of 1453 observations have a peak pixel above 1e+05 counts (max 2.91e+06)",
+    "fraction": 0.2925,
+    "max_peak_counts": 2907765.0,
+    "cutoff": null
+   }
+  ],
+  "numbers": {
+   "observations_above_limit": 425,
+   "observations_linked": 1453,
+   "blobs_above_1e5_per_run": {
+    "r3": 195,
+    "r4": 105,
+    "r5": 141
+   },
+   "blobs_clipped_per_run": {
+    "r3": 1,
+    "r4": 0,
+    "r5": 0
+   },
+   "observations_clipped": 1
+  }
+ },
+ "D2_no_cutoff": {
+  "findings": [
+   {
+    "id": "dynamic_range",
+    "severity": "limiting",
+    "title": "saturated: 216 of 1452 observations have 226 blobs share the identical maximum peak value 226853, the signature of a clipped detector",
+    "fraction_clipped": 0.1488,
+    "observations_clipped": 216,
+    "blobs_clipped_per_run": {
+     "r3": 116,
+     "r4": 44,
+     "r5": 66
+    },
+    "max_peak_counts": 226853.0,
+    "cutoff": null,
+    "cutoff_is_a_guess": true
+   },
+   {
+    "id": "dynamic_range",
+    "severity": "note",
+    "title": "424 of 1452 observations have a peak pixel above 1e+05 counts (max 2.27e+05)",
+    "fraction": 0.292,
+    "max_peak_counts": 226853.0,
+    "cutoff": null
+   }
+  ],
+  "numbers": {
+   "observations_above_limit": 424,
+   "observations_linked": 1452,
+   "blobs_above_1e5_per_run": {
+    "r3": 195,
+    "r4": 106,
+    "r5": 141
+   },
+   "blobs_clipped_per_run": {
+    "r3": 116,
+    "r4": 44,
+    "r5": 66
+   },
+   "observations_clipped": 216
+  }
+ },
+ "D3": {
+  "findings": [
+   {
+    "id": "dynamic_range",
+    "severity": "note",
+    "title": "446 of 1277 observations have a peak pixel above 1e+05 counts (max 6.09e+06)",
+    "fraction": 0.3493,
+    "max_peak_counts": 6092884.0,
+    "cutoff": null
+   },
+   {
+    "id": "omega_sampling",
+    "severity": "note",
+    "title": "50% of the spots lie on a single frame (step 1 deg): the omega profile is unresolved",
+    "single_frame_fraction": 0.5,
+    "median_rms_width_frames": 0.0
+   }
+  ],
+  "numbers": {
+   "observations_above_limit": 446,
+   "observations_linked": 1277,
+   "blobs_above_1e5_per_run": {
+    "r3": 219,
+    "r4": 127,
+    "r5": 157
+   },
+   "blobs_clipped_per_run": {
+    "r3": 1,
+    "r4": 0,
+    "r5": 0
+   },
+   "observations_clipped": 1
+  }
+ },
+ "C_omega": {
+  "findings": [
+   {
+    "id": "dynamic_range",
+    "severity": "note",
+    "title": "425 of 1453 observations have a peak pixel above 1e+05 counts (max 2.91e+06)",
+    "fraction": 0.2925,
+    "max_peak_counts": 2907765.0,
+    "cutoff": null
+   }
+  ],
+  "numbers": {
+   "observations_above_limit": 425,
+   "observations_linked": 1453,
+   "blobs_above_1e5_per_run": {
+    "r3": 195,
+    "r4": 105,
+    "r5": 141
+   },
+   "blobs_clipped_per_run": {
+    "r3": 1,
+    "r4": 0,
+    "r5": 0
+   },
+   "observations_clipped": 1
+  }
+ },
+ "clean_max_peak": 2907765.0
+}

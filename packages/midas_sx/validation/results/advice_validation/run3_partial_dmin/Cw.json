@@ -1,0 +1,14 @@
+{
+ "runs": [
+  "r3",
+  "r4",
+  "r5"
+ ],
+ "checks_run": [
+  "geometry_consistency"
+ ],
+ "checks_unavailable": [],
+ "ok": true,
+ "numbers": {},
+ "findings": []
+}

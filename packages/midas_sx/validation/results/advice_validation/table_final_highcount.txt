@@ -1,0 +1,30 @@
+| scenario | condition | expected | fired | result | note |
+|---|---|---|---|---|---|
+| C | no blocking/limiting (quality, scan_range, resolution) | none | none | **PASS** | coverage ids (completeness, ...) reported not judged: completeness:note |
+| Cw | refined wedge on clean frames < 0.1 deg | < 0.1 | {'H_Cw_3': 0.014, 'H_Cw_4': 0.007, 'H_Cw_5': 0.002} | **PASS** |  |
+| Cw | geometry_consistency not limiting | note or none | none | **PASS** |  |
+| D1 | intensity_drift limiting | limiting | limiting | **PASS** |  |
+| D1 | placebo gain < half the real gain | < 0.5 x gain | placebo 0.011 real 0.937 | **PASS** |  |
+| D1 | no other limiting finding | none | none | **PASS** |  |
+| D2 | dynamic_range present, fraction above 25 % of the cutoff >= 0.30 | >= 0.30 | note, fraction 0.402 | **PASS** |  |
+| D2 | no other limiting finding | none | none | **PASS** |  |
+| D3 | omega_sampling present with median width < 3 frames | < 3 | note, width 0.00 | **PASS** |  |
+| D3 | no other limiting finding | none | none | **PASS** |  |
+| D4_unset | scan_range limiting, range 40 +- 1 deg | limiting | limiting, ranges [40.0, 40.0, 40.0] | **PASS** |  |
+| D4_unset | no unexpected limiting finding | none | none | **PASS** |  |
+| D4_set | scan_range note, range 40 +- 1 deg | note | limiting, ranges [40.0, 40.0, 40.0] | **FAIL** |  |
+| D4_set | no unexpected limiting finding | none | none | **PASS** |  |
+| D4_set40 | scan_range note, range 40 +- 1 deg | note | note, ranges [40.0, 40.0, 40.0] | **PASS** |  |
+| D4_set40 | no unexpected limiting finding | none | none | **PASS** |  |
+| D5 | completeness or redundancy limiting | limiting | completeness, redundancy | **PASS** |  |
+| D5 | no unexpected limiting finding | none | none | **PASS** |  |
+| D6 | geometry_consistency present | note or limiting | note | **PASS** |  |
+| D6 | refined wedge in 0.3..0.5 deg for every run | 0.3-0.5 | {'H_D6_3': 0.402, 'H_D6_4': 0.408, 'H_D6_5': 0.401} | **PASS** |  |
+| D6 | no other limiting finding | none | none | **PASS** |  |
+| D7 | contamination names a ring within 0.3 deg of 2theta = 12.0 | ring at 12.0 | rings [11.88] | **PASS** |  |
+| D7 | no other limiting finding | none | none | **PASS** |  |
+| D8b | systematic_floor limiting (per-frame sigma 0.25) | limiting | limiting, floor 0.145 | **PASS** |  |
+| D8b | intensity_drift NOT limiting | not limiting | note | **PASS** |  |
+| D8b | no other limiting finding | none | none | **PASS** |  |
+
+PER SCENARIO: {'C': 'CONFIRMED', 'Cw': 'CONFIRMED', 'D1': 'CONFIRMED', 'D2': 'CONFIRMED', 'D3': 'CONFIRMED', 'D4': 'REFUTED', 'D5': 'CONFIRMED', 'D6': 'CONFIRMED', 'D7': 'CONFIRMED', 'D8b': 'CONFIRMED'}
