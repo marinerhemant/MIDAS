@@ -45,6 +45,8 @@ if tc.verdict != "FAIL":
 
 - `wavelength_A` comes from the beamline (rule 9). Nothing here can recover it.
 - Optional `lsd_um` (CLI `--lsd-mm`): a distance hint along the beam, e.g. the detector stage readback.
+  (Since the seeder change in LAB_NOTEBOOK §18 the pipeline retries from the seeder's runner-up assignments on a gate FAIL, so the hint is
+  a convenience, not a requirement; the sentence below is the behaviour before that change.)
   `make_seed` picks the innermost visible ring by an index match and got it wrong on 6 of 43 tilted
   20-ID-D frames (seed distances 2.4×, 0.85×, 0.68× the truth); a start whose distance is that far
   off does not converge whatever the tilt start (section 4, 20-ID series). A couple of percent is enough.

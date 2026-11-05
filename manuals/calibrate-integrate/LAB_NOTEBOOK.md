@@ -701,6 +701,21 @@ Sources: `$ANALYSIS/real_cal_others/` (PREREGISTER.md with seven dated amendment
   tilt start, and the gate catches it every time. A distance hint (`lsd_um`, the stage readback) fixes
   5 of the 6; `nominal_tilt_deg` alone does not. The failure message used to ask for a distance
   argument that did not exist (found by a context-free run of the docs). Added.
+- **Why `make_seed` needed a distance hint, and what changed (PROVISIONAL, not `/verify`'d).** Two causes,
+  both from the circle model on elliptical rings. (1) `make_seed` rejected every arc whose circle fit missed
+  by more than 1.5 px; at -10 deg tilt that is every full-length arc (rms 0.6 % of R), the ladder stopped at
+  "2 arcs", the outer fragments were called rings 1-2 and the distance came out 2.66x with rms ~0 (5 Ceria
+  frames). (2) circle-fit radii of one ring split in pairs (277/292, 368/389), and the right ring assignment
+  ranked 2nd by under 2 score points (Lab6 284, Ceria 281). Now: the fixed cutoff first, relative cutoffs
+  (3 %, 12 % of R) only if it leaves < 4 arcs (applying 3 % everywhere broke the real 45 deg frame, 1.016x to
+  0.593x: two eccentric-ellipse fragments polluted the beam centre); a seed on < 4 radii says WEAK in `notes`;
+  `Seed.alternatives` holds runner-up assignments; `calibrate_tilted` tries the relative-tolerance seed, then
+  two runner-ups, when the gate FAILs, before the pv fallback. Measured through `clean_frame` (the real
+  path), 43 frames: bad seeds 5 -> 2 with no other file moved; end to end, 281 and 284 now PASS via the
+  fallback, 262 and 303 still PASS (4 files re-run after the runner-up step, 10 before it). The seed
+  distance "truth" is the hinted calibration of the same pipeline, so the Lsd agreement is not independent;
+  the gate is. `lsd_um` stays as an option, no longer needed on this series. Not re-run: the other 33 files
+  end to end, the other beamlines, tilts above 10 deg (a 30 deg synthetic seeds to 8 % only).
 - **A context-free run of the docs** (a fresh agent with only the skill and manuals) reproduced both
   real frames and found: the CLI could not write a paramstest or the mask (added `--paramstest`,
   `--mask-out`, `--im-trans`, `tc.write_mask`); the scope-gate snippet silently defaults to CeO2; the
