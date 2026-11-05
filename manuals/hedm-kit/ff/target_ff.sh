@@ -21,6 +21,14 @@ kit_check || exit 1
 RUN=$WORK/ff/${FOLDER}_$NR; LAY=$RUN/real/results/LayerNr_1; GATE=${GATE:-0.5}
 DATA=$RAW/varexD/$FOLDER; STEM=$FOLDER
 FILE=$DATA/${STEM}_$(printf %06d $NR).vrx.h5
+set_gate() {    # set_gate <arm dir>: the completeness gate lives in Parameters.txt (Completeness) AND in the layer's paramstest.txt (MinMatchesToAcceptFrac); prep wrote both with the prep-time GATE
+  local d=$1
+  sed -i.bak "s/^Completeness .*/Completeness $GATE/" $d/Parameters.txt
+  sed -i.bak "s/^MinMatchesToAcceptFrac .*/MinMatchesToAcceptFrac $GATE;/" $d/results/LayerNr_1/paramstest.txt
+  # a stage is skipped when its output exists: a re-run at another gate must clear the products of indexing onward and the derived paramstest copies
+  rm -rf $d/results/LayerNr_1/{Output,Results,Grains.csv,SpotMatrix.csv,GrainIDsKey.csv,paramstest_index_comp.txt,paramstest_refine_comp.txt,paramstest_pg.txt,paramstest_pg_comp.txt}
+  echo "completeness gate set to $GATE in $d"
+}
 run() { if [ "${DRY:-0}" = 1 ]; then echo "[dry] (run from $PWD) $*"; else eval "$@"; fi; }
 mkdir -p "$RUN"; cd "$RUN"
 
@@ -99,6 +107,7 @@ PYE
   ;;
 index)
   THR=$(cat preproc_thr.txt); SR=$(cat seed_ring.txt 2>/dev/null || true); [ -n "$SR" ] || { echo "run the seed stage first"; exit 1; }
+  set_gate $RUN/real
   ( cd real; sed -i.bak "s/^OverAllRingToIndex.*/OverAllRingToIndex $SR/" Parameters.txt
     run "$P/midas-pipeline run --scan-mode ff --params Parameters.txt --result results --layers 1-1 --preproc-thresh $THR --n-cpus $NCPUS --indexer-backend c-omp --refine-backend c-omp --binning-device cpu --no-refresh-params --resume auto > index.log 2>&1; echo index exit=\$?" )
   echo "A zero-grain arm exits 1 in process_grains < 0.13.2 (a crash on the empty list, fixed in the wave-3 release); 'grains = 0' is then the result."
@@ -106,6 +115,7 @@ index)
 nulls)
   THR=$(cat preproc_thr.txt); RINGS=$(cat rings.txt); SR=$(cat seed_ring.txt)
   for k in 1 2 3; do
+    rm -rf $RUN/null$k      # a re-run starts the arm from scratch (its stages would otherwise be skipped)
     run "$PY -B -I $KIT/ff/run_arm.py --src $LAY --params $RUN/real/Parameters.txt --out $RUN/null$k --null-seed $k --f 1.0 --rings $RINGS --band-px 12 > $RUN/null$k.prep.log 2>&1"
     [ "${DRY:-0}" = 1 ] || LAYER=$RUN/null$k/results/LayerNr_1 RING=$SR $PY -B -I - <<'PYE'
 import os
@@ -117,6 +127,7 @@ ids = ia[(ia.RingNumber == ring) & (ia.Omega >= -90) & (ia.Omega <= 90)].SpotID.
 if os.path.exists(p): os.unlink(p)
 open(p, "w").write("\n".join(map(str, ids)) + "\n")
 PYE
+    [ "${DRY:-0}" = 1 ] || set_gate $RUN/null$k      # run_arm rebuilt this arm's paramstest from the gate baked into the zip at prep
     ( cd $RUN/null$k; run "$P/midas-pipeline run --scan-mode ff --params Parameters.txt --result results --layers 1-1 --preproc-thresh $THR --n-cpus $((NCPUS/3)) --indexer-backend c-omp --refine-backend c-omp --binning-device cpu --no-refresh-params --resume auto > index.log 2>&1; echo null$k exit=\$?" )
   done ;;
 readout)

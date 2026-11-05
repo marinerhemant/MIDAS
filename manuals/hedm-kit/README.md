@@ -63,6 +63,7 @@ Run every command from the kit folder, after `export EXP=<experiment>; source ki
 6. **FF chain for one layer:** `ff/target_ff.sh prep <scan_folder> <file_nr>` (long: peakfit 2.7 h for one 1442-frame layer on 2 GPUs). `DRY=1` still runs the first stages for real (about 11 minutes, a ~12 GB zip under `$WORK`, one ring-thresh process at ~9 GB RAM) and only prints the peakfit command;
    the RingThresh answer is the final "Paste into the parameter file" block of `ringthresh.txt` (also written as one line to `RingThresh.txt`),
    then `seed`, `index`, `nulls`, `readout`. Run the stages one at a time and read each output.
+   `GATE=<x>` (default 0.5) is applied by the `index` and `nulls` stages; the reference comparison used `GATE=0.35`.
 7. **Read the readout against what you decided BEFORE you saw it.** `ff/ff_readout.py` prints grains per arm, N_above (real grains above every null grain) and the AUC.
 8. **pf:** see `pf/pf_run.sh` and its header. Experimental.
 

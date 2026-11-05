@@ -4,9 +4,9 @@
 # experiment.env must define: ENERGY_KEV (explog value, NOT the file name), LSD_MM, NPIX, PX_UM, IMTRANS, CAL_IMAGES, and the
 # placeholder sample keys TARGET_SG / TARGET_LAT. Optional: CAL_CALIBRANT (default CeO2), CAL_RAW_FOLDER + CAL_FILE_STEM + CAL_START_NR
 # (a real scan of the sample: calibrate-v2 wants one to write the sample keys), CAL_DARK_GROUP (default exchange/dark).
-# WARNING (reference beamtime): calibrant files whose exchange/dark is all zeros are refused by the tool (a zero dark subtracts nothing).
-# 20-ID-D stores the dark frames in exchange/bright of the dark_before file; point CAL_DARK_GROUP at a group that holds them, or
-# build a dark yourself; the 63 keV Ceria files in that beamtime were refused for this reason.
+# NOTE (reference beamtime): the 63 keV calibrant files keep their 10 dark frames in exchange/BRIGHT and have a single all-zero frame in exchange/dark
+# (the 46 keV files are the other way round). The tool refuses an all-zero dark, so set CAL_DARK_GROUP=exchange/bright for such files. Check a new
+# calibrant file with h5py first: the group whose frames have a mean near the detector pedestal (about 1500 counts here) is the dark.
 set -u
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$HERE/../kit_env.sh" || exit 1
