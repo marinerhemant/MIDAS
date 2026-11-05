@@ -197,8 +197,6 @@ def _score_U_against_centroids(
     has one entry per centroid; None means "no match found".
     """
     cos_tol = math.cos(math.radians(tol_angle_deg))
-    score = 0
-    matches: list[Optional[Tuple[int, int, int]]] = []
     centroid_qmag = np.linalg.norm(centroids, axis=1)
     centroid_unit = centroids / centroid_qmag[:, None]
     # Precompute predicted g_sample for every allowed hkl up to qmax of data
@@ -218,20 +216,24 @@ def _score_U_against_centroids(
     pred = np.stack(pred)
     pred_qmag = np.linalg.norm(pred, axis=1)
     pred_unit = pred / pred_qmag[:, None]
-    # for each centroid, scan predictions
+    # Best prediction per centroid, over the whole (n_centroids, n_pred) grid at once --
+    # was a Python double loop here, called from deep inside find_seed_orientation's own
+    # search (low-thousands of calls per position with default n_bright/max_per_centroid).
+    # np.argmax's "first occurrence of the max wins" tie-break matches the original loop's
+    # strict `cosv > best_cos` exactly; masking failed-magnitude pairs to -inf before the
+    # argmax reproduces the original `continue`, since -inf can never reach cos_tol.
+    mag_ok = (np.abs(pred_qmag[None, :] - centroid_qmag[:, None]) / centroid_qmag[:, None]
+             <= tol_q_rel)
+    cos_mat = np.where(mag_ok, centroid_unit @ pred_unit.T, -np.inf)
+    best_idx = np.argmax(cos_mat, axis=1)
+    best_cos = cos_mat[np.arange(len(centroids)), best_idx]
+
+    score = 0
+    matches: list[Optional[Tuple[int, int, int]]] = []
     for ci in range(len(centroids)):
-        best_cos = -1.0
-        best_hkl = None
-        for pi in range(len(pred)):
-            if abs(pred_qmag[pi] - centroid_qmag[ci]) / centroid_qmag[ci] > tol_q_rel:
-                continue
-            cosv = float(centroid_unit[ci] @ pred_unit[pi])
-            if cosv > best_cos:
-                best_cos = cosv
-                best_hkl = pred_hkl[pi]
-        if best_cos >= cos_tol and best_hkl is not None:
+        if best_cos[ci] >= cos_tol:
             score += 1
-            matches.append(best_hkl)
+            matches.append(pred_hkl[best_idx[ci]])
         else:
             matches.append(None)
     return score, matches

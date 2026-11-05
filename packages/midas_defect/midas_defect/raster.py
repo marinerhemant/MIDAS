@@ -99,6 +99,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -336,20 +337,46 @@ class IngestBundle:
     ingest_counts: dict
 
 
+def _resolve_max_workers(max_workers: Optional[int]) -> int:
+    """``None`` -> ``os.cpu_count() - 2`` when more than one CPU is visible, else ``1``.
+
+    Shared by :func:`_ingest_position` (threads :func:`subtract_background`/
+    :func:`find_blobs_3d`) and :func:`reduce_one_position`'s own cell-bootstrap threading
+    (:func:`midas_hkls.refine_cell_joint`). This is the right default for a single,
+    interactive call (one notebook position), but WRONG inside a worker pool of your own --
+    see :func:`reduce_raster_block` and :func:`midas_defect.spatial_coherence
+    .recover_domains_across_raster`, which both force ``1`` explicitly when they dispatch
+    positions across their own ``ProcessPoolExecutor`` instead, to avoid oversubscribing the
+    same cores twice.
+    """
+    if max_workers is not None:
+        return int(max_workers)
+    n_cpu = os.cpu_count()
+    return 1 if n_cpu is None or n_cpu <= 1 else n_cpu - 2
+
+
 def _ingest_position(frames: np.ndarray, geom: Geometry, *,
                      mask_low_count_threshold: float = 20.0,
                      blob_threshold_sigma: float = 8.0,
-                     blob_min_vol: int = 10, gap_bridge: int = 21, split_ratio: float = 3.0):
-    """The ``phase-1-ingest.md`` chain, copied, not reconstructed. Returns (spots, q, omega_deg, mask, counts)."""
+                     blob_min_vol: int = 10, gap_bridge: int = 21, split_ratio: float = 3.0,
+                     max_workers: Optional[int] = None):
+    """The ``phase-1-ingest.md`` chain, copied, not reconstructed. Returns (spots, q, omega_deg, mask, counts).
+
+    ``max_workers`` (default ``None``) is forwarded to :func:`subtract_background` and
+    :func:`find_blobs_3d`'s own ``max_workers`` -- see ``ingest``'s module docstring, "Why
+    ``max_workers`` means threads, not processes", and :func:`_resolve_max_workers` for the
+    default resolution and why it is only right for a single, non-pooled call.
+    """
+    max_workers = _resolve_max_workers(max_workers)
     tth, az = detector_angle_maps(geom)
     m = build_mask(frames, low_count_threshold=mask_low_count_threshold)
     mask = m.mask if hasattr(m, "mask") else m
-    sub = subtract_background(frames, tth, az, mask)
+    sub = subtract_background(frames, tth, az, mask, max_workers=max_workers)
     noise = 1.4826 * float(np.median(np.abs(sub - np.median(sub))))
     threshold = max(blob_threshold_sigma * noise, mask_low_count_threshold)
     spots, counts = find_blobs_3d(sub, mask, threshold=threshold, min_vol=blob_min_vol,
                                   split_ratio=split_ratio, gap_bridge=gap_bridge,
-                                  return_counts=True)
+                                  max_workers=max_workers, return_counts=True)
     spots = spots[spots.n_frames >= 2].reset_index(drop=True)
     if len(spots) == 0:
         return spots, torch.zeros((0, 3)), np.zeros(0), mask, sub, counts
@@ -557,6 +584,7 @@ def reduce_one_position(
     orientation_uncertainty: bool = False,
     n_orientation_boot: int = 25,
     ingested: Optional[IngestBundle] = None,
+    cell_bootstrap_max_workers: Optional[int] = None,
 ) -> PositionResult:
     """One raster position, start to finish: frames -> a gated a/b splitting, if one is possible.
 
@@ -598,9 +626,19 @@ def reduce_one_position(
     required even then -- ring detection and the later honesty checks
     (`targeted_recovery`, `feature_in_raw`) look at raw pixel values at ad hoc
     positions the ingest step never enumerates.
+
+    ``cell_bootstrap_max_workers`` (default ``None``) threads :func:`midas_hkls
+    .refine_cell_joint`'s own ``n_bootstrap``-resample loop (500 independent
+    ``scipy.optimize.least_squares`` fits by default) -- see
+    :func:`_resolve_max_workers` for the default resolution, which is only right for a
+    single, non-pooled call. :func:`reduce_raster_block` and :func:`midas_defect
+    .spatial_coherence.recover_domains_across_raster` both force this to ``1`` when
+    dispatching positions across their own process pool, for the same oversubscription
+    reason ``ingest_kwargs["max_workers"]`` is forced there.
     """
     ik = dict(ingest_kwargs or {})
     fk = dict(find_domains_kwargs or {})
+    cell_max_workers = _resolve_max_workers(cell_bootstrap_max_workers)
     notes: List[str] = []
 
     if ingested is not None:
@@ -859,7 +897,7 @@ def reduce_one_position(
              for i, d in enumerate(fit_domains)]
         cell0 = (a, a, c, 90.0, 90.0, 90.0)
         fit = refine_cell_joint(dd, system=system, cell0=cell0, two_pi=True,
-                               n_bootstrap=n_bootstrap)
+                               n_bootstrap=n_bootstrap, max_workers=cell_max_workers)
         refined_cell = fit.cell
         split_pct = split_with_error(fit)
         cell_bootstrap_samples = fit.cell_bootstrap_samples   # (n_kept, 6): a,b,c,alpha,beta,gamma
@@ -931,9 +969,20 @@ def reduce_raster_block(
     Feed a saved file back in via ``persistence.load_ingest_hdf5`` +
     ``reduce_one_position(..., ingested=...)`` to skip re-ingesting on a later run, or to
     :func:`midas_defect.spatial_coherence.recover_domains_across_raster`'s own ``cache_dir=``.
+
+    Forces ``ingest_kwargs["max_workers"] = 1`` and ``cell_bootstrap_max_workers = 1`` unless
+    the caller's own ``position_kwargs`` already sets them: this function's own shards already
+    run as separate OS processes (see above), so ``_ingest_position``'s and
+    :func:`midas_hkls.refine_cell_joint`'s default of ``os.cpu_count() - 2`` inner threads PER
+    SHARD would oversubscribe the same cores by however many shards share the node -- see
+    ``ingest``'s module docstring, "Why ``max_workers`` means threads, not processes".
     """
     if n_blocks < 1 or not (0 <= block_nr < n_blocks):
         raise ValueError(f"invalid sharding: block_nr={block_nr}, n_blocks={n_blocks}")
+    position_kwargs = dict(position_kwargs)
+    position_kwargs["ingest_kwargs"] = dict(position_kwargs.get("ingest_kwargs") or {})
+    position_kwargs["ingest_kwargs"].setdefault("max_workers", 1)
+    position_kwargs.setdefault("cell_bootstrap_max_workers", 1)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     shard = list(point_indices)[block_nr::n_blocks]

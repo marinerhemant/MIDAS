@@ -267,7 +267,8 @@ def _dedup(all_candidates: List[dict], threshold_deg: float, space_group_number:
 def _pass1_one_position(p: int, loader: Callable[[int], np.ndarray], geom: Geometry,
                         a: float, c: float, space_group_number: int,
                         sigma_rtn: Tuple[float, float, float], reduce_kwargs: dict,
-                        cache_dir: Optional[str], save_dense: bool):
+                        cache_dir: Optional[str], save_dense: bool,
+                        ingest_max_workers: Optional[int] = None):
     """One position's ingest + free search -- the unit of work pass 1 dispatches, either
     directly in a for-loop (``n_workers`` unset) or via ``ProcessPoolExecutor`` (``n_workers``
     set). Returns ``(p, q_all, res, candidate_entries)`` -- deliberately NOT the ingest bundle
@@ -279,6 +280,14 @@ def _pass1_one_position(p: int, loader: Callable[[int], np.ndarray], geom: Geome
     tests' own in-memory ``loader``, would NOT survive ``spawn`` in the parallel path; a real
     ``loader`` for parallel use must itself be a plain, importable, module-level callable
     (a per-position file read keyed only on ``p``, not a closure over local state).
+
+    ``ingest_max_workers`` is forwarded to :func:`_ingest_position`'s own ``max_workers``.
+    :func:`recover_domains_across_raster` passes ``1`` here whenever it dispatches this
+    function across its own ``ProcessPoolExecutor`` (``n_workers > 1``): that pool is itself
+    ``n_workers`` OS processes, so letting each one ALSO default to ``_ingest_position``'s
+    ``os.cpu_count() - 2`` inner thread pool would oversubscribe the same cores by roughly
+    ``n_workers``x -- see ``ingest``'s module docstring, "Why ``max_workers`` means threads,
+    not processes".
     """
     import torch
     frames = loader(p)
@@ -291,11 +300,13 @@ def _pass1_one_position(p: int, loader: Callable[[int], np.ndarray], geom: Geome
         from .persistence import load_ingest_hdf5
         bundle = load_ingest_hdf5(cache_path)
         if bundle.sub is None:   # a sparse-only cache -- reduce_one_position needs sub too
-            spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(frames, geom)
+            spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(
+                frames, geom, max_workers=ingest_max_workers)
             bundle = IngestBundle(spots=spots, qlab=qlab, omega_deg=omega_deg, mask=mask,
                                   sub=sub, ingest_counts=ingest_counts)
     else:
-        spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(frames, geom)
+        spots, qlab, omega_deg, mask, sub, ingest_counts = _ingest_position(
+            frames, geom, max_workers=ingest_max_workers)
         bundle = IngestBundle(spots=spots, qlab=qlab, omega_deg=omega_deg, mask=mask,
                               sub=sub, ingest_counts=ingest_counts)
     qlab, omega_deg = bundle.qlab, bundle.omega_deg
@@ -408,6 +419,15 @@ def recover_domains_across_raster(
     reduce_kwargs = dict(reduce_kwargs or {})
     point_indices = list(point_indices)
     parallel = n_workers is not None and n_workers > 1
+    # Force _ingest_position's inner thread pool to 1 whenever pass 1 ITSELF is already a pool
+    # of n_workers OS processes -- otherwise each process would also default to
+    # os.cpu_count() - 2 threads, oversubscribing by roughly n_workers x. Sequential dispatch
+    # (parallel=False) keeps _ingest_position's own smart default (None -> cpu_count() - 2).
+    ingest_max_workers = 1 if parallel else None
+    # Same reasoning for reduce_one_position's own cell-bootstrap thread pool
+    # (midas_hkls.refine_cell_joint's n_bootstrap resamples) -- setdefault so an explicit
+    # caller override in reduce_kwargs still wins.
+    reduce_kwargs.setdefault("cell_bootstrap_max_workers", 1 if parallel else None)
 
     per_position: Dict[int, PositionCoherence] = {}
     all_candidates: List[dict] = []
@@ -416,7 +436,7 @@ def recover_domains_across_raster(
         for p in point_indices:
             p, q_all, res, candidate_entries = _pass1_one_position(
                 p, loader, geom, a, c, space_group_number, sigma_rtn, reduce_kwargs,
-                cache_dir, save_dense)
+                cache_dir, save_dense, ingest_max_workers)
             per_position[p] = PositionCoherence(point=p, res=res, q_all=q_all,
                                                 null_counts=[], null_threshold=float("nan"))
             all_candidates.extend(candidate_entries)
@@ -425,7 +445,8 @@ def recover_domains_across_raster(
         from concurrent.futures import ProcessPoolExecutor, as_completed
         with ProcessPoolExecutor(max_workers=n_workers, mp_context=mp.get_context("spawn")) as ex:
             futs = {ex.submit(_pass1_one_position, p, loader, geom, a, c, space_group_number,
-                              sigma_rtn, reduce_kwargs, cache_dir, save_dense): p
+                              sigma_rtn, reduce_kwargs, cache_dir, save_dense,
+                              ingest_max_workers): p
                    for p in point_indices}
             for fut in as_completed(futs):
                 p, q_all, res, candidate_entries = fut.result()
