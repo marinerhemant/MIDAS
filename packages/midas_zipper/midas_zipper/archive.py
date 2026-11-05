@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -97,12 +98,22 @@ def _evenly(n, k):
 
 
 def scan_median(data, nsub=MEDIAN_FRAMES, budget=MEMORY_BUDGET):
-    """Per-pixel median of evenly spaced frames of ``data`` (an ``(N, Z, Y)`` zarr array)."""
+    """Per-pixel median of evenly spaced frames of ``data`` (an ``(N, Z, Y)`` zarr array).
+
+    Holds at most ``budget`` bytes of frames (8 frames minimum, so very large detectors use few) and
+    takes the median in row bands, so the temporary arrays stay small.
+    """
     frame_bytes = int(np.prod(data.shape[1:])) * data.dtype.itemsize
-    k = int(max(8, min(nsub, budget // max(frame_bytes, 1))))
+    k = int(max(8, min(nsub, budget // (2 * max(frame_bytes, 1)))))
     idx = _evenly(data.shape[0], k)
-    stack = np.stack([data[int(i)] for i in idx])
-    return _clip_round(np.median(stack, axis=0), data.dtype), len(idx)
+    stack = np.empty((len(idx),) + tuple(data.shape[1:]), dtype=data.dtype)
+    for j, i in enumerate(idx):
+        stack[j] = data[int(i)]
+    med = np.empty(data.shape[1:], dtype=data.dtype)
+    rows = max(1, int(64e6 // (len(idx) * int(np.prod(data.shape[2:])) * data.dtype.itemsize * 2)))
+    for r in range(0, data.shape[1], rows):
+        med[r:r + rows] = _clip_round(np.median(stack[:, r:r + rows], axis=0), data.dtype)
+    return med, len(idx)
 
 
 def dark_background(dark, dtype):
@@ -116,7 +127,9 @@ def dark_background(dark, dtype):
 def _candidates(data, dark, mode):
     """Yield ``(name, background, shift)``; ``raw`` is handled by the caller."""
     dtype = data.dtype
-    sample = np.stack([data[int(i)] for i in _evenly(data.shape[0], TRIAL_FRAMES)])
+    frame_bytes = int(np.prod(data.shape[1:])) * dtype.itemsize
+    k = int(max(2, min(TRIAL_FRAMES, MEMORY_BUDGET // (3 * max(frame_bytes, 1)))))
+    sample = np.stack([data[int(i)] for i in _evenly(data.shape[0], k)])
     shift = common_shift(sample)
     bgs = []
     if mode in ("dark", "auto") and dark is not None and np.any(dark):
@@ -165,8 +178,9 @@ def _copy_tree(src, dst, skip, prefix=""):
 def convert_zip(src, dst=None, mode="dark", chunk_frames=8, verify=True, log=print):
     """Re-encode ``src`` (an ordinary MIDAS zip) as an archive zip at ``dst``.
 
-    ``dst=None`` replaces ``src``. Returns ``(name, sizes)``; with ``name == "raw"``
-    nothing was written. Every chunk is decoded again and compared with the source
+    ``dst=None`` replaces ``src``. Returns ``(name, sizes)``; with ``name == "raw"`` the frames
+    are kept raw: ``src`` is untouched and, if ``dst`` is given, it receives a plain copy of
+    ``src``. A failed conversion leaves no partial file. Every chunk is decoded again and compared with the source
     while writing (``verify``), so a bad encode cannot be saved.
     """
     import zarr
@@ -177,30 +191,39 @@ def convert_zip(src, dst=None, mode="dark", chunk_frames=8, verify=True, log=pri
     name, bg, shift, sizes = choose_encoding(data, dark, mode)
     log(f"archive: trial sizes {sizes} -> {name}")
     if name == "raw":
+        if dst is not None:
+            shutil.copyfile(src, dst)
         return name, sizes
 
     out = dst or src.with_name(src.name + ".archive.tmp")
     if out.exists():
         out.unlink()
     store = zarr.ZipStore(str(out), mode="w")
-    zout = zarr.group(store=store, overwrite=True)
-    N, Z, Y = data.shape
-    exc = zout.require_group("exchange")
-    _copy_tree(zin, zout, skip={"exchange/data"})
-    exc = zout["exchange"]
-    exc.create_dataset("background", data=bg.reshape(1, Z, Y), chunks=(1, Z, Y),
-                       compressor=_make_compressor())
-    res = exc.create_dataset("data_resid", shape=data.shape, dtype=_uns(data.dtype),
-                             chunks=(1, Z, Y), compressor=_make_compressor())
-    res.attrs.update(encoding=ENCODING, background=name, shift=int(shift),
-                     orig_dtype=str(data.dtype))
-    for s in range(0, N, chunk_frames):
-        raw = data[s:s + chunk_frames]
-        z = zigzag_encode(raw, bg)
-        if verify and not np.array_equal(zigzag_decode(z, bg, data.dtype), raw):
-            raise RuntimeError(f"archive: round trip failed in frames {s}..{s + len(raw) - 1}")
-        res[s:s + len(raw)] = z
-    store.close()
+    try:
+        zout = zarr.group(store=store, overwrite=True)
+        N, Z, Y = data.shape
+        _copy_tree(zin, zout, skip={"exchange/data"})
+        exc = zout["exchange"]
+        exc.create_dataset("background", data=bg.reshape(1, Z, Y), chunks=(1, Z, Y),
+                           compressor=_make_compressor())
+        res = exc.create_dataset("data_resid", shape=data.shape, dtype=_uns(data.dtype),
+                                 chunks=(1, Z, Y), compressor=_make_compressor())
+        res.attrs.update(encoding=ENCODING, background=name, shift=int(shift),
+                         orig_dtype=str(data.dtype))
+        for s0 in range(0, N, chunk_frames):
+            raw = data[s0:s0 + chunk_frames]
+            z = zigzag_encode(raw, bg)
+            if verify and not np.array_equal(zigzag_decode(z, bg, data.dtype), raw):
+                raise RuntimeError(f"archive: round trip failed in frames {s0}..{s0 + len(raw) - 1}")
+            res[s0:s0 + len(raw)] = z
+        store.close()
+    except BaseException:
+        try:
+            store.close()
+        finally:
+            if out.exists():
+                out.unlink()
+        raise
     if dst is None:
         os.replace(out, src)
     return name, sizes

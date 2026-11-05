@@ -164,3 +164,39 @@ def test_flag_keeps_raw_frames_where_the_default_clips(tmp_path):
     zip_scan(arc, archiveLossless="dark")
     archive.convert_zip(arc, None, mode="dark", log=lambda *a: None)
     assert np.array_equal(archive.read_frames(arc), frames)
+
+
+def test_raw_verdict_with_dst_copies_the_source(tmp_path):
+    rng = np.random.default_rng(8)
+    data = rng.integers(0, 65536, (8, 32, 32)).astype(np.uint16)
+    src, dst = tmp_path / "r.zip", tmp_path / "r.out.zip"
+    _make_zip(src, data, np.zeros((2, 32, 32), np.uint16))
+    name, _ = archive.convert_zip(src, dst, mode="auto", log=lambda *a: None)
+    assert name == "raw"
+    assert dst.read_bytes() == src.read_bytes()
+
+
+def test_failed_conversion_leaves_no_partial_file(tmp_path, monkeypatch):
+    rng = np.random.default_rng(9)
+    data, dark = _pedestal_scan(rng)
+    src, dst = tmp_path / "f.zip", tmp_path / "f.arc.zip"
+    _make_zip(src, data, dark)
+    before = src.read_bytes()
+    monkeypatch.setattr(archive, "zigzag_decode", lambda z, ref, dt: np.zeros_like(z).view(dt))
+    for target in (dst, None):
+        with pytest.raises(RuntimeError, match="round trip failed"):
+            archive.convert_zip(src, target, mode="dark", log=lambda *a: None)
+        assert not dst.exists() and not list(tmp_path.glob("*.archive.tmp"))
+        assert src.read_bytes() == before
+
+
+def test_scan_median_is_the_median_and_respects_a_tiny_budget():
+    rng = np.random.default_rng(10)
+    frames = rng.integers(0, 500, (40, 24, 16)).astype(np.uint16)
+    z = zarr.array(frames, chunks=(1, 24, 16))
+    med, n = archive.scan_median(z, nsub=64, budget=1e12)
+    idx = archive._evenly(40, 64)
+    assert n == len(idx) == 40
+    assert np.array_equal(med, np.rint(np.median(frames[idx], axis=0)).astype(np.uint16))
+    _, n_small = archive.scan_median(z, nsub=64, budget=1)      # budget below one frame: the 8-frame floor
+    assert n_small == 8

@@ -52,6 +52,16 @@ store 12 bits in 16 the background is rounded onto the data's bit grid (a dark
 that is off the grid makes things worse otherwise). Every chunk is decoded and
 compared with its source while writing.
 
+The gain is measured against the uncorrected ordinary zip (raw frames plus the
+real dark, Blosc zstd level 1 bitshuffle), not against the lossy dark-corrected
+zip the default path writes with a dark file, which is smaller (Varex: 4.5x
+against 3.2x for the archive). On the study slabs (one scan per detector) the
+ratio rose from 3.2x to 5.4x on GE, 2.3x to 3.2x on Varex, 10.6x to 11.6x on
+Pilatus and 2.9x to 3.8x on an NF detector, and every frame decoded bit-exact.
+Part of the Pilatus gain is the -1 gap pixels being recoded, not background.
+The median background holds about 8 to 20 frames at once on very large
+detectors (Eiger2), by design.
+
 An archive zip has no `exchange/data`; it has `exchange/data_resid` and
 `exchange/background`, so a reader that does not know the encoding stops with a
 `KeyError` instead of reading residuals. To read it:
