@@ -269,9 +269,7 @@ def calibrate_tilted(
         seed_lsd = float(lsd_um)
     else:
         seed_lsd = float(seed.Lsd_um)
-    first_ring_px = seed_lsd * math.tan(math.radians(ring_tth[0])) / px_um
     pick = dict(point_pick_kwargs) if point_pick_kwargs else {"min_ring_gap_deg": 0.08}
-
     if nominal_tilt_deg is None:
         starts: List[Tuple[float, float]] = [(0.0, 0.0)]
     elif isinstance(nominal_tilt_deg, (int, float)):
@@ -283,37 +281,42 @@ def calibrate_tilted(
         ty0, tz0 = (float(x) for x in nominal_tilt_deg)
         starts = [(ty0, tz0)]
 
-    best = None
-    v1_used = None
-    for ty0, tz0 in starts:
-        v1 = _v1_params(img, wavelength_A, px_um, cal, seed_lsd, seed.BC_y, seed.BC_z,
-                        ty0, tz0, first_ring_px)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            r = iterate_frozen_point_until_stable(v1, img, point_pick_kwargs=pick, verbose=False)
-        strain = float(getattr(r.fit, "mean_strain_uE", float("nan")))
-        if verbose:
-            print(f"[tilted] start (ty,tz)=({ty0:.2f},{tz0:.2f}): iterate converged={r.converged} "
-                  f"n_iter={r.n_iter} strain={strain:.0f} microstrain")
-        key = strain if math.isfinite(strain) else float("inf")
-        if best is None or key < best[0]:
-            best = (key, r, ty0, tz0)
-            v1_used = v1
-    _, it, _, _ = best
-    geom_it = _unpack(it.res)
-    cands = [("iterate", geom_it, it.res)]
-    if polish:
-        v1p = _v1_params(img, wavelength_A, px_um, cal, geom_it["Lsd"], geom_it["BC_y"],
-                         geom_it["BC_z"], geom_it["ty"], geom_it["tz"], first_ring_px)
-        try:
+    def _chain(seed_lsd, bc_y, bc_z):
+        """iterate (+ radial pass) from one seed; returns (iterate result, v1 used, candidates)."""
+        first_ring_px = seed_lsd * math.tan(math.radians(ring_tth[0])) / px_um
+        best = None
+        v1_used = None
+        for ty0, tz0 in starts:
+            v1 = _v1_params(img, wavelength_A, px_um, cal, seed_lsd, bc_y, bc_z,
+                            ty0, tz0, first_ring_px)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                rp = autocalibrate_frozen_point(v1p, img, refine_distortion="radial",
-                                                point_pick_kwargs=pick, verbose=False)
-            cands.append(("iterate+radial pass", _unpack(rp), rp))
-        except Exception as exc:                                    # keep the iterate result
-            notes.append(f"distortion polish pass failed ({type(exc).__name__}: {exc}); "
-                         "iterate geometry kept")
+                r = iterate_frozen_point_until_stable(v1, img, point_pick_kwargs=pick, verbose=False)
+            strain = float(getattr(r.fit, "mean_strain_uE", float("nan")))
+            if verbose:
+                print(f"[tilted] start (ty,tz)=({ty0:.2f},{tz0:.2f}): iterate converged={r.converged} "
+                      f"n_iter={r.n_iter} strain={strain:.0f} microstrain")
+            key = strain if math.isfinite(strain) else float("inf")
+            if best is None or key < best[0]:
+                best = (key, r, ty0, tz0)
+                v1_used = v1
+        _, it, _, _ = best
+        geom_it = _unpack(it.res)
+        cands = [("iterate", geom_it, it.res)]
+        if polish:
+            v1p = _v1_params(img, wavelength_A, px_um, cal, geom_it["Lsd"], geom_it["BC_y"],
+                             geom_it["BC_z"], geom_it["ty"], geom_it["tz"], first_ring_px)
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    rp = autocalibrate_frozen_point(v1p, img, refine_distortion="radial",
+                                                    point_pick_kwargs=pick, verbose=False)
+                cands.append(("iterate+radial pass", _unpack(rp), rp))
+            except Exception as exc:                                    # keep the iterate result
+                notes.append(f"distortion polish pass failed ({type(exc).__name__}: {exc}); "
+                             "iterate geometry kept")
+        return it, v1_used, cands
+
     def _score(cands_):
         out_ = []
         for name_, g_, res_ in cands_:
@@ -325,13 +328,54 @@ def calibrate_tilted(
                          name_, g_, res_, gate_))
         return out_
 
+    first_ring_px = seed_lsd * math.tan(math.radians(ring_tth[0])) / px_um
+    it, v1_used, cands = _chain(seed_lsd, seed.BC_y, seed.BC_z)
     scored = _score(cands)
+    seed_used = seed
+    if lsd_um is None and min(t[0] for t in scored) == _RANK["FAIL"]:
+        # The seed's ring assignment can be wrong with no residual showing it: a circle fit to an
+        # elliptical arc splits one ring into a pair of radii, and the right assignment then ranks
+        # second by a point or two (2 of 43 real frames). Before the minutes-long pv fallback, try
+        # (1) the seed built with the relative circle-misfit tolerance, then (2) the seeder's
+        # runner-up assignments, each a different distance; stop at the first the gate accepts.
+        tries = []
+        try:
+            alt = make_seed(img, wavelength_A=wavelength_A, px_um=px_um, calibrant=calibrant,
+                            use_diplib=False, rms_rel_force=0.03)
+            if (abs(alt.Lsd_um / seed.Lsd_um - 1.0) > 0.02 or alt.first_ring != seed.first_ring):
+                tries.append(("relative-tolerance seed", float(alt.Lsd_um), alt.BC_y, alt.BC_z, alt.first_ring))
+        except Exception as exc:
+            notes.append(f"alternative seed failed ({type(exc).__name__}: {exc})")
+        for h in list(getattr(seed, "alternatives", []))[:2]:
+            tries.append(("runner-up assignment", float(h["Lsd_um"]), seed.BC_y, seed.BC_z, h["first_ring"]))
+        for label, t_lsd, t_by, t_bz, t_ring in tries:
+            if verbose:
+                print(f"[tilted] gate FAIL: retrying from the {label} (Lsd {t_lsd/1e3:.0f} mm, ring {t_ring})")
+            it_a, v1_a, cands_a = _chain(t_lsd, t_by, t_bz)
+            scored_a = [(r_, m_, "alt-seed " + n_, g_, res_, gt_)
+                        for (r_, m_, n_, g_, res_, gt_) in _score(cands_a)]
+            # Adopt only a strictly better gate VERDICT. Between two FAILs a lower median is not
+            # evidence of a better geometry (Lab6 000283: the retry moved the distance from the
+            # right 895 mm to 535 mm because its surviving cells had a smaller median).
+            better = min(t[0] for t in scored_a) < min(t[0] for t in scored)
+            if better:
+                it, v1_used, cands = it_a, v1_a, cands_a
+                seed_lsd = t_lsd
+                seed_used = type(seed)(**{**seed.__dict__, "Lsd_um": t_lsd, "BC_y": t_by, "BC_z": t_bz,
+                                          "first_ring": t_ring})
+                first_ring_px = seed_lsd * math.tan(math.radians(ring_tth[0])) / px_um
+                notes.append(f"the first seed ({seed.Lsd_um/1e3:.0f} mm, ring {seed.first_ring}) failed the "
+                             f"gate; the alternative seed from the {label} ({t_lsd/1e3:.0f} mm, ring "
+                             f"{t_ring}) was kept")
+            scored = scored + scored_a
+            if min(t[0] for t in scored_a) < _RANK["FAIL"]:
+                break
     if fallback_pv and min(t[0] for t in scored) == _RANK["FAIL"]:
         if verbose:
             print("[tilted] gate FAIL after the iterated route: running autocalibrate_pv "
                   "(wide capture window, takes minutes) ...")
         from .single_pv import autocalibrate_pv
-        v1pv = _v1_params(img, wavelength_A, px_um, cal, seed_lsd, seed.BC_y, seed.BC_z,
+        v1pv = _v1_params(img, wavelength_A, px_um, cal, seed_lsd, seed_used.BC_y, seed_used.BC_z,
                           0.0, 0.0, first_ring_px)
         try:
             with warnings.catch_warnings():
@@ -353,14 +397,15 @@ def calibrate_tilted(
                                                 * math.cos(math.radians(geom["tz"]))))))
     verdict = gate.verdict
     if gate.verdict == "FAIL":
-        notes.append("do NOT use this geometry. Supply a distance hint (lsd_um; the seed distance is "
-                     "wrong in about 1 file in 7) and/or the nominal tilt (nominal_tilt_deg), or stop "
+        notes.append("do NOT use this geometry. The seed, its relative-tolerance variant and its runner-up "
+                     "assignments were tried. Supply a distance hint (lsd_um, e.g. the stage readback) "
+                     "and/or the nominal tilt (nominal_tilt_deg), or stop "
                      "and inspect the ring overlay")
     out = TiltedCalibration(
         verdict=verdict, geometry=geom, tilt_deg=tilt,
         perp_distance_mm=geom["Lsd"] / 1e3 * math.cos(math.radians(tilt)),
         gate=gate, route=name, converged=bool(it.converged), n_iter=int(it.n_iter),
-        seed=dict(Lsd_um=float(seed.Lsd_um), BC_y=float(seed.BC_y), BC_z=float(seed.BC_z)),
+        seed=dict(Lsd_um=float(seed_used.Lsd_um), BC_y=float(seed_used.BC_y), BC_z=float(seed_used.BC_z)),
         seconds=time.time() - t_all, notes=notes, result=res, v1_params=v1_used, bad_mask=bad)
     if verbose:
         print(out)

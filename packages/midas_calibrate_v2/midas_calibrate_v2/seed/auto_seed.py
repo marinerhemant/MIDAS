@@ -57,7 +57,7 @@ import math
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Optional, Union
 
 import numpy as np
@@ -104,6 +104,9 @@ class Seed:
     # nothing and the search was relaxed, which is a weaker result: relaxed far
     # enough, the arc finder will fit noise.
     threshold_rung: int = 0
+    # Runner-up (first_ring, Lsd) hypotheses, best first, each >3 % away in distance from the
+    # chosen one and from each other. For callers that can test a distance themselves.
+    alternatives: list = field(default_factory=list)
 
     def __str__(self):
         return (
@@ -314,7 +317,7 @@ def _assign_rings(measured_R_px, *, wavelength_A, px_um,
                   cal_spec, BC_y, BC_z, detector_ny, detector_nz,
                   max_first_ring=25, max_rel_residual=0.03,
                   missing_inner_penalty=0.5, gap_penalty=0.1, rms_penalty=0.1,
-                  missing_inner_min_arc_px=80.0):
+                  missing_inner_min_arc_px=80.0, max_alternatives=3):
     """Score every (k = which ring is the smallest measured one) hypothesis;
     return the highest-scoring RingAssignment.
 
@@ -327,6 +330,7 @@ def _assign_rings(measured_R_px, *, wavelength_A, px_um,
     table = _ring_table(cal_spec, wavelength_A, n_rings=50)
 
     best = None
+    hyps = []
     for k in range(min(max_first_ring, len(table))):
         _hkl_k, _d_k, tt_k_deg, ring_k = table[k]
         tt_k = math.radians(tt_k_deg)
@@ -380,12 +384,31 @@ def _assign_rings(measured_R_px, *, wavelength_A, px_um,
                  for m in matched]
         rms = float(np.sqrt(np.mean(np.array(resid) ** 2)))
         score = len(matched) - missing_inner_penalty*n_miss - gap_penalty*gaps - rms_penalty*rms
+        hyp = {"first_ring": int(ring_k), "Lsd_um": float(lsd_ref),
+               "n_match": len(matched), "rms_px": float(rms),
+               "score": float(score)}
+        hyps.append(hyp)
         if best is None or score > best["score"]:
-            best = {"first_ring": int(ring_k), "Lsd_um": float(lsd_ref),
-                    "n_match": len(matched), "rms_px": float(rms),
-                    "score": float(score)}
+            best = hyp
     if best is None:
         raise RuntimeError("No ring assignment matched within tolerance")
+    # Runner-up hypotheses with a materially different distance. On a tilted detector the
+    # circle-fit radii of one ring split in pairs and the right assignment can rank second
+    # by under two score points (measured: 2 of 43 frames, right answer ranked 2nd), so a
+    # caller that can test a distance (calibrate_tilted: iterate + ring-position gate) gets
+    # the next few to try.
+    alts = []
+    for h in sorted(hyps, key=lambda h: -h["score"]):
+        if h is best:
+            continue
+        if abs(h["Lsd_um"] / best["Lsd_um"] - 1.0) < 0.03:
+            continue
+        if any(abs(h["Lsd_um"] / a["Lsd_um"] - 1.0) < 0.03 for a in alts):
+            continue
+        alts.append(h)
+        if len(alts) >= max_alternatives:
+            break
+    best = dict(best, alternatives=alts)
     return best
 
 
@@ -472,6 +495,10 @@ def make_seed(img: np.ndarray, *,
               min_arc_pixels: Optional[int] = None,
               min_arc_fraction: float = 0.10,
               max_rms_px: float = 1.5,
+              max_rms_rel: float = 0.03,
+              max_rms_rel_tilted: float = 0.12,
+              min_good_arcs: int = 4,
+              rms_rel_force: Optional[float] = None,
               median_kernel: int = 101,
               median_iters: int = 3,
               use_diplib: bool = False,
@@ -517,8 +544,29 @@ def make_seed(img: np.ndarray, *,
         length (default 0.10). Ensures the threshold scales with detector
         size: 51 px on a 512-px Eiger, 288 px on a 2880-px Varex.
     max_rms_px : float
-        Per-arc circle-fit RMS cutoff (default 1.5 px). Arcs that fit
-        poorly to a circle are dropped.
+        Per-arc circle-fit RMS cutoff, absolute floor (default 1.5 px).
+    max_rms_rel : float
+        Relative per-arc cutoff, tier 1 (default 0.03): an arc is kept when
+        ``rms <= max(max_rms_px, max_rms_rel * R)``. Used only if the fixed
+        ``max_rms_px`` tier left fewer than ``min_good_arcs`` arcs. A ring on a
+        tilted detector is an ellipse and a circle fitted to a full arc of it
+        misfits by about ``(1 - cos(tilt)) / 2`` of the radius (measured rms
+        0.6 % of R at -10 deg). The fixed 1.5 px dropped every full-length arc
+        of five such frames and kept only short fragments of the outer rings,
+        which were then taken for the innermost rings: seed Lsd 2.66x too large,
+        rms ~0, no warning.
+    max_rms_rel_tilted : float
+        Tier 2 (default 0.12, good to about 45 deg), tried only if tier 1 still
+        left fewer than ``min_good_arcs``.
+    rms_rel_force : float or None
+        Skip the tiers and use ``max(max_rms_px, rms_rel_force * R)`` from the
+        start. ``calibrate_tilted`` uses it to build an alternative seed when
+        the first one fails the ring-position gate.
+    min_good_arcs : int
+        A seed resting on fewer ring radii than this is flagged in ``notes``
+        as weak (default 4): with 2-3 radii several ring assignments fit
+        equally well and the distance can be wrong without any residual
+        showing it.
     median_kernel : int
         Background-estimate median filter kernel size (default 101 px).
         Applied after 4× downsampling.
@@ -631,7 +679,7 @@ def make_seed(img: np.ndarray, *,
                 bright, footprint=morphology.disk(int(dilation_radius)))
         thin = morphology.skeletonize(bright)
         label = measure.label(thin, connectivity=2)
-        found = []
+        fitted = []
         for region in measure.regionprops(label):
             if region.area < min_arc_px:
                 continue
@@ -642,10 +690,29 @@ def make_seed(img: np.ndarray, *,
                 cx, cy, R, rms = _refine_circle(cols, rows, cx0, cy0, R0)
             except Exception:
                 continue
-            if not np.isfinite(R) or R <= 5 or R > 4000 or rms > max_rms_px:
+            if not np.isfinite(R) or R <= 5 or R > 4000:
                 continue
-            found.append({"cx": cx, "cy": cy, "R": R, "rms": rms,
-                          "n_pts": int(rows.size), "x": cols, "y": rows})
+            fitted.append({"cx": cx, "cy": cy, "R": R, "rms": rms,
+                           "n_pts": int(rows.size), "x": cols, "y": rows})
+        # Circle-misfit tiers on the SAME threshold rung. Tier 0 is the historical
+        # fixed cutoff, and a rung that yields enough arcs on it is used exactly
+        # as before. Only when it leaves fewer than ``min_good_arcs`` do the
+        # relative tiers (tilted ring = ellipse) get a turn, because accepting
+        # a worse circle fit is not free: on a 45 deg frame whose six tier-0 arcs
+        # seeded correctly, the 3 % tier adds two fragments of an eccentric
+        # ellipse (circle-fit centres 600 px apart) whose "radii" corrupt the
+        # joint beam centre and the seed lands on ring 3 at 0.59x the distance.
+        if rms_rel_force is not None:
+            tiers = [rms_rel_force]
+        else:
+            tiers = [0.0, max_rms_rel, max_rms_rel_tilted]
+        found = []
+        for rel in tiers:
+            cand = [a for a in fitted if a["rms"] <= max(max_rms_px, rel * a["R"])]
+            if len(cand) > len(found):
+                found = cand
+            if len(found) >= min_good_arcs:
+                break
         if len(found) >= 2:
             arcs, rung_used, rung_note = found, rung, note
             break
@@ -695,16 +762,22 @@ def make_seed(img: np.ndarray, *,
         cal_spec=cal_spec, BC_y=cx, BC_z=cy,
         detector_ny=ny, detector_nz=nz)
 
+    weak = ""
+    if len(R_collapsed) < min_good_arcs:
+        weak = (f" — WEAK: only {len(R_collapsed)} ring radii (< {min_good_arcs}); "
+                "the ring assignment, and so the distance, can be wrong with "
+                "no residual showing it. Check the first ring against the image "
+                "or pass a distance hint.")
     return Seed(
         BC_y=cx, BC_z=cy, Lsd_um=a["Lsd_um"],
         wavelength_A=wavelength_A, px_um=px_um,
         calibrant_name=calibrant_name,
         first_ring=a["first_ring"], n_measured=len(R_collapsed),
         rms_px=a["rms_px"], elapsed_s=time.time() - t0,
-        threshold_rung=rung_used,
+        threshold_rung=rung_used, alternatives=list(a.get("alternatives", [])),
         notes=(f"{len(arcs)} arcs, {len(inliers)} BC inliers, "
                f"{len(R_collapsed)} collapsed radii, score={a['score']:.2f}, "
                f"threshold rung {rung_used} ({rung_note})"
                + ("" if rung_used == 0 else
                   " — NOT the strict setting; treat as weaker and confirm the "
-                  "frame carries real signal")))
+                  "frame carries real signal") + weak))
