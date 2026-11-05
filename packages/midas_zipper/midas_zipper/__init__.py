@@ -24,7 +24,7 @@ try:  # pragma: no cover - environment-dependent
 except ImportError:  # HDF5 files with no plugin filter still read fine
     pass
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = ["generate_ff_zip", "__version__"]
 
