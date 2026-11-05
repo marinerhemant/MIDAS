@@ -155,6 +155,18 @@ def datatype_string(dtype):
     return _DATATYPE_NAMES[t]
 
 
+def gate_base(dark_mean):
+    """Dark level the pre-threshold gate is measured from: the SAME integer part the subtraction removes.
+
+    ``apply_correction`` subtracts ``int(dark_mean)`` but gates against ``dark_mean + T``. With a float dark
+    mean (the GE-binary and HDF5 readers) the gate then sat up to one count above the subtraction: a pixel
+    whose corrected value was exactly T .. T + frac(dark) was zeroed although it is above T. Gating from
+    ``trunc(dark_mean)`` makes the gate and the subtraction agree. Integer darks are unchanged, and so is the
+    no-threshold case (T = 0 or -1: every pixel the old gate zeroed has a corrected value of 0 anyway).
+    """
+    return np.trunc(dark_mean) if np.issubdtype(np.asarray(dark_mean).dtype, np.floating) else dark_mean
+
+
 @jit(nopython=True)
 def apply_correction(img, dark_mean, pre_proc_thresh_val):
     """Applies dark correction. This function is now type-agnostic."""
@@ -320,7 +332,7 @@ def process_hdf5_scan(config, z_groups, zRoot):
     print("\n--- Processing HDF5 File(s) ---")
     num_files, skip_frames = int(config.get('numFilesPerScan', 1)), int(config.get('SkipFrame', 0))
     data_loc, dark_loc = config['dataLoc'], config['darkLoc']
-    pre_proc_active = int(config.get('preProcThresh', -1)) != -1
+    pre_proc_active = int(config.get('preProcThresh', -1)) != -1 and not config.get('archiveLossless')
 
     file_list = []
     # Handle filename parsing for sequences. If .bz2, strip it temporarily to find the number.
@@ -463,7 +475,7 @@ def process_hdf5_scan(config, z_groups, zRoot):
                     dark_mean = np.mean(dark_frames[skip_frames:], axis=0)
                 else:
                     dark_mean = dark_frames[0]
-                pre_proc_val = (dark_mean + int(config['preProcThresh'])) if pre_proc_active else dark_mean
+                pre_proc_val = (gate_base(dark_mean) + int(config['preProcThresh'])) if pre_proc_active else gate_base(dark_mean)
                 print(f'Mean value of pre_proc_val: {np.mean(pre_proc_val)}, darkMean: {np.mean(dark_mean)}')
 
                 start_frame_in_file = skip_frames if i > 0 else 0
@@ -547,7 +559,8 @@ def process_multifile_scan(file_type, config, z_groups):
     dark_file_path = config.get('darkFN')
     dark_file_provided = dark_file_path and Path(dark_file_path).exists()
     pre_proc_thresh_value = int(config.get('preProcThresh', -1))
-    correction_active = dark_file_provided or pre_proc_thresh_value != -1
+    # -archiveLossless keeps raw frames and the real dark; the archive pass subtracts them.
+    correction_active = (dark_file_provided or pre_proc_thresh_value != -1) and not config.get('archiveLossless')
     if correction_active:
         print("Info: Dark correction/processing is active.")
 
@@ -699,7 +712,7 @@ def process_multifile_scan(file_type, config, z_groups):
         z_groups['exc'].create_dataset('dark', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
         z_groups['exc'].create_dataset('bright', data=dark_frames_data, dtype=output_dtype, chunks=(1, dark_shape[1], dark_shape[2]), compression=compressor)
 
-    pre_proc_threshold = dark_mean + (pre_proc_thresh_value if pre_proc_thresh_value != -1 else 0)
+    pre_proc_threshold = gate_base(dark_mean) + (pre_proc_thresh_value if pre_proc_thresh_value != -1 else 0)
 
     if file_type == 'cbf':
         # CBF: one frame per file, read in parallel with ThreadPoolExecutor.
@@ -858,6 +871,33 @@ def build_config(parser, args):
             
     return config
 
+def threshold_advice(config):
+    """Warnings about ``-preProcThresh`` against what the peak finder will do with the same frames.
+
+    Compression study 2026-10-26 (provisional, one TIFF scan plus one GE scan, peak level):
+    a pre-threshold T below every RingThresh removes only pixels the peak finder would drop
+    anyway; at or above it, fitted peaks change. Before midas-zipper 0.6.0 the GE-binary and HDF5
+    readers gated against a float dark mean but subtracted its integer part (see :func:`gate_base`),
+    so there T == RingThresh already changed the peaks; T <= RingThresh - 1 is the bound that was
+    safe for every reader and is still what this advice recommends.
+    """
+    T = int(config.get('preProcThresh', -1))
+    if T == -1:
+        return []
+    out = []
+    rt = config.get('RingThresh')
+    rows = [] if rt is None else (rt if isinstance(rt[0], list) else [rt]) if isinstance(rt, list) else []
+    vals = [float(r[1]) for r in rows if isinstance(r, list) and len(r) >= 2]
+    if vals and T >= min(vals):
+        out.append(f"preProcThresh {T} is not below the smallest RingThresh ({min(vals):g}): pixels the peak finder "
+                   f"would keep are zeroed and fitted peaks change. Use T <= {min(vals) - 1:g}. A later analysis "
+                   f"with a lower RingThresh is also impossible on this zip.")
+    if float(config.get('MinPeakSNR', 0) or 0) > 0 or int(config.get('BgSubtract', 0) or 0) != 0:
+        out.append("BgSubtract/MinPeakSNR measure the background on the ungated frame, so any "
+                   "preProcThresh changes the fitted peaks.")
+    return out
+
+
 # --- Main ---
 def main():
     parser = _midas_make_parser(description='Generate Zarr.zip dataset.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -874,9 +914,17 @@ def main():
     parser.add_argument('-numPxY', type=int, default=2048); 
     parser.add_argument('-numPxZ', type=int, default=2048)
     parser.add_argument('-omegaStep', type=float, default=0.0)
+    parser.add_argument('-archiveLossless', type=str, default='', choices=['', 'dark', 'median', 'auto'],
+                        help="lossless archive zip: store frame minus a background, bit-exact (see midas_zipper.archive); "
+                             "background from the dark, the scan median, or whichever is smaller")
     args = parser.parse_args()
 
     config = build_config(parser, args)
+    archive_mode = config.get('archiveLossless', '')
+    if archive_mode and int(config.get('preProcThresh', -1)) != -1:
+        parser.error("-archiveLossless is bit-exact; -preProcThresh zeroes pixels. Use one or the other.")
+    for _msg in threshold_advice(config):
+        print(f"WARNING: {_msg}")
 
     if not args.dataFN or config.get('LayerNr', 1) > 1:
         # Use the actual file number for this layer, not StartFileNrFirstLayer
@@ -930,8 +978,14 @@ def main():
     z_groups['sp_pro_meas'].create_dataset('datatype', data=np.bytes_(dtype_str.encode('UTF-8')))
     print(f"\nWritten datatype for C-code: '{dtype_str}'")
 
+    config.pop('archiveLossless', None)
     write_analysis_parameters(z_groups, config)
     zip_store.close()
+
+    if archive_mode:
+        from .archive import convert_zip
+        name, _ = convert_zip(outfn_zip, None, mode=archive_mode)
+        print(f"Archive encoding: {name}" + (" (frames kept raw: no background beat them)" if name == 'raw' else ""))
 
     print("\n--- Zarr File Structure Verification ---");
     with zarr.open(str(outfn_zip), 'r') as zf: 
